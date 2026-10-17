@@ -1,6 +1,8 @@
 # Estado de continuidad — 17/10/2026
 
 ## Resultado
+Publicado como repositorio público con licencia MIT, README y documentación anonimizada; ver la sección Pendiente.
+
 Actividad real de Hermes (aprobada por el usuario): estado del gateway y agentes trabajando en la barra inferior, conexiones por perfil y «Actividad registrada» (menos de dos minutos, anillo dorado) en cada edificio, sección «Actividad real» en la ficha y paneles de tareas programadas y kanban en el espacio de cada perfil. Solo metadatos de ~/.hermes, sin contenido ni títulos de conversaciones; nada inicia Hermes. Ver docs/actividad-hermes.md. 31 pruebas, build y las cinco verificaciones de navegador (activity, browser, profile-room, library, integrations) correctos; library e integrations amplían a 120 s solo la espera inicial por la carga externa de la máquina.
 
 Peatones genéricos: hasta seis transeúntes neutros por las aceras (mitad de noche, ninguno con movimiento reducido), sin etiqueta ni selección, claramente distintos de los perfiles. Ver docs/ciudad-viva.md. 28 pruebas, build y las cuatro verificaciones de navegador correctas. verify-browser amplía a 120 s solo la espera inicial de carga: Chromium sin GPU dibuja a ~2 fps y, con la máquina cargada por otros procesos (carga media 60 durante la prueba), superaba los 30 s; la escena se verificó completa en tres cargas. Siguiente fase acordada: actividad real de Hermes.
@@ -72,6 +74,6 @@ Probar la latencia tras recargar: primer envío y segundo dentro de la misma con
 ## Pendiente
 Edificios visualmente diferenciados, interiores adicionales, búsqueda en contenido, OCR/documentos extensos, papelera, sincronización de documentos entre pestañas, herramientas por perfil, escritura de memoria, proveedor nativo por perfil, sesiones compartidas con Desktop y conexiones remotas, cancelación explícita del chat, WebXR, cuentas multiusuario, recuperación de identidad y cifrado. Streaming ya implementado. La API Python es interna: ante otro commit, revisar contrato antes de quitar el bloqueo. Auditoría npm: tres avisos moderados en la cadena de la CLI de Mammoth no utilizada; análisis y seguimiento en docs/importacion.md.
 
-No existe repositorio Git inicializado en esta carpeta; no se hicieron commits ni publicaciones. `package-lock.json` es un artefacto generado que supera 1000 líneas y se conserva íntegro para instalación reproducible. Los módulos propios son pequeños.
+Repositorio público https://github.com/yosnap/agoraone (rama main, licencia MIT, a petición del usuario). La documentación publicada está anonimizada: sin nombres de perfiles, vault, proveedor ni modelo del usuario. Las verificaciones de navegador leen esos nombres de variables de entorno o de `.agora/verify-targets.json` (local, no versionado). `package-lock.json` es un artefacto generado que supera 1000 líneas y se conserva íntegro para instalación reproducible. Los módulos propios son pequeños.
 
 Consultar docs/arranque.md para ejecutar; plans/261017-0107-base-local/plan.md para hitos y decisiones pendientes.
