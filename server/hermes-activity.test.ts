@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSyn
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readActivity } from './hermes-activity';
+import { jobRuns } from './hermes-activity-log';
 
 const now = Date.parse('2026-10-17T20:00:00Z');
 const seconds = (iso: string) => Date.parse(iso) / 1000;
@@ -41,10 +42,14 @@ function fixture(gatewayAt = '2026-10-17T19:59:30Z', pid = process.pid) {
   say.run(6, 'a', 'tool', 'CANARY_RESULT', null, 'call-6', 'bad name; DROP', seconds('2026-10-17T18:00:00Z'));
   sessions.close();
   writeFileSync(join(work, 'cron', 'jobs.json'), JSON.stringify({ jobs: [{
-    name: 'Resumen diario', enabled: true, state: 'scheduled', schedule_display: 'every day at 20:00', last_status: 'ok',
+    id: 'job-1', name: 'Resumen diario', enabled: true, state: 'scheduled', schedule_display: 'every day at 20:00', last_status: 'ok',
     last_run_at: '2026-10-16T20:00:00+02:00', next_run_at: '2026-10-17T20:00:00+02:00',
     prompt: 'CANARY_PROMPT', deliver: 'telegram:CANARY_CHAT', origin: { chat_id: 'CANARY_CHAT' },
   }] }));
+  const runs = new DatabaseSync(join(work, 'cron', 'executions.db'));
+  runs.exec('CREATE TABLE executions (id INTEGER, job_id TEXT, status TEXT, started_at TEXT, finished_at TEXT, error TEXT)');
+  runs.prepare('INSERT INTO executions VALUES (?, ?, ?, ?, ?, ?)').run(1, 'job-1', 'failed', '2026-10-17T19:30:00+02:00', '2026-10-17T19:31:00+02:00', 'CANARY_ERROR');
+  runs.close();
   const kanban = new DatabaseSync(join(root, 'kanban.db'));
   kanban.exec('CREATE TABLE tasks (id TEXT, title TEXT, body TEXT, assignee TEXT, status TEXT)');
   const task = kanban.prepare('INSERT INTO tasks VALUES (?, ?, ?, ?, ?)');
@@ -79,6 +84,16 @@ test('actividad real: gateway, conexiones por perfil, sesiones recientes, tareas
     assert.deepEqual(crm?.tools.map(tool => tool.name).sort(), ['createLead', 'searchLeads']);
     assert.deepEqual(work.usage?.mcp.find(server => server.name === 'crm_')?.tools.map(tool => tool.name), ['lead']);
     assert.equal(work.usage?.mcp.length, 2);
+    assert.deepEqual(work.events.map(event => [event.kind, event.at]), [
+      ['link', '2026-10-17T19:59:30.000Z'],
+      ['mcp', '2026-10-17T18:00:00.000Z'],
+      ['job', '2026-10-17T17:31:00.000Z'],
+      ['mcp', '2026-10-17T17:00:00.000Z'],
+      ['session', '2026-10-17T10:00:00.000Z'],
+      ['session', '2026-10-17T08:00:00.000Z'],
+    ]);
+    assert.deepEqual(work.events.find(event => event.kind === 'job'), { at: '2026-10-17T17:31:00.000Z', kind: 'job', name: 'Resumen diario', status: 'failed' });
+    assert.deepEqual(work.events.filter(event => event.kind === 'mcp').map(event => event.kind === 'mcp' && [event.server, event.calls]), [['my_crm', 1], ['crm_', 1]]);
     assert.doesNotMatch(JSON.stringify(activity), /CANARY/);
   } finally { close(); }
 });
@@ -115,4 +130,23 @@ test('actividad real: no sigue enlaces simbólicos ni falla si faltan fuentes', 
     rmSync(join(root, 'gateway_state.json'));
     assert.equal(readActivity(root, profiles, now).gateway.state, 'missing');
   } finally { close(); }
+});
+
+test('registro de actividad: la última ejecución de jobs.json no duplica el historial de la misma tarea', () => {
+  const root = realpathSync(mkdtempSync(join(process.cwd(), '.agora-activity-test-')));
+  try {
+    mkdirSync(join(root, 'cron'));
+    const runs = new DatabaseSync(join(root, 'cron', 'executions.db'));
+    runs.exec('CREATE TABLE executions (job_id TEXT, status TEXT, started_at TEXT, finished_at TEXT)');
+    runs.prepare('INSERT INTO executions VALUES (?, ?, ?, ?)').run('a', 'completed', '2026-10-17T19:00:00+02:00', '2026-10-17T19:02:00+02:00');
+    runs.prepare('INSERT INTO executions VALUES (?, ?, ?, ?)').run('b', 'completed', '2026-10-17T19:00:00+02:00', '2026-10-17T19:02:00+02:00');
+    runs.close();
+    const jobs = [
+      { id: 'a', name: 'Mismo nombre', last_run_at: '2026-10-17T19:02:05+02:00', last_status: 'ok' }, // same run as history
+      { id: 'b', name: 'Mismo nombre', last_run_at: '2026-10-17T21:30:00+02:00', last_status: 'error' }, // a later run
+    ];
+    const events = jobRuns(root, root, jobs, now);
+    assert.equal(events.length, 3);
+    assert.deepEqual(events.filter(event => event.kind === 'job' && event.status === 'error').map(event => event.at), ['2026-10-17T19:30:00.000Z']);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
