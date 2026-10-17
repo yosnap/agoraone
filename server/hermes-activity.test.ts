@@ -27,6 +27,18 @@ function fixture(gatewayAt = '2026-10-17T19:59:30Z', pid = process.pid) {
   add.run('a', 'telegram', 'CANARY_TITLE', 'CANARY_CHAT', 'CANARY_PROMPT', seconds('2026-10-17T10:00:00Z'), seconds('2026-10-17T19:59:00Z'));
   add.run('b', 'cron', 'CANARY_TITLE', null, null, seconds('2026-10-17T08:00:00Z'), null);
   add.run('c', 'desktop', 'CANARY_TITLE', null, null, seconds('2026-09-01T08:00:00Z'), seconds('2026-09-01T09:00:00Z'));
+  sessions.exec('CREATE TABLE messages (id INTEGER, session_id TEXT, role TEXT, content TEXT, tool_calls TEXT, tool_call_id TEXT, tool_name TEXT, timestamp REAL)');
+  const say = sessions.prepare('INSERT INTO messages VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  say.run(1, 'a', 'assistant', 'CANARY_CONTENT', '[{"name":"terminal","arguments":"CANARY_ARGS"}]', null, null, seconds('2026-10-17T19:00:00Z'));
+  say.run(2, 'a', 'tool', 'CANARY_RESULT', null, 'call-1', 'terminal', seconds('2026-10-17T19:00:01Z'));
+  // Compaction clones the kept tail: the same call appears twice and must count once.
+  say.run(7, 'a', 'tool', 'CANARY_RESULT', null, 'call-1', 'terminal', seconds('2026-10-17T19:00:01Z'));
+  say.run(3, 'a', 'tool', 'CANARY_RESULT', null, 'call-2', 'terminal', seconds('2026-08-01T10:00:00Z'));
+  say.run(4, 'a', 'tool', 'CANARY_RESULT', null, 'call-3', 'mcp__my_crm__createLead', seconds('2026-10-16T09:00:00Z'));
+  say.run(5, 'a', 'tool', 'CANARY_RESULT', null, 'call-4', 'mcp__my_crm__searchLeads', seconds('2026-10-17T18:00:00Z'));
+  // Server "crm-" is stored as "crm_", so its tools read mcp__crm___lead.
+  say.run(8, 'a', 'tool', 'CANARY_RESULT', null, 'call-5', 'mcp__crm___lead', seconds('2026-10-17T17:00:00Z'));
+  say.run(6, 'a', 'tool', 'CANARY_RESULT', null, 'call-6', 'bad name; DROP', seconds('2026-10-17T18:00:00Z'));
   sessions.close();
   writeFileSync(join(work, 'cron', 'jobs.json'), JSON.stringify({ jobs: [{
     name: 'Resumen diario', enabled: true, state: 'scheduled', schedule_display: 'every day at 20:00', last_status: 'ok',
@@ -40,7 +52,7 @@ function fixture(gatewayAt = '2026-10-17T19:59:30Z', pid = process.pid) {
   task.run('2', 'Informe anterior', 'CANARY_BODY', 'work', 'done');
   task.run('3', 'De otro perfil', 'CANARY_BODY', 'other', 'todo');
   kanban.close();
-  const profiles = [{ id: 'p-default', name: 'default', home: root }, { id: 'p-work', name: 'work', home: work }];
+  const profiles = [{ id: 'p-default', name: 'default', home: root }, { id: 'p-work', name: 'work', home: work, mcp: ['my-crm', 'crm-'] }];
   return { root, work, profiles, close: () => rmSync(root, { recursive: true, force: true }) };
 }
 
@@ -60,6 +72,13 @@ test('actividad real: gateway, conexiones por perfil, sesiones recientes, tareas
     assert.deepEqual(work.board?.open, [{ title: 'Preparar informe', status: 'running' }]);
     assert.equal(work.board?.byStatus.reduce((sum, item) => sum + item.count, 0), 2);
     assert.equal(activity.profiles['p-default'].jobs, null);
+    assert.deepEqual(work.usage?.tools, [{ name: 'terminal', calls: 1, lastUsedAt: '2026-10-17T19:00:01.000Z' }]);
+    const crm = work.usage?.mcp.find(server => server.name === 'my_crm');
+    assert.equal(crm?.calls, 2);
+    assert.equal(crm?.lastUsedAt, '2026-10-17T18:00:00.000Z');
+    assert.deepEqual(crm?.tools.map(tool => tool.name).sort(), ['createLead', 'searchLeads']);
+    assert.deepEqual(work.usage?.mcp.find(server => server.name === 'crm_')?.tools.map(tool => tool.name), ['lead']);
+    assert.equal(work.usage?.mcp.length, 2);
     assert.doesNotMatch(JSON.stringify(activity), /CANARY/);
   } finally { close(); }
 });

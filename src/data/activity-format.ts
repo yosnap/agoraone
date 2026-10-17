@@ -1,4 +1,4 @@
-import { recentActivityMs, type HermesActivity, type PlatformLink, type ProfileActivity } from '../../shared/hermes-activity';
+import { mcpServerKey, recentActivityMs, type HermesActivity, type PlatformLink, type ProfileActivity, type ToolUse } from '../../shared/hermes-activity';
 
 export const platformStates: Record<PlatformLink['state'], string> = {
   connected: 'conectado', retrying: 'reintentando', attention: 'requiere atención', disconnected: 'desconectado', unknown: 'sin datos recientes',
@@ -37,4 +37,20 @@ export function gatewaySummary(activity: HermesActivity | null) {
   if (gateway.state === 'stale') return `Gateway Hermes · sin datos recientes (último ${ago(gateway.updatedAt)})`;
   const agents = gateway.activeAgents ?? 0;
   return `Gateway Hermes · en marcha · ${agents === 1 ? '1 agente trabajando' : `${agents} agentes trabajando`} ahora`;
+}
+
+/** Recorded use of an MCP server by one profile, matched by Hermes' tool-name prefix. */
+export const mcpUsage = (activity: ProfileActivity | undefined, server: string) =>
+  activity?.usage?.mcp.find(item => item.name === mcpServerKey(server));
+
+export function usageLine(use: ToolUse | undefined, windowDays = 30) {
+  if (!use?.lastUsedAt) return 'sin uso registrado';
+  return `usado ${ago(use.lastUsedAt)} · ${use.calls === 1 ? '1 llamada' : `${use.calls} llamadas`} en ${windowDays} días`;
+}
+
+/** Latest recorded use of an MCP name across the profiles that declare it. */
+export function serviceUsage(bindings: { profile: { id: string }; server: { name: string } }[], activity: HermesActivity | null): ToolUse | undefined {
+  const uses = bindings.flatMap(({ profile, server }) => { const use = mcpUsage(activity?.profiles[profile.id], server.name); return use ? [use] : []; });
+  if (!uses.length) return undefined;
+  return { name: uses[0].name, calls: uses.reduce((sum, use) => sum + use.calls, 0), lastUsedAt: uses.map(use => use.lastUsedAt).filter(Boolean).sort().at(-1) ?? null };
 }

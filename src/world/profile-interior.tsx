@@ -9,6 +9,9 @@ import { StandingPerson } from './standing-person';
 import { decorObstacles, ProfileDecor, type Obstacle } from './profile-decor';
 import type { ProfileActivity } from '../../shared/hermes-activity';
 import { ActivityBoards } from './profile-activity-boards';
+import { mcpUsage, usageLine } from '../data/activity-format';
+
+const dayMs = 86_400_000;
 
 export type ProfileRoom = {
   profile: HermesProfile; style: BuildingStyle; seed: number;
@@ -60,12 +63,12 @@ export function ProfileInterior({ room, activity, onStation, onService, onExit }
       <WorldLabel position={[0.8, 2.75, 0]} distanceFactor={10}><button className="place-label" onClick={() => onStation('memory')}>Memoria · {fileLabel(profile, 'MEMORY.md')} · {fileLabel(profile, 'USER.md')}</button></WorldLabel>
     </group>
 
-    {/* Services: one screen per MCP declared for this profile (configuration, not live state). */}
-    {services.slice(0, 6).map((service, i) => <group key={service.id} position={[6.78, 2.1, -5.5 + i * 2]} rotation={[0, -Math.PI / 2, 0]} onClick={event => { event.stopPropagation(); onService(service.id); }}>
+    {/* Services: one screen per MCP declared for this profile; brighter when Hermes recorded a call in the last day. */}
+    {services.slice(0, 6).map((service, i) => { const use = mcpUsage(activity, service.name); const lit = !!use?.lastUsedAt && Date.now() - Date.parse(use.lastUsedAt) < dayMs; return <group key={service.id} position={[6.78, 2.1, -5.5 + i * 2]} rotation={[0, -Math.PI / 2, 0]} onClick={event => { event.stopPropagation(); onService(service.id); }}>
       <mesh><boxGeometry args={[1.5, 0.95, 0.06]}/><meshStandardMaterial color="#1d2a2e" metalness={0.4} roughness={0.3}/></mesh>
-      <mesh position={[0, 0, 0.035]}><boxGeometry args={[1.36, 0.82, 0.01]}/><meshStandardMaterial color={service.enabled ? '#6bc0cb' : '#56636a'} emissive={service.enabled ? '#2f7f8a' : '#1e2629'} emissiveIntensity={0.8}/></mesh>
-      <WorldLabel position={[0, 0.75, 0.1]} distanceFactor={9}><button className="place-label" onClick={() => onService(service.id)}>MCP · {service.name} · {service.enabled ? 'habilitado' : 'deshabilitado'}</button></WorldLabel>
-    </group>)}
+      <mesh position={[0, 0, 0.035]}><boxGeometry args={[1.36, 0.82, 0.01]}/><meshStandardMaterial color={service.enabled ? '#6bc0cb' : '#56636a'} emissive={service.enabled ? '#2f7f8a' : '#1e2629'} emissiveIntensity={lit ? 2.2 : 0.8}/></mesh>
+      <WorldLabel position={[0, 0.75, 0.1]} distanceFactor={9}><button className="place-label" onClick={() => onService(service.id)}>MCP · {service.name} · {service.enabled ? 'habilitado' : 'deshabilitado'}<br/><small>{usageLine(use, activity?.usage?.windowDays)}</small></button></WorldLabel>
+    </group>; })}
     {!services.length && <WorldLabel position={[6.5, 2.2, -2]} distanceFactor={10}><span className="place-label">Sin servidores MCP declarados</span></WorldLabel>}
 
     {/* Desk with the profile's person: conversation starts only when the user sends a message. */}
