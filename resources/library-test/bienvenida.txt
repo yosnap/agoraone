@@ -1,0 +1,10 @@
+BIBLIOTECA DE PRUEBA DE AGORAONE
+
+Esta carpeta contiene documentos de demostración creados para probar la biblioteca.
+No contiene archivos personales ni se conecta a carpetas externas.
+
+Puedes abrir un documento, leerlo y seleccionarlo como contexto para Luma.
+Luma recibe el texto a través del backend, con acceso de solo lectura.
+Los documentos no pueden modificarse, borrarse ni moverse desde la aplicación.
+
+El identificador de comprobación de esta biblioteca es FARO-274.
