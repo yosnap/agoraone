@@ -42,6 +42,16 @@ Hermes guarda cada llamada a una herramienta como un mensaje con `role = 'tool'`
 ## Personas que reaccionan a la actividad real
 Mientras Hermes haya registrado actividad del perfil hace menos de dos minutos, su persona deja de pasear, camina hasta la entrada del edificio y se queda mirándolo; su etiqueta pasa a «<nombre> · actividad registrada» y su anillo se vuelve dorado. Al dejar de haber actividad reciente vuelve al paseo, siempre caminando (nunca salta de sitio). Con movimiento reducido se coloca directamente, sin animación. En el espacio del perfil aparece «Actividad registrada hace X» sobre la persona del escritorio. La verificación `scripts/verify-activity.mjs` usa una respuesta simulada solo dentro de la prueba para provocar este estado.
 
+## Registro de actividad
+Botón «◷ Registro» junto a los modos de vista: panel con lo que Hermes registró en las últimas 24 h, de todos los perfiles, del más reciente al más antiguo (máximo 60 entradas; 30 por perfil).
+
+- **Sesiones**: inicio y origen (`sessions.source`, `started_at`).
+- **Tareas programadas**: ejecuciones de `cron/executions.db` (solo tarea, estado y hora; nunca el texto de error ni el destino de entrega) más el `last_run_at` de `jobs.json` cuando el historial no lo incluye (se descarta si hay una ejecución de la misma tarea a menos de 10 minutos).
+- **MCP**: llamadas agrupadas por servidor y hora, contadas sin duplicados de compactación, en la misma pasada que el uso de herramientas. Aparecen en cuanto Hermes las escribe en `state.db`: el resultado se reutiliza solo mientras la base y su WAL no cambian, como máximo 10 minutos.
+- **Conexiones**: última actualización de estado de cada plataforma del gateway, salvo cuando el estado es «sin datos recientes».
+
+Lectura en `server/hermes-activity-log.ts` y `server/hermes-activity.ts`; panel en `src/ui/activity-log.tsx`.
+
 ## Criterios de representación
 1. **Conexiones del gateway por perfil**: indicador en el edificio y en la ficha (conectado, reintentando, requiere atención o sin datos). Si el estado es antiguo o el PID no existe, se muestra «sin datos recientes», nunca «conectado».
 2. **Trabajo en curso global**: un indicador de ciudad con el recuento `active_agents`, sin atribuirlo a ningún perfil.

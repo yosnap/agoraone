@@ -7,6 +7,12 @@ export type ScheduledJob = {
 export type ToolUse = { name: string; calls: number; lastUsedAt: string | null };
 /** Recorded tool calls (names and times only). `calls` counts the last `windowDays` days. */
 export type ToolUsage = { windowDays: number; tools: ToolUse[]; mcp: (ToolUse & { tools: ToolUse[] })[] };
+/** One entry of the activity log (last 24 h): times, origins and names only. */
+export type ActivityEvent =
+  | { at: string; kind: 'session'; source: string }
+  | { at: string; kind: 'job'; name: string; status: string | null }
+  | { at: string; kind: 'mcp'; server: string; calls: number }
+  | { at: string; kind: 'link'; name: string; state: PlatformLink['state'] };
 export type ProfileActivity = {
   platforms: PlatformLink[];
   lastActivityAt: string | null;
@@ -15,6 +21,7 @@ export type ProfileActivity = {
   jobs: ScheduledJob[] | null;
   usage: ToolUsage | null;
   board: { byStatus: { status: string; count: number }[]; open: { title: string; status: string }[] } | null;
+  events: ActivityEvent[];
 };
 export type HermesActivity = {
   schema: 1; readAt: string;
@@ -23,6 +30,8 @@ export type HermesActivity = {
 };
 /** Activity this recent is shown as "actividad registrada" in the world. */
 export const recentActivityMs = 2 * 60 * 1000;
+/** The activity log covers this window. */
+export const eventWindowMs = 24 * 60 * 60 * 1000;
 
 /** Hermes registers MCP tools as `mcp__<server>__<tool>`, with non-alphanumerics in the server name replaced by `_`. */
 export const mcpServerKey = (name: string) => name.replace(/[^A-Za-z0-9_]/g, '_');

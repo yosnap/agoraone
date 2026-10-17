@@ -27,3 +27,10 @@
 .activity-section ul{padding-left:16px;margin:4px 0}.activity-section li{font-size:12px;line-height:1.6}
 .room-board{width:260px;white-space:normal;border-radius:8px;background:#f8f6e6f0;color:#284f44;font-size:10px;padding:10px 12px;box-shadow:0 4px 14px #21473525}
 .room-board h4{margin:0 0 6px;font-size:11px}.room-board ul{margin:0;padding-left:14px}.room-board p{margin:4px 0}.room-board small{display:block;opacity:.7;margin-top:6px}
+.activity-log{overflow:auto}
+.activity-events{list-style:none;margin:8px 0;padding:0}
+.activity-events li{display:flex;gap:12px;padding:9px 0;border-top:1px solid #264f3e15;font-size:12px;line-height:1.5}
+.activity-events time{font-variant-numeric:tabular-nums;color:#718078;min-width:40px}
+.activity-events li>span{display:flex;flex-direction:column}
+.activity-events .catalog-link{background:none;border:0;color:#244b40;cursor:pointer;text-align:left;display:inline-flex;align-items:center;gap:6px;padding:0;margin:0 0 2px;font-weight:600}
+.activity-events small{color:#8a958c;font-size:10px}

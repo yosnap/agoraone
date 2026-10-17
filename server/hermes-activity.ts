@@ -1,8 +1,9 @@
 import { join } from 'node:path';
 import { statSync } from 'node:fs';
-import { mcpServerKey, type HermesActivity, type PlatformLink, type ProfileActivity, type ScheduledJob, type ToolUsage, type ToolUse } from '../shared/hermes-activity';
+import { eventWindowMs, mcpServerKey, type ActivityEvent, type HermesActivity, type PlatformLink, type ProfileActivity, type ScheduledJob, type ToolUsage, type ToolUse } from '../shared/hermes-activity';
 import { readHermesFile, redact } from './hermes-safe-read';
 import { withHermesDatabase } from './hermes-database';
+import { activityLog, iso, jobRuns } from './hermes-activity-log';
 
 // Hermes itself treats its runtime status as stale after 120 s (gateway/status.py).
 const staleAfterMs = 120_000;
@@ -13,10 +14,6 @@ const json = (root: string, file: string, limit = 256 * 1024): Record<string, an
     const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readHermesFile(root, file, limit)));
     return value && typeof value === 'object' ? value : null;
   } catch { return null; }
-};
-const iso = (value: unknown) => {
-  const date = typeof value === 'number' ? new Date(value * 1000) : typeof value === 'string' ? new Date(value) : null;
-  return date && !Number.isNaN(date.getTime()) ? date.toISOString() : null;
 };
 const token = (value: unknown) => typeof value === 'string' && word.test(value) ? value : null;
 const alive = (pid: unknown) => {
@@ -65,14 +62,17 @@ function sessions(root: string, home: string, now: number) {
     const last = db.prepare(`SELECT max(${at}) AS last FROM sessions`).get()?.last;
     const recent = db.prepare(`SELECT source, count(*) AS sessions FROM sessions WHERE ${at} > ? GROUP BY source ORDER BY sessions DESC LIMIT 12`).all((now - 86_400_000) / 1000)
       .flatMap(row => token(row.source) ? [{ source: row.source as string, sessions: Number(row.sessions) }] : []);
-    return { lastActivityAt: iso(last), recent };
+    const started = db.prepare('SELECT source, started_at FROM sessions WHERE started_at > ? ORDER BY started_at DESC LIMIT 30').all((now - eventWindowMs) / 1000)
+      .flatMap(row => token(row.source) && iso(row.started_at) ? [{ at: iso(row.started_at)!, kind: 'session' as const, source: row.source as string }] : []);
+    return { lastActivityAt: iso(last), recent, started };
   });
 }
 
 const usageDays = 30;
 const toolName = /^[A-Za-z0-9_-]{1,96}$/;
 // state.db only changes when its file or WAL changes; reuse the aggregate meanwhile (10-minute window granularity).
-const usageCache = new Map<string, { key: string; value: ToolUsage | null }>();
+type ToolRecords = { usage: ToolUsage; mcpHours: ActivityEvent[] };
+const usageCache = new Map<string, { key: string; value: ToolRecords | null }>();
 const fileStamp = (file: string) => { try { const stat = statSync(file); return `${stat.mtimeMs}:${stat.size}`; } catch { return '-'; } };
 
 /** Splits `mcp__<server>__<tool>` using the declared server keys first, so names containing `__` resolve correctly. */
@@ -83,7 +83,7 @@ function splitMcp(name: string, declared: string[]) {
   return match ? [match[1], match[2]] : null;
 }
 
-function usage(root: string, home: string, declaredNames: string[], now: number): ToolUsage | null {
+function toolRecords(root: string, home: string, declaredNames: string[], now: number): ToolRecords | null {
   const file = join(home, 'state.db');
   const declared = declaredNames.map(mcpServerKey).sort((a, b) => b.length - a.length);
   const key = [fileStamp(file), fileStamp(`${file}-wal`), Math.floor(now / 600_000), declared.join(',')].join('|');
@@ -112,18 +112,33 @@ function usage(root: string, home: string, declaredNames: string[], now: number)
       lastUsedAt: list.map(item => item.lastUsedAt).filter(Boolean).sort().at(-1) ?? null,
       tools: list.sort(byRecent).slice(0, 12),
     })).sort(byRecent).slice(0, 30);
-    return { windowDays: usageDays, tools: tools.sort(byRecent).slice(0, 12), mcp };
+    // Activity log: MCP calls of the last 24 h grouped by server and hour.
+    const hours = new Map<string, { at: string; kind: 'mcp'; server: string; calls: number }>();
+    for (const row of db.prepare(`SELECT tool_name AS name, CAST(timestamp / 3600 AS INTEGER) AS hour, count(DISTINCT ${call}) AS calls, max(timestamp) AS last FROM messages WHERE role = 'tool' AND tool_name LIKE 'mcp\\_\\_%' ESCAPE '\\' AND timestamp > ? GROUP BY tool_name, hour`).all((now - eventWindowMs) / 1000)) {
+      const server = typeof row.name === 'string' && toolName.test(row.name) ? splitMcp(row.name, declared)?.[0] : undefined;
+      const at = iso(row.last);
+      if (!server || !at) continue;
+      const slot = `${server}|${row.hour}`, entry = hours.get(slot);
+      if (!entry) hours.set(slot, { at, kind: 'mcp', server, calls: Number(row.calls) || 0 });
+      else { entry.calls += Number(row.calls) || 0; if (at > entry.at) entry.at = at; }
+    }
+    return { usage: { windowDays: usageDays, tools: tools.sort(byRecent).slice(0, 12), mcp }, mcpHours: [...hours.values()] };
   });
   usageCache.set(file, { key, value });
   return value;
 }
 
-function jobs(root: string, home: string): ScheduledJob[] | null {
+function rawJobs(root: string, home: string): Record<string, unknown>[] | null {
   const data = json(root, join(home, 'cron', 'jobs.json'), 1024 * 1024);
   if (!data) return null;
   const list: unknown[] = Array.isArray(data) ? data : Array.isArray(data.jobs) ? data.jobs : [];
+  return list.slice(0, 20).flatMap(job => job && typeof job === 'object' ? [job as Record<string, unknown>] : []);
+}
+
+function jobs(list: Record<string, unknown>[] | null): ScheduledJob[] | null {
+  if (!list) return null;
   // Name and schedule only; the job prompt, origin and delivery target are never read.
-  return list.slice(0, 20).flatMap(job => job && typeof job === 'object' ? [job as Record<string, unknown>] : []).map(job => ({
+  return list.map(job => ({
     name: redact(job.name, 100) || 'Tarea sin nombre', enabled: job.enabled === true, state: token(job.state) || 'unknown',
     schedule: redact(job.schedule_display, 80), lastStatus: token(job.last_status),
     lastRunAt: iso(job.last_run_at), nextRunAt: iso(job.next_run_at),
@@ -150,12 +165,20 @@ export function readActivity(root: string, profiles: { id: string; name: string;
   const result: HermesActivity = { schema: 1, readAt: new Date(now).toISOString(), gateway: live.info, profiles: {} };
   for (const profile of profiles) {
     const recorded = attempt(() => sessions(root, profile.home, now), null);
+    const tools = attempt(() => toolRecords(root, profile.home, profile.mcp ?? [], now), null);
+    const jobList = attempt(() => rawJobs(root, profile.home), null);
+    const links = platforms(live.state, live.fresh, profile.name);
     result.profiles[profile.id] = {
-      platforms: platforms(live.state, live.fresh, profile.name),
+      platforms: links,
       lastActivityAt: recorded?.lastActivityAt ?? null, recent: recorded?.recent ?? [],
-      usage: attempt(() => usage(root, profile.home, profile.mcp ?? [], now), null),
-      jobs: attempt(() => jobs(root, profile.home), null),
+      usage: tools?.usage ?? null,
+      jobs: jobs(jobList),
       board: attempt(() => board(root, profile.name), null),
+      events: activityLog(now, [
+        recorded?.started ?? [], tools?.mcpHours ?? [],
+        attempt(() => jobRuns(root, profile.home, jobList ?? [], now), []),
+        links.flatMap(link => link.updatedAt ? [{ at: link.updatedAt, kind: 'link' as const, name: link.name, state: link.state }] : []),
+      ]),
     };
   }
   return result;

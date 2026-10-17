@@ -6,7 +6,7 @@ export const platformStates: Record<PlatformLink['state'], string> = {
 const sources: Record<string, string> = { telegram: 'Telegram', desktop: 'Desktop', cron: 'tareas programadas', cli: 'terminal', tui: 'terminal', acp: 'editor (ACP)', subagent: 'subagentes', oneshot: 'ejecución única' };
 export const sourceLabel = (source: string) => sources[source] || source;
 const statuses: Record<string, string> = {
-  ok: 'correcto', error: 'con error', failed: 'con error', scheduled: 'programada', paused: 'en pausa', running: 'en curso',
+  ok: 'correcto', completed: 'completada', claimed: 'reservada', unknown: 'resultado desconocido', delivery_failed: 'entrega fallida', blocked_config: 'bloqueada por configuración', error: 'con error', failed: 'con error', scheduled: 'programada', paused: 'en pausa', running: 'en curso',
   triage: 'por clasificar', todo: 'pendiente', ready: 'lista', blocked: 'bloqueada', review: 'en revisión', done: 'hecha', archived: 'archivada',
 };
 export const statusLabel = (status: string | null) => status ? statuses[status] || status : 'sin datos';

@@ -13,6 +13,7 @@ import type { HermesCatalog } from '../shared/hermes-catalog';
 import './ui/hermes-catalog.css';
 import { useHermesActivity } from './data/use-hermes-activity';
 import { gatewaySummary } from './data/activity-format';
+import { ActivityLog } from './ui/activity-log';
 import { lightModeLabels, useDaylightClock, type LightMode } from './world/daylight';
 
 const lightModes: LightMode[] = ['auto', 'day', 'dusk', 'night'];
@@ -35,6 +36,7 @@ export default function App() {
   const [lightMode, setLightMode] = useState<LightMode>('auto');
   const daylight = useDaylightClock(lightMode);
   const hermesActivity = useHermesActivity(status?.csrf);
+  const [logOpen, setLogOpen] = useState(false);
   const [walkHint, setWalkHint] = useState('Entrar al recorrido · WASD / ratón · Esc para salir');
   useEffect(() => { getStatus().then(setStatus).catch(() => setStatus({ state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con npm run dev.' })); }, []);
   useEffect(() => {
@@ -53,7 +55,7 @@ export default function App() {
   const select = (id: string) => {
     if (id.startsWith('service-')) { setInside(false); setProfileRoom(null); setIntegrationsInside(true); setFirstPerson(true); }
     if (id !== selected) setProfileTab('info');
-    setSelected(id); setLibraryTab('chat');
+    setSelected(id); setLibraryTab('chat'); setLogOpen(false);
   };
   const browse = () => { setSelected('library'); setLibraryTab('documents'); };
   const exit = () => { setInside(false); setIntegrationsInside(false); setProfileRoom(null); setFirstPerson(false); setSelected(null); };
@@ -75,6 +77,7 @@ export default function App() {
     <header className="topbar"><a className="brand" href="/">a<span>AGORA<span className="brand-light">ONE</span></span></a><span className="top-note">TU MUNDO, EN UN LUGAR</span><div className="local-status"><i/> LOCAL · MAC</div></header>
     <section className={`intro ${indoors || daylight.night > 0.5 ? 'interior-intro' : ''}`}><div className="eyebrow">{copy.eyebrow}</div><h1>{copy.title}</h1><p>{copy.text}</p></section>
     <nav className="view-switch" aria-label="Modo de cámara"><button className={!firstPerson ? 'active' : ''} onClick={exit}>↗ Vista ciudad</button><button className={firstPerson ? 'active' : ''} onClick={() => setFirstPerson(true)}>◎ Primera persona</button>
+      <button aria-pressed={logOpen} title="Registro de lo que Hermes ha hecho en las últimas 24 horas" onClick={() => { setSelected(null); setLogOpen(!logOpen); }}>◷ Registro</button>
       <button title="Iluminación de la ciudad: hora real de Madrid o fija" onClick={() => setLightMode(lightModes[(lightModes.indexOf(lightMode) + 1) % lightModes.length])}>☀ {lightModeLabels[lightMode]}</button></nav>
     {firstPerson && !selected && <button id="walk-button" className="walk-button" onClick={() => {
       const canvas = window.document.querySelector('canvas');
@@ -92,6 +95,7 @@ export default function App() {
       </div>
       {places.map(p => <button key={p.id} onClick={() => select(p.id)} className={selected === p.id ? 'chosen' : ''}><span className="place-dot" style={{ background: p.color }}/><span><strong>{p.name}</strong><small>{p.kind === 'profile' ? 'Identidad y memoria · Hermes' : p.kind === 'space' ? 'Espacio registrado · Hermes' : p.kind === 'vault' ? 'Carpeta local · solo metadatos' : p.kind === 'service' ? 'Configurado · conexión no comprobada' : 'Luma · biblioteca propia de AgoraOne'}</small></span><span className="arrow">↗</span></button>)}</aside>}
     <div className="world-caption"><span>{copy.caption}</span><small>{copy.hint}</small></div>
+    {logOpen && !place && <ActivityLog activity={hermesActivity.activity} catalog={catalog} error={hermesActivity.error} onSelect={select} onClose={() => setLogOpen(false)}/>}
     {place && <aside className="detail-panel" aria-label={`Espacio ${place.name}`}><button className="close" aria-label="Cerrar espacio" onClick={() => setSelected(null)}>×</button><div className="eyebrow">{place.kind === 'profile' ? 'PERFIL HERMES' : place.kind === 'space' ? 'ESPACIO HERMES' : place.kind === 'vault' ? 'OBSIDIAN · VAULT LOCAL' : place.kind === 'service' ? 'MCP · SERVICIO CONFIGURADO' : 'BIBLIOTECA · AGORAONE'}</div><h2>{place.character || place.name}<span style={{ background: place.color }}/></h2><p className="description">{place.description}</p>
       {place.id === 'library' ? <LibraryPanel status={status} onConnected={() => setConnected(true)} inside={inside} onEnter={() => { setIntegrationsInside(false); setProfileRoom(null); setInside(true); setFirstPerson(true); setSelected(null); }} tab={libraryTab} onTab={setLibraryTab} document={document} onDocument={setDocument}/> : catalog && (place.id === 'mcp-center' ? <IntegrationsPanel catalog={catalog} inside={integrationsInside} onEnter={enterIntegrations} onSelect={select}/> : place.kind === 'vault' || place.kind === 'service' ? <ResourcePanel key={place.id} id={place.id} catalog={catalog} onSelect={select} activity={hermesActivity.activity}/> : <HermesPanel key={place.id} id={place.id} catalog={catalog} onSelect={select} status={status} onConnected={() => setConnected(true)} tab={profileTab} onTab={setProfileTab} inside={profileRoom === place.id} onEnter={() => enterProfile(place.id)} activity={hermesActivity}/>)}
     </aside>}

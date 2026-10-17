@@ -1,6 +1,8 @@
 # Estado de continuidad — 17/10/2026
 
 ## Resultado
+Versión 0.4.0: registro de actividad (botón «Registro») con lo que Hermes registró en las últimas 24 h: sesiones por origen, ejecuciones de tareas programadas, llamadas MCP por hora y cambios de conexión. Sin contenido ni títulos. Ver docs/actividad-hermes.md.
+
 Versión 0.3.0: la persona de cada perfil va a la entrada de su edificio mientras Hermes registra actividad reciente de ese perfil (menos de dos minutos), con etiqueta y anillo dorado, y vuelve al paseo después; aviso equivalente en su espacio. Ver docs/actividad-hermes.md.
 
 Uso real de herramientas (versión 0.2.0): por perfil, llamadas registradas por Hermes a herramientas nativas y MCP en 30 días y última llamada, en la ficha, en las pantallas MCP del espacio, en las terminales del centro de integraciones y en la ficha del MCP. Solo nombres y horas, nunca argumentos ni resultados. Ver docs/actividad-hermes.md.

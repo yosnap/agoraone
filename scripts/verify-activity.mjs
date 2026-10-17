@@ -13,6 +13,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await page.goto('http://127.0.0.1:5173');
   await page.getByText(/Gateway Hermes · (en marcha|detenido|sin datos|sin estado)/).waitFor({ timeout: 120_000 });
   if (shots) { await page.waitForTimeout(8000); await page.screenshot({ path: `${shots}/city-${viewport.width}.png` }); }
+  await page.getByRole('button', { name: /Registro/ }).click();
+  const log = page.getByLabel('Registro de actividad de Hermes');
+  await log.getByText(/Sesión desde|Tarea programada «|MCP .* llamada|Telegram · |Hermes no ha registrado actividad/).first().waitFor();
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  if (shots) await page.screenshot({ path: `${shots}/log-${viewport.width}.png` });
+  await page.getByRole('button', { name: 'Cerrar registro' }).click();
   await page.getByRole('button', { name: new RegExp(`Perfil · ${escape(profile)}`) }).first().click();
   const section = page.getByLabel('Actividad real registrada por Hermes');
   await section.getByText('Conexiones del gateway').waitFor();
