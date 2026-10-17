@@ -10,6 +10,7 @@ import { extractUpload, uploadSchema } from './document-extraction';
 import { HermesDiscovery } from './hermes-catalog';
 import { profileContext, ProfileContextError } from './profile-context';
 import { obsidianVaults } from './resource-discovery';
+import { VaultError, VaultNotes } from './vault-notes';
 
 export function createApp(options: { directory?: string; adapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null } = {}) {
   const app = express();
@@ -17,7 +18,10 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
   const adapter = options.adapter || hermesReply;
   const library = new Library(options.libraryRoot);
   const privateLibrary = new PrivateLibrary(options.privateLibraryRoot);
+  const vaultNotes = new VaultNotes(options.obsidianRegistry);
   const readDocument = (id: string, owner: string) => id.startsWith('import-') ? privateLibrary.read(id, owner) : library.read(id);
+  // Notes are attached only when sending a message (CSRF-protected); the library route never resolves them.
+  const readAttachment = (id: string, owner: string) => id.startsWith('note-') ? vaultNotes.document(id) : readDocument(id, owner);
   const csrf = randomBytes(32).toString('hex');
   const discovery = options.discovery || new HermesDiscovery();
   const busy = new Set<string>();
@@ -61,6 +65,21 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     try { const catalog = discovery.scan(); const obsidian = obsidianVaults(options.obsidianRegistry);
       res.json({ ...catalog, vaults: obsidian.vaults, warnings: [...catalog.warnings, ...obsidian.warnings] }); }
     catch { res.status(503).json({ error: 'No se pudo leer el catálogo de Hermes.' }); }
+  });
+  // Obsidian notes: read-only, opaque IDs resolved against a fresh walk of the registered vault.
+  app.get('/api/hermes/vaults/:id/notes', (req, res) => {
+    try { res.json(vaultNotes.list(req.params.id)); }
+    catch { res.status(404).json({ error: 'Vault no disponible.' }); }
+  });
+  app.get('/api/hermes/vaults/:id/notes/:noteId', (req, res) => {
+    try { res.json(vaultNotes.read(req.params.id, req.params.noteId)); }
+    catch { res.status(404).json({ error: 'Nota no disponible: puede ser demasiado grande, no ser texto UTF-8 o haber cambiado.' }); }
+  });
+  app.get('/api/hermes/vaults/:id/search', (req, res) => {
+    const query = z.string().trim().min(2).max(100).safeParse(req.query.q);
+    if (!query.success) return res.status(400).json({ error: 'Escribe entre 2 y 100 caracteres.' });
+    try { res.json(vaultNotes.search(req.params.id, query.data)); }
+    catch { res.status(404).json({ error: 'Vault no disponible.' }); }
   });
   app.get('/api/hermes/activity', (_req, res) => {
     try { res.json(discovery.activity()); }
@@ -123,7 +142,7 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     const streaming = req.headers.accept === 'application/x-ndjson';
     const emit = (event: unknown) => { if (!res.destroyed) res.write(`${JSON.stringify(event)}\n`); };
     try {
-      const document = parsed.data.documentId ? readDocument(parsed.data.documentId, res.locals.owner) : undefined;
+      const document = parsed.data.documentId ? readAttachment(parsed.data.documentId, res.locals.owner) : undefined;
       const profile = data.profileId ? profileContext(discovery, data.profileId) : undefined;
       if (profile && profile.agentId !== data.agent) throw new ProfileContextError();
       if (streaming) { res.type('application/x-ndjson'); res.flushHeaders(); emit({ type: 'status', stage: 'starting' }); }
@@ -138,7 +157,7 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No se pudo conversar con Hermes.';
       if (res.headersSent) { emit({ type: 'error', error: message }); res.end(); }
-      else res.status(error instanceof LibraryError || error instanceof ProfileContextError ? 403 : 502).json({ error: message });
+      else res.status(error instanceof LibraryError || error instanceof VaultError || error instanceof ProfileContextError ? 403 : 502).json({ error: message });
     } finally { busy.delete(data.id); }
   });
   app.use(express.static(resolve('dist')));
