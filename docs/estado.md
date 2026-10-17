@@ -1,6 +1,8 @@
 # Estado de continuidad — 17/10/2026
 
 ## Resultado
+Uso real de herramientas (versión 0.2.0): por perfil, llamadas registradas por Hermes a herramientas nativas y MCP en 30 días y última llamada, en la ficha, en las pantallas MCP del espacio, en las terminales del centro de integraciones y en la ficha del MCP. Solo nombres y horas, nunca argumentos ni resultados. Ver docs/actividad-hermes.md.
+
 Publicado como repositorio público con licencia MIT, README y documentación anonimizada; ver la sección Pendiente.
 
 Actividad real de Hermes (aprobada por el usuario): estado del gateway y agentes trabajando en la barra inferior, conexiones por perfil y «Actividad registrada» (menos de dos minutos, anillo dorado) en cada edificio, sección «Actividad real» en la ficha y paneles de tareas programadas y kanban en el espacio de cada perfil. Solo metadatos de ~/.hermes, sin contenido ni títulos de conversaciones; nada inicia Hermes. Ver docs/actividad-hermes.md. 31 pruebas, build y las cinco verificaciones de navegador (activity, browser, profile-room, library, integrations) correctos; library e integrations amplían a 120 s solo la espera inicial por la carga externa de la máquina.

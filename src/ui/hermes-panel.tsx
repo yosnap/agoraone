@@ -42,7 +42,7 @@ export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, o
         {profile.section && <><dt>Sección de Desktop</dt><dd>{profile.section}</dd></>}
         <dt>Descripción</dt><dd>{profile.descriptionSource}</dd>
       </dl>
-      <ActivitySection activity={activity.activity?.profiles[id]} data={activity.activity} error={activity.error}/>
+      <ActivitySection activity={activity.activity?.profiles[id]} data={activity.activity} error={activity.error} declared={profile.mcp?.map(server => server.name)}/>
       <h3>Identidad y memoria</h3>
       <small>Abrir esta ficha solo lee archivos localmente. Se enviarán al proveedor únicamente al enviar un mensaje en la pestaña de conversación. Credenciales reconocibles se ocultan.</small>
       {loading && <p role="status">Leyendo archivos del perfil…</p>}

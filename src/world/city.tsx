@@ -15,6 +15,7 @@ import { CityPedestrians } from './city-pedestrians';
 import { DaylightProvider, daylightAt, type Daylight } from './daylight';
 import { SceneEffects } from './scene-effects';
 import type { HermesActivity } from '../../shared/hermes-activity';
+import type { ServiceGroup } from '../data/service-groups';
 
 class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -26,12 +27,12 @@ export function City({ places, selected, onSelect, firstPerson, blocked, inside 
   places: Place[];
   selected: string | null; onSelect: (id: string) => void; firstPerson: boolean; blocked: boolean;
   inside?: boolean; onBrowse: () => void; onExit: () => void;
-  integrations?: boolean; services?: { id: string; name: string }[]; daylight?: Daylight;
+  integrations?: boolean; services?: ServiceGroup[]; daylight?: Daylight;
   room?: ProfileRoom; onStation?: (station: RoomStation) => void; activity?: HermesActivity | null;
 }) {
   const extent = cityExtent(places);
   const library = places.find(place => place.id === 'library');
-  const interior = integrations ? { key: 'integrations', background: '#18343d', obstacles: integrationObstacles, node: <IntegrationsInterior services={services} onSelect={onSelect} onExit={onExit}/> }
+  const interior = integrations ? { key: 'integrations', background: '#18343d', obstacles: integrationObstacles, node: <IntegrationsInterior services={services} activity={activity} onSelect={onSelect} onExit={onExit}/> }
     : room ? { key: `profile:${room.profile.id}`, background: '#d9d2c4', obstacles: profileObstacles, node: <ProfileInterior room={room} activity={activity?.profiles[room.profile.id]} onStation={station => onStation?.(station)} onService={onSelect} onExit={onExit}/> }
     : inside ? { key: 'library', background: '#213c36', obstacles: libraryObstacles, node: <LibraryInterior seed={library ? library.position[0] + library.position[2] : 0} onBrowse={onBrowse} onChat={() => onSelect('library')} onExit={onExit}/> }
     : null;

@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { WorldLabel } from './world-label';
+import type { HermesActivity } from '../../shared/hermes-activity';
+import type { ServiceGroup } from '../data/service-groups';
+import { serviceUsage, usageLine } from '../data/activity-format';
 
 const terminalPositions = Array.from({ length: 8 }, (_, index) => ({ x: index % 2 ? 5.5 : -5.5, z: -5 + Math.floor(index / 2) * 2.8 }));
 export const integrationObstacles = terminalPositions.map(({ x, z }) => ({ x, z, halfX: 1.15, halfZ: 1.1 }));
 
-export function IntegrationsInterior({ services, onSelect, onExit }: {
-  services: { id: string; name: string }[]; onSelect: (id: string) => void; onExit: () => void;
+export function IntegrationsInterior({ services, activity, onSelect, onExit }: {
+  services: ServiceGroup[]; activity?: HermesActivity | null; onSelect: (id: string) => void; onExit: () => void;
 }) {
   const [page, setPage] = useState(0);
   const pages = Math.max(1, Math.ceil(services.length / 8));
@@ -23,11 +26,14 @@ export function IntegrationsInterior({ services, onSelect, onExit }: {
     <WorldLabel position={[0, 2.8, -7.6]} distanceFactor={12}><span className="place-label">CENTRO DE INTEGRACIONES · MCP</span></WorldLabel>
     {services.slice(current * 8, current * 8 + 8).map((service, index) => {
       const { x, z } = terminalPositions[index];
+      // Real record: the screen brightens when any profile called this MCP in the last day.
+      const use = serviceUsage(service.bindings, activity ?? null);
+      const lit = !!use?.lastUsedAt && Date.now() - Date.parse(use.lastUsedAt) < 86_400_000;
       return <group key={service.id} position={[x, 0, z]} rotation={[0, x < 0 ? Math.PI / 2 : -Math.PI / 2, 0]} onClick={event => { event.stopPropagation(); onSelect(service.id); }}>
         <mesh position={[0, 1.15, 0]} castShadow><boxGeometry args={[1.65, 2.3, 0.85]}/><meshStandardMaterial color="#49646d" metalness={0.55} roughness={0.35}/></mesh>
-        <mesh position={[0, 1.6, 0.46]}><boxGeometry args={[1.35, 0.85, 0.08]}/><meshStandardMaterial color="#6bc0cb" emissive="#235963" emissiveIntensity={0.5}/></mesh>
+        <mesh position={[0, 1.6, 0.46]}><boxGeometry args={[1.35, 0.85, 0.08]}/><meshStandardMaterial color="#6bc0cb" emissive={lit ? '#3fb6c4' : '#235963'} emissiveIntensity={lit ? 1.8 : 0.5}/></mesh>
         <mesh position={[0, 0.95, 0.65]} rotation={[0.3, 0, 0]}><boxGeometry args={[1.5, 0.1, 0.7]}/><meshStandardMaterial color="#1f3843"/></mesh>
-        <WorldLabel position={[0, 2.65, 0.5]} distanceFactor={9}><button className="place-label" onClick={() => onSelect(service.id)}>MCP · {service.name}</button></WorldLabel>
+        <WorldLabel position={[0, 2.65, 0.5]} distanceFactor={9}><button className="place-label" onClick={() => onSelect(service.id)}>MCP · {service.name}<br/><small>{usageLine(use)}</small></button></WorldLabel>
       </group>;
     })}
     {pages > 1 && <WorldLabel position={[0, 1.6, -6]} distanceFactor={10}><div className="place-label"><button onClick={() => setPage((current + pages - 1) % pages)}>Anterior</button> {current + 1}/{pages} <button onClick={() => setPage((current + 1) % pages)}>Siguiente</button></div></WorldLabel>}

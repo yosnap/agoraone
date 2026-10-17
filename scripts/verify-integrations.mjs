@@ -18,7 +18,7 @@ try {
   await page.getByRole('navigation', { name: 'Acciones del centro de integraciones' }).waitFor();
   await page.screenshot({ path: '.agora/integrations-interior.png' });
   // Terminal in the actual 3D room, not the alternative directory.
-  await page.getByRole('button', { name: `MCP · ${target('mcp')}`, exact: true }).click();
+  await page.getByRole('button', { name: new RegExp(`^MCP · ${escape(target('mcp'))}( |$)`) }).click();
   await page.getByLabel('Buscar herramienta').waitFor();
   const count = await page.locator('.mcp-tools details').count();
   assert.ok(count > 0);

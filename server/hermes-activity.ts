@@ -1,5 +1,6 @@
 import { join } from 'node:path';
-import type { HermesActivity, PlatformLink, ProfileActivity, ScheduledJob } from '../shared/hermes-activity';
+import { statSync } from 'node:fs';
+import { mcpServerKey, type HermesActivity, type PlatformLink, type ProfileActivity, type ScheduledJob, type ToolUsage, type ToolUse } from '../shared/hermes-activity';
 import { readHermesFile, redact } from './hermes-safe-read';
 import { withHermesDatabase } from './hermes-database';
 
@@ -68,6 +69,55 @@ function sessions(root: string, home: string, now: number) {
   });
 }
 
+const usageDays = 30;
+const toolName = /^[A-Za-z0-9_-]{1,96}$/;
+// state.db only changes when its file or WAL changes; reuse the aggregate meanwhile (10-minute window granularity).
+const usageCache = new Map<string, { key: string; value: ToolUsage | null }>();
+const fileStamp = (file: string) => { try { const stat = statSync(file); return `${stat.mtimeMs}:${stat.size}`; } catch { return '-'; } };
+
+/** Splits `mcp__<server>__<tool>` using the declared server keys first, so names containing `__` resolve correctly. */
+function splitMcp(name: string, declared: string[]) {
+  const key = declared.find(server => name.startsWith(`mcp__${server}__`));
+  if (key) return [key, name.slice(key.length + 7)];
+  const match = name.match(/^mcp__(.+?)__(.+)$/);
+  return match ? [match[1], match[2]] : null;
+}
+
+function usage(root: string, home: string, declaredNames: string[], now: number): ToolUsage | null {
+  const file = join(home, 'state.db');
+  const declared = declaredNames.map(mcpServerKey).sort((a, b) => b.length - a.length);
+  const key = [fileStamp(file), fileStamp(`${file}-wal`), Math.floor(now / 600_000), declared.join(',')].join('|');
+  const cached = usageCache.get(file);
+  if (cached?.key === key) return cached.value;
+  const value = withHermesDatabase(root, file, (db, columns) => {
+    const c = columns('messages');
+    if (!['tool_name', 'timestamp', 'role'].every(column => c.has(column))) return null;
+    // Compaction leaves cloned rows behind: count each call once by its call ID when Hermes records it.
+    const call = c.has('tool_call_id') && c.has('session_id') ? "session_id || '|' || coalesce(tool_call_id, rowid)" : 'rowid';
+    // Tool names and call times only: never arguments, results or message content.
+    const rows = db.prepare(`SELECT tool_name AS name, count(DISTINCT CASE WHEN timestamp > ? THEN ${call} END) AS calls, max(timestamp) AS last FROM messages WHERE role = 'tool' AND tool_name IS NOT NULL AND tool_name != '' GROUP BY tool_name LIMIT 500`)
+      .all((now - usageDays * 86_400_000) / 1000)
+      .flatMap(row => typeof row.name === 'string' && toolName.test(row.name) ? [{ name: row.name, calls: Number(row.calls) || 0, lastUsedAt: iso(row.last) }] : []);
+    const byRecent = (a: ToolUse, b: ToolUse) => b.calls - a.calls || String(b.lastUsedAt).localeCompare(String(a.lastUsedAt));
+    const servers = new Map<string, ToolUse[]>();
+    const tools: ToolUse[] = [];
+    for (const row of rows) {
+      const mcp = splitMcp(row.name, declared);
+      if (!mcp) { tools.push(row); continue; }
+      if (!servers.has(mcp[0])) servers.set(mcp[0], []);
+      servers.get(mcp[0])!.push({ ...row, name: mcp[1] });
+    }
+    const mcp = [...servers].map(([name, list]) => ({
+      name, calls: list.reduce((sum, item) => sum + item.calls, 0),
+      lastUsedAt: list.map(item => item.lastUsedAt).filter(Boolean).sort().at(-1) ?? null,
+      tools: list.sort(byRecent).slice(0, 12),
+    })).sort(byRecent).slice(0, 30);
+    return { windowDays: usageDays, tools: tools.sort(byRecent).slice(0, 12), mcp };
+  });
+  usageCache.set(file, { key, value });
+  return value;
+}
+
 function jobs(root: string, home: string): ScheduledJob[] | null {
   const data = json(root, join(home, 'cron', 'jobs.json'), 1024 * 1024);
   if (!data) return null;
@@ -95,7 +145,7 @@ function board(root: string, profile: string): ProfileActivity['board'] {
 const attempt = <T>(read: () => T, fallback: T) => { try { return read(); } catch { return fallback; } };
 
 /** Read-only snapshot of what Hermes records about its own activity. */
-export function readActivity(root: string, profiles: { id: string; name: string; home: string }[], now = Date.now()): HermesActivity {
+export function readActivity(root: string, profiles: { id: string; name: string; home: string; mcp?: string[] }[], now = Date.now()): HermesActivity {
   const live = attempt(() => gateway(root, now), { info: { state: 'missing', detail: null, updatedAt: null, activeAgents: null } as HermesActivity['gateway'], state: null, fresh: false });
   const result: HermesActivity = { schema: 1, readAt: new Date(now).toISOString(), gateway: live.info, profiles: {} };
   for (const profile of profiles) {
@@ -103,6 +153,7 @@ export function readActivity(root: string, profiles: { id: string; name: string;
     result.profiles[profile.id] = {
       platforms: platforms(live.state, live.fresh, profile.name),
       lastActivityAt: recorded?.lastActivityAt ?? null, recent: recorded?.recent ?? [],
+      usage: attempt(() => usage(root, profile.home, profile.mcp ?? [], now), null),
       jobs: attempt(() => jobs(root, profile.home), null),
       board: attempt(() => board(root, profile.name), null),
     };

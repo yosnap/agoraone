@@ -17,11 +17,14 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   const section = page.getByLabel('Actividad real registrada por Hermes');
   await section.getByText('Conexiones del gateway').waitFor();
   await section.getByText(/Última actividad|Actividad registrada/).first().waitFor();
+  await section.getByText('Herramientas usadas').waitFor();
   if (shots) await page.screenshot({ path: `${shots}/card-${viewport.width}.png` });
   await page.getByRole('button', { name: new RegExp(`Entrar en el espacio de ${escape(profile)}`) }).click();
   await page.getByText(`04 / ESPACIO DE ${profile.toUpperCase()}`).waitFor();
   await page.locator('.room-board').first().waitFor({ state: 'attached' });
   assert.equal(await page.locator('.room-board').count(), 2);
+  // MCP screens carry the recorded use (or its absence), never a guessed state.
+  if (await page.locator('.place-label', { hasText: /^MCP · / }).count()) await page.locator('.place-label', { hasText: /usado hace|sin uso registrado/ }).first().waitFor({ state: 'attached' });
   if (shots) { await page.waitForTimeout(6000); await page.screenshot({ path: `${shots}/room-${viewport.width}.png` }); }
   await page.getByRole('button', { name: 'Salir del espacio' }).click();
   assert.equal(errors.length, 0, errors.join('\n'));

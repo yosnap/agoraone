@@ -49,7 +49,7 @@ export class HermesDiscovery {
   activity() {
     const root = this.root();
     // Profiles come from the catalog; the client never names a path or profile directory.
-    const profiles = this.scan().profiles.flatMap(profile => { try { return [{ id: profile.id, name: profile.name, home: this.profileHome(root, profile.name) }]; } catch { return []; } });
+    const profiles = this.scan().profiles.flatMap(profile => { try { return [{ id: profile.id, name: profile.name, home: this.profileHome(root, profile.name), mcp: profile.mcp?.map(server => server.name) }]; } catch { return []; } });
     return readActivity(root, profiles);
   }
   mcpTools(profileId: string, serverId: string) {
