@@ -9,6 +9,7 @@ import type { Adapter, Turn } from './hermes-adapter';
 import { pdfFixture, docxFixture } from './document-fixtures';
 import { HermesDiscovery } from './hermes-catalog';
 import { mcpFingerprint } from './mcp-tools';
+import { obsidianVaults } from './resource-discovery';
 
 test('consulta de herramientas MCP exige CSRF, servidor del perfil y registro vigente', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'agora-mcp-api-')));
@@ -165,9 +166,42 @@ function fetchLocal(url: string, options: { method?: string; headers: Record<str
   });
 }
 
-async function fixture(adapter: Adapter, libraryRoot?: string, discovery?: HermesDiscovery) {
+test('notas de Obsidian: exigen CSRF y no aceptan IDs fuera de un vault registrado', async () => {
+  const f = await fixture(async () => { throw new Error('No debe invocar inferencia'); });
+  try {
+    assert.equal((await f.request('/api/hermes/vaults/vault-x/notes', undefined, { 'X-Agora-CSRF': '' })).status, 403);
+    assert.equal((await f.request('/api/hermes/vaults/vault-x/notes')).status, 404);
+    assert.equal((await f.request('/api/hermes/vaults/vault-x/search?q=a')).status, 400);
+    assert.equal((await f.request('/api/hermes/vaults/vault-x/notes/note-000000000000000000000000')).status, 404);
+    // The library route never resolves notes: they are only attached when sending a message.
+    assert.equal((await f.request('/api/library/documents/note-000000000000000000000000')).status, 404);
+  } finally { await f.close(); }
+});
+
+test('notas de Obsidian: una nota consultada llega al turno de Luma por ID, recortada y sin rutas', async () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'agora-vault-chat-')));
+  mkdirSync(join(base, 'vault/Ideas'), { recursive: true });
+  writeFileSync(join(base, 'vault/Ideas/Larga.md'), `CLAVE-NOTA-731\n${'y'.repeat(40 * 1024)}`);
+  writeFileSync(join(base, 'obsidian.json'), JSON.stringify({ vaults: { a: { path: join(base, 'vault') } } }));
+  let seen: Turn | undefined;
+  const f = await fixture(async turn => { seen = turn; return 'ok'; }, undefined, undefined, join(base, 'obsidian.json'));
+  try {
+    const vaultId = obsidianVaults(join(base, 'obsidian.json')).vaults[0].id;
+    const { notes } = await (await f.request(`/api/hermes/vaults/${vaultId}/notes`)).json();
+    const { id } = await (await f.request('/api/conversations', { agent: 'luma', context: 'library-lobby' })).json();
+    const response = await f.request(`/api/conversations/${id}/messages`, { message: '¿Qué clave aparece?', documentId: notes[0].id });
+    assert.equal(response.status, 200);
+    assert.equal(seen?.document?.id, notes[0].id);
+    assert.equal(seen?.document?.title, 'vault · Ideas/Larga');
+    assert.match(seen!.document!.content, /^CLAVE-NOTA-731/);
+    assert.ok(Buffer.byteLength(seen!.document!.content) <= 24 * 1024);
+    assert.doesNotMatch(JSON.stringify(seen!.document), new RegExp(base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  } finally { await f.close(); rmSync(base, { recursive: true, force: true }); }
+});
+
+async function fixture(adapter: Adapter, libraryRoot?: string, discovery?: HermesDiscovery, obsidianRegistry: string | null = null) {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'agora-test-')));
-  const server = createApp({ directory, adapter, libraryRoot, privateLibraryRoot: join(directory, 'library'), discovery, obsidianRegistry: null }).listen(0, '127.0.0.1');
+  const server = createApp({ directory, adapter, libraryRoot, privateLibraryRoot: join(directory, 'library'), discovery, obsidianRegistry }).listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('No port');

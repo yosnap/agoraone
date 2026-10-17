@@ -22,7 +22,7 @@ export function catalogPlaces(catalog: HermesCatalog | null): Place[] {
     ...(catalog?.spaces || []).filter(space => space.source !== 'workspace').map(space => ({ id: space.id, resourceId: space.id, name: `Espacio · ${space.label}`, character: '',
       color: '#a0b5a4', description: space.description, relatedIds: space.profileIds, buildingStyle: 'archive' as const, kind: 'space' as const })),
     ...(catalog?.vaults || []).map(vault => ({ id: vault.id, resourceId: vault.id, name: `Obsidian · ${vault.name}`, character: '',
-      color: '#b5a1dc', description: 'Vault local registrado en Obsidian. Notas aún no habilitadas para lectura en AgoraOne.', buildingStyle: 'vault' as const, kind: 'vault' as const })),
+      color: '#b5a1dc', description: 'Vault local registrado en Obsidian. Sus notas se pueden leer y buscar en solo lectura; solo se envían al modelo si las consultas.', buildingStyle: 'vault' as const, kind: 'vault' as const })),
     ...(serviceGroups(catalog).length ? [{ id: 'mcp-center', resourceId: 'mcp-center', name: 'Centro de integraciones', character: '',
       color: '#79b9c8', description: 'Entra para explorar los MCP y sus herramientas por perfil.',
       relatedIds: (catalog?.profiles || []).filter(profile => profile.mcp?.length).map(profile => profile.id), buildingStyle: 'service' as const, kind: 'service' as const }] : []),

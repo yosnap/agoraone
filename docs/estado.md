@@ -1,6 +1,8 @@
 # Estado de continuidad — 17/10/2026
 
 ## Resultado
+Versión 0.5.0 · Vault de Obsidian (aprobado por el usuario): ficha con notas por carpeta, búsqueda por título y contenido, lectura y «Consultar esta nota con Luma»; interior con una estantería por carpeta. Solo lectura, sin índices en disco; una nota solo sale al modelo si el usuario la consulta y envía un mensaje. Ver docs/vault-obsidian.md.
+
 Versión 0.4.0: registro de actividad (botón «Registro») con lo que Hermes registró en las últimas 24 h: sesiones por origen, ejecuciones de tareas programadas, llamadas MCP por hora y cambios de conexión. Sin contenido ni títulos. Ver docs/actividad-hermes.md.
 
 Versión 0.3.0: la persona de cada perfil va a la entrada de su edificio mientras Hermes registra actividad reciente de ese perfil (menos de dos minutos), con etiqueta y anillo dorado, y vuelve al paseo después; aviso equivalente en su espacio. Ver docs/actividad-hermes.md.

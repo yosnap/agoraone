@@ -21,6 +21,11 @@ export async function getStatus() { const status = await request<Status>('/statu
 export const getHermesCatalog = () => request<HermesCatalog>('/hermes/catalog');
 export const getHermesActivity = () => request<HermesActivity>('/hermes/activity');
 export const getHermesProfile = (id: string) => request<{ profile: HermesProfile; files: HermesFile[] }>(`/hermes/profiles/${encodeURIComponent(id)}`);
+export type VaultNote = { id: string; title: string; folder: string; bytes: number; modifiedAt: string; readable: boolean };
+export type VaultListing = { vault: { id: string; name: string }; truncated: boolean; notes: VaultNote[] };
+export const listVaultNotes = (vaultId: string) => request<VaultListing>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes`);
+export const readVaultNote = (vaultId: string, noteId: string) => request<VaultNote & { content: string; revision: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes/${encodeURIComponent(noteId)}`);
+export const searchVault = (vaultId: string, query: string) => request<{ results: { id: string; title: string; folder: string; snippet: string }[]; truncated: boolean }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/search?q=${encodeURIComponent(query)}`);
 export const getMcpTools = (profileId: string, serverId: string) => request<McpTools>(`/hermes/profiles/${encodeURIComponent(profileId)}/mcp/${encodeURIComponent(serverId)}/tools`);
 export const createConversation = (profileId?: string) => request<Conversation>('/conversations', profileId ? { profileId } : { agent: 'luma', context: 'library-lobby' });
 export const getConversation = (id: string) => request<Conversation>(`/conversations/${encodeURIComponent(id)}`);

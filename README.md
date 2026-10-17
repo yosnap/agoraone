@@ -1,6 +1,6 @@
 # AgoraOne
 
-Tu instalación local de [Hermes](https://github.com/NousResearch/hermes-agent) convertida en una ciudad 3D navegable. Cada perfil de Hermes es un edificio con su propio espacio interior; sus servidores MCP, vaults de Obsidian y la actividad real del gateway aparecen en la ciudad. Incluye una biblioteca con documentos propios que puedes consultar con Luma.
+Tu instalación local de [Hermes](https://github.com/NousResearch/hermes-agent) convertida en una ciudad 3D navegable. Cada perfil de Hermes es un edificio con su propio espacio interior; sus servidores MCP, tus vaults de Obsidian y la actividad real del gateway aparecen en la ciudad. Incluye una biblioteca con documentos propios que puedes consultar con Luma.
 
 Todo se ejecuta en tu ordenador: el servidor escucha solo en `127.0.0.1`, las credenciales se quedan en el backend y la ciudad se lee de `~/.hermes` en solo lectura. Nada modifica tu instalación ni tus perfiles de Hermes.
 
@@ -10,6 +10,7 @@ Todo se ejecuta en tu ordenador: el servidor escucha solo en `127.0.0.1`, las cr
 - **Actividad real**: estado del gateway, conexiones por perfil y actividad registrada, leídos de los propios registros de Hermes sin contenido de mensajes.
 - **Conversación** con Luma o con la identidad de un perfil, siempre por envío explícito y sin herramientas.
 - **Biblioteca**: importación de TXT, Markdown, PDF y DOCX como copias privadas.
+- **Vault de Obsidian**: tus notas por carpetas, con búsqueda en el contenido y consulta con Luma, en solo lectura.
 
 Los paseos y peatones son ambientales y no representan tareas reales.
 

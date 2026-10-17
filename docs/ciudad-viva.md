@@ -8,8 +8,9 @@ como carpeta local; los MCP corresponden a otros servicios/plataformas.
 
 ## Implementado el 17/10/2026
 - Registro local de Obsidian: detección automática de vaults. En el equipo de
-  desarrollo, un vault. Solo nombre, ID y disponibilidad de la carpeta; no notas,
-  adjuntos, índice, plugins ni asociación supuesta con perfiles.
+  desarrollo, un vault. El catálogo solo guarda nombre, ID y disponibilidad; desde el
+  18/10 sus notas se leen en solo lectura (docs/vault-obsidian.md). Sin adjuntos,
+  índice en disco, plugins ni asociación supuesta con perfiles.
 - MCP de mcp_servers en config.yaml de cada perfil: nombre, ID por perfil,
   transporte y habilitación declarada. Semántica enabled contrastada con
   tools/mcp_tool_common.py del Hermes instalado. Sin comandos, argumentos,

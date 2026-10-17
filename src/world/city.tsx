@@ -8,6 +8,7 @@ import { LibraryInterior, libraryObstacles } from './library-interior';
 import { ProfileInterior, profileObstacles, type ProfileRoom, type RoomStation } from './profile-interior';
 import { ResourceLinks } from './resource-links';
 import { IntegrationsInterior, integrationObstacles } from './integrations-interior';
+import { VaultInterior, vaultObstacles, type VaultShelf } from './vault-interior';
 import { CityLighting, Reflections } from './city-lighting';
 import { CityStreets } from './city-streets';
 import { CityNature } from './city-nature';
@@ -23,16 +24,18 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
   render() { return this.state.failed ? <div className="canvas-fallback">No se pudo iniciar WebGL. Puedes usar el directorio de espacios y el chat.</div> : this.props.children; }
 }
 
-export function City({ places, selected, onSelect, firstPerson, blocked, inside = false, integrations = false, room, services = [], onBrowse, onExit, onStation, activity, daylight = daylightAt(new Date(), 'day') }: {
+export function City({ places, selected, onSelect, firstPerson, blocked, inside = false, integrations = false, room, services = [], onBrowse, onExit, onStation, activity, vault, onShelf, daylight = daylightAt(new Date(), 'day') }: {
   places: Place[];
   selected: string | null; onSelect: (id: string) => void; firstPerson: boolean; blocked: boolean;
   inside?: boolean; onBrowse: () => void; onExit: () => void;
   integrations?: boolean; services?: ServiceGroup[]; daylight?: Daylight;
   room?: ProfileRoom; onStation?: (station: RoomStation) => void; activity?: HermesActivity | null;
+  vault?: { name: string; shelves: VaultShelf[] }; onShelf?: (folder: string | null) => void;
 }) {
   const extent = cityExtent(places);
   const library = places.find(place => place.id === 'library');
-  const interior = integrations ? { key: 'integrations', background: '#18343d', obstacles: integrationObstacles, node: <IntegrationsInterior services={services} activity={activity} onSelect={onSelect} onExit={onExit}/> }
+  const interior = vault ? { key: 'vault', background: '#2f2a44', obstacles: vaultObstacles, node: <VaultInterior name={vault.name} shelves={vault.shelves} onOpen={folder => onShelf?.(folder)} onExit={onExit}/> }
+    : integrations ? { key: 'integrations', background: '#18343d', obstacles: integrationObstacles, node: <IntegrationsInterior services={services} activity={activity} onSelect={onSelect} onExit={onExit}/> }
     : room ? { key: `profile:${room.profile.id}`, background: '#d9d2c4', obstacles: profileObstacles, node: <ProfileInterior room={room} activity={activity?.profiles[room.profile.id]} onStation={station => onStation?.(station)} onService={onSelect} onExit={onExit}/> }
     : inside ? { key: 'library', background: '#213c36', obstacles: libraryObstacles, node: <LibraryInterior seed={library ? library.position[0] + library.position[2] : 0} onBrowse={onBrowse} onChat={() => onSelect('library')} onExit={onExit}/> }
     : null;
