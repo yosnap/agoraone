@@ -39,6 +39,9 @@ Hermes guarda cada llamada a una herramienta como un mensaje con `role = 'tool'`
 - **Espacio del perfil y centro de integraciones**: cada pantalla o terminal MCP indica «usado hace X · N llamadas en 30 días» o «sin uso registrado», y brilla más si hubo una llamada en las últimas 24 h. En el centro se combina el uso de todos los perfiles que declaran ese nombre.
 - **Ficha del MCP**: «Uso registrado por Hermes» para el perfil seleccionado.
 
+## Personas que reaccionan a la actividad real
+Mientras Hermes haya registrado actividad del perfil hace menos de dos minutos, su persona deja de pasear, camina hasta la entrada del edificio y se queda mirándolo; su etiqueta pasa a «<nombre> · actividad registrada» y su anillo se vuelve dorado. Al dejar de haber actividad reciente vuelve al paseo, siempre caminando (nunca salta de sitio). Con movimiento reducido se coloca directamente, sin animación. En el espacio del perfil aparece «Actividad registrada hace X» sobre la persona del escritorio. La verificación `scripts/verify-activity.mjs` usa una respuesta simulada solo dentro de la prueba para provocar este estado.
+
 ## Criterios de representación
 1. **Conexiones del gateway por perfil**: indicador en el edificio y en la ficha (conectado, reintentando, requiere atención o sin datos). Si el estado es antiguo o el PID no existe, se muestra «sin datos recientes», nunca «conectado».
 2. **Trabajo en curso global**: un indicador de ciudad con el recuento `active_agents`, sin atribuirlo a ningún perfil.

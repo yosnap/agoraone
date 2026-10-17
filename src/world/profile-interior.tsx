@@ -9,7 +9,7 @@ import { StandingPerson } from './standing-person';
 import { decorObstacles, ProfileDecor, type Obstacle } from './profile-decor';
 import type { ProfileActivity } from '../../shared/hermes-activity';
 import { ActivityBoards } from './profile-activity-boards';
-import { mcpUsage, usageLine } from '../data/activity-format';
+import { ago, mcpUsage, recentlyActive, usageLine } from '../data/activity-format';
 
 const dayMs = 86_400_000;
 
@@ -78,6 +78,7 @@ export function ProfileInterior({ room, activity, onStation, onService, onExit }
       <WorldLabel position={[0, 1.25, 0.4]} distanceFactor={9}><button className="character-label" onClick={() => onStation('chat')}>Conversar con {profile.label}</button></WorldLabel>
     </group>
     <StandingPerson seed={seed} color={accent} position={[0, 0, -2.5]} onClick={() => onStation('chat')}/>
+    {recentlyActive(activity) && <WorldLabel position={[0, 2.25, -2.5]} distanceFactor={9}><span className="activity-chip" title="Dato real de las sesiones de Hermes"><strong>Actividad registrada {ago(activity?.lastActivityAt ?? null)}</strong></span></WorldLabel>}
 
     <ActivityBoards activity={activity}/>
     <ProfileDecor style={style} accent={accent}/>

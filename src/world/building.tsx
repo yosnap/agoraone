@@ -29,7 +29,7 @@ export function Building({ place, selected, onSelect, activity }: { place: Place
         </span>}
       </div>
     </WorldLabel>
-    {place.character && <><Walker color={place.color} phase={place.position[0] + place.position[2]} selected={selected} onSelect={onSelect}/>
-      <WorldLabel position={[0, 2.15, 3]} distanceFactor={25}><button className="character-label" onClick={onSelect}>{place.character}</button></WorldLabel></>}
+    {place.character && <><Walker color={place.color} phase={place.position[0] + place.position[2]} selected={selected} working={active} onSelect={onSelect}/>
+      <WorldLabel position={[0, 2.15, 3]} distanceFactor={25}><button className="character-label" title={active ? 'Hermes registró actividad de este perfil hace menos de dos minutos' : 'Paseo ambiental: no representa tareas reales'} onClick={onSelect}>{place.character}{active && ' · actividad registrada'}</button></WorldLabel></>}
   </group>;
 }
