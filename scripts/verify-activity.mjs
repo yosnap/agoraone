@@ -32,4 +32,31 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   console.log(`${viewport.width}px: barra de estado, ficha y paneles del espacio OK`);
   await page.close();
 }
+// Test double, only here: a profile with activity recorded seconds ago makes its person go to the entrance.
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  let profileId = '';
+  await page.route('**/api/hermes/catalog', async route => {
+    const response = await route.fetch(); const catalog = await response.json();
+    profileId = catalog.profiles.find(item => item.name === profile)?.id || '';
+    await route.fulfill({ response, json: catalog });
+  });
+  await page.route('**/api/hermes/activity', async route => {
+    const response = await route.fetch(); const data = await response.json();
+    if (data.profiles[profileId]) data.profiles[profileId].lastActivityAt = new Date().toISOString();
+    await route.fulfill({ response, json: data });
+  });
+  await page.goto('http://127.0.0.1:5173');
+  await page.locator('.character-label', { hasText: /actividad registrada$/ }).first().waitFor({ state: 'attached', timeout: 120_000 });
+  if (shots) { await page.waitForTimeout(8000); await page.screenshot({ path: `${shots}/working-city.png` }); }
+  await page.getByRole('button', { name: new RegExp(`Perfil · ${escape(profile)}`) }).first().click();
+  await page.getByRole('button', { name: new RegExp(`Entrar en el espacio de ${escape(profile)}`) }).click();
+  await page.locator('.activity-chip', { hasText: /Actividad registrada hace/ }).first().waitFor({ state: 'attached' });
+  if (shots) { await page.waitForTimeout(5000); await page.screenshot({ path: `${shots}/working-room.png` }); }
+  assert.equal(errors.length, 0, errors.join('\n'));
+  console.log('actividad reciente: persona en su puesto y aviso en el espacio OK');
+  await page.close();
+}
 await browser.close();

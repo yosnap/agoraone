@@ -35,29 +35,36 @@ export function usePrefersReducedMotion() {
   return reduced;
 }
 
-// Ambient stroll along the sidewalk: walk, pause, turn, walk back. Pure animation that
-// never reflects real Hermes work. Stops facing the viewer when selected or when the
-// user prefers reduced motion.
-function Person({ color, phase, selected, onSelect }: { color: string; phase: number; selected: boolean; onSelect: () => void }) {
+// Ambient stroll along the sidewalk: walk, pause, turn, walk back. Pure animation, except
+// `working`: while Hermes records activity for this profile (real data), the person walks
+// to the entrance and stays facing the building. Stops facing the viewer when selected,
+// and never animates when the user prefers reduced motion.
+function Person({ color, phase, selected, working, onSelect }: { color: string; phase: number; selected: boolean; working: boolean; onSelect: () => void }) {
   const holder = useRef<Group>(null);
   const reducedMotion = usePrefersReducedMotion();
   const rig = useHuman(phase, color);
   useFrame(({ clock }, delta) => {
     const group = holder.current;
     if (!group) return;
-    const still = selected || reducedMotion.current;
+    const reduced = reducedMotion.current;
     const step = patrol(clock.elapsedTime + phase * 3.7, range * 2, speed, pause);
-    if (!still) group.position.x = step.offset - range;
-    const facing = still ? 0 : step.forward ? Math.PI / 2 : -Math.PI / 2;
-    group.rotation.y += (facing - group.rotation.y) * Math.min(1, delta * 4);
-    blendGait(rig, !still && step.moving, delta, reducedMotion.current);
+    const target = working ? 0 : selected ? group.position.x : step.offset - range;
+    // Follow the target at walking pace so switching between ambient and real activity never teleports.
+    const gap = target - group.position.x;
+    const travel = reduced ? gap : Math.sign(gap) * Math.min(Math.abs(gap), speed * 1.4 * delta);
+    group.position.x += travel;
+    const walking = !reduced && Math.abs(gap) > 0.03;
+    const facing = walking ? (gap > 0 ? Math.PI / 2 : -Math.PI / 2) : working ? Math.PI : selected || reduced ? 0 : step.forward ? Math.PI / 2 : -Math.PI / 2;
+    const turn = ((facing - group.rotation.y + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; // shortest way round
+    group.rotation.y += turn * Math.min(1, delta * 4);
+    blendGait(rig, walking || (!working && !selected && !reduced && step.moving), delta, reduced);
   });
   return <group ref={holder} onClick={event => { event.stopPropagation(); onSelect(); }}><primitive object={rig.root}/></group>;
 }
 
-export function Walker({ color, phase, selected, onSelect }: { color: string; phase: number; selected: boolean; onSelect: () => void }) {
+export function Walker({ color, phase, selected, working = false, onSelect }: { color: string; phase: number; selected: boolean; working?: boolean; onSelect: () => void }) {
   return <group position={[0, curb, 3]}>
-    <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.65, 0.82, 32]}/><meshBasicMaterial color={selected ? '#fff5bd' : color} transparent opacity={0.85}/></mesh>
-    <Suspense fallback={null}><Person color={color} phase={phase} selected={selected} onSelect={onSelect}/></Suspense>
+    <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.65, 0.82, 32]}/><meshBasicMaterial color={selected ? '#fff5bd' : working ? '#ffd27a' : color} transparent opacity={0.85}/></mesh>
+    <Suspense fallback={null}><Person color={color} phase={phase} selected={selected} working={working} onSelect={onSelect}/></Suspense>
   </group>;
 }
