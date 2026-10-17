@@ -1,0 +1,15 @@
+PROYECTO DE EJEMPLO: HUERTO ORBITAL
+
+Documento ficticio de prueba. No representa un proyecto real del usuario.
+
+Objetivo: cultivar albahaca, menta y romero en tres jardineras del balcón.
+Presupuesto total de prueba: 84 euros.
+Distribución: 36 euros en jardineras, 24 en sustrato y 24 en plantas.
+
+Plan de cuatro semanas:
+1. Medir la luz y colocar las jardineras.
+2. Preparar el sustrato y trasplantar.
+3. Registrar el riego y observar las plantas.
+4. Revisar el crecimiento y ajustar la ubicación.
+
+La clave de referencia del proyecto es SEMILLA-582.
