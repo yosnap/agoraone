@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 import { z } from 'zod';
 import { Conversations } from './conversations';
 import { hermesReply, readiness, type Adapter } from './hermes-adapter';
+import { agentReply, answerApproval, cancelTurn } from './hermes-agent-adapter';
+import type { Progress } from './hermes-worker';
 import { Library, LibraryError } from './library';
 import { PrivateLibrary, renameSchema } from './private-library';
 import { extractUpload, uploadSchema } from './document-extraction';
@@ -13,12 +15,14 @@ import { obsidianVaults } from './resource-discovery';
 import { VaultError } from './vault-notes';
 import { BackgroundReads } from './background-reads';
 import { maskSecrets } from './secret-lines';
-import { ProfileEditError, saveProfileFile } from './profile-editor';
+import { backupMemories, ProfileEditError, saveProfileFile } from './profile-editor';
 
-export function createApp(options: { directory?: string; adapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string } = {}) {
+export function createApp(options: { directory?: string; adapter?: Adapter; profileAdapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string } = {}) {
   const app = express();
   const store = new Conversations(options.directory || resolve('.agora/conversations'));
   const adapter = options.adapter || hermesReply;
+  // Profiles run their own agent with tools; tests that inject one adapter use it for both.
+  const profileAdapter = options.profileAdapter || options.adapter || agentReply;
   const library = new Library(options.libraryRoot);
   const privateLibrary = new PrivateLibrary(options.privateLibraryRoot);
   // Heavy synchronous reads (Hermes SQLite, vault files) run in a worker so requests never stall.
@@ -33,7 +37,7 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
   const csrf = randomBytes(32).toString('hex');
   const discovery = options.discovery || new HermesDiscovery();
   const backups = options.backups || resolve('.agora/profile-backups');
-  const busy = new Set<string>();
+  const busy = new Set<string>(), stopped = new Set<string>();
   const hosts = new Set(['127.0.0.1:4317', '127.0.0.1:5173']);
   const origins = new Set([...hosts].map(host => `http://${host}`));
   app.disable('x-powered-by');
@@ -162,25 +166,49 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     busy.add(data.id);
     const streaming = req.headers.accept === 'application/x-ndjson';
     const emit = (event: unknown) => { if (!res.destroyed) res.write(`${JSON.stringify(event)}\n`); };
+    // Names of the tools the profile used in this turn, kept with its answer (never their arguments or results).
+    const used = new Set<string>();
+    const progress = (event: Progress) => { if (event.type === 'tool' && event.state === 'end') used.add(event.name); if (streaming) emit(event); };
     try {
       // The profile is validated before any attachment is read, so a revoked profile reads nothing.
       const profile = data.profileId ? profileContext(discovery, data.profileId) : undefined;
       if (profile && profile.agentId !== data.agent) throw new ProfileContextError();
       const document = parsed.data.documentId ? await readAttachment(parsed.data.documentId, res.locals.owner) : undefined;
+      // The profile's own agent may update its memory (after the user allows it): copy it first.
+      if (profile && (options.profileAdapter || !options.adapter)) backupMemories(discovery, backups, profile.id);
       if (streaming) { res.type('application/x-ndjson'); res.flushHeaders(); emit({ type: 'status', stage: 'starting' }); }
-      const reply = await adapter({ sessionId: data.hermesSessionId, message: parsed.data.message, history: data.messages, document, profile }, streaming ? emit : undefined);
+      const reply = await (profile ? profileAdapter : adapter)({ sessionId: data.hermesSessionId, message: parsed.data.message, history: data.messages, document, profile }, progress);
       const sources = document ? [{ id: document.id, title: document.title, revision: document.revision }] : undefined;
       const identity = profile ? { profileId: profile.id, files: profile.files.map(({ name, revision }) => ({ name, revision })) } : undefined;
-      data.messages.push({ role: 'user', content: parsed.data.message, ...(sources ? { sources } : {}), ...(identity ? { identity } : {}) }, { role: 'assistant', content: reply });
+      data.messages.push({ role: 'user', content: parsed.data.message, ...(sources ? { sources } : {}), ...(identity ? { identity } : {}) }, { role: 'assistant', content: reply, ...(used.size ? { tools: [...used].slice(0, 30) } : {}) });
       store.save(data);
       const result = { id: data.id, messages: data.messages, profileId: data.profileId, source: 'hermes' };
       if (streaming) { emit({ type: 'done', conversation: result }); res.end(); }
       else res.json(result);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'No se pudo conversar con Hermes.';
+      const reason = error instanceof Error ? error.message : 'No se pudo conversar con Hermes.';
+      // Tools that already ran are not undone by a failed turn: say which, so a retry does not repeat them blindly.
+      const message = stopped.has(data.id) ? `Turno detenido.${used.size ? ` Antes de detenerlo usó: ${[...used].join(', ')}.` : ''}`
+        : used.size ? `El turno no terminó, pero antes usó: ${[...used].join(', ')}. Revisa el resultado antes de reintentar.` : reason;
       if (res.headersSent) { emit({ type: 'error', error: message }); res.end(); }
       else res.status(error instanceof LibraryError || error instanceof VaultError || error instanceof ProfileContextError ? 403 : 502).json({ error: message });
-    } finally { busy.delete(data.id); }
+    } finally { busy.delete(data.id); stopped.delete(data.id); }
+  });
+  // Stops this conversation's running turn (owner only): pending actions are denied, the agent interrupted.
+  app.post('/api/conversations/:id/cancel', (req, res) => {
+    const data = store.get(req.params.id, res.locals.owner);
+    if (!data || !data.profileId || !busy.has(data.id) || !cancelTurn(data.hermesSessionId)) return res.status(404).json({ error: 'No hay ningún turno en curso.' });
+    stopped.add(data.id);
+    res.json({ cancelled: data.id });
+  });
+  // The user's answer to a tool call a profile wants to make in this conversation (owner only).
+  app.post('/api/conversations/:id/approvals/:requestId', (req, res) => {
+    const data = store.get(req.params.id, res.locals.owner);
+    const parsed = z.object({ choice: z.enum(['once', 'deny']) }).strict().safeParse(req.body);
+    if (!data || !data.profileId || !/^[a-f0-9]{32}$/.test(req.params.requestId)) return res.status(404).json({ error: 'No hay ninguna acción pendiente.' });
+    if (!parsed.success) return res.status(400).json({ error: 'Respuesta no válida.' });
+    if (!answerApproval(data.hermesSessionId, req.params.requestId, parsed.data.choice)) return res.status(404).json({ error: 'Esta acción ya no está pendiente.' });
+    res.json({ answered: req.params.requestId, choice: parsed.data.choice });
   });
   app.use(express.static(resolve('dist')));
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

@@ -23,7 +23,7 @@ try {
   await page.getByRole('button', { name: `Consultar este documento con ${profile}` }).click();
   const chat = page.getByRole('region', { name: `Conversación con ${profile}` });
   await chat.getByText(/Solo lectura: Huerto orbital/).waitFor();
-  assert.match(await chat.innerText(), /y el texto del documento adjunto/);
+  assert.match(await chat.innerText(), /con el texto del documento adjunto/);
   await page.getByRole('button', { name: 'Cerrar espacio' }).click().catch(() => {});
   await page.getByRole('button', { name: 'Luma', exact: true }).first().click();
   assert.equal(await page.getByRole('region', { name: 'Conversación con Luma' }).locator('.document-attached').count(), 0, 'el adjunto es solo del chat elegido');

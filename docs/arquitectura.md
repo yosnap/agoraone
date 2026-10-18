@@ -27,7 +27,7 @@ flowchart LR
 ## Identidades
 Personaje Luma → agente lógico `luma` → contexto `library-lobby`. Perfil Hermes y bot: `null`; no se mapean a los del usuario. Cada conversación recibe UUID propio y otro ID de sesión Hermes generado en backend. El historial que llega al modelo procede del almacenamiento del servidor, nunca del cliente.
 
-Perfiles detectados: conversación ligada a profileId, agentId y contexto profile-chat:<profileId>, además del propietario. Cada envío revalida identidad y memoria del perfil. Se usa el proveedor de AgoraOne y cero herramientas; las sesiones y memorias originales de Desktop no se escriben. El cliente no puede sustituir perfil, historia o capacidades de una conversación existente.
+Perfiles detectados: conversación ligada a profileId, agentId y contexto profile-chat:<profileId>, además del propietario. Cada envío revalida identidad y memoria del perfil. Desde 0.13.0 corre el agente real del perfil (`server/hermes_agent_bridge.py`): su proveedor, sus toolsets de Telegram, sus MCP y su memoria. Toda herramienta que no sea de solo lectura pasa por la confirmación del usuario (`POST /api/conversations/:id/approvals/:requestId`); ver docs/conversaciones-perfiles.md. El cliente no puede sustituir perfil, historia o capacidades de una conversación existente.
 
 La identidad de usuario local es un token aleatorio HttpOnly, SameSite=Strict; se almacena su hash como propietario. La cookie equivale a la credencial local del navegador, no a una cuenta de usuario. El backend rechaza IDs ajenos. El cliente conserva únicamente el ID de conversación en localStorage. La cookie dura 30 días; perderla deja el historial inaccesible desde esa identidad. Los archivos permanecen locales.
 

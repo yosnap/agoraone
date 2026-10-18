@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { HermesFile } from '../shared/hermes-catalog';
@@ -67,4 +67,27 @@ function runWriter(python: string, request: object): Promise<{ ok: boolean; erro
     });
     child.stdin.end(JSON.stringify(request));
   });
+}
+
+/**
+ * Before a profile's own agent runs (its memory tool may write MEMORY.md / USER.md once the user allows
+ * it), keeps a copy of each memory file in the same backup folder as the editor, only when it changed
+ * since the last copy. Up to 20 copies per file. Failures never block the turn.
+ */
+export function backupMemories(discovery: HermesDiscovery, backups: string, id: string) {
+  for (const name of ['MEMORY.md', 'USER.md'] as const) {
+    try {
+      const { root, path } = discovery.editTarget(id, name);
+      if (!existsSync(path)) continue;
+      const content = readHermesFile(root, path);
+      const folder = join(backups, id);
+      mkdirSync(folder, { recursive: true, mode: 0o700 });
+      const copies = readdirSync(folder).filter(file => file.startsWith(`${name}.`) && file.endsWith('.bak')).sort();
+      const latest = copies.at(-1);
+      if (latest && readFileSync(join(folder, latest)).equals(content)) continue;
+      const stamp = new Date().toISOString().replace(/[-:]/g, '');
+      writeFileSync(join(folder, `${name}.${stamp}-turno.bak`), content, { mode: 0o600, flag: 'wx' });
+      for (const old of [...copies, `${name}.${stamp}-turno.bak`].sort().slice(0, -20)) unlinkSync(join(folder, old));
+    } catch { /* a missing or unreadable file is simply not copied */ }
+  }
 }

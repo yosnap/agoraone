@@ -57,3 +57,11 @@
 .vault-shelves strong { font-size:12px;font-weight:500;overflow-wrap:anywhere }
 .vault-shelves small { font-size:10px;color:#7c7392 }
 .vault-books button span:empty { display:none }
+.approval-card { border:1px solid #d9b86a;background:#fbf2d8;border-radius:10px;padding:12px;margin:10px 0;font-size:12px }
+.approval-card strong { display:block;font-size:13px;margin-bottom:4px }
+.approval-card pre { white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;background:#fffdf5;border:1px solid #ead8a6;border-radius:6px;padding:8px;font-size:11px }
+.approval-card div { display:flex;gap:8px }
+.approval-card div button:not(.primary) { border:1px solid #c9b98f;background:#fff;border-radius:9px;padding:12px 16px;color:#5a4a22 }
+.tools-used { font-size:10px;color:#5d7466;margin:6px 0 }
+.approval-warning { background:#f8e3d6;border:1px solid #eec5ae;border-radius:6px;padding:6px 8px;color:#7a3a1d;font-size:11px }
+.stop-turn { margin-left:10px;border:1px solid #c9b98f;background:#fff;border-radius:6px;padding:3px 9px;font-size:11px;color:#5a4a22 }

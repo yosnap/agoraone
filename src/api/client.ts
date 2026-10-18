@@ -1,6 +1,6 @@
 export type DocumentSource = { id: string; title: string; revision: string };
 export type LibraryDocument = DocumentSource & { content: string };
-export type Message = { role: 'user' | 'assistant'; content: string; sources?: DocumentSource[]; identity?: { profileId: string; files: { name: string; revision: string }[] } };
+export type Message = { role: 'user' | 'assistant'; content: string; tools?: string[]; sources?: DocumentSource[]; identity?: { profileId: string; files: { name: string; revision: string }[] } };
 export type Conversation = { id: string; messages: Message[]; profileId?: string };
 export type Status = { state: string; detail: string; csrf: string };
 import type { HermesCatalog, HermesProfile, HermesFile } from '../../shared/hermes-catalog';
@@ -33,7 +33,12 @@ export const searchVault = (vaultId: string, query: string) => request<{ results
 export const getMcpTools = (profileId: string, serverId: string) => request<McpTools>(`/hermes/profiles/${encodeURIComponent(profileId)}/mcp/${encodeURIComponent(serverId)}/tools`);
 export const createConversation = (profileId?: string) => request<Conversation>('/conversations', profileId ? { profileId } : { agent: 'luma', context: 'library-lobby' });
 export const getConversation = (id: string) => request<Conversation>(`/conversations/${encodeURIComponent(id)}`);
-export type ChatProgress = { type: 'status'; stage: 'starting' | 'generating' } | { type: 'delta'; text: string };
+export type ToolApproval = { requestId: string; tool: string; description: string; args: string; redacted: boolean; truncated: boolean; length: number; rewritable: boolean; expired?: string };
+export type ChatProgress = { type: 'status'; stage: 'starting' | 'generating' } | { type: 'delta'; text: string }
+  | { type: 'tool'; state: 'start' | 'end'; name: string } | ({ type: 'approval' } & ToolApproval) | { type: 'approval-settled'; requestId: string; reason: string };
+export const cancelTurn = (conversationId: string) => request<{ cancelled: string }>(`/conversations/${encodeURIComponent(conversationId)}/cancel`, {});
+export const answerApproval = (conversationId: string, requestId: string, choice: 'once' | 'deny') =>
+  request<{ answered: string }>(`/conversations/${encodeURIComponent(conversationId)}/approvals/${encodeURIComponent(requestId)}`, { choice });
 export async function sendMessage(id: string, message: string, documentId?: string, onProgress?: (event: ChatProgress) => void): Promise<Conversation> {
   const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/messages`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson', 'X-Agora-CSRF': csrf },
@@ -55,7 +60,7 @@ export async function sendMessage(id: string, message: string, documentId?: stri
         const event = JSON.parse(line);
         if (event.type === 'error') throw new Error(event.error);
         if (event.type === 'done') return event.conversation;
-        if (event.type === 'status' || event.type === 'delta') onProgress?.(event);
+        if (['status', 'delta', 'tool', 'approval', 'approval-settled'].includes(event.type)) onProgress?.(event);
       }
       if (done) throw new Error('La conexión se interrumpió. Recarga la conversación para comprobar si se completó.');
     }
