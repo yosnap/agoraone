@@ -1,3 +1,4 @@
+import { Color } from 'three';
 import type { HermesProfile } from '../../shared/hermes-catalog';
 import type { BuildingStyle } from '../data/building-style';
 import { WorldLabel } from './world-label';
@@ -8,6 +9,7 @@ import { decorObstacles, ProfileDecor, type Obstacle } from './profile-decor';
 import type { ProfileActivity } from '../../shared/hermes-activity';
 import { ActivityBoards } from './profile-activity-boards';
 import { ago, mcpUsage, recentlyActive, usageLine } from '../data/activity-format';
+import { Furniture, Glow, Rug, type Item } from './room-furniture';
 
 const dayMs = 86_400_000;
 
@@ -21,7 +23,21 @@ export const profileObstacles: Obstacle[] = [
   { x: 0, z: -1.2, halfX: 1.6, halfZ: 0.9 },
   { x: -5.9, z: -2.5, halfX: 0.8, halfZ: 1.8 },
   ...decorObstacles,
+  ...[-6.2, 6.2].flatMap(x => [-7.1, 6.9].map(z => ({ x, z, halfX: 0.45, halfZ: 0.45 }))),
 ];
+
+// Same furnishing in every profile's space: plants in the corners, things on the desk, pictures.
+const furnishing: Item[] = [
+  { model: 'plantTall', at: [-6.2, 0, -7.1] }, { model: 'plantTall', at: [6.2, 0, -7.1], turn: 2 },
+  { model: 'plant', at: [-6.2, 0, 6.9] }, { model: 'plant', at: [6.2, 0, 6.9], turn: 1 },
+  { model: 'laptop', at: [0.2, 1, -1.35], turn: Math.PI }, { model: 'deskLamp', at: [1.25, 1, -1.55], turn: Math.PI + 0.5 },
+  { model: 'bookSet', at: [-1.05, 1, -1.6], turn: 0.1 }, { model: 'vase', at: [-1.35, 1, -0.75] },
+];
+// Pictures on the left wall, in front of the archive's wainscot and flush with the wall elsewhere.
+const pictures = (x: number): Item[] => [
+  { model: 'fancyFrame', at: [x, 2.1, 2.0], turn: Math.PI / 2, scale: 1.6 }, { model: 'fancyFrame', at: [x, 2.3, 4.6], turn: Math.PI / 2, scale: 1.2 },
+];
+const furnished = { plain: [...furnishing, ...pictures(-6.83)], wainscot: [...furnishing, ...pictures(-6.78)] };
 
 const fileLabel = (profile: HermesProfile, name: string) => {
   const file = profile.files.find(item => item.name === name);
@@ -43,7 +59,11 @@ export function ProfileInterior({ room, activity, onStation, onService, onExit }
     {/* Identity: the profile's SOUL as a framed portrait on the back wall. */}
     <group position={[0, 2.7, -7.75]} onClick={event => { event.stopPropagation(); onStation('identity'); }}>
       <mesh castShadow><boxGeometry args={[3.4, 2.2, 0.12]}/><meshStandardMaterial color="#3a2f24" roughness={0.6}/></mesh>
-      <mesh position={[0, 0, 0.07]}><boxGeometry args={[3, 1.8, 0.02]}/><meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.25} roughness={0.9}/></mesh>
+      <mesh position={[0, 0, 0.07]}><boxGeometry args={[3, 1.8, 0.02]}/><meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.12} roughness={0.9}/></mesh>
+      {/* A stylised portrait: a silhouette in the profile's colour against a lighter halo. */}
+      <mesh position={[0, 0.05, 0.085]}><circleGeometry args={[0.78, 48]}/><meshStandardMaterial color="#f6efe0" transparent opacity={0.55} roughness={1}/></mesh>
+      <mesh position={[0, 0.22, 0.095]}><circleGeometry args={[0.3, 40]}/><meshStandardMaterial color="#2c2620" roughness={1}/></mesh>
+      <mesh position={[0, -0.9, 0.095]}><circleGeometry args={[0.62, 48, 0, Math.PI]}/><meshStandardMaterial color="#2c2620" roughness={1}/></mesh>
       <WorldLabel position={[0, 1.4, 0.3]} distanceFactor={11}><button className="place-label" onClick={() => onStation('identity')}>Personalidad · {fileLabel(profile, 'SOUL.md')}</button></WorldLabel>
     </group>
 
@@ -68,6 +88,10 @@ export function ProfileInterior({ room, activity, onStation, onService, onExit }
       {[-1.4, 1.4].map(x => <mesh key={x} position={[x, 0.45, 0]} castShadow><boxGeometry args={[0.12, 0.9, 1.3]}/><meshStandardMaterial color="#3a3530" metalness={0.5} roughness={0.4}/></mesh>)}
       <WorldLabel position={[0, 1.25, 0.4]} distanceFactor={9}><button className="character-label" onClick={() => onStation('chat')}>Conversar con {profile.label}</button></WorldLabel>
     </group>
+    {/* The observatory's floor compass already marks this spot; a rug would cover it. */}
+    {style !== 'observatory' && <Rug at={[0, -1.6]} size={[5.4, 3.6]} color={`#${new Color(accent).lerp(new Color('#3a2f24'), 0.45).getHexString()}`} border="#3a2f24"/>}
+    <Furniture items={hasWainscot(style) ? furnished.wainscot : furnished.plain}/>
+    <Glow at={[1.1, 1.6, -1.3]} intensity={4} distance={4}/>
     <StandingPerson seed={seed} color={accent} position={[0, 0, -2.5]} onClick={() => onStation('chat')}/>
     {recentlyActive(activity) && <WorldLabel position={[0, 2.25, -2.5]} distanceFactor={9}><span className="activity-chip" title="Dato real de las sesiones de Hermes"><strong>Actividad registrada {ago(activity?.lastActivityAt ?? null)}</strong></span></WorldLabel>}
 

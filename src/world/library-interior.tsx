@@ -3,11 +3,29 @@ import { WorldLabel } from './world-label';
 import { StandingPerson } from './standing-person';
 import { BoxGeometry } from 'three';
 import { meterUV, SurfaceMaterial } from './surfaces';
+import { Furniture, Glow, Rug, type Item } from './room-furniture';
 
 export const libraryObstacles = [
   { x: 0, z: -1.5, halfX: 2.1, halfZ: 1.2 },
   { x: -5.5, z: -3.5, halfX: 0.9, halfZ: 2.5 },
   { x: 5.5, z: -3.5, halfX: 0.9, halfZ: 2.5 },
+  { x: -3.6, z: 2.8, halfX: 1.6, halfZ: 0.8 }, { x: 3.6, z: 2.8, halfX: 1.4, halfZ: 0.8 },
+  { x: -4.6, z: -7.4, halfX: 1.1, halfZ: 0.5 }, { x: -6.1, z: 0, halfX: 0.4, halfZ: 0.4 },
+  ...[-6.2, 6.2].flatMap(x => [-7.1, 6.9].map(z => ({ x, z, halfX: 0.45, halfZ: 0.45 }))),
+];
+
+// A reading room: a chess corner, a pair of green chairs, plants, a cabinet and a chandelier.
+const furnishing: Item[] = [
+  { model: 'roundTable', at: [-3.6, 0, 2.8] }, { model: 'chess', at: [-3.6, 0.49, 2.8], turn: 0.3 },
+  { model: 'armchair', at: [-4.75, 0, 2.8], turn: Math.PI / 2 }, { model: 'armchair', at: [-2.45, 0, 2.8], turn: -Math.PI / 2 },
+  { model: 'sideTable', at: [3.6, 0, 2.8] }, { model: 'vase', at: [3.6, 0.55, 2.8] },
+  { model: 'greenChair', at: [2.75, 0, 2.8], turn: Math.PI / 2 }, { model: 'greenChair', at: [4.45, 0, 2.8], turn: -Math.PI / 2 },
+  { model: 'cabinet', at: [-4.6, 0, -7.45] }, { model: 'fancyFrame', at: [4.5, 2, -7.84], scale: 1.8 },
+  { model: 'sideTable', at: [-6.1, 0, 0] }, { model: 'bust', at: [-6.1, 0.55, 0], turn: Math.PI / 2 },
+  { model: 'plantTall', at: [-6.2, 0, -7.1] }, { model: 'plantTall', at: [6.2, 0, -7.1], turn: 2 },
+  { model: 'plant', at: [-6.2, 0, 6.9] }, { model: 'plant', at: [6.2, 0, 6.9], turn: 1 },
+  { model: 'bookSet', at: [-1.2, 1.09, -1.6], turn: 0.15 }, { model: 'deskLamp', at: [1.35, 1.09, -1.75], turn: Math.PI + 0.5 },
+  { model: 'chandelier', at: [0, 4.2, 1.5] },
 ];
 const bookColors = ['#b6935a', '#718e83', '#9e6052', '#c6bca1', '#5c777b'];
 
@@ -49,7 +67,11 @@ export function LibraryInterior({ onBrowse, onChat, onExit, seed }: { onBrowse: 
     <mesh position={[0, 1.7, 7.8]}><boxGeometry args={[2.2, 3.4, 0.15]}/><meshStandardMaterial color="#bba278"/></mesh>
     <WorldLabel position={[0, 2, 7.5]} distanceFactor={9}><button className="place-label" onClick={onExit}>Salir a la ciudad</button></WorldLabel>
     <mesh position={[0, 0.015, 0.5]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[5, 10]}/><meshStandardMaterial color="#617b69"/></mesh>
-    {[-3, 1.5, 5].map(z => <Pendant key={z} x={0} z={z}/>)}
+    {[-3, 5].map(z => <Pendant key={z} x={0} z={z}/>)}
+    <Furniture items={furnishing}/>
+    <Glow at={[0, 3.6, 1.5]} intensity={5} distance={7}/>
+    <Glow at={[-3.6, 1.8, 2.8]} intensity={3}/>
+    {[-3.9, 3.9].map(x => <Rug key={x} at={[x, 2.8]} size={[3, 2]} color="#7c4a3a" border="#d1b277"/>)}
     {[1, 4.6].map(z => [-6.84, 6.84].map(x => <group key={`${x}${z}`} position={[x, 2.6, z]}>
       <mesh><boxGeometry args={[0.04, 2.2, 1.6]}/><meshStandardMaterial color="#e9f2ec" emissive="#dff1ff" emissiveIntensity={0.55}/></mesh>
       <mesh><boxGeometry args={[0.08, 2.3, 0.08]}/><meshStandardMaterial color="#3a3226"/></mesh>

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { Euler, Vector3 } from 'three';
+import { Euler, Vector3, PerspectiveCamera } from 'three';
 import { cityExtent, type Place } from '../data/city';
 import type { Obstacle } from './profile-decor';
 import { cityGrid } from './city-layout';
@@ -17,10 +17,12 @@ export function Navigation({ places, firstPerson, blocked, inside = false, room 
   const direction = useRef(new Vector3());
   const right = useRef(new Vector3());
   useEffect(() => {
-    if (inside) camera.position.set(0, 1.7, 5);
+    if (inside) camera.position.set(0, 1.7, 6.4); // far enough back to take in the whole room
     else if (firstPerson) camera.position.set(spawnX, 1.7, extent - 2);
     else camera.position.set(extent * 1.35, extent * 1.4, extent * 1.7);
     camera.lookAt(firstPerson && !inside ? spawnX : 0, firstPerson ? 1.7 : 0, 0);
+    // A wider view indoors, so the first look at a room takes in its sides too.
+    if (camera instanceof PerspectiveCamera) { camera.fov = inside ? 56 : 43; camera.updateProjectionMatrix(); }
     keys.current.clear();
     if (document.pointerLockElement) document.exitPointerLock();
   }, [camera, firstPerson, inside, room, extent, spawnX]);
