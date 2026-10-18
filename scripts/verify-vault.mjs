@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { appUrl } from './verify-targets.mjs';
 // Obsidian vault as a library: browse folders, open a note as a book, search, enter the room and
 // attach a note to Luma's chat.
 // Read-only and without inference: no message is sent. Uses the first vault in Obsidian's registry.
@@ -9,8 +10,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   const page = await browser.newPage({ viewport });
   const errors = [], posts = [];
   page.on('pageerror', e => errors.push(e.message));
-  page.on('request', r => { if (r.method() !== 'GET') posts.push(r.url()); });
-  await page.goto('http://127.0.0.1:5173');
+  page.on('request', r => { if (r.method() !== 'GET' && !r.url().endsWith('/api/session')) posts.push(r.url()); });
+  await page.goto(appUrl());
   // Initial scene load only: headless Chromium renders WebGL in software (~2 fps), so allow it time.
   await page.locator('.directory').getByRole('button', { name: /^Obsidian · / }).first().click({ timeout: 120_000 });
   const shelves = page.locator('.vault-panel .vault-shelves button'), notes = page.locator('.vault-panel .vault-books button:not([disabled])');

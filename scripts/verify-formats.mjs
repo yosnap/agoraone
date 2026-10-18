@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { appUrl } from './verify-targets.mjs';
 import assert from 'node:assert/strict';
 import { pdfFixture, docxFixture } from '../server/document-fixtures.ts';
 
@@ -8,7 +9,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('http://127.0.0.1:4317');
+  await page.goto(appUrl(4317));
   await page.getByRole('button', { name: 'Luma', exact: true }).click();
   for (const extension of ['pdf', 'docx']) {
     await page.getByRole('button', { name: 'Documentos', exact: true }).click();

@@ -54,3 +54,11 @@ test('líneas con claves: una marca literal en el original no se confunde con un
   assert.equal(text, 'x\n[línea oculta 1]\n[línea oculta 2]');
   assert.equal(restoreSecrets(text, hidden), raw);
 });
+
+test('ocultar claves: líneas largas y hostiles no bloquean el servidor', () => {
+  for (const unit of ['a.', 'a-', 'x://a:', 'Ab1+', 'a=']) {
+    const start = performance.now();
+    maskSecrets(unit.repeat(Math.ceil(128_000 / unit.length)));
+    assert.ok(performance.now() - start < 500, `«${unit}» repetido no debe tardar`);
+  }
+});

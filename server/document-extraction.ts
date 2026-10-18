@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { dirname, resolve as resolvePath } from 'node:path';
 import { z } from 'zod';
 import { importSchema, decodeDocument } from './private-library';
 
@@ -19,7 +20,11 @@ export async function extractUpload(input: z.infer<typeof uploadSchema>) {
   running++;
   try {
     const content = await new Promise<string>((resolve, reject) => {
-      const child = spawn(process.execPath, ['--max-old-space-size=128', fileURLToPath(new URL('./extract-document.mjs', import.meta.url)), input.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'docx'], {
+      // Node's permission model: the extractor may only read its own code and libraries (no other file,
+      // no writing, no child processes, workers or network addons), so a flaw in pdf.js or mammoth stays contained.
+      const script = fileURLToPath(new URL('./extract-document.mjs', import.meta.url));
+      const child = spawn(process.execPath, ['--max-old-space-size=128', '--permission', `--allow-fs-read=${dirname(script)}`, `--allow-fs-read=${resolvePath('node_modules')}`,
+        script, input.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'docx'], {
         env: { PATH: '/usr/bin:/bin', LANG: 'en_US.UTF-8' }, stdio: ['pipe', 'pipe', 'ignore'],
       });
       let output = '';

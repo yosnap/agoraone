@@ -10,7 +10,8 @@ const secretLine = new RegExp([
   String.raw`(?<![A-Za-z])(?:mi |la |tu )?claves? (?:de )?api (?:es|son)\b`,
   String.raw`\bbearer\s+[A-Za-z0-9._~+/=-]{12,}`,
   String.raw`\b(?:sk-|sk_live_|ghp_|gho_|github_pat_|xox[baprs]-|AIza)[A-Za-z0-9_\-]{8,}|\bAKIA[0-9A-Z]{16}\b`,
-  String.raw`\b[a-z][a-z0-9+.-]*://[^\s:/@]+:[^\s@]+@`, // user:password@host
+  // user:password@host, with bounded repetitions so a long line cannot make the scan quadratic
+  String.raw`\b[a-z][a-z0-9+.-]{0,31}://[^\s:/@]{1,256}:[^\s@]{1,256}@`,
 ].join('|'), 'i');
 // Long opaque strings (keys, hashes): letters and digits with a 20-character run, outside links;
 // plain UUIDs and hyphenated slugs or snake_case names stay visible.

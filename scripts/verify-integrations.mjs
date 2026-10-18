@@ -1,5 +1,5 @@
 import { chromium } from '@playwright/test';
-import { escape, target } from './verify-targets.mjs';
+import { escape, target, appUrl } from './verify-targets.mjs';
 import assert from 'node:assert/strict';
 
 // Checks the user's local catalog read-only. Does not start MCPs or invoke models.
@@ -9,8 +9,8 @@ try {
   const errors = [];
   let mutations = 0;
   page.on('pageerror', error => errors.push(error.message));
-  page.on('request', request => { if (request.method() !== 'GET') mutations++; });
-  await page.goto('http://127.0.0.1:4317');
+  page.on('request', request => { if (request.method() !== 'GET' && !request.url().endsWith('/api/session')) mutations++; });
+  await page.goto(appUrl(4317));
   // Initial scene load only: headless Chromium renders WebGL in software (~2 fps), so allow it time.
   await page.locator('.directory').getByRole('button', { name: /Centro de integraciones/ }).click({ timeout: 120_000 });
   assert.equal(await page.locator('.directory').getByRole('button', { name: /^MCP ·/ }).count(), 0);

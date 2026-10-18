@@ -1,6 +1,6 @@
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
-import { escape, target } from './verify-targets.mjs';
+import { escape, target, appUrl } from './verify-targets.mjs';
 
 // Approval card in a profile chat, without reaching the profile: the page's own fetch answers the
 // message with a scripted stream (a read tool, then a write that waits for the user) and records the
@@ -46,7 +46,7 @@ try {
         return original(input, init);
       };
     });
-    await page.goto('http://127.0.0.1:5173');
+    await page.goto(appUrl());
     // Initial scene load only: headless Chromium renders WebGL in software, so allow it time.
     await page.locator('.directory').getByRole('button', { name: new RegExp(`Perfil · ${escape(profile)}`) }).click({ timeout: 120_000 });
     await page.getByRole('button', { name: new RegExp(`^Conversar con ${escape(profile)}$`) }).first().click();

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { workerRequest, workerSend, type Progress } from './hermes-worker';
 import { hermesLocation } from './hermes-location';
 import type { Adapter } from './hermes-adapter';
@@ -9,6 +10,7 @@ import type { Adapter } from './hermes-adapter';
 // (user's decision, 18/10/2026). Every mutating tool call waits for the user's answer in AgoraOne;
 // see server/hermes_agent_bridge.py. Luma keeps the restricted bridge without tools.
 const { root, installation, python } = hermesLocation();
+const bridge = fileURLToPath(new URL('./hermes_agent_bridge.py', import.meta.url));
 const pending = new Map<string, Set<string>>(); // Hermes session -> approval requests awaiting an answer
 const context = [
   'Estás conversando con el usuario a través de AgoraOne, su aplicación local que representa Hermes como una ciudad.',
@@ -31,7 +33,11 @@ export const agentReply: Adapter = async (turn, progress) => {
     // The user's PATH (no secrets) so the profile's MCP launchers (npx, uvx…) are found as in its gateway.
     PATH: process.env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin', HOME: homedir(), HERMES_HOME: root,
     PYTHONDONTWRITEBYTECODE: '1', PYTHONNOUSERSITE: '1', AGORA_HERMES_PATH: installation,
+    // Where AgoraOne keeps its private data, which the profile's file tools may never read.
+    AGORA_APP_DIR: process.cwd(),
   };
+  // The bridge works from the profile's own home, so a relative path or a search never starts in another profile.
+  const profileHome = turn.profile.name === 'default' ? root : join(root, 'profiles', turn.profile.name);
   const forward = (event: Progress) => {
     // The bridge already hides only the fragments that look like secrets; whole lines are never dropped,
     // so the user always sees what is about to run.
@@ -40,7 +46,7 @@ export const agentReply: Adapter = async (turn, progress) => {
     progress?.(event);
   };
   try {
-    const data = await workerRequest(`agent:${session}`, python, resolve('server/hermes_agent_bridge.py'), root, env, {
+    const data = await workerRequest(`agent:${session}`, python, bridge, profileHome, env, {
       type: 'turn', profile: turn.profile.name, sessionId: session, message: turn.message, context,
       history: turn.history.map(({ role, content }) => ({ role, content })),
       ...(turn.document ? { document: turn.document } : {}),

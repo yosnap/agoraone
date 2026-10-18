@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { appUrl } from './verify-targets.mjs';
 import assert from 'node:assert/strict';
 
 const browser = await chromium.launch();
@@ -9,7 +10,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (request.url().endsWith('/messages') && request.method() === 'POST') modelCalls++; });
   const response = page.waitForResponse(r => r.url().endsWith('/api/hermes/catalog'));
-  await page.goto('http://127.0.0.1:4317');
+  await page.goto(appUrl(4317));
   const catalog = await (await response).json();
   assert.ok(catalog.profiles.length > 0);
   await page.locator('.directory').getByRole('button', { name: `Perfil · ${catalog.profiles[0].label}`, exact: false }).click();

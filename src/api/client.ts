@@ -19,7 +19,17 @@ async function request<T>(path: string, body?: unknown, method = body ? 'POST' :
   if (!response.ok) throw new ApiError(data.error || 'El backend no está disponible.', response.status);
   return data;
 }
-export async function getStatus() { const status = await request<Status>('/status'); csrf = status.csrf; return status; }
+/** Trades the access token from the link (#acceso=…) for this browser's cookie, then removes it from the address bar. */
+async function enterWithLink() {
+  const token = /^#acceso=([a-f0-9]{64})$/.exec(window.location.hash)?.[1];
+  if (!token) return;
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  await fetch('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }) });
+}
+export async function getStatus() {
+  await enterWithLink();
+  const status = await request<Status>('/status'); csrf = status.csrf; return status;
+}
 export const getHermesCatalog = () => request<HermesCatalog>('/hermes/catalog');
 export const getHermesActivity = () => request<HermesActivity>('/hermes/activity');
 export type ProfileLimits = Record<'MEMORY.md' | 'USER.md', number>;

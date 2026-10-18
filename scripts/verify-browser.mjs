@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { appUrl } from './verify-targets.mjs';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 
@@ -13,7 +14,7 @@ try {
   page.on('request', request => {
     if (request.method() === 'POST' && request.url().endsWith('/messages')) modelRequests.push(request.url());
   });
-  await page.goto('http://127.0.0.1:4317');
+  await page.goto(appUrl(4317));
   // Initial scene load only: headless Chromium renders WebGL in software (~2 fps), so allow it time.
   await page.getByRole('button', { name: 'Luma', exact: true }).waitFor({ timeout: 120_000 });
   assert.equal(await page.locator('canvas').count(), 1);

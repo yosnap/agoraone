@@ -32,7 +32,7 @@ function run(root: string, request: Record<string, unknown>): Promise<Record<str
       let data: Record<string, unknown>;
       if (timedOut) return reject(new ManageError('Hermes tardó demasiado: no se sabe si el cambio se aplicó. Espera unos segundos y comprueba la lista.', 504));
       try { data = JSON.parse(output); } catch { return reject(new ManageError('Hermes no pudo completar la operación.', 500)); }
-      if (data.ok !== true) return reject(new ManageError(typeof data.error === 'string' ? data.error : 'Hermes rechazó la operación.', /no existe|no está asignada/.test(String(data.error)) ? 404 : 400));
+      if (data.ok !== true) return reject(new ManageError(typeof data.error === 'string' ? maskSecrets(data.error).text : 'Hermes rechazó la operación.', /no existe|no está asignada/.test(String(data.error)) ? 404 : 400));
       resolve(data);
     });
     child.stdin.end(JSON.stringify(request));

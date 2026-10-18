@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { appUrl } from './verify-targets.mjs';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -24,7 +25,7 @@ try {
   const page = await browser.newPage();
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('http://127.0.0.1:4317');
+  await page.goto(appUrl(4317));
   await page.getByRole('button', { name: 'Luma', exact: true }).click();
   await page.getByLabel('Tu mensaje a Luma').fill('Prueba de streaming');
   await page.getByRole('button', { name: 'Enviar a Hermes' }).click();

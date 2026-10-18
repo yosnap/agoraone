@@ -1,6 +1,6 @@
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
-import { escape, target } from './verify-targets.mjs';
+import { escape, target, appUrl } from './verify-targets.mjs';
 
 // A library document attached to a profile's chat (not Luma's): it shows in that chat only,
 // Luma's chat stays empty, and it can be removed. Nothing is sent, so no inference runs.
@@ -12,7 +12,7 @@ try {
   let inference = 0;
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (request.method() === 'POST' && request.url().endsWith('/messages')) inference++; });
-  await page.goto('http://127.0.0.1:5173');
+  await page.goto(appUrl());
   // Initial scene load only: headless Chromium renders WebGL in software (~2 fps), so allow it time.
   await page.getByRole('button', { name: 'Luma', exact: true }).click({ timeout: 120_000 });
   await page.getByRole('button', { name: 'Documentos', exact: true }).click();

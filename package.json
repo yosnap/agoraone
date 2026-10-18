@@ -1,6 +1,6 @@
 {
   "name": "agoraone",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -14,7 +14,8 @@
     "build": "tsc --noEmit && vite build",
     "test": "node --import tsx --test server/*.test.ts",
     "start": "node --env-file-if-exists=.env --import tsx server/index.ts",
-    "check:hermes": "node --env-file-if-exists=.env --import tsx server/check-hermes.ts"
+    "check:hermes": "node --env-file-if-exists=.env --import tsx server/check-hermes.ts",
+    "open": "node scripts/open.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

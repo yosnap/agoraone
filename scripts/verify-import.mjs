@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { appUrl } from './verify-targets.mjs';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 
@@ -11,7 +12,7 @@ try {
   let calls = 0;
   page.on('pageerror', e => errors.push(e.message));
   page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/messages')) calls++; });
-  await page.goto('http://127.0.0.1:4317');
+  await page.goto(appUrl(4317));
   await page.getByRole('button', { name: 'Luma', exact: true }).click();
   await page.getByRole('button', { name: 'Documentos', exact: true }).click();
   const marker = `NUBE-${Date.now()}`;
