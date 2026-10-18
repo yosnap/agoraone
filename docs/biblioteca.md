@@ -3,7 +3,7 @@
 ## Uso
 Seleccionar Luma o Biblioteca → **Entrar en la biblioteca**. El interior incluye estanterías, mesa de lectura, Luma y salida. Se recorre con los mismos controles de primera persona. **Abrir catálogo** permite operar también con teclado y sin WebGL.
 
-En **Documentos**, buscar por título y abrir uno de los dos ejemplos. El lector muestra texto, ID y revisión. **Consultar este documento con Luma** selecciona el documento como contexto del próximo mensaje. Escribir una pregunta y enviar. No se produce inferencia al entrar, recorrer, buscar, abrir o adjuntar.
+En **Documentos**, buscar por título y abrir uno de los dos ejemplos. El lector muestra texto, ID y revisión. **Consultar este documento con Luma** selecciona el documento como contexto del próximo mensaje; el selector **Consultar con** permite elegir en su lugar un perfil (docs/conversaciones-perfiles.md). Escribir una pregunta y enviar. No se produce inferencia al entrar, recorrer, buscar, abrir o adjuntar.
 
 Cada mensaje enviado relee el documento en backend; la revisión registrada junto al mensaje corresponde al texto realmente enviado. **Quitar documento** evita adjuntarlo en mensajes posteriores; no borra respuestas anteriores ni la conversación. Nueva conversación continúa estando disponible.
 

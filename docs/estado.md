@@ -1,6 +1,8 @@
 # Estado de continuidad — 18/10/2026
 
 ## Resultado
+Versión 0.8.0 · Adjuntos en los chats de perfil: «Consultar con» en la biblioteca y el vault deja elegir Luma o cualquier perfil; el perfil recibe su identidad y el documento como datos de solo lectura, con los mismos límites y permisos que Luma. Ver docs/conversaciones-perfiles.md.
+
 Versión 0.7.0 · Interiores distintos por perfil: cada tipo de edificio (taller, observatorio, invernadero, pabellón, torre, archivo) tiene su propia sala, con suelo, paredes, techo, luz y fondo propios, manteniendo las estaciones en el mismo sitio. Solo decoración. Ver docs/espacios-perfil.md.
 
 Versión 0.6.0 · Rendimiento: lecturas de Hermes y del vault en un hilo aparte (el servidor ya no se bloquea; la primera lectura de actividad pasa de varios segundos de bloqueo a 0,68 s sin bloquear) y escena 3D cargada aparte (la interfaz se usa con unos 270 KB). Ver docs/arquitectura.md.

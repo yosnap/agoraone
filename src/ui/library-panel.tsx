@@ -3,12 +3,14 @@ import { listDocuments, readDocument, type DocumentSource, type LibraryDocument,
 import { ChatPanel } from './chat-panel';
 import { DocumentImport } from './document-import';
 import { DocumentActions } from './document-actions';
+import { ConsultWith, type ConsultTarget } from './consult-with';
 import './library.css';
 
-export function LibraryPanel({ status, onConnected, inside, onEnter, tab, onTab, document, onDocument }: {
+export function LibraryPanel({ status, onConnected, inside, onEnter, tab, onTab, document, onDetach, targets, onConsult, onChanged }: {
   status: Status | null; onConnected: () => void; inside: boolean; onEnter: () => void;
   tab: 'chat' | 'documents'; onTab: (tab: 'chat' | 'documents') => void;
-  document?: DocumentSource; onDocument: (document?: DocumentSource) => void;
+  document?: DocumentSource; onDetach: () => void; targets: ConsultTarget[];
+  onConsult: (document: DocumentSource, target: string) => void; onChanged: (id: string, document?: DocumentSource) => void;
 }) {
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [query, setQuery] = useState('');
@@ -35,14 +37,14 @@ export function LibraryPanel({ status, onConnected, inside, onEnter, tab, onTab,
       <button aria-pressed={tab === 'documents'} onClick={() => onTab('documents')}>Documentos</button>
     </nav>
     <div className="chat-slot" style={{ display: tab === 'chat' ? 'flex' : 'none' }}>
-      <ChatPanel status={status} onConnected={onConnected} document={document} onDetach={() => onDocument(undefined)}/>
+      <ChatPanel status={status} onConnected={onConnected} document={document} onDetach={onDetach}/>
     </div>
     {tab === 'documents' && <section className="library-reader" aria-label="Catálogo de biblioteca">
       <DocumentImport onImported={document => {
         setCatalog(items => [...items, { id: document.id, title: document.title, kind: 'private' }]);
         setQuery(''); setReading(document); setError('');
       }}/>
-      <p className="library-permissions">Lectura con Luma · {catalog.filter(item => item.kind === 'example').length} ejemplos · {catalog.filter(item => item.kind === 'private').length} documentos propios</p>
+      <p className="library-permissions">Consulta con Luma o un perfil · {catalog.filter(item => item.kind === 'example').length} ejemplos · {catalog.filter(item => item.kind === 'private').length} documentos propios</p>
       <label htmlFor="document-search">Buscar por título</label>
       <input id="document-search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar en la biblioteca…"/>
       <div className="document-list">{catalog.filter(item => item.title.toLocaleLowerCase('es').includes(query.toLocaleLowerCase('es'))).map(item =>
@@ -54,14 +56,14 @@ export function LibraryPanel({ status, onConnected, inside, onEnter, tab, onTab,
       {reading && <article className="document-preview"><h3>{reading.title}</h3><small>ID: {reading.id} · versión {reading.revision.slice(0, 8)}</small><pre>{reading.content}</pre>
         {catalog.some(item => item.id === reading.id && item.kind === 'private') && <DocumentActions key={reading.id} document={reading} onRenamed={updated => {
           setReading(updated); setCatalog(items => items.map(item => item.id === updated.id ? { ...item, title: updated.title } : item));
-          if (document?.id === updated.id) onDocument(updated);
+          onChanged(updated.id, updated);
           setNotice('Nombre actualizado. El contenido y el original no han cambiado.');
         }} onDeleted={() => {
           setCatalog(items => items.filter(item => item.id !== reading.id));
-          if (document?.id === reading.id) onDocument(undefined);
+          onChanged(reading.id);
           setReading(null); setNotice('Copia eliminada de la biblioteca. El original y las conversaciones se conservan.');
         }}/>} 
-        <button className="primary" onClick={() => { onDocument(reading); onTab('chat'); }}>Consultar este documento con Luma</button>
+        <ConsultWith what="este documento" targets={targets} onConsult={target => onConsult(reading, target)}/>
       </article>}
     </section>}
   </div>;

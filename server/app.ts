@@ -136,7 +136,6 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     if (!data) return res.status(404).json({ error: 'Conversación no disponible.' });
     const parsed = z.object({ message: z.string().trim().min(1).max(6000), documentId: z.string().max(64).optional() }).strict().safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Escribe entre 1 y 6000 caracteres.' });
-    if (data.profileId && parsed.data.documentId) return res.status(400).json({ error: 'Los documentos se consultan con Luma; este chat usa solo la identidad del perfil.' });
     if (busy.size >= 2 || busy.has(data.id)) return res.status(409).json({ error: 'Hay una respuesta en curso. Espera antes de continuar.' });
     if (data.messages.reduce((sum, m) => sum + m.content.length, 0) > 60_000)
       return res.status(409).json({ error: 'Esta conversación llegó a su límite. Abre una nueva.' });
@@ -144,9 +143,10 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     const streaming = req.headers.accept === 'application/x-ndjson';
     const emit = (event: unknown) => { if (!res.destroyed) res.write(`${JSON.stringify(event)}\n`); };
     try {
-      const document = parsed.data.documentId ? await readAttachment(parsed.data.documentId, res.locals.owner) : undefined;
+      // The profile is validated before any attachment is read, so a revoked profile reads nothing.
       const profile = data.profileId ? profileContext(discovery, data.profileId) : undefined;
       if (profile && profile.agentId !== data.agent) throw new ProfileContextError();
+      const document = parsed.data.documentId ? await readAttachment(parsed.data.documentId, res.locals.owner) : undefined;
       if (streaming) { res.type('application/x-ndjson'); res.flushHeaders(); emit({ type: 'status', stage: 'starting' }); }
       const reply = await adapter({ sessionId: data.hermesSessionId, message: parsed.data.message, history: data.messages, document, profile }, streaming ? emit : undefined);
       const sources = document ? [{ id: document.id, title: document.title, revision: document.revision }] : undefined;

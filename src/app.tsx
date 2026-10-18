@@ -41,7 +41,8 @@ export default function App() {
   const [profileRoom, setProfileRoom] = useState<string | null>(null);
   const [profileTab, setProfileTab] = useState<ProfileTab>('info');
   const [libraryTab, setLibraryTab] = useState<'chat' | 'documents'>('chat');
-  const [document, setDocument] = useState<DocumentSource>();
+  // Attachment waiting in each chat, keyed by 'library' (Luma) or profile id.
+  const [attachments, setAttachments] = useState<Record<string, DocumentSource>>({});
   const [lightMode, setLightMode] = useState<LightMode>('auto');
   const daylight = useDaylightClock(lightMode);
   const hermesActivity = useHermesActivity(status?.csrf);
@@ -64,8 +65,20 @@ export default function App() {
   const vault = useVaultNotes(vaultRoom ?? (place?.kind === 'vault' ? place.id : null));
   const enterVault = (id: string) => { setInside(false); setIntegrationsInside(false); setProfileRoom(null); setVaultRoom(id); setFirstPerson(true); setSelected(null); };
   const openShelf = (folder: string | null) => { if (vaultRoom) { setVaultFolder(folder); setSelected(vaultRoom); setLogOpen(false); } };
-  // A note goes to Luma's chat as an attached document; it is sent only with the user's next message.
-  const consultNote = (note: DocumentSource) => { setDocument(note); setSelected('library'); setLibraryTab('chat'); };
+  // A note or document goes to the chosen chat (Luma or a profile); it is sent only with the user's next message there.
+  const consultTargets = useMemo(() => [{ id: 'library', label: 'Luma' }, ...(catalog?.profiles ?? []).map(profile => ({ id: profile.id, label: profile.label }))], [catalog]);
+  const attach = (target: string, source?: DocumentSource) => setAttachments(previous => { const next = { ...previous }; if (source) next[target] = source; else delete next[target]; return next; });
+  // A renamed or deleted library copy updates or leaves every chat it was attached to.
+  const changeAttachment = (id: string, source?: DocumentSource) => setAttachments(previous => Object.fromEntries(Object.entries(previous).flatMap(([target, item]) => item.id !== id ? [[target, item]] : source ? [[target, source]] : [])));
+  // A profile that leaves the catalogue drops its pending attachment, so it never comes back unasked.
+  useEffect(() => setAttachments(previous => {
+    const kept = Object.entries(previous).filter(([target]) => consultTargets.some(item => item.id === target));
+    return kept.length === Object.keys(previous).length ? previous : Object.fromEntries(kept);
+  }), [consultTargets]);
+  const consult = (source: DocumentSource, target: string) => {
+    attach(target, source); setSelected(target); setVaultFolder(null); setLogOpen(false);
+    if (target === 'library') setLibraryTab('chat'); else setProfileTab('chat');
+  };
   const enterIntegrations = () => { setVaultRoom(null); setInside(false); setProfileRoom(null); setIntegrationsInside(true); setFirstPerson(true); setSelected(null); };
   const enterProfile = (id: string) => { setVaultRoom(null); setInside(false); setIntegrationsInside(false); setProfileRoom(id); setFirstPerson(true); setSelected(null); };
   const select = (id: string) => {
@@ -115,7 +128,7 @@ export default function App() {
     <div className="world-caption"><span>{copy.caption}</span><small>{copy.hint}</small></div>
     {logOpen && !place && <ActivityLog activity={hermesActivity.activity} catalog={catalog} error={hermesActivity.error} onSelect={select} onClose={() => setLogOpen(false)}/>}
     {place && <aside className="detail-panel" aria-label={`Espacio ${place.name}`}><button className="close" aria-label="Cerrar espacio" onClick={() => setSelected(null)}>×</button><div className="eyebrow">{place.kind === 'profile' ? 'PERFIL HERMES' : place.kind === 'space' ? 'ESPACIO HERMES' : place.kind === 'vault' ? 'OBSIDIAN · VAULT LOCAL' : place.kind === 'service' ? 'MCP · SERVICIO CONFIGURADO' : 'BIBLIOTECA · AGORAONE'}</div><h2>{place.character || place.name}<span style={{ background: place.color }}/></h2><p className="description">{place.description}</p>
-      {place.id === 'library' ? <LibraryPanel status={status} onConnected={() => setConnected(true)} inside={inside} onEnter={() => { setVaultRoom(null); setIntegrationsInside(false); setProfileRoom(null); setInside(true); setFirstPerson(true); setSelected(null); }} tab={libraryTab} onTab={setLibraryTab} document={document} onDocument={setDocument}/> : catalog && (place.id === 'mcp-center' ? <IntegrationsPanel catalog={catalog} inside={integrationsInside} onEnter={enterIntegrations} onSelect={select}/> : place.kind === 'vault' ? <VaultPanel key={place.id} vaultId={place.id} listing={vault.listing} error={vault.error} inside={vaultRoom === place.id} onEnter={() => enterVault(place.id)} folder={vaultFolder} onFolder={setVaultFolder} onConsult={consultNote}/> : place.kind === 'service' ? <ResourcePanel key={place.id} id={place.id} catalog={catalog} onSelect={select} activity={hermesActivity.activity}/> : <HermesPanel key={place.id} id={place.id} catalog={catalog} onSelect={select} status={status} onConnected={() => setConnected(true)} tab={profileTab} onTab={setProfileTab} inside={profileRoom === place.id} onEnter={() => enterProfile(place.id)} activity={hermesActivity}/>)}
+      {place.id === 'library' ? <LibraryPanel status={status} onConnected={() => setConnected(true)} inside={inside} onEnter={() => { setVaultRoom(null); setIntegrationsInside(false); setProfileRoom(null); setInside(true); setFirstPerson(true); setSelected(null); }} tab={libraryTab} onTab={setLibraryTab} document={attachments.library} onDetach={() => attach('library')} targets={consultTargets} onConsult={consult} onChanged={changeAttachment}/> : catalog && (place.id === 'mcp-center' ? <IntegrationsPanel catalog={catalog} inside={integrationsInside} onEnter={enterIntegrations} onSelect={select}/> : place.kind === 'vault' ? <VaultPanel key={place.id} vaultId={place.id} listing={vault.listing} error={vault.error} inside={vaultRoom === place.id} onEnter={() => enterVault(place.id)} folder={vaultFolder} onFolder={setVaultFolder} targets={consultTargets} onConsult={consult}/> : place.kind === 'service' ? <ResourcePanel key={place.id} id={place.id} catalog={catalog} onSelect={select} activity={hermesActivity.activity}/> : <HermesPanel key={place.id} id={place.id} catalog={catalog} onSelect={select} status={status} onConnected={() => setConnected(true)} tab={profileTab} onTab={setProfileTab} inside={profileRoom === place.id} onEnter={() => enterProfile(place.id)} activity={hermesActivity} document={attachments[place.id]} onDetach={() => attach(place.id)}/>)}
     </aside>}
     <footer className="statusbar"><span>● {connected ? 'Hermes conectado · respuesta real recibida' : status?.state === 'configured' ? 'Hermes configurado · respuesta por verificar' : 'Hermes pendiente de conexión'}</span><span role="status" title="Dato real leído del estado del gateway de Hermes cada 15 s">◉ {hermesActivity.error ? 'Gateway Hermes · no se pudo leer su estado' : gatewaySummary(hermesActivity.activity)}</span><span>Paseos y peatones: ambiente, no tareas reales · sin llamadas a modelos</span></footer>
   </main>;
