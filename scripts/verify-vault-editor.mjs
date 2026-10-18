@@ -43,7 +43,7 @@ try {
 
   // Cancelling discards the draft.
   await book.getByRole('button', { name: 'Editar nota' }).click();
-  await book.getByLabel('Texto de la nota (Markdown)').fill('borrador descartado');
+  await book.getByRole('textbox', { name: 'Texto de la nota (Markdown)' }).fill('borrador descartado');
   await book.getByRole('button', { name: 'Cancelar' }).click();
   // With changes, cancelling asks first; Escape never closes the book while editing.
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
@@ -53,7 +53,25 @@ try {
   // Confirm before saving; the book shows the saved version.
   await book.getByRole('button', { name: 'Editar nota' }).click();
   assert.equal(await book.getByRole('button', { name: 'Cerrar libro' }).isDisabled(), true, 'no se cierra con cambios a medias');
-  await book.getByLabel('Texto de la nota (Markdown)').fill('# Plan del huerto\nRegar cada tarde.');
+  const text = book.getByRole('textbox', { name: 'Texto de la nota (Markdown)' });
+  await text.fill('# Plan del huerto\nRegar cada **tarde**.');
+  // Live preview: the heading is shown as a heading and its «#» hidden once the cursor leaves the line.
+  await text.press('ControlOrMeta+End');
+  await book.locator('.cm-md-h1').waitFor();
+  assert.equal(await book.locator('.cm-md-h1').first().textContent(), 'Plan del huerto');
+  assert.equal(await book.locator('.cm-md-strong').count() > 0, true);
+  // «[[» suggests the vault's note titles.
+  await text.press('Enter'); await text.pressSequentially('Ver [[Pla');
+  await page.locator('.cm-tooltip-autocomplete').getByText('Plan del huerto').waitFor();
+  await page.keyboard.press('Escape');
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/editor-visual.png` });
+  // Links split across lines, inline code with [[ ]] or == and frontmatter must not break the editor.
+  await text.fill('---\ntags:\n  - a\n---\n[nota](\nhttps://x.example)\n`if [[ -f x ]]; a == b`\n- [ ] tarea\n> [!tip] Aviso\n> texto');
+  await text.press('ControlOrMeta+Home');
+  await book.locator('.cm-md-front').first().waitFor();
+  assert.deepEqual(errors, [], 'el editor no falla con contenidos raros');
+  // Back to the exact text that the save below must send.
+  await text.fill('# Plan del huerto\nRegar cada tarde.');
   await book.getByRole('button', { name: 'Guardar en el vault' }).click();
   assert.equal(writes.length, 0, 'no se guarda antes de confirmar');
   await book.getByRole('button', { name: 'Confirmar y guardar' }).click();
@@ -65,7 +83,7 @@ try {
   // A change made in Obsidian meanwhile is reported and can be discarded.
   conflict = true;
   await book.getByRole('button', { name: 'Editar nota' }).click();
-  await book.getByLabel('Texto de la nota (Markdown)').fill('otra versión');
+  await book.getByRole('textbox', { name: 'Texto de la nota (Markdown)' }).fill('otra versión');
   await book.getByRole('button', { name: 'Guardar en el vault' }).click();
   await book.getByRole('button', { name: 'Confirmar y guardar' }).click();
   await book.getByRole('button', { name: 'Recargar y conservar mi texto' }).waitFor();

@@ -52,6 +52,7 @@ export function VaultBook({ vaultId, vaultName, noteId, notes, onOpen, onClose, 
   const at = shelf.findIndex(item => item.id === noteId);
   const headings = useMemo(() => note ? headingsOf(note.content) : [], [note]);
   const find = useMemo(() => noteFinder(notes), [notes]);
+  const titles = useMemo(() => [...new Set(notes.map(item => item.title))].sort((a, b) => a.localeCompare(b, 'es')), [notes]);
   const resolve = useCallback((target: string) => {
     const found = find(target, meta?.folder);
     return found ? () => onOpen(found.id) : null;
@@ -93,7 +94,7 @@ export function VaultBook({ vaultId, vaultName, noteId, notes, onOpen, onClose, 
         <button autoFocus className="book-close" aria-label="Cerrar libro" disabled={editing} title={editing ? 'Guarda o cancela la edición para cerrar' : undefined} onClick={onClose}>×</button>
         {failure && <p className="error" role="alert">{failure}</p>}
         {!note && !failure && <p role="status">Abriendo el libro…</p>}
-        {editing && note ? <VaultNoteEditor key={`${note.id}:${note.revision}:${note.revealed}:${draft !== null}`} vaultId={vaultId} note={{ ...note, title: meta?.title ?? 'nota' }} draft={draft}
+        {editing && note ? <VaultNoteEditor key={`${note.id}:${note.revision}:${note.revealed}:${draft !== null}`} vaultId={vaultId} note={{ ...note, title: meta?.title ?? 'nota' }} draft={draft} notes={titles}
           onCancel={() => { setEditing(false); setDraft(null); }}
           onReload={keep => { setDraft(keep); if (keep === null) setEditing(false); void load(note.id, note.revealed); }}
           onSaved={() => { setEditing(false); setDraft(null); setSaved(true); void load(note.id, note.revealed); onChanged(); }}/> : body}

@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
+import { MarkdownField } from './markdown-field';
 import { ApiError, saveVaultNote } from '../api/client';
 
 const markers = (text: string) => text.match(/^\s*\[línea oculta \d+\]\s*$/gm)?.map(line => line.trim()) ?? [];
@@ -7,22 +8,22 @@ const markers = (text: string) => text.match(/^\s*\[línea oculta \d+\]\s*$/gm)?
 // hidden credential-like lines as markers, which the server puts back from disk when saving. Saving asks
 // for confirmation; the previous version is copied first and a change made meanwhile is never overwritten:
 // the user can reload that version keeping their own text, or discard it.
-export function VaultNoteEditor({ vaultId, note, draft, onSaved, onCancel, onReload }: {
+export function VaultNoteEditor({ vaultId, note, draft, notes = [], onSaved, onCancel, onReload }: {
   vaultId: string; note: { id: string; title: string; content: string; revision: string; revealed: boolean };
-  draft: string | null; onSaved: () => void; onCancel: () => void; onReload: (keep: string | null) => void;
+  draft: string | null; notes?: string[]; onSaved: () => void; onCancel: () => void; onReload: (keep: string | null) => void;
 }) {
   const [text, setText] = useState(draft ?? note.content);
   const [step, setStep] = useState<'edit' | 'confirm' | 'discard'>('edit');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [conflict, setConflict] = useState(false);
-  const area = useRef<HTMLTextAreaElement>(null);
-  const changed = text !== note.content;
+  // The editor keeps line breaks as \n; the server restores a note's CRLF when saving.
+  const changed = text.replace(/\r\n?/g, '\n') !== note.content.replace(/\r\n?/g, '\n');
   // Hidden lines are put back by their marker: a removed marker deletes that line from the file, a repeated one copies it.
   const before = markers(note.content), after = markers(text);
   const removed = before.filter(marker => !after.includes(marker)).length;
   const repeated = after.length - new Set(after).size;
-  const back = () => { setStep('edit'); setTimeout(() => area.current?.focus()); };
+  const back = () => setStep('edit');
   async function save() {
     setSaving(true); setError('');
     try { await saveVaultNote(vaultId, note.id, { content: text, revision: note.revision, revealed: note.revealed }); onSaved(); }
@@ -32,8 +33,7 @@ export function VaultNoteEditor({ vaultId, note, draft, onSaved, onCancel, onRel
     }
   }
   return <section className="vault-editor" aria-label={`Editar ${note.title}`}>
-    <label htmlFor="vault-editor-text">Texto de la nota (Markdown)</label>
-    <textarea id="vault-editor-text" ref={area} value={text} onChange={event => setText(event.target.value)} disabled={saving} spellCheck/>
+    <MarkdownField label="Texto de la nota (Markdown)" value={text} onChange={setText} disabled={saving} notes={notes} minHeight={320} autoFocus/>
     {!note.revealed && before.length > 0 && <small>Las líneas «[línea oculta N]» se reponen al guardar con su texto real; si quitas una, esa línea se borra del archivo.</small>}
     {error && <p role="alert" className="error">{error}</p>}
     {conflict ? <div className="editor-actions">

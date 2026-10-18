@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { changeCard, changeJob, createCard, createJob, getJob, type JobDetail } from '../api/client';
 import type { ProfileActivity } from '../../shared/hermes-activity';
 import { statusLabel, when } from '../data/activity-format';
+import { MarkdownField } from './markdown-field';
 
 // Managing a profile's scheduled tasks and kanban cards (user's decision, 18/10/2026). Every change is an
 // explicit button press and goes through Hermes' own functions; deleting and archiving ask first.
@@ -26,14 +27,20 @@ function JobForm({ initial, hidden = 0, once = false, submit, onCancel, label }:
 }) {
   const [job, setJob] = useState(initial);
   const [sending, setSending] = useState(false);
-  async function send(event: FormEvent) { event.preventDefault(); setSending(true); if (!(await submit(job))) setSending(false); }
+  const [missing, setMissing] = useState(false);
+  async function send(event: FormEvent) {
+    event.preventDefault();
+    if (!job.prompt.trim()) return setMissing(true);
+    setMissing(false); setSending(true); if (!(await submit(job))) setSending(false);
+  }
   return <form className="task-form" onSubmit={send} aria-label={label}>
     <label>Nombre<input autoFocus value={job.name} maxLength={100} onChange={event => setJob({ ...job, name: event.target.value })} required/></label>
     {once ? <small>Es una tarea de una sola vez: su momento no se cambia aquí.</small> : <>
       <label>Cuándo<input value={job.schedule} maxLength={120} placeholder="every 2h · 0 9 * * 1-5 · in 30m" onChange={event => setJob({ ...job, schedule: event.target.value })} required/></label>
       <small>Repetida cada cierto tiempo («every 2h»; «30m» también se repite cada 30 minutos), con una expresión cron («0 9 * * 1-5», días laborables a las 9) o una sola vez dentro de un rato («in 30m»).</small>
     </>}
-    <label>Qué debe hacer el perfil<textarea value={job.prompt} maxLength={4000} onChange={event => setJob({ ...job, prompt: event.target.value })} required/></label>
+    <div className="task-field"><span>Qué debe hacer el perfil</span><MarkdownField label="Qué debe hacer el perfil" value={job.prompt} onChange={prompt => setJob({ ...job, prompt })} minHeight={120} disabled={sending}/></div>
+    {missing && <p role="alert" className="error">Escribe qué debe hacer el perfil.</p>}
     {hidden > 0 && <small>{hidden === 1 ? 'Una línea que parece una clave se muestra' : `${hidden} líneas que parecen claves se muestran`} como «[línea oculta N]» y se conserva al guardar.</small>}
     <p className="approval-warning">Hermes la ejecutará en su horario con las herramientas y permisos del perfil, sin pedirte confirmación, como cualquier tarea programada. El resultado se guarda en Hermes; no se envía a ningún chat.</p>
     <div><button type="submit" className="primary" disabled={sending}>{sending ? 'Guardando…' : label}</button><button type="button" disabled={sending} onClick={onCancel}>Cancelar</button></div>
@@ -101,8 +108,10 @@ export function BoardManager({ profileId, board, onChanged }: { profileId: strin
           : <button type="button" disabled={!!action.busy} onClick={() => setConfirm(task.id)}>Archivar</button>}
       </div>}
       {note?.id === task.id && <form className="task-form" onSubmit={async event => { event.preventDefault();
+        if (note.kind === 'comment' && !note.text.trim()) return;
         if (await action.run(`${note.kind}:${task.id}`, () => note.kind === 'block' ? changeCard(profileId, task.id!, { action: 'block', reason: note.text || undefined }) : changeCard(profileId, task.id!, { action: 'comment', body: note.text }))) { setNote(null); action.say(note.kind === 'block' ? `Tarjeta «${task.title}» bloqueada.` : 'Comentario añadido.'); } }}>
-        <label>{note.kind === 'block' ? 'Motivo del bloqueo (opcional)' : 'Comentario'}<textarea autoFocus value={note.text} maxLength={note.kind === 'block' ? 500 : 4000} required={note.kind === 'comment'} onChange={event => setNote({ ...note, text: event.target.value })}/></label>
+        {note.kind === 'block' ? <label>Motivo del bloqueo (opcional)<textarea autoFocus value={note.text} maxLength={500} onChange={event => setNote({ ...note, text: event.target.value })}/></label>
+          : <div className="task-field"><span>Comentario</span><MarkdownField label="Comentario" value={note.text} onChange={text => setNote({ ...note, text })} minHeight={90} autoFocus/></div>}
         <div><button type="submit" className="primary" disabled={!!action.busy}>{note.kind === 'block' ? 'Bloquear' : 'Añadir comentario'}</button><button type="button" onClick={() => setNote(null)}>Cancelar</button></div>
       </form>}
     </li>)}</ul>}
@@ -112,7 +121,7 @@ export function BoardManager({ profileId, board, onChanged }: { profileId: strin
       : <form className="task-form" aria-label="Nueva tarjeta" onSubmit={async event => { event.preventDefault();
         if (await action.run('create', () => createCard(profileId, { title: card.title, body: card.body || undefined }))) { setAdding(false); action.say(`Tarjeta «${card.title}» creada.`); setCard({ title: '', body: '' }); } }}>
         <label>Título<input autoFocus value={card.title} maxLength={200} required onChange={event => setCard({ ...card, title: event.target.value })}/></label>
-        <label>Detalle (opcional)<textarea value={card.body} maxLength={4000} onChange={event => setCard({ ...card, body: event.target.value })}/></label>
+        <div className="task-field"><span>Detalle (opcional)</span><MarkdownField label="Detalle (opcional)" value={card.body} onChange={body => setCard({ ...card, body })} minHeight={90}/></div>
         <p className="approval-warning">Queda asignada a este perfil. Si el despachador de kanban de Hermes está activo, el perfil trabajará en ella por su cuenta, con sus herramientas y sin pedirte confirmación.</p>
         <div><button type="submit" className="primary" disabled={!!action.busy}>Crear tarjeta</button><button type="button" onClick={() => setAdding(false)}>Cancelar</button></div>
       </form>}
