@@ -1,12 +1,12 @@
-import { readdirSync, realpathSync, lstatSync } from 'node:fs';
+import { closeSync, constants, fstatSync, fsyncSync, ftruncateSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, unlinkSync, writeSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { readHermesFile, redact } from './hermes-safe-read';
-import { maskSecrets, revealSecrets } from './secret-lines';
+import { maskSecrets, restoreSecrets, revealSecrets } from './secret-lines';
 import { obsidianRegistryPath } from './resource-discovery';
 import type { LibraryDocument } from './library';
 
-// Read-only access to Obsidian vaults listed in Obsidian's own registry. Clients only ever send
+// Access to Obsidian vaults listed in Obsidian's own registry: reading, and editing or creating notes. Clients only ever send
 // opaque IDs: vault and note paths are resolved here from a fresh walk, never from the request.
 const hash = (value: string) => createHash('sha256').update(value).digest('hex').slice(0, 24);
 const maxNotes = 5000, maxDepth = 12, maxEntries = 50_000, maxNoteBytes = 256 * 1024, maxSearchBytes = 16 * 1024 * 1024;
@@ -21,6 +21,14 @@ type Index = { vault: Vault; notes: (VaultNote & { file: string })[]; truncated:
 export class VaultError extends Error {
   constructor() { super('Nota no disponible: puede ser demasiado grande, no ser texto UTF-8 o haber cambiado.'); }
 }
+/** A rejected edit or creation, with the HTTP status and a message for the user. */
+export class VaultWriteError extends Error {
+  constructor(message: string, public status = 400) { super(message); }
+}
+const conflict = () => new VaultWriteError('La nota cambió (en Obsidian o en otro sitio) mientras la editabas. Vuelve a cargarla para ver la versión actual.', 409);
+const keepBackups = 20;
+// Characters Obsidian does not accept in a note name, plus path separators.
+const badTitle = /[\\/:*?"<>|#^[\]\x00-\x1f]/;
 
 export class VaultNotes {
   private indexes = new Map<string, Index>();
@@ -47,9 +55,9 @@ export class VaultNotes {
   }
 
   /** Walks Markdown notes only: no hidden folders (.obsidian, .trash), no symlinks, no attachments. */
-  private index(vaultId: string): Index {
+  private index(vaultId: string, fresh = false): Index {
     const cached = this.indexes.get(vaultId);
-    if (cached && Date.now() - cached.at < 15_000) return cached;
+    if (!fresh && cached && Date.now() - cached.at < 15_000) return cached;
     const vault = this.vaults().find(item => item.id === vaultId);
     if (!vault) throw new VaultError();
     const notes: Index['notes'] = [];
@@ -126,6 +134,99 @@ export class VaultNotes {
       results.push({ id: note.id, title: note.title, folder: note.folder, snippet: (line ?? '').trim().slice(0, 200) });
     }
     return { results, truncated };
+  }
+
+  /**
+   * Saves an edited note (user's decision, 18/10/2026). The text the user edited is the masked one: hidden
+   * credential-like lines are put back from disk unless they were shown while editing. The note is written
+   * in place, through one handle opened without following links, so it keeps its creation date, mode and
+   * attributes in Obsidian: just before writing, that handle must still be the vault's note (same inode,
+   * folder no link) and its bytes must still be the revision the user opened. The previous version is
+   * copied to the backups folder first. Line endings and a leading BOM are kept as they were.
+   */
+  save(vaultId: string, noteId: string, edit: { content: string; revision: string; revealed?: boolean }, backups: string) {
+    const index = this.index(vaultId, true);
+    const note = index.notes.find(item => item.id === noteId);
+    if (!note || !note.readable) throw new VaultWriteError('Esta nota no se puede editar: no existe, es demasiado grande o es un enlace.', 404);
+    const listed = this.safeTarget(index, note.file);
+    let handle: number;
+    try { handle = openSync(note.file, constants.O_RDWR | constants.O_NOFOLLOW); } catch { throw conflict(); }
+    try {
+      const opened = fstatSync(handle);
+      if (!opened.isFile() || opened.nlink !== 1 || opened.ino !== listed.ino || opened.size > maxNoteBytes) throw new VaultWriteError('Esta nota no se puede editar: es un enlace o cambió de archivo.');
+      if (realpathSync(dirname(note.file)) !== dirname(note.file) || lstatSync(note.file).ino !== opened.ino) throw new VaultWriteError('La carpeta de la nota es un enlace y no se escribe en ella.');
+      const bytes = Buffer.alloc(opened.size);
+      let read = 0;
+      while (read < bytes.length) { const count = readSync(handle, bytes, read, bytes.length - read, read); if (!count) break; read += count; }
+      if (createHash('sha256').update(bytes.subarray(0, read)).digest('hex') !== edit.revision) throw conflict();
+      let current: string;
+      try { current = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, read)); } catch { throw new VaultWriteError('La nota actual no es texto UTF-8.'); }
+      // Hidden-line masking drops control characters, so such a note would lose them: edit it in Obsidian instead.
+      if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(current)) throw new VaultWriteError('Esta nota contiene caracteres de control y se edita mejor en Obsidian, para no alterarlos.');
+      let content: string;
+      try { content = edit.revealed ? edit.content : restoreSecrets(edit.content, maskSecrets(current).hidden); }
+      catch (error) { throw new VaultWriteError(error instanceof Error ? error.message : 'Contenido no válido.'); }
+      content = content.replace(/\r\n/g, '\n');
+      if ((current.match(/\r\n/g)?.length ?? 0) * 2 > (current.match(/\n/g)?.length ?? 0)) content = content.replace(/\n/g, '\r\n');
+      this.check(content);
+      const output = Buffer.concat([bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf ? bytes.subarray(0, 3) : Buffer.alloc(0), Buffer.from(content)]);
+      this.backup(backups, vaultId, noteId, bytes.subarray(0, read));
+      writeSync(handle, output, 0, output.length, 0);
+      ftruncateSync(handle, output.length);
+      fsyncSync(handle);
+      this.indexes.delete(vaultId);
+      return { id: noteId, revision: createHash('sha256').update(output).digest('hex') };
+    } finally { closeSync(handle); }
+  }
+
+  /** Creates a new note in a folder that already holds notes (or the vault's top level); never overwrites. */
+  create(vaultId: string, folder: string, title: string, content: string) {
+    const index = this.index(vaultId, true);
+    const name = title.trim().normalize('NFC');
+    if (!name || name.startsWith('.') || badTitle.test(name) || /[\p{Cf}\u2028\u2029]/u.test(name) || Buffer.byteLength(`${name}.md`) > 255)
+      throw new VaultWriteError('Usa un título corto (hasta 250 bytes) sin / \\ : * ? " < > | # ^ [ ], caracteres invisibles ni punto inicial.');
+    if (folder !== '' && !index.notes.some(note => note.folder === folder || note.folder.startsWith(`${folder}/`))) throw new VaultWriteError('Esa carpeta no existe en el vault.', 404);
+    this.check(content);
+    const directory = join(index.vault.root, ...folder.split('/').filter(Boolean));
+    if (realpathSync(directory) !== directory) throw new VaultWriteError('La carpeta es un enlace y no se escribe en ella.');
+    const file = join(directory, `${name}.md`);
+    let handle: number;
+    try { handle = openSync(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new VaultWriteError('Ya existe una nota con ese título en esta carpeta.', 409);
+      throw new VaultWriteError('No se pudo crear la nota en esa carpeta.');
+    }
+    try {
+      // The folder was swapped for a link between the check and the creation: undo and stop.
+      if (realpathSync(directory) !== directory) { unlinkSync(file); throw new VaultWriteError('La carpeta es un enlace y no se escribe en ella.'); }
+      writeSync(handle, content); fsyncSync(handle);
+    } finally { closeSync(handle); }
+    this.indexes.delete(vaultId);
+    return { id: `note-${hash(`${vaultId}:${relative(index.vault.root, file)}`)}`, folder, title: name };
+  }
+
+  private check(content: string) {
+    if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(content)) throw new VaultWriteError('El texto contiene caracteres de control.');
+    if (Buffer.byteLength(content) > maxNoteBytes) throw new VaultWriteError('La nota supera 256 KiB.');
+  }
+
+  /** The note must still be a plain file (no link, one name) inside the vault, in a folder that is no link either. */
+  private safeTarget(index: Index, file: string) {
+    let stat;
+    try { stat = lstatSync(file); } catch { throw conflict(); }
+    if (!stat.isFile() || stat.nlink !== 1) throw new VaultWriteError('Esta nota no se puede editar: es un enlace.');
+    const folder = dirname(file);
+    if (realpathSync(folder) !== folder || !(folder === index.vault.root || folder.startsWith(index.vault.root + sep))) throw new VaultWriteError('La carpeta de la nota es un enlace y no se escribe en ella.');
+    return stat;
+  }
+
+  private backup(backups: string, vaultId: string, noteId: string, bytes: Buffer) {
+    const folder = join(backups, vaultId);
+    mkdirSync(folder, { recursive: true, mode: 0o700 });
+    const name = `${noteId}.${new Date().toISOString().replace(/[-:]/g, '')}.bak`;
+    const handle = openSync(join(folder, name), 'wx', 0o600);
+    try { writeSync(handle, bytes); fsyncSync(handle); } finally { closeSync(handle); }
+    for (const old of readdirSync(folder).filter(file => file.startsWith(`${noteId}.`) && file.endsWith('.bak')).sort().slice(0, -keepBackups)) unlinkSync(join(folder, old));
   }
 
   /** A note as a chat document. Only called for an explicit user send; long notes are cut and marked. */

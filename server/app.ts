@@ -12,12 +12,12 @@ import { extractUpload, uploadSchema } from './document-extraction';
 import { HermesDiscovery } from './hermes-catalog';
 import { profileContext, ProfileContextError } from './profile-context';
 import { obsidianVaults } from './resource-discovery';
-import { VaultError } from './vault-notes';
+import { VaultError, VaultWriteError } from './vault-notes';
 import { BackgroundReads } from './background-reads';
 import { maskSecrets } from './secret-lines';
 import { backupMemories, ProfileEditError, saveProfileFile } from './profile-editor';
 
-export function createApp(options: { directory?: string; adapter?: Adapter; profileAdapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string } = {}) {
+export function createApp(options: { directory?: string; adapter?: Adapter; profileAdapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string; vaultBackups?: string } = {}) {
   const app = express();
   const store = new Conversations(options.directory || resolve('.agora/conversations'));
   const adapter = options.adapter || hermesReply;
@@ -80,6 +80,21 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
     try { res.json(await saveProfileFile(discovery, backups, req.params.id, name.data, body.data)); }
     catch (error) { res.status(error instanceof ProfileEditError ? error.status : 500).json({ error: error instanceof ProfileEditError ? error.message : 'No se pudo guardar el archivo en Hermes.' }); }
   });
+  // Editing the vault writes the user's real Obsidian notes (user's decision, 18/10/2026): CSRF-protected,
+  // revision-checked and backed up first; only notes found by a fresh walk of a registered vault.
+  const vaultBackups = options.vaultBackups || resolve('.agora/vault-backups');
+  const vaultWrite = (res: express.Response, error: unknown) => error instanceof VaultWriteError ? res.status(error.status).json({ error: error.message })
+    : res.status(error instanceof VaultError ? 404 : 500).json({ error: error instanceof VaultError ? error.message : 'No se pudo guardar la nota.' });
+  app.put('/api/hermes/vaults/:id/notes/:noteId', express.json({ limit: '384kb' }), async (req, res) => {
+    const body = z.object({ content: z.string().max(300_000), revision: z.string().regex(/^[a-f0-9]{64}$/), revealed: z.boolean().optional() }).strict().safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: 'Contenido no válido.' });
+    try { res.json(await reads.vaultSave(req.params.id, req.params.noteId, body.data, vaultBackups)); } catch (error) { vaultWrite(res, error); }
+  });
+  app.post('/api/hermes/vaults/:id/notes', express.json({ limit: '384kb' }), async (req, res) => {
+    const body = z.object({ folder: z.string().max(1000), title: z.string().max(200), content: z.string().max(300_000) }).strict().safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: 'Datos de la nota no válidos.' });
+    try { res.status(201).json(await reads.vaultCreate(req.params.id, body.data.folder, body.data.title, body.data.content)); } catch (error) { vaultWrite(res, error); }
+  });
   app.use(express.json({ limit: '16kb' }));
   app.get('/api/status', (_req, res) => res.json({ ...readiness(), csrf }));
   app.use('/api/hermes', (req, res, next) => {
@@ -91,7 +106,7 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
       res.json({ ...catalog, vaults: obsidian.vaults, warnings: [...catalog.warnings, ...obsidian.warnings] }); }
     catch { res.status(503).json({ error: 'No se pudo leer el catálogo de Hermes.' }); }
   });
-  // Obsidian notes: read-only, opaque IDs resolved against a fresh walk of the registered vault.
+  // Obsidian notes: opaque IDs resolved against a fresh walk of the registered vault (writes further below).
   app.get('/api/hermes/vaults/:id/notes', async (req, res) => {
     try { res.json(await reads.vaultList(req.params.id)); }
     catch { res.status(404).json({ error: 'Vault no disponible.' }); }

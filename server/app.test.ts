@@ -183,6 +183,14 @@ test('notas de Obsidian: exigen CSRF y no aceptan IDs fuera de un vault registra
     // Revealing hidden lines needs the CSRF header like any other local read.
     assert.equal((await f.request(`/api/hermes/profiles/profile-${"0".repeat(24)}?reveal=1`, undefined, { 'X-Agora-CSRF': '' })).status, 403);
     assert.equal((await f.request('/api/hermes/vaults/vault-x/notes/note-000000000000000000000000?reveal=1', undefined, { 'X-Agora-CSRF': '' })).status, 403);
+    // Writing notes: CSRF, strict body and only notes of a registered vault.
+    const note = '/api/hermes/vaults/vault-x/notes/note-000000000000000000000000', edit = { content: 'x', revision: 'a'.repeat(64) };
+    assert.equal((await f.request(note, edit, { 'X-Agora-CSRF': '' }, 'PUT')).status, 403);
+    assert.equal((await f.request(note, { ...edit, path: '/etc/passwd' }, {}, 'PUT')).status, 400);
+    assert.equal((await f.request(note, { ...edit, revision: 'corta' }, {}, 'PUT')).status, 400);
+    assert.equal((await f.request(note, edit, {}, 'PUT')).status, 404);
+    assert.equal((await f.request('/api/hermes/vaults/vault-x/notes', { folder: '', title: 'Nueva', content: 'x' }, { 'X-Agora-CSRF': '' })).status, 403);
+    assert.equal((await f.request('/api/hermes/vaults/vault-x/notes', { folder: '', title: 'Nueva', content: 'x' })).status, 404);
   } finally { await f.close(); }
 });
 

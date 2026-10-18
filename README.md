@@ -11,7 +11,7 @@ Todo se ejecuta en tu ordenador: el servidor escucha solo en `127.0.0.1`, las cr
 - **Edición de perfiles**: personalidad, recuerdos y lo que sabe de ti se editan desde la ficha y se guardan en el perfil real de Hermes, con copia previa y confirmación.
 - **Conversación** con Luma (sin herramientas) o con un perfil como su bot de Telegram: su modelo, sus herramientas, sus MCP y su memoria. Cada acción que cambie algo espera a que pulses «Permitir». A cualquiera se le puede adjuntar una nota o un documento.
 - **Biblioteca**: importación de TXT, Markdown, PDF y DOCX como copias privadas.
-- **Vault de Obsidian como librería**: recorre tus carpetas como estanterías y abre cada nota como un libro con formato, índice y enlaces internos; búsqueda en el contenido y consulta con Luma o con un perfil, en solo lectura.
+- **Vault de Obsidian como librería**: recorre tus carpetas como estanterías y abre cada nota como un libro con formato, índice y enlaces internos; búsqueda en el contenido y consulta con Luma o con un perfil, en solo lectura. Puedes editar notas y crear otras nuevas, con confirmación y copia previa.
 
 Los paseos y peatones son ambientales y no representan tareas reales.
 
