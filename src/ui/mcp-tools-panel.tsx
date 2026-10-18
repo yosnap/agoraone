@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { getMcpTools } from '../api/client';
 import type { McpTools } from '../../shared/hermes-catalog';
+import { McpCallForm } from './mcp-call-form';
 
-export function McpToolsPanel({ profileId, serverId }: { profileId: string; serverId: string }) {
+export function McpToolsPanel({ profileId, serverId, profileLabel, enabled = true }: { profileId: string; serverId: string; profileLabel: string; enabled?: boolean }) {
+  const [using, setUsing] = useState<string | null>(null);
   const [result, setResult] = useState<McpTools | null>(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
@@ -21,8 +23,11 @@ export function McpToolsPanel({ profileId, serverId }: { profileId: string; serv
         <p>{tools.length} de {result.tools.length} herramientas{result.truncated ? ' · listado limitado' : ''}</p>
         {tools.map((tool, index) => <details key={`${tool.name}-${index}`}><summary>{tool.name}</summary><p>{tool.description || 'Sin descripción guardada.'}</p>
           <h4>Parámetros</h4>{tool.parameters.length ? <ul>{tool.parameters.map((parameter, i) => <li key={i}><strong>{parameter.name}</strong> · {parameter.type} · {parameter.required ? 'obligatorio' : 'opcional'}</li>)}</ul> : <p>Sin parámetros declarados en el esquema guardado.</p>}
+          {!enabled ? <small>Servidor deshabilitado en Hermes para este perfil: no se puede usar.</small>
+            : using === tool.name ? <McpCallForm profileId={profileId} serverId={serverId} profileLabel={profileLabel} tool={tool}/>
+            : <button type="button" className="mcp-use" onClick={() => setUsing(tool.name)}>Usar esta herramienta</button>}
         </details>)}</>}
-      <small>Consulta de metadatos. No ejecuta herramientas ni conecta con el servicio.</small>
+      <small>El catálogo es el que guardó Hermes. «Usar esta herramienta» conecta con el servicio con las credenciales de {profileLabel} y solo ejecuta tras revisar los datos y pulsar «Ejecutar».</small>
     </>}
   </section>;
 }

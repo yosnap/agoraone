@@ -45,3 +45,14 @@
 .task-form textarea { min-height:70px;resize:vertical }
 .task-form div { display:flex;gap:6px }
 .task-done { font-size:11px;color:#3f5f3f;background:#e6f0df;border:1px solid #c9dcbd;border-radius:6px;padding:6px 8px }
+.mcp-use { border:1px solid #9fc3c8;background:#eef6f6;border-radius:7px;padding:7px 10px;font-size:11px;color:#1f4f55;margin:6px 0 }
+.mcp-call { display:flex;flex-direction:column;gap:7px;margin:8px 0;font-size:11px }
+.mcp-call label { display:flex;flex-direction:column;gap:3px }
+.mcp-call label small { color:#6c7d77 }
+.mcp-call input,.mcp-call select,.mcp-call textarea { border:1px solid #cbd6c9;border-radius:6px;padding:7px;background:#fffffa;font:inherit;font-size:12px }
+.mcp-call textarea { min-height:60px;font-family:ui-monospace,Menlo,monospace }
+.mcp-call > button { align-self:flex-start;border:1px solid #9fc3c8;background:#eef6f6;border-radius:7px;padding:7px 10px;color:#1f4f55 }
+.mcp-call pre { white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;background:#fffdf5;border:1px solid #e6d9b4;border-radius:6px;padding:8px;font-size:11px }
+.mcp-call .editor-confirm { background:#f3ecd8;border:1px solid #e1d3ae;border-radius:8px;padding:10px }
+.mcp-call .editor-confirm div { display:flex;gap:8px }
+.mcp-call .editor-confirm div button:not(.primary) { border:1px solid #cbd6c9;background:#f4f4ea;border-radius:7px;padding:7px 10px }

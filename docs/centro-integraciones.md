@@ -16,6 +16,7 @@ volver a los controles del interior.
 Se inspeccionó tools/mcp_schema_cache.py en Hermes instalado, commit 28aceb3451.
 Se lee cache/mcp_schema_cache.json del perfil seleccionado, sin importar ni
 ejecutar Hermes, MCP o herramientas. Nunca se usa la caché de otro perfil.
+Para ejecutar una herramienta a mano, ver «Usar una herramienta» al final.
 
 GET /api/hermes/profiles/:id/mcp/:serverId/tools exige el token local CSRF y
 resuelve IDs contra el registro y configuración actuales. Eliminación de un
@@ -56,3 +57,28 @@ el cuerpo conserva movimiento ambiental. Contraste de rótulos interiores mejora
 Estado y catálogo activos del gateway, actualización explícita de herramientas y
 ejecución con permisos específicos. El centro actual es de consulta; no habilita
 MCP en el chat. Mantener esta distinción al añadir actividad real al mundo.
+
+## Usar una herramienta a mano (0.16.0)
+Decisión del usuario (18/10/2026): desde la ficha de un MCP en el centro de integraciones se puede ejecutar una herramienta del catálogo guardado, con el perfil seleccionado.
+- **Formulario**:
+  - **Usar esta herramienta** abre un formulario generado a partir de su esquema: texto, números, sí o no, listas de opciones y JSON para listas y objetos.
+  - Se comprueban los obligatorios y los formatos antes de enviar nada.
+  - **Revisar antes de ejecutar** muestra el JSON exacto que se enviará y avisa de que se usarán las credenciales del perfil y de que puede cambiar cosas en el servicio. Solo **Ejecutar** lo lanza.
+- **Ejecución** (`server/hermes_mcp_call.py`, un proceso por llamada en su propio grupo):
+  - Retira del entorno las credenciales del perfil principal que carga Hermes al importarse y entra en el ámbito del perfil, así que solo usa su home y sus credenciales.
+  - Arranca únicamente ese servidor con la maquinaria MCP de Hermes, llama a la herramienta (90 s como máximo) y apaga el servidor. Si algo se cuelga, a los 120 s se cierra todo el grupo y se avisa de que no se sabe si la acción llegó a completarse.
+  - La confirmación en AgoraOne es la aprobación humana de esa llamada, así que la puerta de confianza de Hermes para servidores «no fiables» no vuelve a preguntar.
+  - Solo se admiten herramientas que estén en el catálogo guardado de ese servidor y perfil, con los parámetros que declaran (y todos los obligatorios), y una llamada a la vez por servidor. Nombres y parámetros se validan con un patrón estricto en vez de enmascararse, para enviarlos tal cual.
+  - Los servidores deshabilitados en Hermes no se pueden usar (409), y la ficha lo indica.
+  - Durante la llamada, el servidor no puede pedir al modelo del perfil que escriba por él (*sampling*) ni hacer preguntas al usuario (*elicitation*): ambas se desactivan en memoria solo para esa llamada, así que no hay gasto ni datos enviados al proveedor del perfil.
+  - Los fallos propios de Hermes (tiempo agotado con resultado incierto, servidor apartado tras varios fallos, sin conexión, inicio de sesión OAuth pendiente) se explican en castellano; solo los errores que devuelve el propio servicio se muestran marcados como tales.
+  - Al conectar, Hermes puede actualizar en el home del perfil su catálogo de herramientas (`cache/mcp_schema_cache.json`), sus registros y, si el servidor usa OAuth, la renovación de su token, igual que cuando lo usa el bot.
+- **Resultado**: hasta 50 000 caracteres, con las líneas que parecen claves ocultas. Los errores del propio servicio se muestran marcados como tales y pueden venir en inglés.
+- **Verificación**:
+  - `server/mcp-call.test.ts`: llamada real a través de Hermes con un perfil ficticio y un servidor MCP de eco local marcado como no fiable. Comprueba:
+    - el resultado, con la clave oculta;
+    - que el servidor no ve las credenciales del perfil principal;
+    - el rechazo de herramientas fuera del catálogo, servidores desconocidos o deshabilitados, y parámetros que faltan o sobran;
+    - que no quedan procesos.
+  - `server/app.test.ts`: CSRF y cuerpo estricto.
+  - `scripts/verify-mcp-call.mjs`: navegador con el catálogo y la llamada interceptados, sin conectar con ningún servicio.

@@ -17,6 +17,7 @@ import { BackgroundReads } from './background-reads';
 import { maskSecrets } from './secret-lines';
 import { backupMemories, ProfileEditError, saveProfileFile } from './profile-editor';
 import { jobDetail, manageCard, manageJob, ManageError } from './hermes-manage';
+import { callMcpTool, McpCallError } from './mcp-call';
 
 export function createApp(options: { directory?: string; adapter?: Adapter; profileAdapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string; vaultBackups?: string } = {}) {
   const app = express();
@@ -176,6 +177,13 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
   app.get('/api/hermes/profiles/:id/mcp/:serverId/tools', (req, res) => {
     try { res.json(discovery.mcpTools(req.params.id, req.params.serverId)); }
     catch { res.status(404).json({ error: 'Servidor MCP no disponible en este perfil.' }); }
+  });
+  // One MCP tool called by hand with the arguments the user confirmed (user's decision, 18/10/2026).
+  app.post('/api/hermes/profiles/:id/mcp/:serverId/tools/:tool/call', async (req, res) => {
+    const body = z.object({ args: z.record(z.string().max(200), z.unknown()) }).strict().safeParse(req.body);
+    if (!body.success || req.params.tool.length > 200) return res.status(400).json({ error: 'Argumentos no válidos.' });
+    try { res.json(await callMcpTool(discovery, req.params.id, req.params.serverId, req.params.tool, body.data.args)); }
+    catch (error) { res.status(error instanceof McpCallError ? error.status : 500).json({ error: error instanceof McpCallError ? error.message : 'No se pudo completar la llamada.' }); }
   });
   // Shared demonstration resource for local browser identities; no personal collections.
   app.get('/api/library/documents', (_req, res) => res.json({ resourceId: 'library-test', permissions: ['read'], documents: [
