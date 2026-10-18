@@ -13,8 +13,9 @@ import { obsidianVaults } from './resource-discovery';
 import { VaultError } from './vault-notes';
 import { BackgroundReads } from './background-reads';
 import { maskSecrets } from './secret-lines';
+import { ProfileEditError, saveProfileFile } from './profile-editor';
 
-export function createApp(options: { directory?: string; adapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads } = {}) {
+export function createApp(options: { directory?: string; adapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string } = {}) {
   const app = express();
   const store = new Conversations(options.directory || resolve('.agora/conversations'));
   const adapter = options.adapter || hermesReply;
@@ -31,6 +32,7 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
   };
   const csrf = randomBytes(32).toString('hex');
   const discovery = options.discovery || new HermesDiscovery();
+  const backups = options.backups || resolve('.agora/profile-backups');
   const busy = new Set<string>();
   const hosts = new Set(['127.0.0.1:4317', '127.0.0.1:5173']);
   const origins = new Set([...hosts].map(host => `http://${host}`));
@@ -61,6 +63,18 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     catch (error) { return res.status(400).json({ error: /\.(pdf|docx)$/i.test(parsed.data.name) && error instanceof Error ? error.message : 'Texto no válido. Usa UTF-8 y un máximo de 24 KiB.' }); }
     try { res.status(201).json(privateLibrary.import(extracted, res.locals.owner)); }
     catch { res.status(400).json({ error: 'No se pudo guardar la copia. Comprueba el límite de 100 documentos.' }); }
+  });
+  // Editing a profile writes its real Hermes files (user's decision, 18/10/2026): CSRF-protected like every
+  // mutation, with backup, conflict check and Hermes' memory lock in profile-editor.ts.
+  app.put('/api/hermes/profiles/:id/files/:name', express.json({ limit: '256kb' }), async (req, res) => {
+    const name = z.enum(['SOUL.md', 'MEMORY.md', 'USER.md']).safeParse(req.params.name);
+    const body = z.object({
+      content: z.string().max(70_000).optional(), entries: z.array(z.string().max(70_000)).max(500).optional(),
+      revision: z.string().regex(/^[a-f0-9]{24}$/).nullable(), revealed: z.boolean().optional(),
+    }).strict().safeParse(req.body);
+    if (!name.success || !body.success) return res.status(400).json({ error: 'Edición no válida.' });
+    try { res.json(await saveProfileFile(discovery, backups, req.params.id, name.data, body.data)); }
+    catch (error) { res.status(error instanceof ProfileEditError ? error.status : 500).json({ error: error instanceof ProfileEditError ? error.message : 'No se pudo guardar el archivo en Hermes.' }); }
   });
   app.use(express.json({ limit: '16kb' }));
   app.get('/api/status', (_req, res) => res.json({ ...readiness(), csrf }));

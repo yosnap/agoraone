@@ -20,7 +20,11 @@ async function request<T>(path: string, body?: unknown, method = body ? 'POST' :
 export async function getStatus() { const status = await request<Status>('/status'); csrf = status.csrf; return status; }
 export const getHermesCatalog = () => request<HermesCatalog>('/hermes/catalog');
 export const getHermesActivity = () => request<HermesActivity>('/hermes/activity');
-export const getHermesProfile = (id: string, reveal = false) => request<{ profile: HermesProfile; files: HermesFile[] }>(`/hermes/profiles/${encodeURIComponent(id)}${reveal ? '?reveal=1' : ''}`);
+export type ProfileLimits = Record<'MEMORY.md' | 'USER.md', number>;
+export const getHermesProfile = (id: string, reveal = false) => request<{ profile: HermesProfile; files: HermesFile[]; limits: ProfileLimits }>(`/hermes/profiles/${encodeURIComponent(id)}${reveal ? '?reveal=1' : ''}`);
+/** Writes a real Hermes identity file; `revision` is the version the user edited (null when the file is new). */
+export const saveProfileFile = (id: string, name: HermesFile['name'], edit: { content?: string; entries?: string[]; revision: string | null; revealed?: boolean }) =>
+  request<{ revision: string; backup: string | null }>(`/hermes/profiles/${encodeURIComponent(id)}/files/${encodeURIComponent(name)}`, edit, 'PUT');
 export type VaultNote = { id: string; title: string; folder: string; bytes: number; modifiedAt: string; readable: boolean };
 export type VaultListing = { vault: { id: string; name: string }; truncated: boolean; notes: VaultNote[] };
 export const listVaultNotes = (vaultId: string) => request<VaultListing>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes`);

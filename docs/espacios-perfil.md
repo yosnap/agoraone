@@ -1,8 +1,10 @@
 # Espacios de perfil
 
+La personalidad y la memoria se editan desde la ficha del perfil (docs/edicion-perfiles.md).
+
 Cada perfil Hermes tiene un interior propio al que se entra desde su ficha
-(«Entrar en el espacio de …»). Es de solo lectura: muestra datos reales del catálogo y
-abre los paneles existentes; no inicia el agente ni activa herramientas.
+(«Entrar en el espacio de …»). El espacio en sí no modifica nada: muestra datos reales del
+catálogo y abre los paneles existentes; no inicia el agente ni activa herramientas.
 
 ## Estaciones
 | Lugar | Dato real | Acción |

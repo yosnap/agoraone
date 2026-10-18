@@ -1,7 +1,9 @@
 # Estado de continuidad — 18/10/2026
 
 ## Resultado
-Versión 0.9.0 · Claves ocultas y voz de los perfiles: las líneas que parecen claves se ocultan enteras en la ficha de los perfiles y en las notas del vault, y nunca llegan al modelo; «Mostrar» las enseña solo bajo petición. Los perfiles hablan en primera persona de su personalidad y lo que saben, sin citar sus archivos; la ficha y el interior usan «Personalidad», «Lo que sabe de ti» y «Recuerdos». Siguiente: editar desde AgoraOne la personalidad y memoria reales de cada perfil (autorizado por el usuario el 18/10/2026, con copia de seguridad y confirmación) y después el vault como librería y mejores interiores.
+Versión 0.10.0 · Edición de perfiles: la ficha edita SOUL, MEMORY y USER reales de Hermes (decisión del usuario; AGENTS.md actualizado), con confirmación, copia previa, control de conflictos, bloqueo de memoria de Hermes, formato «§» y límites de caracteres. Ver docs/edicion-perfiles.md. Siguiente: el vault como librería por carpetas y mejores interiores.
+
+Versión 0.9.0 · Claves ocultas y voz de los perfiles: las líneas que parecen claves se ocultan enteras en la ficha de los perfiles y en las notas del vault, y nunca llegan al modelo; «Mostrar» las enseña solo bajo petición. Los perfiles hablan en primera persona de su personalidad y lo que saben, sin citar sus archivos; la ficha y el interior usan «Personalidad», «Lo que sabe de ti» y «Recuerdos». 
 
 Versión 0.8.0 · Adjuntos en los chats de perfil: «Consultar con» en la biblioteca y el vault deja elegir Luma o cualquier perfil; el perfil recibe su identidad y el documento como datos de solo lectura, con los mismos límites y permisos que Luma. Ver docs/conversaciones-perfiles.md.
 
@@ -80,7 +82,7 @@ Hermes no se actualizó ni se editaron sus fuentes/perfiles. Configuración priv
 - Se corrigió la prioridad visual de etiquetas 3D sobre controles. Si el navegador rechaza capturar el ratón, el recorrido conserva WASD y ofrece arrastrar para mirar; la automatización de Chromium en este Mac ejercitó esa alternativa.
 
 ## Implementado
-Ciudad dinámica basada en datos Hermes; selección y directorio accesible; vista orbital; primera persona exterior con WASD, ratón, límites y colisiones dimensionadas al catálogo; chat Luma y chat de identidades de perfiles en sesiones aisladas; errores visibles; conversaciones persistidas por identidad local, agente, perfil y contexto. Fichas de perfiles y espacios, SOUL/MEMORY/USER de solo lectura; relación explícita perfil/identidad/bot. Solo enviar un mensaje de perfil transmite su snapshot al proveedor.
+Ciudad dinámica basada en datos Hermes; selección y directorio accesible; vista orbital; primera persona exterior con WASD, ratón, límites y colisiones dimensionadas al catálogo; chat Luma y chat de identidades de perfiles en sesiones aisladas; errores visibles; conversaciones persistidas por identidad local, agente, perfil y contexto. Fichas de perfiles y espacios, SOUL/MEMORY/USER legibles y editables desde la ficha (docs/edicion-perfiles.md); relación explícita perfil/identidad/bot. Solo enviar un mensaje de perfil transmite su snapshot al proveedor.
 
 Biblioteca interior con estanterías interactivas, mesa, Luma y salida. Dos documentos ficticios en resources/library-test. Búsqueda por título, lectura, selección de documento para el chat, revisión SHA-256 visible en cada mensaje con fuente. Hermes conserva cero herramientas: recibe la instantánea leída por el backend. No búsqueda autónoma ni acceso general al disco.
 

@@ -34,3 +34,16 @@
 .consult-with select { width:100%;padding:10px;border:1px solid #b9c9c3;border-radius:7px;background:#f7f7ed;color:#294e43;font:inherit;font-size:12px }
 .hidden-lines { display:flex;align-items:center;gap:8px;justify-content:space-between }
 .hidden-lines button { border:1px solid #c9b98f;background:#fbf6e6;border-radius:6px;padding:5px 10px;font-size:11px;color:#5a4a22;flex:none }
+.profile-editor { display:flex;flex-direction:column;gap:8px;margin:8px 0 12px }
+.profile-editor textarea { width:100%;min-height:70px;resize:vertical;border:1px solid #cbd6c9;border-radius:8px;padding:10px;background:#fffffa;color:#214b44;font:inherit;font-size:12px;line-height:1.6 }
+.profile-editor .soul-editor { min-height:260px }
+.memory-card { display:flex;gap:6px;align-items:flex-start }
+.memory-card button, .editor-actions button:not(.primary), .editor-confirm button:not(.primary), .add-entry, .edit-file { border:1px solid #cbd6c9;background:#f4f4ea;border-radius:7px;padding:7px 10px;font-size:11px;color:#2f5247 }
+.add-entry { align-self:flex-start }
+.edit-file { margin:6px 0 10px }
+.editor-actions, .editor-confirm div { display:flex;gap:8px }
+.editor-confirm p { margin:0 0 8px }
+/* Editing a profile needs room: the side panel widens while an editor is open. */
+.detail-panel:has(.profile-editor) { width:min(760px, calc(100vw - 40px)) }
+.memory-card textarea { min-height:84px }
+.memory-card button { flex:none;white-space:nowrap }

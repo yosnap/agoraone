@@ -13,6 +13,8 @@ const markers = ['config.yaml', '.env', 'SOUL.md', 'profile.yaml', 'auth.json', 
 const namePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const colors = ['#81b8cf', '#aa9be0', '#8dbb98', '#d98f75', '#e7bd6a'];
 const digest = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 24);
+/** Revision of an identity file; the profile editor and its Python writer compute the same value. */
+export const fileRevision = digest;
 
 export class HermesDiscovery {
   private cached?: HermesCatalog;
@@ -38,7 +40,9 @@ export class HermesDiscovery {
         const content = new TextDecoder('utf-8', { fatal: true }).decode(data);
         if (!withContent) return { name, state: 'available', bytes: data.length, revision: digest(content) };
         const masked = maskSecrets(content);
-        return { name, state: 'available', bytes: data.length, revision: digest(content), content: reveal ? revealSecrets(content) : masked.text, hidden: masked.hidden.length };
+        return { name, state: 'available', bytes: data.length, revision: digest(content), content: reveal ? revealSecrets(content) : masked.text, hidden: masked.hidden.length,
+          // How many more characters the hidden lines take than their markers, so the editor counts like Hermes.
+          hiddenChars: reveal ? 0 : [...content].length - [...masked.text].length };
       } catch { return { name, state: existsSync(file) ? 'unavailable' : 'missing' }; }
     });
   }
@@ -47,7 +51,23 @@ export class HermesDiscovery {
     // Resolve against a fresh registry; removal/tombstoning revokes access immediately.
     const profile = this.scan(true).profiles.find(p => p.id === id);
     if (!profile) throw new Error('Unknown profile');
-    return { profile, files: this.files(root, this.profileHome(root, profile.name), true, reveal) };
+    const home = this.profileHome(root, profile.name);
+    return { profile, files: this.files(root, home, true, reveal), limits: this.memoryLimits(root, home) };
+  }
+  /** Hermes' own caps for MEMORY.md and USER.md (memory.*_char_limit in the profile's config.yaml). */
+  private memoryLimits(root: string, home: string) {
+    let memory: Record<string, unknown> = {};
+    try { memory = readMetadata(root, join(home, 'config.yaml')).memory ?? {}; } catch { /* Hermes defaults */ }
+    const limit = (value: unknown, fallback: number) => Number.isInteger(value) && (value as number) > 0 ? value as number : fallback;
+    return { 'MEMORY.md': limit(memory.memory_char_limit, 2200), 'USER.md': limit(memory.user_char_limit, 1375) };
+  }
+  /** Where one identity file of a profile lives, for the editor. The client only names the profile id and the file. */
+  editTarget(id: string, name: HermesFile['name']) {
+    const root = this.root();
+    const profile = this.scan(true).profiles.find(p => p.id === id);
+    if (!profile) throw new Error('Unknown profile');
+    const home = this.profileHome(root, profile.name);
+    return { root, path: name === 'SOUL.md' ? join(home, name) : join(home, 'memories', name), limit: name === 'SOUL.md' ? null : this.memoryLimits(root, home)[name], python: this.location.python };
   }
   /** Where to read activity from. Profiles come from the catalog; the client never names a path. */
   activityTargets() {
