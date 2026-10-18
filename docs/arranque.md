@@ -10,7 +10,7 @@ npm run check:hermes
 npm run dev
 ```
 
-Abrir http://127.0.0.1:5173 (usar esta dirección, no otra interfaz de red). Seleccionar Luma o Biblioteca, escribir y pulsar **Enviar a Hermes**. Configuración actual guardada en `.env` privado. `check:hermes` instancia el agente y comprueba cero herramientas sin pedir inferencia; no confirma la conexión al proveedor.
+Abrir el enlace de acceso que muestra la terminal (`http://127.0.0.1:5173/#acceso=…`) o ejecutar `npm run open` (usar esta dirección, no otra interfaz de red). El navegador canjea el token por una cookie y lo borra de la barra de direcciones; las siguientes veces basta con http://127.0.0.1:5173. Sin esa cookie la API responde 401 y la página explica cómo entrar. Seleccionar Luma o Biblioteca, escribir y pulsar **Enviar a Hermes**. Configuración actual guardada en `.env` privado. `check:hermes` instancia el agente y comprueba cero herramientas sin pedir inferencia; no confirma la conexión al proveedor.
 
 La ciudad detecta además los perfiles y espacios de tu Hermes y actualiza el catálogo automáticamente cada 30 s. Seleccionar un perfil permite leer su identidad/memoria; **Conversar con <nombre> → escribir → Enviar a Hermes** inicia una conversación aislada con esa identidad. El envío transmite SOUL/MEMORY/USER al proveedor de AgoraOne, sin herramientas ni escritura en memoria original; detalles en docs/conversaciones-perfiles.md. Luma sigue siendo la biblioteca de AgoraOne. Para datos en ubicación no estándar, definir AGORA_HERMES_HOME en el backend; para código/intérprete distintos, AGORA_HERMES_PATH/AGORA_HERMES_PYTHON. Ver docs/catalogo-hermes.md.
 

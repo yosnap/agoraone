@@ -18,7 +18,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-EXPECTED_COMMIT = "28aceb3451"
+# The exact Hermes commit these bridges were checked against, with no local changes to its tracked files.
+EXPECTED_COMMIT = "28aceb3451f5a5d2a27396b2adf29231be34c482"
 TEXT = 4000  # longest prompt, card body or comment accepted
 
 
@@ -159,7 +160,7 @@ def card(request, profile):
 def main(request):
     installation = Path(os.environ["AGORA_HERMES_PATH"]).resolve()
     revision = subprocess.check_output(["/usr/bin/git", "-C", str(installation), "rev-parse", "HEAD"], text=True).strip()
-    if not revision.startswith(EXPECTED_COMMIT):
+    if not (revision == EXPECTED_COMMIT and not subprocess.check_output(["/usr/bin/git", "-C", str(installation), "status", "--porcelain", "--untracked-files=no"], text=True).strip()):
         raise UserError("La versión de Hermes instalada no está verificada para AgoraOne.")
     sys.path.insert(0, str(installation))
     profile = request.get("profile")

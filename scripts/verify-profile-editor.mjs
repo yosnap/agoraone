@@ -1,6 +1,6 @@
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
-import { escape, target } from './verify-targets.mjs';
+import { escape, target, appUrl } from './verify-targets.mjs';
 
 // Profile editor in the browser, without touching the real Hermes profile: every save request is
 // intercepted and answered here, so nothing reaches the server or the profile's files.
@@ -18,7 +18,7 @@ try {
     saves.push({ url: route.request().url(), method: route.request().method(), body: route.request().postDataJSON() });
     return route.fulfill({ json: { revision: 'f'.repeat(24), backup: 'MEMORY.md.prueba.bak' } });
   });
-  await page.goto('http://127.0.0.1:5173');
+  await page.goto(appUrl());
   // Initial scene load only: headless Chromium renders WebGL in software (~2 fps), so allow it time.
   await page.locator('.directory').getByRole('button', { name: new RegExp(`Perfil · ${escape(profile)}`) }).click({ timeout: 120_000 });
   await page.getByRole('heading', { name: 'Personalidad y memoria' }).waitFor();

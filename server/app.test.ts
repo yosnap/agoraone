@@ -170,7 +170,7 @@ function fetchLocal(url: string, options: { method?: string; headers: Record<str
         for (const [key, value] of Object.entries(res.headers)) {
           if (value) headers.set(key, Array.isArray(value) ? value.join(';') : value);
         }
-        resolve(new Response(data, { status: res.statusCode, headers }));
+        resolve(new Response([204, 304].includes(res.statusCode!) ? null : data, { status: res.statusCode, headers }));
       });
     });
     req.on('error', reject); req.end(options.body);
@@ -303,21 +303,58 @@ test('tareas y kanban por HTTP: CSRF, cuerpo estricto y solo perfiles del catál
   } finally { await f.close(); }
 });
 
+test('acceso: sin el enlace privado nadie usa la API, ni con las cabeceras de la página', async () => {
+  const f = await fixture(async () => 'x');
+  try {
+    // A local process that forges Host and Origin but has no access cookie gets nothing, not even the CSRF token.
+    for (const path of ['/api/status', '/api/hermes/catalog', '/api/conversations/x'])
+      assert.equal((await f.request(path, undefined, { Cookie: '' })).status, 401, path);
+    assert.equal((await f.request('/api/hermes/vaults/v/notes/n', { content: 'x', revision: 'a'.repeat(64) }, { Cookie: '' }, 'PUT')).status, 401);
+    // The token itself is required to get in; a wrong one or a request without Origin is refused.
+    assert.equal((await f.request('/api/session', { token: 'd'.repeat(64) }, { Cookie: '' })).status, 403);
+    assert.equal((await f.request('/api/session', { token: testToken }, { Cookie: '', Origin: '' })).status, 403);
+    const entered = await f.request('/api/session', { token: testToken }, { Cookie: '' });
+    assert.equal(entered.status, 204);
+    assert.match(entered.headers.get('set-cookie') ?? '', /agora_access=[a-f0-9]{64}.*HttpOnly.*SameSite=Strict/i);
+    assert.doesNotMatch(entered.headers.get('set-cookie') ?? '', new RegExp(testToken), 'la cookie no lleva el token');
+    assert.equal((await f.request('/api/status')).status, 200);
+  } finally { await f.close(); }
+});
+
+test('ninguna otra web puede incrustar AgoraOne en un marco (clickjacking)', async () => {
+  const f = await fixture(async () => 'x');
+  try {
+    for (const path of ['/api/status', '/api/hermes/catalog', '/']) {
+      const response = await f.request(path);
+      assert.equal(response.headers.get('x-frame-options'), 'DENY', path);
+      assert.match(response.headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/, path);
+    }
+  } finally { await f.close(); }
+});
+
+const testToken = 'c'.repeat(64);
+
 async function fixture(adapter: Adapter, libraryRoot?: string, discovery?: HermesDiscovery, obsidianRegistry: string | null = null) {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'agora-test-')));
   const reads = new BackgroundReads(obsidianRegistry);
-  const server = createApp({ directory, adapter, libraryRoot, privateLibraryRoot: join(directory, 'library'), discovery, obsidianRegistry, reads }).listen(0, '127.0.0.1');
+  const server = createApp({ directory, adapter, libraryRoot, privateLibraryRoot: join(directory, 'library'), discovery, obsidianRegistry, reads, accessToken: testToken }).listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('No port');
   const url = `http://127.0.0.1:${address.port}`;
   const headers = { Host: '127.0.0.1:4317' };
-  const status = await fetchLocal(`${url}/api/status`, { headers });
-  const cookie = status.headers.get('set-cookie')!.split(';')[0];
+  // Like the browser: the access link first, then the page's status with both cookies.
+  const body = JSON.stringify({ token: testToken });
+  const session = await fetchLocal(`${url}/api/session`, { method: 'POST', headers: { ...headers, Origin: 'http://127.0.0.1:4317', 'Content-Type': 'application/json' }, body });
+  const access = session.headers.get('set-cookie')!.split(';')[0];
+  const status = await fetchLocal(`${url}/api/status`, { headers: { ...headers, Cookie: access } });
+  const cookie = `${access}; ${status.headers.get('set-cookie')!.split(';')[0]}`;
   const { csrf } = await status.json();
+  // Another browser identity (agora_user) still holds AgoraOne's access cookie; Cookie: '' means none at all.
+  const cookies = (extra: Record<string, string>) => extra.Cookie === undefined ? cookie : extra.Cookie === '' || extra.Cookie.includes('agora_access') ? extra.Cookie : `${access}; ${extra.Cookie}`;
   const request = (path: string, body?: unknown, extra: Record<string, string> = {}, method = body ? 'POST' : 'GET') => fetchLocal(`${url}${path}`, {
-    method, headers: { ...headers, Cookie: cookie,
-      Origin: 'http://127.0.0.1:4317', 'X-Agora-CSRF': csrf, 'Content-Type': 'application/json', ...extra },
+    method, headers: { ...headers,
+      Origin: 'http://127.0.0.1:4317', 'X-Agora-CSRF': csrf, 'Content-Type': 'application/json', ...extra, Cookie: cookies(extra) },
     body: body ? JSON.stringify(body) : undefined,
   });
   return { request, async close() { await reads.close(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); rmSync(directory, { recursive: true }); } };

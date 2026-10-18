@@ -12,7 +12,7 @@ import { createInterface } from 'node:readline';
 const installation = join(homedir(), '.hermes/hermes-agent');
 const python = join(installation, 'venv/bin/python');
 
-function fakeModel(work: string) {
+function fakeModel(work: string, home: string) {
   return createServer((req, res) => {
     let body = '';
     req.on('data', chunk => { body += chunk; }).on('end', () => {
@@ -20,6 +20,8 @@ function fakeModel(work: string) {
       const user = String([...messages].reverse().find((m: { role: string }) => m.role === 'user')?.content ?? '');
       const call = (name: string, args: object) => ({ role: 'assistant', content: null, tool_calls: [{ id: `call_${name}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }] });
       const message = last.role === 'tool' ? { role: 'assistant', content: `Resultado: ${String(last.content).slice(0, 200)}` }
+        : user.includes('otro perfil') ? call('read_file', { path: join(home, '.hermes/profiles/otro/auth.json') })
+        : user.includes('clave privada') ? call('read_file', { path: join(home, '.ssh/id_prueba') })
         : user.includes('programa') ? call('terminal', { command: 'sleep 1', background: true })
         : user.includes('clave') ? call('write_file', { path: join(work, 'script.sh'), content: "export API_KEY='sk-proj-AbCdEf0123456789AbCdEf0123456789'\nrm -rf ~/Documentos" })
         : user.includes('escribe') ? call('write_file', { path: join(work, 'salida.txt'), content: 'hola' })
@@ -40,12 +42,15 @@ test('perfil con herramientas: lee sin preguntar y solo escribe si el usuario lo
     const work = join(base, 'work'), home = join(base, 'home'), profile = join(home, '.hermes/profiles/prueba');
     mkdirSync(work); mkdirSync(join(profile, 'memories'), { recursive: true });
     writeFileSync(join(work, 'nota.txt'), 'texto de la nota');
-    const model = fakeModel(work).listen(0, '127.0.0.1');
+    const model = fakeModel(work, home).listen(0, '127.0.0.1');
     await new Promise<void>(done => model.once('listening', done));
     const address = model.address();
     if (!address || typeof address === 'string') throw new Error('sin puerto');
     writeFileSync(join(profile, 'config.yaml'), `model:\n  provider: custom\n  base_url: http://127.0.0.1:${address.port}/v1\n  default: fake\n  api_key: not-a-real-key\nplatform_toolsets:\n  telegram: [file, terminal]\napprovals:\n  mode: "off"\n`);
     writeFileSync(join(profile, 'SOUL.md'), 'Soy un perfil de prueba.');
+    mkdirSync(join(home, '.hermes/profiles/otro'), { recursive: true }); mkdirSync(join(home, '.ssh'));
+    writeFileSync(join(home, '.hermes/profiles/otro/auth.json'), '{"token": "CANARY_OTHER_PROFILE"}');
+    writeFileSync(join(home, '.ssh/id_prueba'), 'CANARY_PRIVATE_KEY');
     const child = spawn(python, [resolve('server/hermes_agent_bridge.py')], { cwd: work, stdio: ['pipe', 'pipe', 'pipe'], env: {
       PATH: '/usr/bin:/bin:/usr/sbin:/sbin', HOME: home, HERMES_HOME: join(home, '.hermes'), AGORA_HERMES_PATH: installation, PYTHONDONTWRITEBYTECODE: '1' } });
     child.stderr.resume();
@@ -87,6 +92,16 @@ test('perfil con herramientas: lee sin preguntar y solo escribe si el usuario lo
       assert.doesNotMatch(String(card?.args), /AbCdEf0123456789AbCdEf/, 'solo se oculta el fragmento con aspecto de clave');
       assert.equal(card?.redacted, true); assert.equal(hidden.ok, true);
       assert.equal(existsSync(join(work, 'script.sh')), false);
+
+      // Another profile's credentials: blocked outright, without a card that could be allowed.
+      const other = await turn('lee el otro perfil');
+      assert.equal(other.ok, true); assert.doesNotMatch(String(other.reply), /CANARY_OTHER_PROFILE/);
+      assert.ok(!events.some(event => event.type === 'approval'), 'no se puede ni permitir');
+      // The user's own credentials (private keys and the like) are read only after «Permitir».
+      answer = 'deny';
+      const key = await turn('lee mi clave privada');
+      assert.equal(events.find(event => event.type === 'approval')?.tool, 'read_file');
+      assert.doesNotMatch(String(key.reply), /CANARY_PRIVATE_KEY/);
 
       const lasting = await turn('programa un trabajo en segundo plano');
       assert.equal(lasting.ok, true); assert.match(String(lasting.reply), /segundo plano/);

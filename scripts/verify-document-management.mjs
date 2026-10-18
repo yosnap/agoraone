@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { appUrl } from './verify-targets.mjs';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 
@@ -8,7 +9,7 @@ try {
   const errors = []; let inference = 0;
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/messages')) inference++; });
-  await page.goto('http://127.0.0.1:4317');
+  await page.goto(appUrl(4317));
   // Initial scene load only: headless Chromium renders WebGL in software (~2 fps), so allow it time.
   await page.getByRole('button', { name: 'Luma', exact: true }).click({ timeout: 120_000 });
   await page.getByRole('button', { name: 'Documentos', exact: true }).click();

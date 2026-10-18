@@ -18,9 +18,12 @@ import { maskSecrets } from './secret-lines';
 import { backupMemories, ProfileEditError, saveProfileFile } from './profile-editor';
 import { jobDetail, manageCard, manageJob, ManageError } from './hermes-manage';
 import { callMcpTool, McpCallError } from './mcp-call';
+import { accessCookie, accessProof, loadAccessToken, sameSecret } from './access-token';
 
-export function createApp(options: { directory?: string; adapter?: Adapter; profileAdapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string; vaultBackups?: string } = {}) {
+export function createApp(options: { directory?: string; adapter?: Adapter; profileAdapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string; vaultBackups?: string; accessToken?: string } = {}) {
   const app = express();
+  // No other site may frame AgoraOne (clickjacking): neither the page nor the API.
+  app.use((_req, res, next) => { res.setHeader('X-Frame-Options', 'DENY'); res.setHeader('Content-Security-Policy', "frame-ancestors 'none'"); next(); });
   const store = new Conversations(options.directory || resolve('.agora/conversations'));
   const adapter = options.adapter || hermesReply;
   // Profiles run their own agent with tools; tests that inject one adapter use it for both.
@@ -37,6 +40,7 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
     return { ...document, content: maskSecrets(document.content).text };
   };
   const csrf = randomBytes(32).toString('hex');
+  const proof = accessProof(options.accessToken ?? loadAccessToken());
   const discovery = options.discovery || new HermesDiscovery();
   const backups = options.backups || resolve('.agora/profile-backups');
   const busy = new Set<string>(), stopped = new Set<string>();
@@ -49,6 +53,11 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
     if (origin && !origins.has(origin)) return res.status(403).json({ error: 'Origen no permitido.' });
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // The browser proves once that it holds the access token (see server/access-token.ts).
+    if (req.path === '/api/session' && req.method === 'POST') return next();
+    const cookieProof = req.headers.cookie?.match(new RegExp(`(?:^|;\\s*)${accessCookie}=([a-f0-9]{64})(?:;|$)`))?.[1];
+    if (req.path.startsWith('/api') && !sameSecret(cookieProof, proof))
+      return res.status(401).json({ error: 'Abre AgoraOne con el enlace de acceso: lo muestra «npm run dev» al arrancar, o usa «npm run open».' });
     if (req.path.startsWith('/api') && req.method !== 'GET' &&
       (!origin || req.headers['x-agora-csrf'] !== csrf)) {
       return res.status(403).json({ error: 'Sesión de navegador no válida. Recarga la página.' });
@@ -60,6 +69,13 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
     }
     res.locals.owner = createHash('sha256').update(token).digest('hex');
     next();
+  });
+  app.post('/api/session', express.json({ limit: '1kb' }), (req, res) => {
+    const token = typeof req.body?.token === 'string' ? req.body.token : undefined;
+    // Only from AgoraOne's own page (Origin is checked above and required here) and with the exact token.
+    if (!req.headers.origin || !token || !sameSecret(accessProof(token), proof)) return res.status(403).json({ error: 'Enlace de acceso no válido.' });
+    res.cookie(accessCookie, proof, { httpOnly: true, sameSite: 'strict', path: '/', maxAge: 365 * 86400_000 });
+    res.status(204).end();
   });
   app.post('/api/library/imports', express.json({ limit: '7mb' }), async (req, res) => {
     const parsed = uploadSchema.safeParse(req.body);
@@ -246,13 +262,15 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
       const reply = await (profile ? profileAdapter : adapter)({ sessionId: data.hermesSessionId, message: parsed.data.message, history: data.messages, document, profile }, progress);
       const sources = document ? [{ id: document.id, title: document.title, revision: document.revision }] : undefined;
       const identity = profile ? { profileId: profile.id, files: profile.files.map(({ name, revision }) => ({ name, revision })) } : undefined;
-      data.messages.push({ role: 'user', content: parsed.data.message, ...(sources ? { sources } : {}), ...(identity ? { identity } : {}) }, { role: 'assistant', content: reply, ...(used.size ? { tools: [...used].slice(0, 30) } : {}) });
+      data.messages.push({ role: 'user', content: parsed.data.message, ...(sources ? { sources } : {}), ...(identity ? { identity } : {}) }, { role: 'assistant', content: maskSecrets(reply).text, ...(used.size ? { tools: [...used].slice(0, 30) } : {}) });
       store.save(data);
       const result = { id: data.id, messages: data.messages, profileId: data.profileId, source: 'hermes' };
       if (streaming) { emit({ type: 'done', conversation: result }); res.end(); }
       else res.json(result);
     } catch (error) {
-      const reason = error instanceof Error ? error.message : 'No se pudo conversar con Hermes.';
+      // Only messages written for the user are shown; anything else (e.g. a file-system error with a path) is generic.
+      const known = error instanceof LibraryError || error instanceof VaultError || error instanceof ProfileContextError || (error instanceof Error && !/\/|\\|ENOENT|EACCES|EPERM|errno/i.test(error.message));
+      const reason = known && error instanceof Error ? error.message : 'No se pudo conversar con Hermes.';
       // Tools that already ran are not undone by a failed turn: say which, so a retry does not repeat them blindly.
       const message = stopped.has(data.id) ? `Turno detenido.${used.size ? ` Antes de detenerlo usó: ${[...used].join(', ')}.` : ''}`
         : used.size ? `El turno no terminó, pero antes usó: ${[...used].join(', ')}. Revisa el resultado antes de reintentar.` : reason;

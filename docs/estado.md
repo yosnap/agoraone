@@ -1,6 +1,8 @@
 # Estado de continuidad — 18/10/2026
 
 ## Resultado
+Versión 0.18.0 · Auditoría de seguridad completa (informe en plans/reports/security-261018-2245-auditoria-completa.md): sin hallazgos críticos; corregidos los dos altos (acceso sin autenticación desde otros procesos locales, ahora con enlace privado y cookie; y lectura de credenciales de otros perfiles por los bots, ahora bloqueada) y los medios (clickjacking, ReDoS al ocultar claves, gancho de aprobación perdible, «Detener» al arrancar, tarjeta que podía ocultar la orden), además de varios bajos. Para entrar: el enlace que muestra `npm run dev` o `npm run open`.
+
 Versión 0.17.0 · Editor visual: las notas del vault, la personalidad (SOUL) y las instrucciones de tareas y tarjetas se editan con una vista en vivo como la de Obsidian (CodeMirror 6): formato visible al escribir, marcas solo en la línea del cursor, barra de botones, atajos y autocompletado de [[enlaces]]; el archivo se guarda exactamente como se escribe. Ver docs/vault-obsidian.md.
 
 Versión 0.16.0 · Usar MCP a mano: en la ficha de un MCP del centro de integraciones, «Usar esta herramienta» genera un formulario desde su esquema, muestra el JSON exacto y lo ejecuta tras «Ejecutar», con las credenciales del perfil elegido y apagando el servidor después. Completa el orden acordado tras salir del modo lectura (bots con herramientas, vault editable, tareas y kanban, MCP a mano). Ver docs/centro-integraciones.md.

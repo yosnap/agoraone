@@ -1,4 +1,5 @@
 import { chromium } from '@playwright/test';
+import { appUrl } from './verify-targets.mjs';
 import assert from 'node:assert/strict';
 
 // Editing and creating Obsidian notes in the browser without touching the real vault: the listing, the
@@ -33,7 +34,7 @@ try {
     if (noteId) return route.fulfill({ json: { ...notes.find(note => note.id === noteId), content: content[noteId], revision: 'a'.repeat(64), hidden: 0 } });
     return route.fulfill({ json: { vault: { id: vault, name: 'Vault de prueba' }, truncated: false, notes } });
   });
-  await page.goto('http://127.0.0.1:5173');
+  await page.goto(appUrl());
   // Initial scene load only: headless Chromium renders WebGL in software, so allow it time.
   await page.locator('.directory').getByRole('button', { name: /^Obsidian · / }).first().click({ timeout: 120_000 });
   await page.locator('.vault-shelves button').filter({ hasText: 'Proyectos' }).click();

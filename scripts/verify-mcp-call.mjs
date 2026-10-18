@@ -1,6 +1,6 @@
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
-import { escape, target } from './verify-targets.mjs';
+import { escape, target, appUrl } from './verify-targets.mjs';
 
 // Calling an MCP tool by hand without reaching any service: the tool catalogue is answered with one
 // fictitious tool and the call itself is intercepted and recorded here, so nothing connects or runs.
@@ -19,7 +19,7 @@ try {
     calls.push({ url: route.request().url(), body: route.request().postDataJSON() });
     return route.fulfill({ json: { result: 'hola hola', hidden: 1, truncated: false } });
   });
-  await page.goto('http://127.0.0.1:5173');
+  await page.goto(appUrl());
   // Initial scene load only: headless Chromium renders WebGL in software, so allow it time.
   await page.locator('.directory').getByRole('button', { name: /Centro de integraciones/ }).click({ timeout: 120_000 });
   await page.getByRole('button', { name: 'Entrar al centro de integraciones' }).click();

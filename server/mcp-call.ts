@@ -26,7 +26,7 @@ export async function callMcpTool(discovery: HermesDiscovery, profileId: string,
   // Only the parameters the tool declares, and all of its required ones.
   const unknown = Object.keys(args).filter(key => !entry.parameters.some(parameter => parameter.name === key));
   if (unknown.length) throw new McpCallError(`La herramienta no tiene ${unknown.length === 1 ? 'el parámetro' : 'los parámetros'} ${unknown.map(key => `«${key}»`).join(', ')}.`);
-  const missing = entry.parameters.filter(parameter => parameter.required && !(parameter.name in args));
+  const missing = entry.parameters.filter(parameter => parameter.required && !Object.hasOwn(args, parameter.name));
   if (missing.length) throw new McpCallError(`Falta ${missing.map(parameter => `«${parameter.name}»`).join(', ')}, que es obligatorio.`);
   const key = `${profileId}:${serverId}`;
   if (running.has(key)) throw new McpCallError('Ya hay una llamada en curso a este servidor. Espera a que termine.', 409);
@@ -52,7 +52,8 @@ export async function callMcpTool(discovery: HermesDiscovery, profileId: string,
       });
       child.stdin.end(JSON.stringify({ profile: target.profile, server: target.server, tool, args }));
     });
-    if (data.ok !== true) throw new McpCallError(typeof data.error === 'string' ? data.error : 'La llamada falló.', 502);
+    // The service's own error text is shown masked, like its results.
+    if (data.ok !== true) throw new McpCallError(typeof data.error === 'string' ? maskSecrets(data.error).text : 'La llamada falló.', 502);
     // The answer is shown to the user only; lines that look like credentials stay hidden, as everywhere else.
     const masked = maskSecrets(String(data.result ?? ''));
     return { result: masked.text, hidden: masked.hidden.length, truncated: data.truncated === true };

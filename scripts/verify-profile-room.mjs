@@ -1,5 +1,5 @@
 import { chromium } from '@playwright/test';
-import { escape, target } from './verify-targets.mjs';
+import { escape, target, appUrl } from './verify-targets.mjs';
 const profile = target('profile');
 // Profile spaces: enter, open chat from the desk, MCP screen to integrations centre, exit. No inference.
 import assert from 'node:assert/strict';
@@ -8,8 +8,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   const page = await browser.newPage({ viewport });
   const errors = [], posts = [];
   page.on('pageerror', e => errors.push(e.message));
-  page.on('request', r => { if (r.method() !== 'GET') posts.push(r.url()); });
-  await page.goto('http://127.0.0.1:5173');
+  page.on('request', r => { if (r.method() !== 'GET' && !r.url().endsWith('/api/session')) posts.push(r.url()); });
+  await page.goto(appUrl());
   await page.getByRole('button', { name: new RegExp(`Perfil · ${escape(profile)}`) }).first().click();
   await page.getByRole('button', { name: new RegExp(`Entrar en el espacio de ${escape(profile)}`) }).click();
   await page.getByText(`04 / ESPACIO DE ${profile.toUpperCase()}`).waitFor();

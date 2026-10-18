@@ -58,3 +58,6 @@
 .mcp-call .editor-confirm div button:not(.primary) { border:1px solid #cbd6c9;background:#f4f4ea;border-radius:7px;padding:7px 10px }
 .task-field { display:flex;flex-direction:column;gap:3px }
 .md-loading { font-size:11px;color:#7a6c55;padding:8px }
+.access-lock { position:absolute;inset:0;margin:auto;width:min(520px,calc(100vw - 32px));height:fit-content;z-index:50;background:#f9f8f0;border:1px solid #e1d3ae;border-radius:16px;padding:26px;box-shadow:0 20px 60px #193f4044;font-size:13px;line-height:1.6;color:#244b40 }
+.access-lock h2 { font:500 24px Manrope,sans-serif;margin:0 0 8px }
+.access-lock code { background:#efe6cf;border-radius:4px;padding:1px 5px }

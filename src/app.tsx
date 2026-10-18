@@ -1,6 +1,6 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { catalogPlaces, servicePlaces } from './data/city';
-import { getStatus, getHermesCatalog, type Status, type DocumentSource } from './api/client';
+import { ApiError, getStatus, getHermesCatalog, type Status, type DocumentSource } from './api/client';
 import { LibraryPanel } from './ui/library-panel';
 import { HermesPanel, type ProfileTab } from './ui/hermes-panel';
 import { sceneCopy } from './ui/scene-copy';
@@ -53,7 +53,8 @@ export default function App() {
   // The note opened as a book, with the vault it belongs to.
   const [book, setBook] = useState<{ vault: string; note: string; edit?: boolean } | null>(null);
   const [walkHint, setWalkHint] = useState('Entrar al recorrido · WASD / ratón · Esc para salir');
-  useEffect(() => { getStatus().then(setStatus).catch(() => setStatus({ state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con npm run dev.' })); }, []);
+  useEffect(() => { getStatus().then(setStatus).catch(error => setStatus(error instanceof ApiError && error.status === 401
+    ? { state: 'locked', csrf: '', detail: error.message } : { state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con npm run dev.' })); }, []);
   useEffect(() => {
     if (!status?.csrf) return;
     let live = true;
@@ -140,6 +141,11 @@ export default function App() {
     </aside>}
     {bookOpen && book && vault.listing && <VaultBook vaultId={book.vault} vaultName={vault.listing.vault.name} noteId={book.note} notes={vault.listing.notes}
       onOpen={turnPage} onClose={closeBook} targets={consultTargets} onConsult={consult} onChanged={vault.reload} startEditing={book.edit}/>}
+    {status?.state === 'locked' && <section className="access-lock" role="alertdialog" aria-label="Acceso a AgoraOne">
+      <h2>Falta el enlace de acceso</h2>
+      <p>Para que ninguna otra app ni otro usuario de este ordenador pueda usar AgoraOne con tus credenciales, la primera vez hay que entrar con un enlace privado. Después este navegador lo recuerda.</p>
+      <p>Ábrelo desde la terminal: <code>npm run dev</code> lo muestra al arrancar («Abre AgoraOne con este enlace…»), o ejecuta <code>npm run open</code>.</p>
+    </section>}
     <footer className="statusbar"><span>● {connected ? 'Hermes conectado · respuesta real recibida' : status?.state === 'configured' ? 'Hermes configurado · respuesta por verificar' : 'Hermes pendiente de conexión'}</span><span role="status" title="Dato real leído del estado del gateway de Hermes cada 15 s">◉ {hermesActivity.error ? 'Gateway Hermes · no se pudo leer su estado' : gatewaySummary(hermesActivity.activity)}</span><span>Paseos y peatones: ambiente, no tareas reales · sin llamadas a modelos</span></footer>
   </main>;
 }

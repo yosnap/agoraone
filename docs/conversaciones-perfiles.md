@@ -10,7 +10,10 @@ Decisión del usuario (18/10/2026): el chat de un perfil usa su propio agente, c
   - AgoraOne no le pasa credenciales propias: gasta del proveedor del perfil, igual que Telegram.
 - **Confirmación por acción** (decisiones del usuario del 18/10/2026):
   - Un gancho `pre_tool_call`, activo durante toda la vida del proceso, decide qué hacer con cada llamada:
-    - Sin preguntar solo van las herramientas que leen datos locales: `read_file`, `search_files`, skills, `session_search`, consultas de Home Assistant, `kanban_show`, `kanban_list` y `clarify`.
+    - Sin preguntar solo van las herramientas que leen datos locales: `read_file`, `search_files`, skills, `session_search`, `kanban_show`, `kanban_list` y `clarify`. Home Assistant pide permiso (es red).
+    - Lectura de archivos (0.18.0): lo de **otros perfiles**, los datos privados de AgoraOne (`.agora`) y las búsquedas que abarcarían esas zonas se bloquean sin tarjeta; las **credenciales del usuario** (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.config/gh`, `.netrc`, `.docker`, `.kube`, Llaveros, `.env*`, `*.pem`, `*.key`, `id_*`, `auth.json`) piden «Permitir». El puente trabaja desde el home del propio perfil.
+    - En `terminal`, `execute_code`, MCP y órdenes peligrosas, «Permitir» se desactiva si parte de los datos está oculta o recortada: no se aprueba a ciegas.
+    - El bot tampoco crea tarjetas del kanban ni deja procesos con `nohup`, `setsid`, `disown` o `&` final; los servidores MCP del chat no pueden pedir textos al modelo del perfil (*sampling* desactivado). Las respuestas se guardan con las líneas con aspecto de clave ocultas.
     - Todo lo que sale a la red (webs, búsquedas, navegador, análisis de imágenes por URL) pide permiso, porque podría enviar fuera lo leído. También lo pide todo lo que cambia algo, todo MCP y cualquier herramienta desconocida.
     - Fuera de un turno, el gancho lo bloquea todo.
   - **Trabajo que seguiría vivo** sin volver a preguntar se bloquea siempre, sin tarjeta: las tareas programadas (`cronjob_manage`) y el `terminal` en segundo plano. El bot sugiere hacerlo desde Telegram o desde la gestión de tareas. Las delegaciones (`delegate_task`) piden permiso y se ejecutan dentro del turno (`async_delivery=False`); sus subagentes pasan por la misma puerta.

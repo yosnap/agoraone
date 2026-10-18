@@ -29,7 +29,7 @@ npm ci
 npm run dev
 ```
 
-Abre http://127.0.0.1:5173. Más detalle en [docs/arranque.md](docs/arranque.md); arquitectura en [docs/arquitectura.md](docs/arquitectura.md).
+Abre el enlace privado que muestra la terminal al arrancar («Abre AgoraOne con este enlace…»), o ejecuta `npm run open`. Solo hace falta la primera vez en cada navegador: el enlace lleva un token de acceso guardado en `.agora/access-token` (solo legible por tu usuario), para que ninguna otra app, usuario o contenedor de tu equipo pueda usar AgoraOne con tus credenciales. Más detalle en [docs/arranque.md](docs/arranque.md); arquitectura en [docs/arquitectura.md](docs/arquitectura.md).
 
 ## Pruebas
 ```sh

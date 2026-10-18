@@ -1,5 +1,5 @@
 import { chromium } from '@playwright/test';
-import { escape, target } from './verify-targets.mjs';
+import { escape, target, appUrl } from './verify-targets.mjs';
 const profile = target('profile');
 // Real Hermes activity: status bar, profile card section and room boards. Read-only, no inference.
 import assert from 'node:assert/strict';
@@ -9,8 +9,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   const page = await browser.newPage({ viewport });
   const errors = [], posts = [];
   page.on('pageerror', e => errors.push(e.message));
-  page.on('request', r => { if (r.method() !== 'GET') posts.push(r.url()); });
-  await page.goto('http://127.0.0.1:5173');
+  page.on('request', r => { if (r.method() !== 'GET' && !r.url().endsWith('/api/session')) posts.push(r.url()); });
+  await page.goto(appUrl());
   await page.getByText(/Gateway Hermes · (en marcha|detenido|sin datos|sin estado)/).waitFor({ timeout: 120_000 });
   if (shots) { await page.waitForTimeout(8000); await page.screenshot({ path: `${shots}/city-${viewport.width}.png` }); }
   await page.getByRole('button', { name: /Registro/ }).click();
@@ -54,7 +54,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     if (data.profiles[profileId]) data.profiles[profileId].lastActivityAt = new Date().toISOString();
     await route.fulfill({ response, json: data });
   });
-  await page.goto('http://127.0.0.1:5173');
+  await page.goto(appUrl());
   await page.locator('.character-label', { hasText: /actividad registrada$/ }).first().waitFor({ state: 'attached', timeout: 120_000 });
   if (shots) { await page.waitForTimeout(8000); await page.screenshot({ path: `${shots}/working-city.png` }); }
   await page.getByRole('button', { name: new RegExp(`Perfil · ${escape(profile)}`) }).first().click();
