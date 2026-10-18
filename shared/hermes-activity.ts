@@ -1,7 +1,7 @@
 // Real Hermes activity, read-only metadata. Never message content, prompts, chat IDs or session titles.
 export type PlatformLink = { name: string; state: 'connected' | 'retrying' | 'attention' | 'disconnected' | 'unknown'; updatedAt: string | null };
 export type ScheduledJob = {
-  name: string; enabled: boolean; state: string; schedule: string;
+  id: string | null; name: string; enabled: boolean; state: string; schedule: string;
   lastStatus: string | null; lastRunAt: string | null; nextRunAt: string | null;
 };
 export type ToolUse = { name: string; calls: number; lastUsedAt: string | null };
@@ -20,7 +20,7 @@ export type ProfileActivity = {
   recent: { source: string; sessions: number }[];
   jobs: ScheduledJob[] | null;
   usage: ToolUsage | null;
-  board: { byStatus: { status: string; count: number }[]; open: { title: string; status: string }[] } | null;
+  board: { byStatus: { status: string; count: number }[]; open: { id: string | null; title: string; status: string }[] } | null;
   events: ActivityEvent[];
 };
 export type HermesActivity = {

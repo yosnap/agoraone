@@ -74,7 +74,7 @@ test('actividad real: gateway, conexiones por perfil, sesiones recientes, tareas
     assert.deepEqual(work.recent.sort((a, b) => a.source.localeCompare(b.source)), [{ source: 'cron', sessions: 1 }, { source: 'telegram', sessions: 1 }]);
     assert.equal(work.jobs?.[0].name, 'Resumen diario');
     assert.equal(work.jobs?.[0].nextRunAt, '2026-10-17T18:00:00.000Z');
-    assert.deepEqual(work.board?.open, [{ title: 'Preparar informe', status: 'running' }]);
+    assert.deepEqual(work.board?.open, [{ id: '1', title: 'Preparar informe', status: 'running' }]);
     assert.equal(work.board?.byStatus.reduce((sum, item) => sum + item.count, 0), 2);
     assert.equal(activity.profiles['p-default'].jobs, null);
     assert.deepEqual(work.usage?.tools, [{ name: 'terminal', calls: 1, lastUsedAt: '2026-10-17T19:00:01.000Z' }]);

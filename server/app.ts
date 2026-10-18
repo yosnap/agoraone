@@ -16,6 +16,7 @@ import { VaultError, VaultWriteError } from './vault-notes';
 import { BackgroundReads } from './background-reads';
 import { maskSecrets } from './secret-lines';
 import { backupMemories, ProfileEditError, saveProfileFile } from './profile-editor';
+import { jobDetail, manageCard, manageJob, ManageError } from './hermes-manage';
 
 export function createApp(options: { directory?: string; adapter?: Adapter; profileAdapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string; vaultBackups?: string } = {}) {
   const app = express();
@@ -100,6 +101,48 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
   app.use('/api/hermes', (req, res, next) => {
     if (req.headers['x-agora-csrf'] !== csrf) return res.status(403).json({ error: 'Recarga AgoraOne para acceder al catálogo local.' });
     next();
+  });
+  // Scheduled tasks and kanban cards of a profile (user's decision, 18/10/2026): Hermes' own functions, CSRF,
+  // strict bodies, and only what belongs to that profile. Nothing starts an agent from here.
+  const manageFail = (res: express.Response, error: unknown) => res.status(error instanceof ManageError ? error.status : 500)
+    .json({ error: error instanceof ManageError ? error.message : 'No se pudo completar la operación.' });
+  const profileParam = z.string().regex(/^profile-[a-f0-9]{24}$/), itemParam = z.string().regex(/^[A-Za-z0-9_-]{1,80}$/);
+  const jobFields = { name: z.string().trim().min(1).max(100), schedule: z.string().trim().min(1).max(120), prompt: z.string().trim().min(1).max(4000) };
+  app.get('/api/hermes/profiles/:id/jobs/:jobId', async (req, res) => {
+    if (!profileParam.safeParse(req.params.id).success || !itemParam.safeParse(req.params.jobId).success) return res.status(404).json({ error: 'Tarea no disponible.' });
+    try { res.json(await jobDetail(discovery, req.params.id, req.params.jobId)); } catch (error) { manageFail(res, error); }
+  });
+  app.post('/api/hermes/profiles/:id/jobs', async (req, res) => {
+    const body = z.object(jobFields).strict().safeParse(req.body);
+    if (!profileParam.safeParse(req.params.id).success) return res.status(404).json({ error: 'Perfil no disponible.' });
+    if (!body.success) return res.status(400).json({ error: 'Indica nombre, horario e instrucciones de la tarea.' });
+    try { res.status(201).json(await manageJob(discovery, req.params.id, null, body.data)); } catch (error) { manageFail(res, error); }
+  });
+  app.post('/api/hermes/profiles/:id/jobs/:jobId', async (req, res) => {
+    const body = z.union([
+      z.object({ action: z.enum(['pause', 'resume', 'run', 'remove']) }).strict(),
+      z.object({ action: z.literal('update'), ...jobFields, revision: z.string().regex(/^[a-f0-9]{24}$/) }).partial({ name: true, schedule: true, prompt: true, revision: true }).strict()
+        .refine(body => body.prompt === undefined || body.revision !== undefined),
+    ]).safeParse(req.body);
+    if (!profileParam.safeParse(req.params.id).success || !itemParam.safeParse(req.params.jobId).success) return res.status(404).json({ error: 'Tarea no disponible.' });
+    if (!body.success) return res.status(400).json({ error: 'Operación no válida.' });
+    try { res.json(await manageJob(discovery, req.params.id, req.params.jobId, body.data)); } catch (error) { manageFail(res, error); }
+  });
+  app.post('/api/hermes/profiles/:id/cards', async (req, res) => {
+    const body = z.object({ title: z.string().trim().min(1).max(200), body: z.string().max(4000).optional() }).strict().safeParse(req.body);
+    if (!profileParam.safeParse(req.params.id).success) return res.status(404).json({ error: 'Perfil no disponible.' });
+    if (!body.success) return res.status(400).json({ error: 'Indica un título de hasta 200 caracteres.' });
+    try { res.status(201).json(await manageCard(discovery, req.params.id, null, body.data)); } catch (error) { manageFail(res, error); }
+  });
+  app.post('/api/hermes/profiles/:id/cards/:cardId', async (req, res) => {
+    const body = z.union([
+      z.object({ action: z.enum(['complete', 'unblock', 'archive']) }).strict(),
+      z.object({ action: z.literal('block'), reason: z.string().max(500).optional() }).strict(),
+      z.object({ action: z.literal('comment'), body: z.string().trim().min(1).max(4000) }).strict(),
+    ]).safeParse(req.body);
+    if (!profileParam.safeParse(req.params.id).success || !itemParam.safeParse(req.params.cardId).success) return res.status(404).json({ error: 'Tarjeta no disponible.' });
+    if (!body.success) return res.status(400).json({ error: 'Operación no válida.' });
+    try { res.json(await manageCard(discovery, req.params.id, req.params.cardId, body.data)); } catch (error) { manageFail(res, error); }
   });
   app.get('/api/hermes/catalog', (_req, res) => {
     try { const catalog = discovery.scan(); const obsidian = obsidianVaults(options.obsidianRegistry);

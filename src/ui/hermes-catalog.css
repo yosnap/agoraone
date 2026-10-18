@@ -34,3 +34,14 @@
 .activity-events li>span{display:flex;flex-direction:column}
 .activity-events .catalog-link{background:none;border:0;color:#244b40;cursor:pointer;text-align:left;display:inline-flex;align-items:center;gap:6px;padding:0;margin:0 0 2px;font-weight:600}
 .activity-events small{color:#8a958c;font-size:10px}
+.task-manager ul { padding-left:16px }
+.task-actions { display:flex;flex-wrap:wrap;gap:5px;margin:5px 0 8px }
+.task-actions button,.task-form div button:not(.primary) { border:1px solid #cbd6c9;background:#f4f4ea;border-radius:6px;padding:4px 8px;font-size:10px;color:#2f5247 }
+.task-actions button.danger { border-color:#e2b2a4;background:#fbe5de;color:#8e3d2a }
+.task-new { border:1px dashed #a9bfb4;background:#f1f5ef;border-radius:8px;padding:8px;font-size:11px;color:#2f5247;width:100%;margin:6px 0 }
+.task-form { display:flex;flex-direction:column;gap:6px;margin:8px 0;font-size:11px }
+.task-form label { display:flex;flex-direction:column;gap:3px }
+.task-form input,.task-form textarea { border:1px solid #cbd6c9;border-radius:6px;padding:7px;background:#fffffa;font:inherit;font-size:12px }
+.task-form textarea { min-height:70px;resize:vertical }
+.task-form div { display:flex;gap:6px }
+.task-done { font-size:11px;color:#3f5f3f;background:#e6f0df;border:1px solid #c9dcbd;border-radius:6px;padding:6px 8px }

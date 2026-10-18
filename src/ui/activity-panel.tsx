@@ -1,4 +1,5 @@
 import { mcpServerKey, type HermesActivity, type ProfileActivity } from '../../shared/hermes-activity';
+import { BoardManager, JobManager } from './profile-tasks';
 import { ago, platformName, platformStates, recentlyActive, sourceLabel, statusLabel, usageLine, when } from '../data/activity-format';
 
 export function JobList({ jobs }: { jobs: ProfileActivity['jobs'] }) {
@@ -30,14 +31,14 @@ export function BoardList({ board }: { board: ProfileActivity['board'] }) {
 }
 
 // Real records only, each with its source; nothing here starts Hermes or reads conversations.
-export function ActivitySection({ activity, data, error, declared }: { activity: ProfileActivity | undefined; data: HermesActivity | null; error: boolean; declared?: string[] }) {
+export function ActivitySection({ activity, data, error, declared, profileId, onChanged }: { activity: ProfileActivity | undefined; data: HermesActivity | null; error: boolean; declared?: string[]; profileId?: string; onChanged?: () => void }) {
   return <section className="activity-section" aria-label="Actividad real registrada por Hermes">
     <h3>Actividad real</h3>
     {error && <p className="error" role="alert">No se pudo leer la actividad de Hermes. No se muestran datos anteriores.</p>}
     {!data && !error && <p role="status">Leyendo registros de Hermes…</p>}
     {data && !activity && <p>Hermes no tiene registros de actividad para este perfil.</p>}
     {data && activity && <>
-      <small>Fuente: estado del gateway, sesiones (solo fechas y origen), nombres de herramientas llamadas, tareas programadas y kanban de Hermes. Leído {new Date(data.readAt).toLocaleTimeString('es-ES')}; se actualiza cada 15 s. Sin contenido de mensajes ni títulos de conversaciones.</small>
+      <small>Fuente: estado del gateway, sesiones (solo fechas y origen), nombres de herramientas llamadas, tareas programadas y kanban de Hermes. Leído {new Date(data.readAt).toLocaleTimeString('es-ES')}; se actualiza cada 15 s. Sin contenido de mensajes ni títulos de conversaciones. Las tareas programadas y las tarjetas del kanban se pueden gestionar aquí.</small>
       <h4>Conexiones del gateway</h4>
       {activity.platforms.length ? <ul>{activity.platforms.map(link => <li key={link.name}><span className={`link-dot ${link.state}`} aria-hidden/>{platformName(link.name)} · {platformStates[link.state]}</li>)}</ul>
         : <p>El gateway no publica conexiones para este perfil.</p>}
@@ -47,9 +48,9 @@ export function ActivitySection({ activity, data, error, declared }: { activity:
       <h4>Herramientas usadas</h4>
       <UsageList usage={activity.usage} declared={declared}/>
       <h4>Tareas programadas</h4>
-      <JobList jobs={activity.jobs}/>
+      {profileId && onChanged ? <JobManager profileId={profileId} jobs={activity.jobs} gateway={data.gateway.state} onChanged={onChanged}/> : <JobList jobs={activity.jobs}/>}
       <h4>Tablero kanban</h4>
-      <BoardList board={activity.board}/>
+      {profileId && onChanged ? <BoardManager profileId={profileId} board={activity.board} onChanged={onChanged}/> : <BoardList board={activity.board}/>}
     </>}
   </section>;
 }

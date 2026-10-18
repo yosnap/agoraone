@@ -16,7 +16,7 @@ export const fileTitles: Record<HermesFile['name'], string> = { 'SOUL.md': 'Pers
 export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, onTab, inside, onEnter, activity, document, onDetach }: {
   id: string; catalog: HermesCatalog; onSelect: (id: string) => void; status: Status | null; onConnected: () => void;
   tab: ProfileTab; onTab: (tab: ProfileTab) => void; inside: boolean; onEnter: () => void;
-  activity: { activity: HermesActivity | null; error: boolean }; document?: DocumentSource; onDetach: () => void;
+  activity: { activity: HermesActivity | null; error: boolean; reload?: () => void }; document?: DocumentSource; onDetach: () => void;
 }) {
   const profile = catalog.profiles.find(item => item.id === id);
   const space = catalog.spaces.find(item => item.id === id);
@@ -51,7 +51,7 @@ export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, o
         {profile.section && <><dt>Sección de Desktop</dt><dd>{profile.section}</dd></>}
         <dt>Descripción</dt><dd>{profile.descriptionSource}</dd>
       </dl>
-      <ActivitySection activity={activity.activity?.profiles[id]} data={activity.activity} error={activity.error} declared={profile.mcp?.map(server => server.name)}/>
+      <ActivitySection activity={activity.activity?.profiles[id]} data={activity.activity} error={activity.error} declared={profile.mcp?.map(server => server.name)} profileId={id} onChanged={activity.reload}/>
       <h3>Personalidad y memoria</h3>
       <small>Lo que este perfil sabe de sí mismo y de ti, leído de sus archivos de Hermes. Abrir esta ficha solo lee localmente; se envían al proveedor únicamente al enviar un mensaje en la conversación.</small>
       {loading && <p role="status">Leyendo archivos del perfil…</p>}
