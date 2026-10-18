@@ -38,7 +38,8 @@ try {
   // Editing loads the instructions with the hidden line as a marker.
   await section.getByRole('button', { name: 'Editar' }).click();
   const form = section.getByRole('form', { name: 'Guardar cambios' });
-  assert.match(await form.getByLabel('Qué debe hacer el perfil').inputValue(), /\[línea oculta 1\]/);
+  await form.getByRole('textbox', { name: 'Qué debe hacer el perfil' }).getByText('Resume las notas').waitFor();
+  assert.match(await form.getByRole('textbox', { name: 'Qué debe hacer el perfil' }).textContent(), /\[línea oculta 1\]/);
   await form.getByLabel('Cuándo').fill('every 3h');
   await form.getByRole('button', { name: 'Guardar cambios' }).click();
   await section.getByText('Tarea «Resumen de prueba» actualizada.').waitFor();
@@ -46,12 +47,12 @@ try {
   await section.getByRole('button', { name: '+ Nueva tarea programada' }).click();
   const create = section.getByRole('form', { name: 'Crear tarea' });
   await create.getByText(/sin pedirte confirmación/).waitFor();
-  await create.getByLabel('Nombre').fill('Nueva'); await create.getByLabel('Cuándo').fill('30m'); await create.getByLabel('Qué debe hacer el perfil').fill('Haz algo');
+  await create.getByLabel('Nombre').fill('Nueva'); await create.getByLabel('Cuándo').fill('30m'); await create.getByRole('textbox', { name: 'Qué debe hacer el perfil' }).fill('Haz algo');
   await create.getByRole('button', { name: 'Crear tarea' }).click();
   await section.getByText('Tarea «Nueva» creada.').waitFor();
   // Kanban: comment, block with a reason, archive after confirming, and a new card.
   await section.getByRole('button', { name: 'Comentar' }).click();
-  await section.getByLabel('Comentario').fill('Revisado');
+  await section.getByRole('textbox', { name: 'Comentario' }).fill('Revisado');
   await section.getByRole('button', { name: 'Añadir comentario' }).click();
   await section.getByRole('button', { name: 'Bloquear', exact: true }).click();
   await section.getByLabel('Motivo del bloqueo (opcional)').fill('Faltan datos');

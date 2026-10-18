@@ -1,3 +1,4 @@
+import { MarkdownField } from './markdown-field';
 import { useState } from 'react';
 import type { HermesFile } from '../../shared/hermes-catalog';
 import { saveProfileFile } from '../api/client';
@@ -48,7 +49,7 @@ export function ProfileFileEditor({ profileId, file, title, limit, revealed, onS
       </div>)}
       <button type="button" className="add-entry" disabled={saving} onClick={() => setEntries(list => [...list, entry('')])}>+ Añadir entrada</button>
       <small className={over ? 'error' : ''}>{used} / {limit} caracteres, el límite de Hermes para este archivo{over ? '. Acorta o quita alguna entrada para poder guardar.' : '.'}</small>
-    </> : <textarea className="soul-editor" aria-label={title} value={text} disabled={saving} onChange={event => setText(event.target.value)}/>}
+    </> : <MarkdownField label={title} value={text} disabled={saving} onChange={setText} minHeight={260}/>}
     {markers && <small>Las líneas «[línea oculta N]» son datos que parecen claves: déjalas para conservarlas tal cual o bórralas para eliminarlas.</small>}
     {error && <p className="error" role="alert">{error}{conflict && <> <button onClick={onReload}>Descartar y recargar</button></>}</p>}
     {confirming ? <div className="notice editor-confirm" role="alertdialog" aria-label="Confirmar guardado">

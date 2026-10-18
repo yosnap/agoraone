@@ -56,3 +56,5 @@
 .mcp-call .editor-confirm { background:#f3ecd8;border:1px solid #e1d3ae;border-radius:8px;padding:10px }
 .mcp-call .editor-confirm div { display:flex;gap:8px }
 .mcp-call .editor-confirm div button:not(.primary) { border:1px solid #cbd6c9;background:#f4f4ea;border-radius:7px;padding:7px 10px }
+.task-field { display:flex;flex-direction:column;gap:3px }
+.md-loading { font-size:11px;color:#7a6c55;padding:8px }

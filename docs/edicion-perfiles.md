@@ -22,3 +22,6 @@ Desde la ficha de cada perfil (**Personalidad y memoria**) se editan sus archivo
 - `server/profile-editor.ts`, `server/hermes_profile_write.py`, `src/ui/profile-file-editor.tsx`.
 - Pruebas: `server/profile-editor.test.ts` (líneas ocultas conservadas, copia previa, conflicto, formato y límite de memoria, archivo nuevo, enlaces simbólicos, perfil desconocido) y la ruta HTTP en `server/app.test.ts`.
 - Navegador: `node scripts/verify-profile-editor.mjs` intercepta el guardado, así que nunca escribe en el perfil real.
+
+## Editor visual (0.17.0)
+La personalidad (SOUL) se edita con el editor visual en vivo descrito en docs/vault-obsidian.md: formato visible al escribir, marcas solo en la línea del cursor y el archivo guardado tal cual. Las entradas de recuerdos siguen siendo cuadros de texto sencillos, porque son líneas cortas separadas por «§».

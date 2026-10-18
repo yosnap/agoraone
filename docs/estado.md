@@ -1,6 +1,8 @@
 # Estado de continuidad — 18/10/2026
 
 ## Resultado
+Versión 0.17.0 · Editor visual: las notas del vault, la personalidad (SOUL) y las instrucciones de tareas y tarjetas se editan con una vista en vivo como la de Obsidian (CodeMirror 6): formato visible al escribir, marcas solo en la línea del cursor, barra de botones, atajos y autocompletado de [[enlaces]]; el archivo se guarda exactamente como se escribe. Ver docs/vault-obsidian.md.
+
 Versión 0.16.0 · Usar MCP a mano: en la ficha de un MCP del centro de integraciones, «Usar esta herramienta» genera un formulario desde su esquema, muestra el JSON exacto y lo ejecuta tras «Ejecutar», con las credenciales del perfil elegido y apagando el servidor después. Completa el orden acordado tras salir del modo lectura (bots con herramientas, vault editable, tareas y kanban, MCP a mano). Ver docs/centro-integraciones.md.
 
 Versión 0.15.0 · Tareas y kanban: en la ficha de cada perfil se pueden pausar, reanudar, ejecutar, editar, crear y eliminar sus tareas programadas, y crear, completar, bloquear, desbloquear, comentar y archivar sus tarjetas del kanban, con las funciones de Hermes y solo lo de ese perfil. Ver docs/actividad-hermes.md.

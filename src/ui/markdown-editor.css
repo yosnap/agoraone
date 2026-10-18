@@ -1,0 +1,33 @@
+/* Live-preview Markdown editor (CodeMirror 6): formatting shown in place, marks visible on the cursor's line. */
+.md-editor { display:flex;flex-direction:column;border:1px solid #d8ccae;border-radius:8px;background:#fffdf7;overflow:hidden }
+.md-toolbar { display:flex;flex-wrap:wrap;gap:2px;padding:5px;border-bottom:1px solid #eadfc4;background:#f7f0dc }
+.md-toolbar button { min-width:30px;height:28px;border:1px solid transparent;border-radius:6px;background:none;font:600 12px Manrope,sans-serif;color:#4b3d27;padding:0 7px }
+.md-toolbar button:hover:not(:disabled) { background:#efe4c6;border-color:#dccfae }
+.md-surface .cm-editor { min-height:var(--md-min);max-height:70vh;font:15px/1.7 Georgia,'Times New Roman',serif;color:#2f2a20 }
+.md-surface .cm-editor.cm-focused { outline:none }
+.md-surface .cm-scroller { font-family:inherit;overflow:auto }
+.md-surface .cm-content { padding:14px 16px;caret-color:#7a4f19 }
+.md-surface .cm-line { padding:0 }
+.cm-md-h1 { font:600 26px/1.35 Manrope,sans-serif }
+.cm-md-h2 { font:600 21px/1.4 Manrope,sans-serif }
+.cm-md-h3 { font:600 18px/1.4 Manrope,sans-serif }
+.cm-md-h4,.cm-md-h5,.cm-md-h6 { font:600 15px/1.5 Manrope,sans-serif }
+.cm-md-strong { font-weight:700 }
+.cm-md-em { font-style:italic }
+.cm-md-strike { text-decoration:line-through }
+.cm-md-code { font:13px ui-monospace,Menlo,monospace;background:#efe6cf;border-radius:4px;padding:1px 3px }
+.cm-md-codeblock { font:13px/1.6 ui-monospace,Menlo,monospace;background:#2c2618;color:#f3ead2 }
+.cm-md-link { color:#7a4f19;text-decoration:underline }
+.cm-md-wikilink { color:#5c3f9a;text-decoration:underline dotted }
+.cm-md-tag { font:12px Manrope,sans-serif;background:#e7e0f2;color:#4d3f74;border-radius:10px;padding:0 6px }
+.cm-md-highlight { background:#f5df8f }
+.cm-md-quote { background:#f1e8d0;color:#55482f;padding-left:12px !important }
+.cm-md-callout { background:#e8eef3;font-weight:600 }
+.cm-md-front { font:12px/1.6 ui-monospace,Menlo,monospace;color:#8a6d3f;background:#f3ecd8 }
+.cm-md-hidden { font:12px Manrope,sans-serif;color:#8e3d2a;background:#f8e6dc }
+.cm-md-bullet { color:#8a6d3f;font-weight:700;padding-right:2px }
+.cm-md-checkbox { margin:0 4px 0 0;vertical-align:middle;accent-color:#5c3f9a;cursor:pointer }
+.cm-md-rule { display:inline-block;width:100%;border-top:1px solid #dccfae;vertical-align:middle }
+.md-surface .cm-placeholder { color:#a39579;font-style:italic }
+.md-surface .cm-tooltip-autocomplete { font:13px Manrope,sans-serif;border:1px solid #dccfae;border-radius:6px;background:#fffdf7 }
+.md-surface .cm-tooltip-autocomplete li[aria-selected] { background:#e7e0f2;color:#2f2a20 }

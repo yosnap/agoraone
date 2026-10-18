@@ -2,6 +2,18 @@
 
 El usuario aprobó leer sus notas de Obsidian desde AgoraOne y, desde 0.14.0, editarlas y crear notas nuevas (decisión del 18/10/2026). No se mueve, renombra ni borra nada, no se guardan índices en disco y, antes de cada guardado, se copia la versión anterior.
 
+## Editor visual (0.17.0)
+Decisión del usuario (18/10/2026): el editor de notas, de la personalidad (SOUL) y de las instrucciones de tareas y tarjetas es una **vista en vivo como la de Obsidian**, no un WYSIWYG que reescriba el Markdown.
+- **Cómo funciona**: CodeMirror 6 edita el texto tal cual (`src/ui/markdown-editor.tsx`) y solo lo decora (`src/ui/markdown-live.ts`). Los títulos se ven grandes; negrita, cursiva, tachado, código, enlaces, `[[enlaces internos]]`, `==resaltado==`, etiquetas, citas y avisos, listas y casillas se ven con formato. Las marcas (`#`, `**`, `[[ ]]`, `>`, `- [ ]`) solo aparecen en las líneas donde está el cursor, para poder editarlas. Lo que se guarda es exactamente lo escrito.
+- **Edición**: barra de botones (negrita, cursiva, tachado, encabezados 1 a 3, lista, lista numerada, tarea, enlace interno, enlace web, cita y código) y atajos ⌘B, ⌘I y ⌘K. Al escribir `[[`, se sugieren los títulos del vault. Las casillas de tareas se marcan con un clic.
+- **Detalles**:
+  - Al pulsar Intro en una lista, la lista continúa (y la numerada se renumera), como en Obsidian.
+  - Tab no inserta sangría: pasa al siguiente campo, para poder moverse con el teclado.
+  - Las notas con saltos de línea de Windows (CRLF) no aparecen como modificadas al abrirlas, y se guardan con CRLF.
+  - Dentro del código no se interpretan `[[ ]]`, `==` ni `#etiquetas`.
+  - Si el editor no se puede cargar, aparece un cuadro de texto normal para no perder lo escrito.
+- **Carga**: el editor va en su propio trozo (`editor`, unos 170 KB comprimidos) y solo se descarga al abrir un editor.
+
 ## Editar y crear notas (0.14.0)
 - **Editar**:
   - El libro abierto tiene **Editar nota**: un editor de Markdown sobre el texto tal como se lee, con las líneas que parecen claves como «[línea oculta N]» salvo que se hayan mostrado.
