@@ -6,6 +6,7 @@ import { Building } from './building';
 import { Navigation } from './navigation';
 import { LibraryInterior, libraryObstacles } from './library-interior';
 import { ProfileInterior, profileObstacles, type ProfileRoom, type RoomStation } from './profile-interior';
+import { shellBackground } from './profile-shell';
 import { ResourceLinks } from './resource-links';
 import { IntegrationsInterior, integrationObstacles } from './integrations-interior';
 import { VaultInterior, vaultObstacles, type VaultShelf } from './vault-interior';
@@ -36,7 +37,7 @@ export function City({ places, selected, onSelect, firstPerson, blocked, inside 
   const library = places.find(place => place.id === 'library');
   const interior = vault ? { key: 'vault', background: '#2f2a44', obstacles: vaultObstacles, node: <VaultInterior name={vault.name} shelves={vault.shelves} onOpen={folder => onShelf?.(folder)} onExit={onExit}/> }
     : integrations ? { key: 'integrations', background: '#18343d', obstacles: integrationObstacles, node: <IntegrationsInterior services={services} activity={activity} onSelect={onSelect} onExit={onExit}/> }
-    : room ? { key: `profile:${room.profile.id}`, background: '#d9d2c4', obstacles: profileObstacles, node: <ProfileInterior room={room} activity={activity?.profiles[room.profile.id]} onStation={station => onStation?.(station)} onService={onSelect} onExit={onExit}/> }
+    : room ? { key: `profile:${room.profile.id}`, background: shellBackground[room.style] ?? '#d9d2c4', obstacles: profileObstacles, node: <ProfileInterior room={room} activity={activity?.profiles[room.profile.id]} onStation={station => onStation?.(station)} onService={onSelect} onExit={onExit}/> }
     : inside ? { key: 'library', background: '#213c36', obstacles: libraryObstacles, node: <LibraryInterior seed={library ? library.position[0] + library.position[2] : 0} onBrowse={onBrowse} onChat={() => onSelect('library')} onExit={onExit}/> }
     : null;
   return <SceneBoundary><Canvas tabIndex={0} shadows={{ type: PCFShadowMap }} dpr={[1, 1.7]} camera={{ position: [24, 25, 30], fov: 43, far: 1000 }} onCreated={({ gl }) => { gl.domElement.tabIndex = 0; }} fallback={<p>WebGL no disponible. Usa el directorio.</p>}><DaylightProvider value={daylight}>
