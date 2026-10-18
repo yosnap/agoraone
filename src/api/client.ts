@@ -47,6 +47,9 @@ export const createCard = (profileId: string, card: { title: string; body?: stri
 export const changeCard = (profileId: string, cardId: string, change: { action: 'complete' | 'unblock' | 'archive' } | { action: 'block'; reason?: string } | { action: 'comment'; body: string }) =>
   request<{ card: string }>(`${profilePath(profileId)}/cards/${encodeURIComponent(cardId)}`, change);
 export const searchVault = (vaultId: string, query: string) => request<{ results: { id: string; title: string; folder: string; snippet: string }[]; truncated: boolean }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/search?q=${encodeURIComponent(query)}`);
+/** Calls one MCP tool of a profile by hand with the arguments the user confirmed. */
+export const callMcpTool = (profileId: string, serverId: string, tool: string, args: Record<string, unknown>) =>
+  request<{ result: string; hidden: number; truncated: boolean }>(`/hermes/profiles/${encodeURIComponent(profileId)}/mcp/${encodeURIComponent(serverId)}/tools/${encodeURIComponent(tool)}/call`, { args });
 export const getMcpTools = (profileId: string, serverId: string) => request<McpTools>(`/hermes/profiles/${encodeURIComponent(profileId)}/mcp/${encodeURIComponent(serverId)}/tools`);
 export const createConversation = (profileId?: string) => request<Conversation>('/conversations', profileId ? { profileId } : { agent: 'luma', context: 'library-lobby' });
 export const getConversation = (id: string) => request<Conversation>(`/conversations/${encodeURIComponent(id)}`);

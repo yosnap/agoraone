@@ -22,6 +22,12 @@ test('consulta de herramientas MCP exige CSRF, servidor del perfil y registro vi
   const f = await fixture(async () => { throw new Error('No debe invocar inferencia'); }, undefined, discovery);
   const url = `/api/hermes/profiles/${profile.id}/mcp/${profile.mcp![0].id}/tools`;
   try {
+    // Calling a tool by hand: CSRF, strict body, only tools of the saved catalogue and only declared servers.
+    const call = `${url}/test_tool/call`;
+    assert.equal((await f.request(call, { args: {} }, { 'X-Agora-CSRF': '' })).status, 403);
+    assert.equal((await f.request(call, { args: {}, server: '/bin/sh' })).status, 400);
+    assert.equal((await f.request(`${url}/otra/call`, { args: {} })).status, 404, 'fuera del catálogo');
+    assert.equal((await f.request(call.replace(profile.mcp![0].id, 'mcp-x'), { args: {} })).status, 404);
     assert.equal((await f.request(url, undefined, { 'X-Agora-CSRF': '' })).status, 403);
     const response = await f.request(url);
     assert.equal(response.status, 200); assert.equal((await response.json()).tools[0].name, 'test_tool');

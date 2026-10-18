@@ -76,15 +76,19 @@ export class HermesDiscovery {
     return { root, profiles };
   }
   mcpTools(profileId: string, serverId: string) {
+    const { root, home, server, config } = this.mcpServer(profileId, serverId);
+    return readMcpTools(root, home, server, config);
+  }
+  /** The profile and server an opaque MCP id names, resolved against fresh config; never a path or name from the client. */
+  mcpServer(profileId: string, serverId: string) {
     const root = this.root();
     const profile = this.scan(true).profiles.find(item => item.id === profileId);
     if (!profile) throw new Error('Unknown profile');
     const home = this.profileHome(root, profile.name);
     const config = readMetadata(root, join(home, 'config.yaml'));
-    // Resolve the opaque server ID against fresh config; never accept a path/name from the client.
     for (const [name, value] of Object.entries(config.mcp_servers || {})) {
       if (mcpMetadata(profileId, { mcp_servers: { [name]: value } })[0]?.id === serverId)
-        return readMcpTools(root, home, name, value as Record<string, unknown>);
+        return { root, home, profile: profile.name, server: name, config: value as Record<string, unknown> };
     }
     throw new Error('Unknown MCP');
   }

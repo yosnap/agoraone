@@ -2,7 +2,7 @@ export type HermesFile = { name: 'SOUL.md' | 'MEMORY.md' | 'USER.md'; state: 'av
 export type McpTools = {
   source: 'hermes-cache'; state: 'cached' | 'expired' | 'changed' | 'missing' | 'unavailable';
   recordedAt: string | null; truncated: boolean;
-  tools: { name: string; description: string; parameters: { name: string; type: string; required: boolean }[] }[];
+  tools: { name: string; description: string; parameters: { name: string; type: string; required: boolean; description?: string; options?: string[] }[] }[];
 };
 export type HermesProfile = {
   id: string; name: string; label: string; description: string; descriptionSource: string;

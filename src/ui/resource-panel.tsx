@@ -17,9 +17,9 @@ export function ResourcePanel({ id, catalog, onSelect, activity }: { id: string;
         <dt>Transporte declarado</dt><dd>{server.transport === 'stdio' ? 'Proceso local (stdio)' : server.transport === 'http' ? 'HTTP' : 'No reconocido'}</dd>
         <dt>Conexión actual</dt><dd>No comprobada</dd>
         <dt>Uso registrado por Hermes</dt><dd>{activity ? <>{usageLine(use, days)}{use?.tools.filter(tool => tool.calls).slice(0, 5).map(tool => <small key={tool.name}><br/>{tool.name} · {tool.calls} en {days} días</small>)}</> : 'Leyendo registros…'}</dd>
-        <dt>Uso desde este chat</dt><dd>No habilitado en AgoraOne</dd>
-      </dl><McpToolsPanel profileId={profile.id} serverId={server.id}/></section>; })}
-      <p>Fuente: mcp_servers de config.yaml. No incluye servicios aportados dinámicamente por plugins. No se han iniciado procesos MCP ni contactado plataformas.</p>
+        <dt>Uso desde AgoraOne</dt><dd>{server.enabled ? 'A mano, con «Usar esta herramienta» y tras confirmar' : 'No disponible: deshabilitado en Hermes'}</dd>
+      </dl><McpToolsPanel profileId={profile.id} serverId={server.id} profileLabel={profile.label} enabled={server.enabled}/></section>; })}
+      <p>Fuente: mcp_servers de config.yaml. No incluye servicios aportados dinámicamente por plugins. Ver esta ficha no inicia procesos MCP ni contacta con el servicio; solo lo hace «Usar esta herramienta», tras revisar y pulsar «Ejecutar».</p>
     </>}
   </div>;
 }
