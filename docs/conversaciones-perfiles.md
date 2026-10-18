@@ -25,7 +25,7 @@ En el lector de la biblioteca y en el del vault, **Consultar con** permite elegi
 ## Validación del contexto
 El servidor no acepta SOUL, memoria, herramientas, rutas, proveedor ni historial suministrados por el cliente. Resuelve el perfil desde el catálogo, revalida su existencia, tombstone y archivos en cada envío. Un perfil borrado o un archivo no legible bloquea la ejecución antes de invocar el adaptador. Archivos ausentes se indican como ausentes y no se inventan.
 
-Límites: 64 KiB por archivo, 96 KiB de texto total, sin truncado silencioso adicional para la inferencia; 6000 caracteres de pregunta y límite de historial existente. Los patrones ocultos por el filtro de credenciales se mantienen ocultos al modelo. Sin sandbox de sistema operativo: el aislamiento es de configuración, estado y herramientas verificadas.
+Límites: 64 KiB por archivo, 96 KiB de texto total, sin truncado silencioso adicional para la inferencia; 6000 caracteres de pregunta y límite de historial existente. Las líneas que parecen claves llegan al modelo como «[línea oculta N]», aunque se hayan mostrado en la ficha; lo mismo ocurre con cualquier documento o nota adjunta; los enlaces ya no se omiten. El prompt pide al perfil hablar en primera persona de su personalidad y de lo que sabe, sin citar los nombres de sus archivos salvo que se le pregunte. Sin sandbox de sistema operativo: el aislamiento es de configuración, estado y herramientas verificadas.
 
 ## Verificación reproducible
 `npm test` comprueba separación entre perfiles/usuarios, relectura, revocación, rechazo de inyección de herramientas/contexto y regresión de Luma. `npm run build` verifica tipos y frontend.

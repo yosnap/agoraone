@@ -1,6 +1,8 @@
 # Estado de continuidad — 18/10/2026
 
 ## Resultado
+Versión 0.9.0 · Claves ocultas y voz de los perfiles: las líneas que parecen claves se ocultan enteras en la ficha de los perfiles y en las notas del vault, y nunca llegan al modelo; «Mostrar» las enseña solo bajo petición. Los perfiles hablan en primera persona de su personalidad y lo que saben, sin citar sus archivos; la ficha y el interior usan «Personalidad», «Lo que sabe de ti» y «Recuerdos». Siguiente: editar desde AgoraOne la personalidad y memoria reales de cada perfil (autorizado por el usuario el 18/10/2026, con copia de seguridad y confirmación) y después el vault como librería y mejores interiores.
+
 Versión 0.8.0 · Adjuntos en los chats de perfil: «Consultar con» en la biblioteca y el vault deja elegir Luma o cualquier perfil; el perfil recibe su identidad y el documento como datos de solo lectura, con los mismos límites y permisos que Luma. Ver docs/conversaciones-perfiles.md.
 
 Versión 0.7.0 · Interiores distintos por perfil: cada tipo de edificio (taller, observatorio, invernadero, pabellón, torre, archivo) tiene su propia sala, con suelo, paredes, techo, luz y fondo propios, manteniendo las estaciones en el mismo sitio. Solo decoración. Ver docs/espacios-perfil.md.

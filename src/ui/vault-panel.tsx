@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { readVaultNote, searchVault, type DocumentSource, type VaultListing } from '../api/client';
 import { ago } from '../data/activity-format';
 import { ConsultWith, type ConsultTarget } from './consult-with';
+import { HiddenLines } from './hidden-lines';
 import './library.css';
 
-type Note = VaultListing['notes'][number] & { content: string; revision: string };
+type Note = VaultListing['notes'][number] & { content: string; revision: string; hidden: number; revealed: boolean };
 
 // Notes of a registered Obsidian vault: read-only. Reading stays local; a note reaches the
 // model only when the user picks "Consultar con…" (Luma or a profile) and then sends a message.
@@ -24,10 +25,11 @@ export function VaultPanel({ vaultId, listing, error, inside, onEnter, folder, o
   const folders = useMemo(() => [...new Set(listing?.notes.map(note => note.folder.split('/')[0]) ?? [])].sort((a, b) => a.localeCompare(b, 'es')), [listing]);
   const titleMatch = (text: string) => text.toLocaleLowerCase('es').includes(query.trim().toLocaleLowerCase('es'));
   const notes = (listing?.notes ?? []).filter(note => (folder === null || note.folder.split('/')[0] === folder) && titleMatch(`${note.folder} ${note.title}`));
-  async function open(id: string) {
+  // Lines that look like credentials stay hidden unless the user asks to see them; consulting always sends them hidden.
+  async function open(id: string, reveal = false) {
     const turn = ++latest.current;
     setStatus('Leyendo nota…'); setFailure('');
-    try { const note = await readVaultNote(vaultId, id); if (turn === latest.current) { setReading(note); setStatus(''); } }
+    try { const note = await readVaultNote(vaultId, id, reveal); if (turn === latest.current) { setReading({ ...note, revealed: reveal }); setStatus(''); } }
     catch (e) { if (turn === latest.current) { setStatus(''); setFailure(e instanceof Error ? e.message : 'No se pudo leer la nota.'); } }
   }
   async function search() {
@@ -64,7 +66,9 @@ export function VaultPanel({ vaultId, listing, error, inside, onEnter, folder, o
       {status && <p role="status">{status}</p>}
       {failure && <p className="error" role="alert">{failure}</p>}
       {reading && <article className="document-preview"><h3>{reading.title}</h3>
-        <small>{reading.folder || 'Notas sueltas'} · {reading.bytes} bytes · modificada {ago(reading.modifiedAt)}</small><pre>{reading.content}</pre>
+        <small>{reading.folder || 'Notas sueltas'} · {reading.bytes} bytes · modificada {ago(reading.modifiedAt)}</small>
+        <HiddenLines count={reading.hidden} revealed={reading.revealed} onToggle={() => open(reading.id, !reading.revealed)}/>
+        <pre>{reading.content}</pre>
         <ConsultWith what="esta nota" targets={targets} onConsult={target => onConsult({ id: reading.id, title: `${listing.vault.name} · ${reading.folder ? `${reading.folder}/` : ''}${reading.title}`, revision: reading.revision }, target)}/>
         {reading.bytes > 24 * 1024 && <small>La consulta envía los primeros 24 KiB de la nota.</small>}
       </article>}

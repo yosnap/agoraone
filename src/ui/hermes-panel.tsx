@@ -6,8 +6,11 @@ import { ChatPanel } from './chat-panel';
 import { serviceGroups } from '../data/service-groups';
 import type { HermesActivity } from '../../shared/hermes-activity';
 import { ActivitySection } from './activity-panel';
+import { HiddenLines } from './hidden-lines';
 
 export type ProfileTab = 'info' | 'chat';
+
+export const fileTitles: Record<HermesFile['name'], string> = { 'SOUL.md': 'Personalidad', 'USER.md': 'Lo que sabe de ti', 'MEMORY.md': 'Recuerdos' };
 
 export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, onTab, inside, onEnter, activity, document, onDetach }: {
   id: string; catalog: HermesCatalog; onSelect: (id: string) => void; status: Status | null; onConnected: () => void;
@@ -19,16 +22,17 @@ export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, o
   const [files, setFiles] = useState<HermesFile[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [revealed, setRevealed] = useState(false);
   useEffect(() => {
     let live = true;
     setFiles([]); setError('');
     if (!profile) return;
     setLoading(true);
-    getHermesProfile(id).then(data => { if (live) setFiles(data.files); })
+    getHermesProfile(id, revealed).then(data => { if (live) setFiles(data.files); })
       .catch(() => { if (live) setError('No se pudo leer este perfil. Puede haber cambiado en Hermes.'); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [id, profile?.files.map(file => file.revision).join(',')]);
+  }, [id, revealed, profile?.files.map(file => file.revision).join(',')]);
   return <div className="profile-panel">
     {profile && !inside && <button className="enter-library" onClick={onEnter}>Entrar en el espacio de {profile.label} →</button>}
     {profile && <nav className="library-tabs" aria-label="Acciones del perfil"><button aria-pressed={tab === 'info'} onClick={() => onTab('info')}>Ficha del perfil</button><button aria-pressed={tab === 'chat'} onClick={() => onTab('chat')}>Conversar con {profile.label}</button></nav>}
@@ -43,11 +47,12 @@ export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, o
         <dt>Descripción</dt><dd>{profile.descriptionSource}</dd>
       </dl>
       <ActivitySection activity={activity.activity?.profiles[id]} data={activity.activity} error={activity.error} declared={profile.mcp?.map(server => server.name)}/>
-      <h3>Identidad y memoria</h3>
-      <small>Abrir esta ficha solo lee archivos localmente. Se enviarán al proveedor únicamente al enviar un mensaje en la pestaña de conversación. Credenciales reconocibles se ocultan.</small>
+      <h3>Personalidad y memoria</h3>
+      <small>Lo que este perfil sabe de sí mismo y de ti, leído de sus archivos de Hermes. Abrir esta ficha solo lee localmente; se envían al proveedor únicamente al enviar un mensaje en la conversación.</small>
       {loading && <p role="status">Leyendo archivos del perfil…</p>}
       {error && <p className="error" role="alert">{error}</p>}
-      {files.map(file => <details key={file.name}><summary>{file.name} · {file.state === 'available' ? `${file.bytes} bytes` : file.state === 'missing' ? 'no encontrado' : 'no legible'}</summary>
+      <HiddenLines count={files.reduce((sum, file) => sum + (file.hidden ?? 0), 0)} revealed={revealed} onToggle={() => setRevealed(value => !value)}/>
+      {files.map(file => <details key={file.name}><summary>{fileTitles[file.name]} <small>{file.name}</small> · {file.state === 'available' ? `${file.bytes} bytes` : file.state === 'missing' ? 'no encontrado' : 'no legible'}</summary>
         {file.state === 'available' && <pre>{file.content || '(vacío)'}</pre>}</details>)}
       <h3>Canales declarados</h3>
       {profile.channels.length ? <ul>{profile.channels.map(channel => <li key={channel.name}>{channel.name} · {channel.enabled ? 'habilitado en configuración' : 'sin habilitación explícita'}</li>)}</ul> : <p>No hay canales declarados en config.yaml. La configuración mediante variables de entorno no se inspecciona.</p>}

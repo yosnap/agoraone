@@ -17,7 +17,7 @@ function fixture() {
   const profile = (name: string) => {
     const home = name === 'default' ? root : join(root, 'profiles', name);
     mkdirSync(join(home, 'memories'), { recursive: true });
-    writeFileSync(join(home, 'SOUL.md'), '# Identidad de prueba\nAyudo con proyectos.');
+    writeFileSync(join(home, 'SOUL.md'), '# Identidad de prueba\nAyudo con proyectos.\npasswd: CANARY_SOUL_SECRET');
     writeFileSync(join(home, 'memories/MEMORY.md'), 'Recuerdo de prueba\napi_key: CANARY_MEMORY_SECRET');
     writeFileSync(join(home, '.env'), 'KEY=CANARY_ENV_SECRET');
     return home;
@@ -48,6 +48,10 @@ test('catálogo automático: perfiles vivos, SOUL/memoria, bots distintos y ause
     const detail = f.discovery.detail(coder.id);
     assert.ok(!JSON.stringify(detail).includes('CANARY'));
     assert.ok(detail.files.find(file => file.name === 'MEMORY.md')?.content?.includes('Recuerdo de prueba'));
+    const memory = detail.files.find(file => file.name === 'MEMORY.md');
+    assert.equal(memory?.hidden, 1); assert.match(memory!.content!, /\[línea oculta 1\]/);
+    // Only an explicit reveal returns the hidden line.
+    assert.match(f.discovery.detail(coder.id, true).files.find(file => file.name === 'MEMORY.md')!.content!, /CANARY_MEMORY_SECRET/);
     assert.deepEqual(readFileSync(join(home, 'config.yaml')), before);
     assert.throws(() => f.discovery.detail('../.env'));
     writeFileSync(join(f.root, 'profiles/.deleted/coder'), '1');

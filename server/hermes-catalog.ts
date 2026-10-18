@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import type { HermesCatalog, HermesProfile, HermesFile, HermesSpace } from '../shared/hermes-catalog';
 import { hermesLocation } from './hermes-location';
 import { readHermesFile, readMetadata, redact } from './hermes-safe-read';
+import { isHiddenMarker, maskSecrets, revealSecrets } from './secret-lines';
 import { readHermesDatabase } from './hermes-database';
 import { mcpMetadata } from './resource-discovery';
 import { readMcpTools } from './mcp-tools';
@@ -28,22 +29,25 @@ export class HermesDiscovery {
     if (!markers.some(marker => existsSync(join(home, marker)))) throw new Error('Unknown profile');
     return home;
   }
-  private files(root: string, home: string, withContent = false): HermesFile[] {
+  // Content is masked line by line unless the user explicitly asks to reveal it; the model only ever gets the masked text.
+  private files(root: string, home: string, withContent = false, reveal = false): HermesFile[] {
     return (['SOUL.md', 'MEMORY.md', 'USER.md'] as const).map(name => {
       const file = name === 'SOUL.md' ? join(home, name) : join(home, 'memories', name);
       try {
         const data = readHermesFile(root, file);
         const content = new TextDecoder('utf-8', { fatal: true }).decode(data);
-        return { name, state: 'available', bytes: data.length, revision: digest(content), ...(withContent ? { content: redact(content, 65536) } : {}) };
+        if (!withContent) return { name, state: 'available', bytes: data.length, revision: digest(content) };
+        const masked = maskSecrets(content);
+        return { name, state: 'available', bytes: data.length, revision: digest(content), content: reveal ? revealSecrets(content) : masked.text, hidden: masked.hidden.length };
       } catch { return { name, state: existsSync(file) ? 'unavailable' : 'missing' }; }
     });
   }
-  detail(id: string) {
+  detail(id: string, reveal = false) {
     const root = this.root();
     // Resolve against a fresh registry; removal/tombstoning revokes access immediately.
     const profile = this.scan(true).profiles.find(p => p.id === id);
     if (!profile) throw new Error('Unknown profile');
-    return { profile, files: this.files(root, this.profileHome(root, profile.name), true) };
+    return { profile, files: this.files(root, this.profileHome(root, profile.name), true, reveal) };
   }
   /** Where to read activity from. Profiles come from the catalog; the client never names a path. */
   activityTargets() {
@@ -98,7 +102,8 @@ export class HermesDiscovery {
       const bot = meta.ui_meta?.['hermes-bots'];
       const files = this.files(root, home);
       let soul = '';
-      try { soul = redact(readHermesFile(root, join(home, 'SOUL.md')).toString(), 2000); } catch { /* optional identity */ }
+      // The description shown without asking comes from SOUL with credential-like lines removed first.
+      try { soul = redact(maskSecrets(readHermesFile(root, join(home, 'SOUL.md')).toString()).text.split('\n').filter(line => !isHiddenMarker(line)).join('\n'), 2000); } catch { /* optional identity */ }
       const heading = soul.match(/^#\s+(.+)$/m)?.[1]?.replace(/[*_`]/g, '').trim().slice(0, 100);
       const description = redact(meta.description || bot?.description, 700) || soul.replace(/^#+\s+.*$/gm, '').trim().slice(0, 500);
       const label = redact(meta.display_name || bot?.title, 100) || (name === 'default' ? heading || 'Hermes principal' : name);
