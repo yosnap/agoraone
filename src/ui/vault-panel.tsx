@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { readVaultNote, searchVault, type DocumentSource, type VaultListing } from '../api/client';
 import { ago } from '../data/activity-format';
+import { ConsultWith, type ConsultTarget } from './consult-with';
 import './library.css';
 
 type Note = VaultListing['notes'][number] & { content: string; revision: string };
 
 // Notes of a registered Obsidian vault: read-only. Reading stays local; a note reaches the
-// model only when the user picks "Consultar con Luma" and then sends a message.
-export function VaultPanel({ vaultId, listing, error, inside, onEnter, folder, onFolder, onConsult }: {
+// model only when the user picks "Consultar con…" (Luma or a profile) and then sends a message.
+export function VaultPanel({ vaultId, listing, error, inside, onEnter, folder, onFolder, targets, onConsult }: {
   vaultId: string; listing: VaultListing | null; error: string; inside: boolean; onEnter: () => void;
-  folder: string | null; onFolder: (folder: string | null) => void; onConsult: (document: DocumentSource) => void;
+  folder: string | null; onFolder: (folder: string | null) => void; targets: ConsultTarget[]; onConsult: (document: DocumentSource, target: string) => void;
 }) {
   const [query, setQuery] = useState('');
   const [found, setFound] = useState<{ id: string; title: string; folder: string; snippet: string }[] | null>(null);
@@ -64,7 +65,7 @@ export function VaultPanel({ vaultId, listing, error, inside, onEnter, folder, o
       {failure && <p className="error" role="alert">{failure}</p>}
       {reading && <article className="document-preview"><h3>{reading.title}</h3>
         <small>{reading.folder || 'Notas sueltas'} · {reading.bytes} bytes · modificada {ago(reading.modifiedAt)}</small><pre>{reading.content}</pre>
-        <button className="primary" onClick={() => onConsult({ id: reading.id, title: `${listing.vault.name} · ${reading.folder ? `${reading.folder}/` : ''}${reading.title}`, revision: reading.revision })}>Consultar esta nota con Luma</button>
+        <ConsultWith what="esta nota" targets={targets} onConsult={target => onConsult({ id: reading.id, title: `${listing.vault.name} · ${reading.folder ? `${reading.folder}/` : ''}${reading.title}`, revision: reading.revision }, target)}/>
         {reading.bytes > 24 * 1024 && <small>La consulta envía los primeros 24 KiB de la nota.</small>}
       </article>}
     </section>}

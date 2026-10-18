@@ -9,7 +9,8 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   page.on('request', r => { if (r.method() === 'POST' && r.url().endsWith('/messages')) inference++; });
   await page.goto('http://127.0.0.1:4317');
-  await page.getByRole('button', { name: 'Luma', exact: true }).click();
+  // Initial scene load only: headless Chromium renders WebGL in software (~2 fps), so allow it time.
+  await page.getByRole('button', { name: 'Luma', exact: true }).click({ timeout: 120_000 });
   await page.getByRole('button', { name: 'Documentos', exact: true }).click();
   await page.getByLabel('Archivo para importar').setInputFiles({ name: 'gestion-prueba.md', mimeType: 'text/markdown', buffer: Buffer.from('# Copia de prueba\nEste texto debe conservarse al renombrar.') });
   await page.getByRole('button', { name: 'Renombrar', exact: true }).waitFor();

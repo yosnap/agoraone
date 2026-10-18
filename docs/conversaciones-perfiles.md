@@ -9,7 +9,10 @@ Esta modalidad usa el proveedor/modelo configurado en AgoraOne. No cambia la con
 
 Permisos efectivos: cero herramientas. Se comprueban antes y después de la ejecución; terminal, MCP, memoria editable y skills permanecen deshabilitados. Las instrucciones de SOUL no amplían permisos. La memoria original se usa en lectura y no se actualiza con esta conversación.
 
-Luma mantiene su conversación y biblioteca separadas. El chat de perfiles no admite adjuntar documentos de la biblioteca en este hito.
+Luma mantiene su conversación separada. Un perfil también puede consultar documentos de la biblioteca y notas del vault.
+
+## Adjuntar una nota o un documento
+En el lector de la biblioteca y en el del vault, **Consultar con** permite elegir Luma o cualquier perfil detectado. Elegir solo adjunta el documento al chat de ese perfil (cada chat tiene su propio adjunto) y abre la conversación; nada se envía hasta que el usuario escribe y envía un mensaje. Entonces el turno lleva la identidad del perfil (SOUL, MEMORY, USER) y el texto del documento, releído en backend con los mismos límites y permisos que con Luma: copias privadas solo de su propietario, notas solo por la ruta de envío con CSRF, 24 KiB como máximo. El documento va en el mensaje como datos de solo lectura y el prompt de identidad indica que no son instrucciones. Cada mensaje registra la revisión del documento enviado junto a la de los archivos de identidad. Renombrar o eliminar una copia actualiza o retira el adjunto de todos los chats. Si el perfil deja de estar en el catálogo, su adjunto pendiente se descarta. No hay un tope conjunto para el turno: en el peor caso suma identidad (96 KiB), documento (24 KiB), historial (60 000 caracteres) y mensaje (6000); con un modelo de contexto pequeño el proveedor puede rechazarlo y el chat muestra el error, y basta con quitar el adjunto o abrir una conversación nueva. Verificación: `node scripts/verify-profile-attachment.mjs` (sin inferencia).
 
 ## Separación y persistencia
 - Cada conversación se liga en backend a propietario, identidad del agente, perfil y contexto profile-chat. El cliente solo selecciona un ID de perfil detectado.

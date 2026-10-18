@@ -8,9 +8,9 @@ Todo se ejecuta en tu ordenador: el servidor escucha solo en `127.0.0.1`, las cr
 - **Ciudad** generada a partir de los perfiles detectados, con ciclo de día y noche según la hora real.
 - **Espacio de cada perfil**: identidad (SOUL.md), memoria (MEMORY.md y USER.md), servidores MCP declarados, tareas programadas y tablero kanban.
 - **Actividad real**: estado del gateway, conexiones por perfil y actividad registrada, leídos de los propios registros de Hermes sin contenido de mensajes.
-- **Conversación** con Luma o con la identidad de un perfil, siempre por envío explícito y sin herramientas.
+- **Conversación** con Luma o con la identidad de un perfil, siempre por envío explícito y sin herramientas; a cualquiera de ellos se le puede adjuntar una nota o un documento.
 - **Biblioteca**: importación de TXT, Markdown, PDF y DOCX como copias privadas.
-- **Vault de Obsidian**: tus notas por carpetas, con búsqueda en el contenido y consulta con Luma, en solo lectura.
+- **Vault de Obsidian**: tus notas por carpetas, con búsqueda en el contenido y consulta con Luma o con un perfil, en solo lectura.
 
 Los paseos y peatones son ambientales y no representan tareas reales.
 

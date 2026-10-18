@@ -76,7 +76,7 @@ test('chat de perfiles: identidad, memoria, aislamiento, relectura y revocación
     assert.equal(a.profileId, alpha.id); assert.equal(b.profileId, beta.id);
     assert.equal((await f.request('/api/conversations', { profileId: alpha.id, tools: ['terminal'] })).status, 400);
     assert.equal((await f.request('/api/conversations', { profileId: alpha.id, profile: { files: [] } })).status, 400);
-    assert.equal((await f.request(`/api/conversations/${a.id}/messages`, { message: 'hola', documentId: 'welcome' })).status, 400);
+    assert.equal((await f.request(`/api/conversations/${a.id}/messages`, { message: 'hola', documentId: '../.env' })).status, 403);
     const response = await f.request(`/api/conversations/${a.id}/messages`, { message: 'hola' });
     assert.equal(response.status, 200);
     assert.equal((await response.json()).messages[0].identity.profileId, alpha.id);
@@ -88,6 +88,10 @@ test('chat de perfiles: identidad, memoria, aislamiento, relectura y revocación
     writeFileSync(join(root, 'profiles/alpha/memories/MEMORY.md'), 'Memoria actualizada');
     await f.request(`/api/conversations/${a.id}/messages`, { message: 'continúa' });
     assert.equal(turns[2].history.length, 2); assert.ok(turns[2].profile?.files.some(file => file.content === 'Memoria actualizada'));
+    // A profile can be consulted about a document too: the turn carries both its identity and the document.
+    const withDocument = await (await f.request(`/api/conversations/${a.id}/messages`, { message: 'resume', documentId: 'welcome' })).json();
+    assert.equal(turns[3].profile?.name, 'alpha'); assert.equal(turns[3].document?.id, 'welcome');
+    assert.equal(withDocument.messages.at(-2).sources[0].id, 'welcome'); assert.equal(withDocument.messages.at(-2).identity.profileId, alpha.id);
     const before = turns.length;
     const soul = join(root, 'profiles/alpha/SOUL.md'); unlinkSync(soul); symlinkSync(join(root, 'profiles/beta/SOUL.md'), soul);
     assert.equal((await f.request(`/api/conversations/${a.id}/messages`, { message: 'no ejecutar' })).status, 403);
@@ -198,6 +202,38 @@ test('notas de Obsidian: una nota consultada llega al turno de Luma por ID, reco
     assert.ok(Buffer.byteLength(seen!.document!.content) <= 24 * 1024);
     assert.doesNotMatch(JSON.stringify(seen!.document), new RegExp(base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   } finally { await f.close(); rmSync(base, { recursive: true, force: true }); }
+});
+
+test('adjuntos en chats de perfil: copias ajenas, notas del vault y perfil revocado', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'agora-profile-attach-')));
+  const home = join(root, 'hermes/profiles/alpha');
+  mkdirSync(join(home, 'memories'), { recursive: true });
+  writeFileSync(join(home, 'SOUL.md'), 'Soy alpha.');
+  mkdirSync(join(root, 'vault/Ideas'), { recursive: true });
+  writeFileSync(join(root, 'vault/Ideas/Plan.md'), 'CLAVE-PERFIL-404');
+  writeFileSync(join(root, 'obsidian.json'), JSON.stringify({ vaults: { a: { path: join(root, 'vault') } } }));
+  const discovery = new HermesDiscovery({ root: join(root, 'hermes'), installation: '/not-installed', python: '', source: 'test' });
+  const [alpha] = discovery.scan().profiles;
+  const turns: Turn[] = [];
+  const f = await fixture(async turn => { turns.push(structuredClone(turn)); return 'ok'; }, undefined, discovery, join(root, 'obsidian.json'));
+  const other = { Cookie: `agora_user=${'e'.repeat(64)}` };
+  try {
+    const body = { name: 'privado.md', base64: Buffer.from('Dato privado: RIO-88').toString('base64') };
+    const imported = await (await f.request('/api/library/imports', body)).json();
+    // Another browser identity cannot attach this copy, not even through a profile chat.
+    const foreign = await (await f.request('/api/conversations', { profileId: alpha.id }, other)).json();
+    assert.equal((await f.request(`/api/conversations/${foreign.id}/messages`, { message: 'lee', documentId: imported.id }, other)).status, 403);
+    assert.equal(turns.length, 0);
+    const own = await (await f.request('/api/conversations', { profileId: alpha.id })).json();
+    const vaultId = obsidianVaults(join(root, 'obsidian.json')).vaults[0].id;
+    const { notes } = await (await f.request(`/api/hermes/vaults/${vaultId}/notes`)).json();
+    assert.equal((await f.request(`/api/conversations/${own.id}/messages`, { message: '¿Clave?', documentId: notes[0].id })).status, 200);
+    assert.equal(turns[0].profile?.name, 'alpha'); assert.match(turns[0].document!.content, /^CLAVE-PERFIL-404/);
+    // A revoked profile gets nothing, attachment included.
+    const soul = join(home, 'SOUL.md'); unlinkSync(soul); symlinkSync(join(root, 'vault/Ideas/Plan.md'), soul);
+    assert.equal((await f.request(`/api/conversations/${own.id}/messages`, { message: 'otra vez', documentId: notes[0].id })).status, 403);
+    assert.equal(turns.length, 1);
+  } finally { await f.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
 async function fixture(adapter: Adapter, libraryRoot?: string, discovery?: HermesDiscovery, obsidianRegistry: string | null = null) {
