@@ -24,7 +24,7 @@ function fixture() {
   writeFileSync(registry, JSON.stringify({ vaults: { a: { path: vault } } }));
   const notes = new VaultNotes(registry);
   const vaultId = obsidianVaults(registry).vaults[0].id;
-  return { notes, vaultId, close: () => rmSync(base, { recursive: true, force: true }) };
+  return { notes, vaultId, vault, close: () => rmSync(base, { recursive: true, force: true }) };
 }
 
 test('vault: lista solo notas Markdown propias, sin carpetas ocultas, adjuntos ni enlaces simbólicos', () => {
@@ -65,6 +65,19 @@ test('vault: una nota enviada a consulta se recorta a 24 KiB y lo indica', () =>
     assert.match(document.content, /\[Nota recortada a 24 KiB para la consulta\]$/);
     assert.ok(Buffer.byteLength(document.content) <= 24 * 1024, 'el documento completo cabe en el límite del puente');
     assert.throws(() => notes.document('note-000000000000000000000000'), VaultError);
+  } finally { close(); }
+});
+
+test('vault: las líneas que parecen claves se ocultan al leer, buscar y consultar, salvo petición explícita', () => {
+  const { notes, vaultId, vault, close } = fixture();
+  try {
+    writeFileSync(join(vault, 'Cuentas.md'), 'Servicio de correo\npassword: CANARY_NOTE_SECRET\nRenovar en marzo.');
+    const id = notes.list(vaultId).notes.find(note => note.title === 'Cuentas')!.id;
+    const read = notes.read(vaultId, id);
+    assert.equal(read.hidden, 1); assert.doesNotMatch(read.content, /CANARY/); assert.match(read.content, /Renovar en marzo/);
+    assert.match(notes.read(vaultId, id, true).content, /CANARY_NOTE_SECRET/);
+    assert.doesNotMatch(JSON.stringify(notes.search(vaultId, 'canary')), /CANARY/);
+    assert.doesNotMatch(notes.document(id).content, /CANARY/);
   } finally { close(); }
 });
 

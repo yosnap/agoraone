@@ -25,7 +25,7 @@ export const profileObstacles: Obstacle[] = [
 
 const fileLabel = (profile: HermesProfile, name: string) => {
   const file = profile.files.find(item => item.name === name);
-  return !file ? `${name} · sin datos` : file.state === 'available' ? `${name} · ${file.bytes ?? 0} bytes` : file.state === 'missing' ? `${name} · no encontrado` : `${name} · no legible`;
+  return !file ? 'sin datos' : file.state === 'available' ? `${file.bytes ?? 0} bytes` : file.state === 'missing' ? 'no encontrado' : 'no legible';
 };
 
 // Each profile's own space, built from real catalog data (files, MCP declarations).
@@ -44,14 +44,14 @@ export function ProfileInterior({ room, activity, onStation, onService, onExit }
     <group position={[0, 2.7, -7.75]} onClick={event => { event.stopPropagation(); onStation('identity'); }}>
       <mesh castShadow><boxGeometry args={[3.4, 2.2, 0.12]}/><meshStandardMaterial color="#3a2f24" roughness={0.6}/></mesh>
       <mesh position={[0, 0, 0.07]}><boxGeometry args={[3, 1.8, 0.02]}/><meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.25} roughness={0.9}/></mesh>
-      <WorldLabel position={[0, 1.4, 0.3]} distanceFactor={11}><button className="place-label" onClick={() => onStation('identity')}>Identidad · {fileLabel(profile, 'SOUL.md')}</button></WorldLabel>
+      <WorldLabel position={[0, 1.4, 0.3]} distanceFactor={11}><button className="place-label" onClick={() => onStation('identity')}>Personalidad · {fileLabel(profile, 'SOUL.md')}</button></WorldLabel>
     </group>
 
     {/* Memory: archive cabinet holding MEMORY.md and USER.md. */}
     <group position={[-5.9, 0, -2.5]} onClick={event => { event.stopPropagation(); onStation('memory'); }}>
       <mesh position={[0, 1.2, 0]} castShadow receiveShadow><boxGeometry args={[1.2, 2.4, 3.4]}/><SurfaceMaterial kind="wood" color="#b88d62"/></mesh>
       {[0.5, 1.1, 1.7].flatMap(y => [-0.8, 0.8].map(z => <mesh key={`${y}${z}`} position={[0.62, y, z]}><boxGeometry args={[0.04, 0.45, 1.4]}/><meshStandardMaterial color="#8a6643" roughness={0.6}/></mesh>))}
-      <WorldLabel position={[0.8, 2.75, 0]} distanceFactor={10}><button className="place-label" onClick={() => onStation('memory')}>Memoria · {fileLabel(profile, 'MEMORY.md')} · {fileLabel(profile, 'USER.md')}</button></WorldLabel>
+      <WorldLabel position={[0.8, 2.75, 0]} distanceFactor={10}><button className="place-label" onClick={() => onStation('memory')}>Recuerdos · {fileLabel(profile, 'MEMORY.md')} · Lo que sabe de ti · {fileLabel(profile, 'USER.md')}</button></WorldLabel>
     </group>
 
     {/* Services: one screen per MCP declared for this profile; brighter when Hermes recorded a call in the last day. */}

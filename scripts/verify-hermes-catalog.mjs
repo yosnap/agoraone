@@ -13,7 +13,7 @@ try {
   const catalog = await (await response).json();
   assert.ok(catalog.profiles.length > 0);
   await page.locator('.directory').getByRole('button', { name: `Perfil · ${catalog.profiles[0].label}`, exact: false }).click();
-  await page.getByRole('heading', { name: 'Identidad y memoria' }).waitFor();
+  await page.getByRole('heading', { name: 'Personalidad y memoria' }).waitFor();
   await page.locator('.hermes-details summary').filter({ hasText: 'SOUL.md' }).click();
   await page.locator('.hermes-details details[open] pre').waitFor();
   assert.equal(await page.locator('.chat:visible').count(), 0);

@@ -180,6 +180,9 @@ test('notas de Obsidian: exigen CSRF y no aceptan IDs fuera de un vault registra
     assert.equal((await f.request('/api/hermes/vaults/vault-x/notes/note-000000000000000000000000')).status, 404);
     // The library route never resolves notes: they are only attached when sending a message.
     assert.equal((await f.request('/api/library/documents/note-000000000000000000000000')).status, 404);
+    // Revealing hidden lines needs the CSRF header like any other local read.
+    assert.equal((await f.request(`/api/hermes/profiles/profile-${"0".repeat(24)}?reveal=1`, undefined, { 'X-Agora-CSRF': '' })).status, 403);
+    assert.equal((await f.request('/api/hermes/vaults/vault-x/notes/note-000000000000000000000000?reveal=1', undefined, { 'X-Agora-CSRF': '' })).status, 403);
   } finally { await f.close(); }
 });
 

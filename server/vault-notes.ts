@@ -2,6 +2,7 @@ import { readdirSync, realpathSync, lstatSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { readHermesFile, redact } from './hermes-safe-read';
+import { maskSecrets, revealSecrets } from './secret-lines';
 import { obsidianRegistryPath } from './resource-discovery';
 import type { LibraryDocument } from './library';
 
@@ -92,14 +93,15 @@ export class VaultNotes {
     return { bytes, content };
   }
 
-  read(vaultId: string, noteId: string) {
+  read(vaultId: string, noteId: string, reveal = false) {
     const index = this.index(vaultId);
     const note = index.notes.find(item => item.id === noteId);
     if (!note) throw new VaultError();
     try {
       const { bytes, content } = this.text(index, note);
       const { file: _file, ...meta } = note;
-      return { ...meta, content, revision: createHash('sha256').update(bytes).digest('hex') };
+      const masked = maskSecrets(content);
+      return { ...meta, content: reveal ? revealSecrets(content) : masked.text, hidden: masked.hidden.length, revision: createHash('sha256').update(bytes).digest('hex') };
     } catch { throw new VaultError(); }
   }
 
@@ -117,7 +119,8 @@ export class VaultNotes {
       let line: string | undefined;
       if (note.readable && read + note.bytes <= maxSearchBytes) {
         read += note.bytes;
-        try { line = this.text(index, note).content.split('\n').find(text => fold(text).includes(needle)); } catch { /* unreadable: title only */ }
+        // The snippet is taken from the masked note, so a PEM body or other hidden line never shows.
+        try { const { content } = this.text(index, note); const at = content.split('\n').findIndex(text => fold(text).includes(needle)); if (at >= 0) line = maskSecrets(content).text.split('\n')[at]; } catch { /* unreadable: title only */ }
       } else if (note.readable) truncated = true;
       if (!titleHit && line === undefined) continue;
       results.push({ id: note.id, title: note.title, folder: note.folder, snippet: (line ?? '').trim().slice(0, 200) });

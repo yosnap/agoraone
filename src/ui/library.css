@@ -32,3 +32,5 @@
 .consult-with { display:flex;flex-direction:column;gap:6px;margin-top:8px }
 .consult-with label { font-size:10px }
 .consult-with select { width:100%;padding:10px;border:1px solid #b9c9c3;border-radius:7px;background:#f7f7ed;color:#294e43;font:inherit;font-size:12px }
+.hidden-lines { display:flex;align-items:center;gap:8px;justify-content:space-between }
+.hidden-lines button { border:1px solid #c9b98f;background:#fbf6e6;border-radius:6px;padding:5px 10px;font-size:11px;color:#5a4a22;flex:none }

@@ -12,6 +12,7 @@ import { profileContext, ProfileContextError } from './profile-context';
 import { obsidianVaults } from './resource-discovery';
 import { VaultError } from './vault-notes';
 import { BackgroundReads } from './background-reads';
+import { maskSecrets } from './secret-lines';
 
 export function createApp(options: { directory?: string; adapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads } = {}) {
   const app = express();
@@ -23,7 +24,11 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
   const reads = options.reads || new BackgroundReads(options.obsidianRegistry);
   const readDocument = (id: string, owner: string) => id.startsWith('import-') ? privateLibrary.read(id, owner) : library.read(id);
   // Notes are attached only when sending a message (CSRF-protected); the library route never resolves them.
-  const readAttachment = async (id: string, owner: string) => id.startsWith('note-') ? reads.vaultDocument(id) : readDocument(id, owner);
+  // Whatever the source, credential-like lines are hidden before an attachment reaches the model.
+  const readAttachment = async (id: string, owner: string) => {
+    const document = id.startsWith('note-') ? await reads.vaultDocument(id) : readDocument(id, owner);
+    return { ...document, content: maskSecrets(document.content).text };
+  };
   const csrf = randomBytes(32).toString('hex');
   const discovery = options.discovery || new HermesDiscovery();
   const busy = new Set<string>();
@@ -74,7 +79,7 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     catch { res.status(404).json({ error: 'Vault no disponible.' }); }
   });
   app.get('/api/hermes/vaults/:id/notes/:noteId', async (req, res) => {
-    try { res.json(await reads.vaultRead(req.params.id, req.params.noteId)); }
+    try { res.json(await reads.vaultRead(req.params.id, req.params.noteId, req.query.reveal === '1')); }
     catch { res.status(404).json({ error: 'Nota no disponible: puede ser demasiado grande, no ser texto UTF-8 o haber cambiado.' }); }
   });
   app.get('/api/hermes/vaults/:id/search', async (req, res) => {
@@ -88,7 +93,8 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     catch { res.status(503).json({ error: 'No se pudo leer la actividad de Hermes.' }); }
   });
   app.get('/api/hermes/profiles/:id', (req, res) => {
-    try { res.json(discovery.detail(req.params.id)); }
+    // ?reveal=1 shows hidden credential-like lines. Stays under /api/hermes, whose middleware requires the CSRF header on GET too.
+    try { res.json(discovery.detail(req.params.id, req.query.reveal === '1')); }
     catch { res.status(404).json({ error: 'Perfil no disponible para lectura.' }); }
   });
   app.get('/api/hermes/profiles/:id/mcp/:serverId/tools', (req, res) => {
