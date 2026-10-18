@@ -245,6 +245,34 @@ test('adjuntos en chats de perfil: copias ajenas, notas del vault y perfil revoc
   } finally { await f.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
+test('acciones de perfiles: solo responde el dueño a lo pendiente y se guardan nombres de herramientas, no datos', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'agora-approvals-')));
+  mkdirSync(join(root, 'profiles/alpha'), { recursive: true });
+  writeFileSync(join(root, 'profiles/alpha/SOUL.md'), 'Soy alpha.');
+  const discovery = new HermesDiscovery({ root, installation: '/not-installed', python: '', source: 'test' });
+  const [alpha] = discovery.scan().profiles;
+  const f = await fixture(async (_turn, progress) => {
+    progress?.({ type: 'tool', state: 'start', name: 'read_file' });
+    progress?.({ type: 'tool', state: 'end', name: 'read_file' });
+    return 'Leído';
+  }, undefined, discovery);
+  try {
+    const conversation = await (await f.request('/api/conversations', { profileId: alpha.id })).json();
+    const sent = await (await f.request(`/api/conversations/${conversation.id}/messages`, { message: 'lee' })).json();
+    assert.deepEqual(sent.messages.at(-1).tools, ['read_file']);
+    const id = 'a'.repeat(32), url = `/api/conversations/${conversation.id}/approvals/${id}`;
+    assert.equal((await f.request(url, { choice: 'once' }, { 'X-Agora-CSRF': '' })).status, 403);
+    assert.equal((await f.request(url, { choice: 'always' })).status, 400);
+    assert.equal((await f.request(url, { choice: 'once' })).status, 404, 'nada pendiente');
+    assert.equal((await f.request(`/api/conversations/${conversation.id}/approvals/../x`, { choice: 'once' })).status, 404);
+    const luma = await (await f.request('/api/conversations', { agent: 'luma', context: 'library-lobby' })).json();
+    assert.equal((await f.request(`/api/conversations/${luma.id}/approvals/${id}`, { choice: 'once' })).status, 404, 'Luma no tiene herramientas');
+    assert.equal((await f.request(`/api/conversations/conversation-ajena/approvals/${id}`, { choice: 'once' })).status, 404);
+    assert.equal((await f.request(`/api/conversations/${conversation.id}/cancel`, {})).status, 404, 'nada en curso que detener');
+    assert.equal((await f.request(`/api/conversations/${conversation.id}/cancel`, {}, { 'X-Agora-CSRF': '' })).status, 403);
+  } finally { await f.close(); rmSync(root, { recursive: true }); }
+});
+
 async function fixture(adapter: Adapter, libraryRoot?: string, discovery?: HermesDiscovery, obsidianRegistry: string | null = null) {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'agora-test-')));
   const reads = new BackgroundReads(obsidianRegistry);

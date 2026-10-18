@@ -5,7 +5,7 @@ import type { DocumentSource, LibraryDocument } from './library';
 import { hermesLocation } from './hermes-location';
 import type { ProfileContext } from './profile-context';
 
-export type Message = { role: 'user' | 'assistant'; content: string; sources?: DocumentSource[]; identity?: { profileId: string; files: { name: string; revision: string }[] } };
+export type Message = { role: 'user' | 'assistant'; content: string; tools?: string[]; sources?: DocumentSource[]; identity?: { profileId: string; files: { name: string; revision: string }[] } };
 export type Turn = { sessionId: string; message: string; history: Message[]; document?: LibraryDocument; profile?: ProfileContext };
 export type Adapter = (turn: Turn, progress?: (event: Progress) => void) => Promise<string>;
 const { installation, python } = hermesLocation();

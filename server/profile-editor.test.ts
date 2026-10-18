@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { HermesDiscovery, fileRevision } from './hermes-catalog';
-import { ProfileEditError, saveProfileFile } from './profile-editor';
+import { backupMemories, ProfileEditError, saveProfileFile } from './profile-editor';
 import { maskSecrets } from './secret-lines';
 
 function fixture() {
@@ -102,4 +102,20 @@ test('editar perfil: una entrada que acaba en una clave sin valor no se funde co
   const masked = maskSecrets('Correo del banco, contraseña:\n§\nVive en Valencia').text;
   assert.equal(masked.split('\n§\n').length, 2);
   assert.match(masked, /Vive en Valencia/);
+});
+
+test('turno con herramientas: copia la memoria antes, solo si cambió, y nunca SOUL', () => {
+  const f = fixture();
+  try {
+    backupMemories(f.discovery, f.backups, f.alpha.id);
+    backupMemories(f.discovery, f.backups, f.alpha.id);
+    const folder = join(f.backups, f.alpha.id);
+    assert.equal(readdirSync(folder).length, 1, 'sin cambios no se repite la copia; USER.md no existe y no se inventa');
+    writeFileSync(join(f.home, 'memories/MEMORY.md'), 'Primer recuerdo\n§\nTercer recuerdo');
+    backupMemories(f.discovery, f.backups, f.alpha.id);
+    const copies = readdirSync(folder).sort();
+    assert.equal(copies.length, 2); assert.ok(copies.every(name => name.startsWith('MEMORY.md.')));
+    assert.equal(readFileSync(join(folder, copies[1]), 'utf8'), 'Primer recuerdo\n§\nTercer recuerdo');
+    backupMemories(f.discovery, f.backups, 'profile-desconocido');
+  } finally { f.close(); }
 });

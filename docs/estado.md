@@ -1,6 +1,8 @@
 # Estado de continuidad — 18/10/2026
 
 ## Resultado
+Versión 0.13.0 · Bots con sus herramientas: el chat de un perfil corre su propio agente, como su bot de Telegram (modelo, proveedor, herramientas, MCP y memoria del perfil), y cada acción que cambie algo muestra una tarjeta con «Permitir» y «Denegar». Las consultas que solo leen van sin preguntar. La confirmación se mantiene aunque el perfil tenga las aprobaciones desactivadas, y nunca se guarda un permiso permanente. Luma sigue sin herramientas. Ver docs/conversaciones-perfiles.md.
+
 Versión 0.12.0 · Interiores vivos: la biblioteca, el centro de integraciones y los espacios de perfil se amueblan con modelos CC0 (plantas, butacas, sofás, mesas, lámparas, cuadros, objetos de escritorio y piezas propias de cada estilo), con alfombras, luces cálidas, un retrato estilizado en la personalidad y una primera vista más amplia. Solo decoración. Ver docs/espacios-perfil.md y docs/recursos-visuales.md.
 
 Versión 0.11.0 · El vault como librería: la ficha recorre el vault carpeta a carpeta con migas de pan, cada nota se abre como un libro con formato (propiedades, índice, tareas, tablas, avisos, enlaces internos que abren otras notas) y paso a la anterior o siguiente, y la sala 3D es una sala de lectura cálida donde cada libro de las estanterías es una nota real que se abre al pulsarla. Solo lectura; el contenido solo se lee al abrir. Ver docs/vault-obsidian.md.
