@@ -232,6 +232,12 @@ test('adjuntos en chats de perfil: copias ajenas, notas del vault y perfil revoc
     const { notes } = await (await f.request(`/api/hermes/vaults/${vaultId}/notes`)).json();
     assert.equal((await f.request(`/api/conversations/${own.id}/messages`, { message: '¿Clave?', documentId: notes[0].id })).status, 200);
     assert.equal(turns[0].profile?.name, 'alpha'); assert.match(turns[0].document!.content, /^CLAVE-PERFIL-404/);
+    // Editing real profile files is a CSRF-protected mutation with a closed set of file names.
+    const soulPath = `/api/hermes/profiles/${alpha.id}/files/SOUL.md`;
+    assert.equal((await f.request(soulPath, { content: 'x', revision: null }, { 'X-Agora-CSRF': '' }, 'PUT')).status, 403);
+    assert.equal((await f.request(`/api/hermes/profiles/${alpha.id}/files/config.yaml`, { content: 'x', revision: null }, {}, 'PUT')).status, 400);
+    assert.equal((await f.request(soulPath, { content: 'x', revision: null, path: '/etc/hosts' }, {}, 'PUT')).status, 400);
+    assert.equal(readFileSync(join(home, 'SOUL.md'), 'utf8'), 'Soy alpha.');
     // A revoked profile gets nothing, attachment included.
     const soul = join(home, 'SOUL.md'); unlinkSync(soul); symlinkSync(join(root, 'vault/Ideas/Plan.md'), soul);
     assert.equal((await f.request(`/api/conversations/${own.id}/messages`, { message: 'otra vez', documentId: notes[0].id })).status, 403);

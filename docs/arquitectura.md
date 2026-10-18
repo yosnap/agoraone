@@ -20,6 +20,7 @@ flowchart LR
 - `server/conversations.ts`: persistencia atómica JSON con permisos 0600, directorio privado.
 - `server/document-extraction.ts` y `extract-document.mjs`: validación y extracción de PDF/DOCX en proceso limitado sin credenciales; persisten solo texto mediante `private-library.ts`.
 - `server/hermes-location.ts`, `hermes-catalog.ts`, `hermes-safe-read.ts`, `hermes-database.ts`: detección local y catálogo de solo lectura, independiente de la ejecución AIAgent. Contrato en shared/hermes-catalog.ts, proyección visual en src/data/city.ts y ficha en src/ui/hermes-panel.tsx.
+- `server/profile-editor.ts` y `hermes_profile_write.py`: única escritura en perfiles de Hermes, limitada a SOUL.md, MEMORY.md y USER.md desde la ficha, con confirmación, copia previa, control de revisión y el bloqueo de memoria de Hermes (docs/edicion-perfiles.md).
 - `server/hermes-adapter.ts`, `hermes-worker.ts` y `hermes_bridge.py`: procesos exclusivos por conversación reutilizables durante cinco minutos, agente nuevo por turno, streaming, configuración, timeout y capacidades. Ver latencia-chat.md.
 - `server/profile-context.ts` y `hermes_identity.py`: snapshot autorizado de identidad por turno y construcción del prompt; sin lectura de rutas desde el proceso del modelo. Los perfiles conversan en hogares separados por sesión bajo .agora/hermes-conversations.
 

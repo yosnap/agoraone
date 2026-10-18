@@ -6,7 +6,7 @@
 - Una tarea concreta: un agente. No delegar salvo autorización. Fast apagado; Batch para trabajos compatibles.
 - Leer PROJECT_CONTEXT.md y docs/estado.md antes de continuar.
 - Separar mundo 3D, interfaz, datos, servidor y adaptador Hermes.
-- No modificar ni actualizar ~/.hermes/hermes-agent ni perfiles existentes.
+- No modificar ni actualizar ~/.hermes/hermes-agent. De los perfiles existentes solo se escriben SOUL.md, memories/MEMORY.md y memories/USER.md, y únicamente desde el editor de la ficha (decisión del usuario, 18/10/2026): petición explícita confirmada, copia de seguridad previa, comprobación de revisión, bloqueo de memoria de Hermes y formato de entradas «§». Nada más del perfil se modifica.
 - Credenciales solo en backend. Escuchar únicamente en loopback. Validar permisos en cada ejecución.
 - Personaje, agente lógico, perfil, bot y conversación son entidades diferentes.
 - Ningún movimiento 3D debe invocar modelos. Identificadores de recursos no son rutas físicas.

@@ -1,4 +1,4 @@
-export type HermesFile = { name: 'SOUL.md' | 'MEMORY.md' | 'USER.md'; state: 'available' | 'missing' | 'unavailable'; bytes?: number; revision?: string; content?: string; hidden?: number };
+export type HermesFile = { name: 'SOUL.md' | 'MEMORY.md' | 'USER.md'; state: 'available' | 'missing' | 'unavailable'; bytes?: number; revision?: string; content?: string; hidden?: number; hiddenChars?: number };
 export type McpTools = {
   source: 'hermes-cache'; state: 'cached' | 'expired' | 'changed' | 'missing' | 'unavailable';
   recordedAt: string | null; truncated: boolean;

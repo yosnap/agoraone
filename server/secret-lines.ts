@@ -33,6 +33,8 @@ export function maskSecrets(raw: string): { text: string; hidden: string[] } {
   const hidden: string[] = [];
   let pem = false, next = false;
   const lines = raw.replace(controls, '').split('\n').map(line => {
+    // Hermes' memory entry separator ends any pending block, so hiding never merges two entries.
+    if (line.trim() === '§') { pem = false; next = false; return line; }
     if (/-----BEGIN [A-Z ]+-----/.test(line)) pem = true;
     // A literal marker already in the text is hidden too, so restoring an edit can never confuse it with a secret.
     const secret = pem || next || isSecret(line) || isHiddenMarker(line);

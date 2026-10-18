@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { HermesCatalog, HermesFile } from '../../shared/hermes-catalog';
-import { getHermesProfile } from '../api/client';
+import { getHermesProfile, type ProfileLimits } from '../api/client';
+import { ProfileFileEditor } from './profile-file-editor';
 import type { DocumentSource, Status } from '../api/client';
 import { ChatPanel } from './chat-panel';
 import { serviceGroups } from '../data/service-groups';
@@ -23,16 +24,20 @@ export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, o
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [revealed, setRevealed] = useState(false);
+  const [limits, setLimits] = useState<ProfileLimits | null>(null);
+  const [editing, setEditing] = useState<HermesFile['name'] | null>(null);
+  const [saved, setSaved] = useState('');
+  const [version, setVersion] = useState(0);
   useEffect(() => {
     let live = true;
-    setFiles([]); setError('');
+    setError(''); // files stay while reloading, so an open editor keeps its draft
     if (!profile) return;
     setLoading(true);
-    getHermesProfile(id, revealed).then(data => { if (live) setFiles(data.files); })
+    getHermesProfile(id, revealed).then(data => { if (live) { setFiles(data.files); setLimits(data.limits); } })
       .catch(() => { if (live) setError('No se pudo leer este perfil. Puede haber cambiado en Hermes.'); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [id, revealed, profile?.files.map(file => file.revision).join(',')]);
+  }, [id, revealed, version, profile?.files.map(file => file.revision).join(',')]);
   return <div className="profile-panel">
     {profile && !inside && <button className="enter-library" onClick={onEnter}>Entrar en el espacio de {profile.label} →</button>}
     {profile && <nav className="library-tabs" aria-label="Acciones del perfil"><button aria-pressed={tab === 'info'} onClick={() => onTab('info')}>Ficha del perfil</button><button aria-pressed={tab === 'chat'} onClick={() => onTab('chat')}>Conversar con {profile.label}</button></nav>}
@@ -51,9 +56,14 @@ export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, o
       <small>Lo que este perfil sabe de sí mismo y de ti, leído de sus archivos de Hermes. Abrir esta ficha solo lee localmente; se envían al proveedor únicamente al enviar un mensaje en la conversación.</small>
       {loading && <p role="status">Leyendo archivos del perfil…</p>}
       {error && <p className="error" role="alert">{error}</p>}
-      <HiddenLines count={files.reduce((sum, file) => sum + (file.hidden ?? 0), 0)} revealed={revealed} onToggle={() => setRevealed(value => !value)}/>
+      <HiddenLines count={files.reduce((sum, file) => sum + (file.hidden ?? 0), 0)} revealed={revealed} disabled={!!editing} onToggle={() => setRevealed(value => !value)}/>
+      {saved && <p className="notice" role="status">{saved}</p>}
       {files.map(file => <details key={file.name}><summary>{fileTitles[file.name]} <small>{file.name}</small> · {file.state === 'available' ? `${file.bytes} bytes` : file.state === 'missing' ? 'no encontrado' : 'no legible'}</summary>
-        {file.state === 'available' && <pre>{file.content || '(vacío)'}</pre>}</details>)}
+        {editing === file.name && limits ? <ProfileFileEditor profileId={id} file={file} title={fileTitles[file.name]} limit={file.name === 'SOUL.md' ? null : limits[file.name]}
+          revealed={revealed} onCancel={() => setEditing(null)} onReload={() => { setEditing(null); setVersion(value => value + 1); }} onSaved={message => { setEditing(null); setSaved(message); setVersion(value => value + 1); }}/>
+        : <>{file.state === 'available' && <pre>{file.content || '(vacío)'}</pre>}
+          {file.state !== 'unavailable' && !editing && <button className="edit-file" onClick={() => { setSaved(''); setEditing(file.name); }}>{file.state === 'missing' ? 'Crear' : 'Editar'} {fileTitles[file.name].toLocaleLowerCase('es')}</button>}</>}
+      </details>)}
       <h3>Canales declarados</h3>
       {profile.channels.length ? <ul>{profile.channels.map(channel => <li key={channel.name}>{channel.name} · {channel.enabled ? 'habilitado en configuración' : 'sin habilitación explícita'}</li>)}</ul> : <p>No hay canales declarados en config.yaml. La configuración mediante variables de entorno no se inspecciona.</p>}
       <h3>Espacios vinculados</h3>
