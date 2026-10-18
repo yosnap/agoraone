@@ -1,10 +1,8 @@
-import { useMemo } from 'react';
-import { BoxGeometry } from 'three';
 import type { HermesProfile } from '../../shared/hermes-catalog';
 import type { BuildingStyle } from '../data/building-style';
 import { WorldLabel } from './world-label';
-import { Pendant } from './library-interior';
-import { meterUV, SurfaceMaterial } from './surfaces';
+import { SurfaceMaterial } from './surfaces';
+import { hasWainscot, ProfileShell } from './profile-shell';
 import { StandingPerson } from './standing-person';
 import { decorObstacles, ProfileDecor, type Obstacle } from './profile-decor';
 import type { ProfileActivity } from '../../shared/hermes-activity';
@@ -37,17 +35,10 @@ export function ProfileInterior({ room, activity, onStation, onService, onExit }
 }) {
   const { profile, style, seed, services } = room;
   const accent = profile.color;
-  const shell = useMemo(() => ({ floor: meterUV(new BoxGeometry(14, 0.24, 16)), side: meterUV(new BoxGeometry(0.3, 5, 16)), end: meterUV(new BoxGeometry(14, 5, 0.3)) }), []);
-  const warm = style === 'workshop' || style === 'archive' ? 'concrete' : 'wood';
   return <group>
-    <hemisphereLight args={['#fff6e6', '#8a7a62', 0.9]}/>
-    <directionalLight position={[2, 6, 5]} intensity={1.2} castShadow/>
-    <mesh geometry={shell.floor} position={[0, -0.12, 0]} receiveShadow><SurfaceMaterial kind={warm} color={warm === 'wood' ? '#ffffff' : '#c9c6bd'}/></mesh>
-    <mesh position={[0, 5.1, 0]}><boxGeometry args={[14, 0.2, 16]}/><meshStandardMaterial color="#e9e3d6" roughness={0.9}/></mesh>
-    {[-7, 7].map(x => <mesh key={x} geometry={shell.side} position={[x, 2.5, 0]} receiveShadow><SurfaceMaterial kind="stucco" color="#efe9de"/></mesh>)}
-    {[-8, 8].map(z => <mesh key={z} geometry={shell.end} position={[0, 2.5, z]} receiveShadow><SurfaceMaterial kind="stucco" color="#efe9de"/></mesh>)}
-    <mesh position={[0, 0.5, -7.83]}><boxGeometry args={[14, 1, 0.04]}/><meshStandardMaterial color={accent} roughness={0.8}/></mesh>
-    {[-3, 1.5, 5].map(z => <Pendant key={z} x={0} z={z}/>)}
+    <ProfileShell style={style} accent={accent}/>
+    {/* In front of the archive's wainscot, flush with the wall elsewhere. */}
+    <mesh position={[0, 0.5, hasWainscot(style) ? -7.77 : -7.83]}><boxGeometry args={[14, 1, 0.04]}/><meshStandardMaterial color={accent} roughness={0.8}/></mesh>
 
     {/* Identity: the profile's SOUL as a framed portrait on the back wall. */}
     <group position={[0, 2.7, -7.75]} onClick={event => { event.stopPropagation(); onStation('identity'); }}>

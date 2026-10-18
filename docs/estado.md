@@ -1,6 +1,8 @@
-# Estado de continuidad — 17/10/2026
+# Estado de continuidad — 18/10/2026
 
 ## Resultado
+Versión 0.7.0 · Interiores distintos por perfil: cada tipo de edificio (taller, observatorio, invernadero, pabellón, torre, archivo) tiene su propia sala, con suelo, paredes, techo, luz y fondo propios, manteniendo las estaciones en el mismo sitio. Solo decoración. Ver docs/espacios-perfil.md.
+
 Versión 0.6.0 · Rendimiento: lecturas de Hermes y del vault en un hilo aparte (el servidor ya no se bloquea; la primera lectura de actividad pasa de varios segundos de bloqueo a 0,68 s sin bloquear) y escena 3D cargada aparte (la interfaz se usa con unos 270 KB). Ver docs/arquitectura.md.
 
 Versión 0.5.0 · Vault de Obsidian (aprobado por el usuario): ficha con notas por carpeta, búsqueda por título y contenido, lectura y «Consultar esta nota con Luma»; interior con una estantería por carpeta. Solo lectura, sin índices en disco; una nota solo sale al modelo si el usuario la consulta y envía un mensaje. Ver docs/vault-obsidian.md.
@@ -82,7 +84,7 @@ Biblioteca interior con estanterías interactivas, mesa, Luma y salida. Dos docu
 Probar la latencia tras recargar: primer envío y segundo dentro de la misma conversación. Si persiste la demora, distinguir «Iniciando Hermes» de «Esperando al proveedor» y medir contexto/proveedor. Ver docs/latencia-chat.md y docs/conversaciones-perfiles.md. No habilitar terminal/MCP general ni acceso a carpetas completas. Diferenciación visual de edificios aplazada por el usuario.
 
 ## Pendiente
-Edificios visualmente diferenciados, interiores adicionales, búsqueda en contenido, OCR/documentos extensos, papelera, sincronización de documentos entre pestañas, herramientas por perfil, escritura de memoria, proveedor nativo por perfil, sesiones compartidas con Desktop y conexiones remotas, cancelación explícita del chat, WebXR, cuentas multiusuario, recuperación de identidad y cifrado. Streaming ya implementado. La API Python es interna: ante otro commit, revisar contrato antes de quitar el bloqueo. Auditoría npm: tres avisos moderados en la cadena de la CLI de Mammoth no utilizada; análisis y seguimiento en docs/importacion.md.
+Búsqueda en contenido, OCR/documentos extensos, papelera, sincronización de documentos entre pestañas, herramientas por perfil, escritura de memoria, proveedor nativo por perfil, sesiones compartidas con Desktop y conexiones remotas, cancelación explícita del chat, WebXR, cuentas multiusuario, recuperación de identidad y cifrado. Streaming ya implementado. La API Python es interna: ante otro commit, revisar contrato antes de quitar el bloqueo. Auditoría npm: tres avisos moderados en la cadena de la CLI de Mammoth no utilizada; análisis y seguimiento en docs/importacion.md.
 
 Repositorio público https://github.com/yosnap/agoraone (rama main, licencia MIT, a petición del usuario). La documentación publicada está anonimizada: sin nombres de perfiles, vault, proveedor ni modelo del usuario. Las verificaciones de navegador leen esos nombres de variables de entorno o de `.agora/verify-targets.json` (local, no versionado). `package-lock.json` es un artefacto generado que supera 1000 líneas y se conserva íntegro para instalación reproducible. Los módulos propios son pequeños.
 
