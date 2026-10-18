@@ -1,6 +1,6 @@
 # Actividad real de Hermes (17/10/2026)
 
-Revisión de solo lectura de la instalación local (Hermes 0.21.4, commit 28aceb3). No se iniciaron procesos, no se modificó configuración ni perfiles y no se leyó contenido de mensajes, prompts ni credenciales.
+Revisión de solo lectura de la instalación local (Hermes 0.21.4, commit 28aceb3; la gestión de tareas y kanban se añadió después, ver el final). No se iniciaron procesos, no se modificó configuración ni perfiles y no se leyó contenido de mensajes, prompts ni credenciales.
 
 ## Fuentes disponibles
 
@@ -24,7 +24,7 @@ El usuario aprobó los cinco puntos, con nombres de tareas programadas visibles 
 
 - **Backend**: `GET /api/hermes/activity` (protegido por la cabecera CSRF como el resto de `/api/hermes`). Lector en `server/hermes-activity.ts`; tipos en `shared/hermes-activity.ts`. Abre SQLite con `withHermesDatabase` (`server/hermes-database.ts`) y JSON con `readHermesFile` (sin enlaces simbólicos ni duros, dentro de `~/.hermes`). Los perfiles salen del catálogo; el cliente no envía rutas.
 - **Gateway**: «en marcha» solo si el PID existe, el estado es `running`/`degraded` y el registro más reciente (estado o latido) tiene menos de 120 s, el mismo umbral que usa Hermes. Si no, «detenido», «sin datos recientes» o «sin estado registrado», y las conexiones pasan a «sin datos recientes».
-- **Campos leídos**: sesiones, solo `source`, `started_at` y `last_activity_at`; tareas programadas, nombre, habilitación, estado, horario, último resultado y fechas (nunca `prompt`, `deliver` ni `origin`); kanban, título y estado de las tareas asignadas al perfil (nunca `body`). Los textos pasan por `redact`.
+- **Campos leídos**: sesiones, solo `source`, `started_at` y `last_activity_at`; tareas programadas, nombre, habilitación, estado, horario, último resultado y fechas (las instrucciones, `prompt`, solo al pulsar «Editar», con las líneas con aspecto de clave ocultas; nunca `deliver` ni `origin`); kanban, título y estado de las tareas asignadas al perfil (nunca `body`). Los textos pasan por `redact`.
 - **Interfaz**: barra inferior con el estado del gateway y el recuento global de agentes; bajo el nombre de cada edificio, sus conexiones y, si hubo actividad hace menos de dos minutos, la etiqueta «Actividad registrada» y un anillo dorado en la parcela; sección «Actividad real» en la ficha del perfil; dos paneles en la pared del fondo de su espacio (tareas programadas y kanban). Sondeo cada 15 s, en pausa con la pestaña oculta; si una lectura falla se retiran los datos en lugar de mostrar los antiguos como actuales.
 - **Verificación**: `server/hermes-activity.test.ts` (canarios de contenido, estado antiguo, proceso inexistente, enlaces simbólicos, fuentes ausentes) y `scripts/verify-activity.mjs` (escritorio y móvil, sin peticiones mutadoras).
 
@@ -60,3 +60,25 @@ Lectura en `server/hermes-activity-log.ts` y `server/hermes-activity.ts`; panel 
 5. **Kanban**, cuando tenga tareas: tablero en el espacio del perfil asignado.
 
 El movimiento ambiental (paseos, peatones) sigue siendo ilustrativo y se distingue visualmente de los indicadores con dato real, que siempre muestran su fuente y antigüedad.
+
+## Gestionar tareas programadas y kanban (0.15.0)
+Decisión del usuario (18/10/2026): en la sección «Actividad real» de la ficha de cada perfil, las tareas programadas y las tarjetas del kanban ya no son solo de lectura.
+- **Tareas programadas**:
+  - Las acciones disponibles son **Pausar**/**Reanudar**, **Ejecutar ahora**, **Editar**, **Eliminar** (pide confirmación) y **+ Nueva tarea programada** (nombre, horario e instrucciones).
+  - «Ejecutar ahora» solo marca la tarea (`trigger_job` de Hermes) para el siguiente ciclo del gateway, que la ejecuta con la configuración del propio perfil; AgoraOne no ejecuta nada. Si el gateway no está en marcha, se avisa de que se ejecutará cuando arranque.
+  - Al editar solo se envía lo que cambió, para que Hermes no recalcule ni reactive una tarea sin motivo. Las tareas de una sola vez («in 30m», «at …») no admiten cambiar su momento. Si las instrucciones cambiaron entre abrirlas y guardarlas, se rechaza (409) en lugar de pisarlas.
+  - El horario «30m» se repite cada 30 minutos; para una sola vez se usa «in 30m». La ayuda del formulario lo explica.
+  - Las instrucciones solo se leen al pulsar **Editar**, con las líneas que parecen claves como «[línea oculta N]», que se reponen al guardar.
+  - Las tareas nuevas guardan su resultado en Hermes (`deliver: local`), sin enviarlo a ningún chat. El formulario avisa de que Hermes las ejecutará en su horario con las herramientas y permisos del perfil, sin pedir confirmación.
+- **Kanban**:
+  - Sobre las tarjetas asignadas al perfil (hasta 30 abiertas): **Completar**, **Bloquear** (con motivo opcional), **Desbloquear**, **Comentar** y **Archivar**. Archivar pide confirmación y, si un agente trabaja en ella, avisa de que lo detendrá.
+  - **+ Nueva tarjeta para este perfil** la crea asignada a él. Si el despachador de kanban de Hermes está activo, el perfil trabaja en ella por su cuenta, y el formulario lo avisa.
+  - Se usa el tablero `default` (`kanban.db` en la raíz de Hermes), el mismo que lee AgoraOne.
+- **Cómo**:
+  - `server/hermes_manage.py` usa las funciones de Hermes: la herramienta `cronjob`, la misma que usa el bot, sobre el almacén del propio perfil (`use_cron_store`), y la API de `hermes_cli.kanban_db`. Así se aplican sus validaciones y sus bloqueos.
+  - Solo admite ids que pertenezcan a ese perfil (tarea en su almacén, tarjeta con `assignee` igual al perfil).
+  - Los errores de Hermes, que vienen en inglés, se muestran en castellano.
+  - Las rutas `/api/hermes/profiles/:id/jobs[/:jobId]` y `/cards[/:cardId]` van detrás de la cabecera CSRF y usan cuerpos estrictos. El cliente no elige ni el destino ni el perfil asignado.
+- **Verificación**:
+  - `server/hermes-manage.test.ts`: Hermes real con perfiles ficticios. Comprueba crear, editar conservando la línea oculta y rechazar el conflicto; pausar, reanudar y eliminar; que «Ejecutar ahora» solo marca la tarea, sin sesión ni ejecución; que la tarea de una sola vez no se reprograma; el rechazo de otro perfil; comentar, bloquear, desbloquear y completar tarjetas; y el error en castellano.
+  - `scripts/verify-profile-tasks.mjs`: navegador con los datos interceptados, sin tocar Hermes.

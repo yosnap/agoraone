@@ -1,7 +1,9 @@
 # Estado de continuidad — 18/10/2026
 
 ## Resultado
-Versión 0.14.0 · Editar el vault: el libro abierto permite editar la nota y el panel crear notas nuevas en la carpeta abierta, en tu vault real de Obsidian, con confirmación, comprobación de que no cambió mientras tanto, copia previa (.agora/vault-backups) y escritura atómica; las líneas ocultas se conservan. Siguiente, por orden acordado con el usuario: gestionar tareas programadas y kanban, y después usar herramientas MCP a mano desde el centro de integraciones. Ver docs/vault-obsidian.md.
+Versión 0.15.0 · Tareas y kanban: en la ficha de cada perfil se pueden pausar, reanudar, ejecutar, editar, crear y eliminar sus tareas programadas, y crear, completar, bloquear, desbloquear, comentar y archivar sus tarjetas del kanban, con las funciones de Hermes y solo lo de ese perfil. Siguiente, según el orden acordado: usar herramientas MCP a mano desde el centro de integraciones. Ver docs/actividad-hermes.md.
+
+Versión 0.14.0 · Editar el vault: el libro abierto permite editar la nota y el panel crear notas nuevas en la carpeta abierta, en tu vault real de Obsidian, con confirmación, comprobación de que no cambió mientras tanto, copia previa (.agora/vault-backups) y escritura atómica; las líneas ocultas se conservan. Ver docs/vault-obsidian.md.
 
 Versión 0.13.0 · Bots con sus herramientas: el chat de un perfil corre su propio agente, como su bot de Telegram (modelo, proveedor, herramientas, MCP y memoria del perfil), y cada acción que cambie algo muestra una tarjeta con «Permitir» y «Denegar». Las consultas que solo leen van sin preguntar. La confirmación se mantiene aunque el perfil tenga las aprobaciones desactivadas, y nunca se guarda un permiso permanente. Luma sigue sin herramientas. Ver docs/conversaciones-perfiles.md.
 

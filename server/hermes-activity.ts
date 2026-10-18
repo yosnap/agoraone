@@ -139,6 +139,7 @@ function jobs(list: Record<string, unknown>[] | null): ScheduledJob[] | null {
   if (!list) return null;
   // Name and schedule only; the job prompt, origin and delivery target are never read.
   return list.map(job => ({
+    id: typeof job.id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(job.id) ? job.id : null,
     name: redact(job.name, 100) || 'Tarea sin nombre', enabled: job.enabled === true, state: token(job.state) || 'unknown',
     schedule: redact(job.schedule_display, 80), lastStatus: token(job.last_status),
     lastRunAt: iso(job.last_run_at), nextRunAt: iso(job.next_run_at),
@@ -151,8 +152,8 @@ function board(root: string, profile: string): ProfileActivity['board'] {
     if (!['title', 'assignee', 'status'].every(key => c.has(key))) return null;
     const byStatus = db.prepare('SELECT status, count(*) AS count FROM tasks WHERE assignee = ? GROUP BY status').all(profile)
       .flatMap(row => token(row.status) ? [{ status: row.status as string, count: Number(row.count) }] : []);
-    const open = db.prepare("SELECT title, status FROM tasks WHERE assignee = ? AND status NOT IN ('done', 'archived') ORDER BY rowid DESC LIMIT 8").all(profile)
-      .map(row => ({ title: redact(row.title, 120) || 'Tarea sin título', status: token(row.status) || 'unknown' }));
+    const open = db.prepare("SELECT " + (c.has('id') ? 'id, ' : '') + "title, status FROM tasks WHERE assignee = ? AND status NOT IN ('done', 'archived') ORDER BY rowid DESC LIMIT 30").all(profile)
+      .map(row => ({ id: typeof row.id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(row.id) ? row.id : null, title: redact(row.title, 120) || 'Tarea sin título', status: token(row.status) || 'unknown' }));
     return { byStatus, open };
   });
 }

@@ -281,6 +281,22 @@ test('acciones de perfiles: solo responde el dueño a lo pendiente y se guardan 
   } finally { await f.close(); rmSync(root, { recursive: true }); }
 });
 
+test('tareas y kanban por HTTP: CSRF, cuerpo estricto y solo perfiles del catálogo', async () => {
+  const f = await fixture(async () => { throw new Error('No debe invocar inferencia'); });
+  const profile = `profile-${'0'.repeat(24)}`;
+  try {
+    const job = { name: 'Resumen', schedule: 'every 2h', prompt: 'hola' };
+    assert.equal((await f.request(`/api/hermes/profiles/${profile}/jobs`, job, { 'X-Agora-CSRF': '' })).status, 403);
+    assert.equal((await f.request(`/api/hermes/profiles/${profile}/jobs`, { ...job, deliver: 'telegram' })).status, 400, 'no se elige el destino');
+    assert.equal((await f.request(`/api/hermes/profiles/${profile}/jobs/abc`, { action: 'run', prompt: 'x' })).status, 400);
+    assert.equal((await f.request(`/api/hermes/profiles/${profile}/jobs/../x`, { action: 'run' })).status, 404);
+    assert.equal((await f.request(`/api/hermes/profiles/${profile}/cards`, { title: 'x', assignee: 'otro' })).status, 400, 'no se elige a quién se asigna');
+    assert.equal((await f.request(`/api/hermes/profiles/${profile}/cards/t_1`, { action: 'delete' })).status, 400);
+    assert.equal((await f.request(`/api/hermes/profiles/${profile}/cards`, { title: 'x' }, { 'X-Agora-CSRF': '' })).status, 403);
+    assert.equal((await f.request(`/api/hermes/profiles/${profile}/jobs/abc`, undefined, { 'X-Agora-CSRF': '' })).status, 403);
+  } finally { await f.close(); }
+});
+
 async function fixture(adapter: Adapter, libraryRoot?: string, discovery?: HermesDiscovery, obsidianRegistry: string | null = null) {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'agora-test-')));
   const reads = new BackgroundReads(obsidianRegistry);

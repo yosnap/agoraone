@@ -36,6 +36,16 @@ export const saveVaultNote = (vaultId: string, noteId: string, edit: { content: 
   request<{ id: string; revision: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes/${encodeURIComponent(noteId)}`, edit, 'PUT');
 export const createVaultNote = (vaultId: string, folder: string, title: string, content: string) =>
   request<{ id: string; folder: string; title: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes`, { folder, title, content });
+/** A profile's scheduled tasks and kanban cards, managed with Hermes' own functions (user's decision, 18/10/2026). */
+export type JobDetail = { id: string; name: string; schedule: string; once: boolean; prompt: string; revision: string; hidden: number };
+const profilePath = (id: string) => `/hermes/profiles/${encodeURIComponent(id)}`;
+export const getJob = (profileId: string, jobId: string) => request<JobDetail>(`${profilePath(profileId)}/jobs/${encodeURIComponent(jobId)}`);
+export const createJob = (profileId: string, job: { name: string; schedule: string; prompt: string }) => request<{ job: string }>(`${profilePath(profileId)}/jobs`, job);
+export const changeJob = (profileId: string, jobId: string, change: { action: 'pause' | 'resume' | 'run' | 'remove' } | { action: 'update'; name?: string; schedule?: string; prompt?: string; revision?: string }) =>
+  request<{ job: string }>(`${profilePath(profileId)}/jobs/${encodeURIComponent(jobId)}`, change);
+export const createCard = (profileId: string, card: { title: string; body?: string }) => request<{ card: string }>(`${profilePath(profileId)}/cards`, card);
+export const changeCard = (profileId: string, cardId: string, change: { action: 'complete' | 'unblock' | 'archive' } | { action: 'block'; reason?: string } | { action: 'comment'; body: string }) =>
+  request<{ card: string }>(`${profilePath(profileId)}/cards/${encodeURIComponent(cardId)}`, change);
 export const searchVault = (vaultId: string, query: string) => request<{ results: { id: string; title: string; folder: string; snippet: string }[]; truncated: boolean }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/search?q=${encodeURIComponent(query)}`);
 export const getMcpTools = (profileId: string, serverId: string) => request<McpTools>(`/hermes/profiles/${encodeURIComponent(profileId)}/mcp/${encodeURIComponent(serverId)}/tools`);
 export const createConversation = (profileId?: string) => request<Conversation>('/conversations', profileId ? { profileId } : { agent: 'luma', context: 'library-lobby' });
