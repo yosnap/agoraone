@@ -1,6 +1,8 @@
 # Estado de continuidad — 17/10/2026
 
 ## Resultado
+Versión 0.6.0 · Rendimiento: lecturas de Hermes y del vault en un hilo aparte (el servidor ya no se bloquea; la primera lectura de actividad pasa de varios segundos de bloqueo a 0,68 s sin bloquear) y escena 3D cargada aparte (la interfaz se usa con unos 270 KB). Ver docs/arquitectura.md.
+
 Versión 0.5.0 · Vault de Obsidian (aprobado por el usuario): ficha con notas por carpeta, búsqueda por título y contenido, lectura y «Consultar esta nota con Luma»; interior con una estantería por carpeta. Solo lectura, sin índices en disco; una nota solo sale al modelo si el usuario la consulta y envía un mensaje. Ver docs/vault-obsidian.md.
 
 Versión 0.4.0: registro de actividad (botón «Registro») con lo que Hermes registró en las últimas 24 h: sesiones por origen, ejecuciones de tareas programadas, llamadas MCP por hora y cambios de conexión. Sin contenido ni títulos. Ver docs/actividad-hermes.md.

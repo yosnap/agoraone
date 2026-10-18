@@ -10,6 +10,7 @@ import { pdfFixture, docxFixture } from './document-fixtures';
 import { HermesDiscovery } from './hermes-catalog';
 import { mcpFingerprint } from './mcp-tools';
 import { obsidianVaults } from './resource-discovery';
+import { BackgroundReads } from './background-reads';
 
 test('consulta de herramientas MCP exige CSRF, servidor del perfil y registro vigente', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'agora-mcp-api-')));
@@ -201,7 +202,8 @@ test('notas de Obsidian: una nota consultada llega al turno de Luma por ID, reco
 
 async function fixture(adapter: Adapter, libraryRoot?: string, discovery?: HermesDiscovery, obsidianRegistry: string | null = null) {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'agora-test-')));
-  const server = createApp({ directory, adapter, libraryRoot, privateLibraryRoot: join(directory, 'library'), discovery, obsidianRegistry }).listen(0, '127.0.0.1');
+  const reads = new BackgroundReads(obsidianRegistry);
+  const server = createApp({ directory, adapter, libraryRoot, privateLibraryRoot: join(directory, 'library'), discovery, obsidianRegistry, reads }).listen(0, '127.0.0.1');
   await new Promise<void>(resolve => server.once('listening', resolve));
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('No port');
@@ -215,7 +217,7 @@ async function fixture(adapter: Adapter, libraryRoot?: string, discovery?: Herme
       Origin: 'http://127.0.0.1:4317', 'X-Agora-CSRF': csrf, 'Content-Type': 'application/json', ...extra },
     body: body ? JSON.stringify(body) : undefined,
   });
-  return { request, async close() { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); rmSync(directory, { recursive: true }); } };
+  return { request, async close() { await reads.close(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); rmSync(directory, { recursive: true }); } };
 }
 
 test('separa propietarios y conserva historial por conversación, agente y contexto', async () => {

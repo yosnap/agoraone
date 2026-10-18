@@ -7,7 +7,6 @@ import { readHermesFile, readMetadata, redact } from './hermes-safe-read';
 import { readHermesDatabase } from './hermes-database';
 import { mcpMetadata } from './resource-discovery';
 import { readMcpTools } from './mcp-tools';
-import { readActivity } from './hermes-activity';
 
 const markers = ['config.yaml', '.env', 'SOUL.md', 'profile.yaml', 'auth.json', 'state.db'];
 const namePattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
@@ -46,11 +45,11 @@ export class HermesDiscovery {
     if (!profile) throw new Error('Unknown profile');
     return { profile, files: this.files(root, this.profileHome(root, profile.name), true) };
   }
-  activity() {
+  /** Where to read activity from. Profiles come from the catalog; the client never names a path. */
+  activityTargets() {
     const root = this.root();
-    // Profiles come from the catalog; the client never names a path or profile directory.
     const profiles = this.scan().profiles.flatMap(profile => { try { return [{ id: profile.id, name: profile.name, home: this.profileHome(root, profile.name), mcp: profile.mcp?.map(server => server.name) }]; } catch { return []; } });
-    return readActivity(root, profiles);
+    return { root, profiles };
   }
   mcpTools(profileId: string, serverId: string) {
     const root = this.root();

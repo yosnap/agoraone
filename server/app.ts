@@ -10,18 +10,20 @@ import { extractUpload, uploadSchema } from './document-extraction';
 import { HermesDiscovery } from './hermes-catalog';
 import { profileContext, ProfileContextError } from './profile-context';
 import { obsidianVaults } from './resource-discovery';
-import { VaultError, VaultNotes } from './vault-notes';
+import { VaultError } from './vault-notes';
+import { BackgroundReads } from './background-reads';
 
-export function createApp(options: { directory?: string; adapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null } = {}) {
+export function createApp(options: { directory?: string; adapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads } = {}) {
   const app = express();
   const store = new Conversations(options.directory || resolve('.agora/conversations'));
   const adapter = options.adapter || hermesReply;
   const library = new Library(options.libraryRoot);
   const privateLibrary = new PrivateLibrary(options.privateLibraryRoot);
-  const vaultNotes = new VaultNotes(options.obsidianRegistry);
+  // Heavy synchronous reads (Hermes SQLite, vault files) run in a worker so requests never stall.
+  const reads = options.reads || new BackgroundReads(options.obsidianRegistry);
   const readDocument = (id: string, owner: string) => id.startsWith('import-') ? privateLibrary.read(id, owner) : library.read(id);
   // Notes are attached only when sending a message (CSRF-protected); the library route never resolves them.
-  const readAttachment = (id: string, owner: string) => id.startsWith('note-') ? vaultNotes.document(id) : readDocument(id, owner);
+  const readAttachment = async (id: string, owner: string) => id.startsWith('note-') ? reads.vaultDocument(id) : readDocument(id, owner);
   const csrf = randomBytes(32).toString('hex');
   const discovery = options.discovery || new HermesDiscovery();
   const busy = new Set<string>();
@@ -67,22 +69,22 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     catch { res.status(503).json({ error: 'No se pudo leer el catálogo de Hermes.' }); }
   });
   // Obsidian notes: read-only, opaque IDs resolved against a fresh walk of the registered vault.
-  app.get('/api/hermes/vaults/:id/notes', (req, res) => {
-    try { res.json(vaultNotes.list(req.params.id)); }
+  app.get('/api/hermes/vaults/:id/notes', async (req, res) => {
+    try { res.json(await reads.vaultList(req.params.id)); }
     catch { res.status(404).json({ error: 'Vault no disponible.' }); }
   });
-  app.get('/api/hermes/vaults/:id/notes/:noteId', (req, res) => {
-    try { res.json(vaultNotes.read(req.params.id, req.params.noteId)); }
+  app.get('/api/hermes/vaults/:id/notes/:noteId', async (req, res) => {
+    try { res.json(await reads.vaultRead(req.params.id, req.params.noteId)); }
     catch { res.status(404).json({ error: 'Nota no disponible: puede ser demasiado grande, no ser texto UTF-8 o haber cambiado.' }); }
   });
-  app.get('/api/hermes/vaults/:id/search', (req, res) => {
+  app.get('/api/hermes/vaults/:id/search', async (req, res) => {
     const query = z.string().trim().min(2).max(100).safeParse(req.query.q);
     if (!query.success) return res.status(400).json({ error: 'Escribe entre 2 y 100 caracteres.' });
-    try { res.json(vaultNotes.search(req.params.id, query.data)); }
+    try { res.json(await reads.vaultSearch(req.params.id, query.data)); }
     catch { res.status(404).json({ error: 'Vault no disponible.' }); }
   });
-  app.get('/api/hermes/activity', (_req, res) => {
-    try { res.json(discovery.activity()); }
+  app.get('/api/hermes/activity', async (_req, res) => {
+    try { const { root, profiles } = discovery.activityTargets(); res.json(await reads.activity(root, profiles)); }
     catch { res.status(503).json({ error: 'No se pudo leer la actividad de Hermes.' }); }
   });
   app.get('/api/hermes/profiles/:id', (req, res) => {
@@ -142,7 +144,7 @@ export function createApp(options: { directory?: string; adapter?: Adapter; libr
     const streaming = req.headers.accept === 'application/x-ndjson';
     const emit = (event: unknown) => { if (!res.destroyed) res.write(`${JSON.stringify(event)}\n`); };
     try {
-      const document = parsed.data.documentId ? readAttachment(parsed.data.documentId, res.locals.owner) : undefined;
+      const document = parsed.data.documentId ? await readAttachment(parsed.data.documentId, res.locals.owner) : undefined;
       const profile = data.profileId ? profileContext(discovery, data.profileId) : undefined;
       if (profile && profile.agentId !== data.agent) throw new ProfileContextError();
       if (streaming) { res.type('application/x-ndjson'); res.flushHeaders(); emit({ type: 'status', stage: 'starting' }); }

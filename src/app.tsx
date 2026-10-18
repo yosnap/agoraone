@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { City } from './world/city';
+import { Component, lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { catalogPlaces, servicePlaces } from './data/city';
 import { getStatus, getHermesCatalog, type Status, type DocumentSource } from './api/client';
 import { LibraryPanel } from './ui/library-panel';
@@ -19,6 +18,14 @@ import { useVaultNotes } from './data/use-vault-notes';
 import { lightModeLabels, useDaylightClock, type LightMode } from './world/daylight';
 
 const lightModes: LightMode[] = ['auto', 'day', 'dusk', 'night'];
+// The 3D world (three.js and its effects) loads in its own chunk, after the interface is usable.
+const City = lazy(() => import('./world/city').then(module => ({ default: module.City })));
+// If that chunk cannot be downloaded (network, or a rebuild while the tab was open), only the scene fails.
+class WorldBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() { return this.state.failed ? <div className="canvas-fallback" role="alert">No se pudo cargar la ciudad 3D. Recarga la página; el directorio y el chat siguen disponibles.</div> : this.props.children; }
+}
 
 export default function App() {
   const [selected, setSelected] = useState<string | null>(null);
@@ -84,7 +91,7 @@ export default function App() {
   const copy = sceneCopy(kind, firstPerson, vaultRoom ? vaultName : room?.profile.label);
   const indoors = kind !== 'city';
   return <main className={indoors || daylight.night > 0.5 ? 'inside-world' : undefined}>
-    <div className="world"><City places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf}/></div>
+    <div className="world"><WorldBoundary><Suspense fallback={<div className="canvas-fallback" role="status">Cargando la ciudad…</div>}><City places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf}/></Suspense></WorldBoundary></div>
     <header className="topbar"><a className="brand" href="/">a<span>AGORA<span className="brand-light">ONE</span></span></a><span className="top-note">TU MUNDO, EN UN LUGAR</span><div className="local-status"><i/> LOCAL · MAC</div></header>
     <section className={`intro ${indoors || daylight.night > 0.5 ? 'interior-intro' : ''}`}><div className="eyebrow">{copy.eyebrow}</div><h1>{copy.title}</h1><p>{copy.text}</p></section>
     <nav className="view-switch" aria-label="Modo de cámara"><button className={!firstPerson ? 'active' : ''} onClick={exit}>↗ Vista ciudad</button><button className={firstPerson ? 'active' : ''} onClick={() => setFirstPerson(true)}>◎ Primera persona</button>
