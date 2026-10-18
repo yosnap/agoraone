@@ -1,7 +1,9 @@
 # Estado de continuidad — 18/10/2026
 
 ## Resultado
-Versión 0.10.0 · Edición de perfiles: la ficha edita SOUL, MEMORY y USER reales de Hermes (decisión del usuario; AGENTS.md actualizado), con confirmación, copia previa, control de conflictos, bloqueo de memoria de Hermes, formato «§» y límites de caracteres. Ver docs/edicion-perfiles.md. Siguiente: el vault como librería por carpetas y mejores interiores.
+Versión 0.11.0 · El vault como librería: la ficha recorre el vault carpeta a carpeta con migas de pan, cada nota se abre como un libro con formato (propiedades, índice, tareas, tablas, avisos, enlaces internos que abren otras notas) y paso a la anterior o siguiente, y la sala 3D es una sala de lectura cálida donde cada libro de las estanterías es una nota real que se abre al pulsarla. Solo lectura; el contenido solo se lee al abrir. Ver docs/vault-obsidian.md. Siguiente: interiores más vivos en la biblioteca, el centro de integraciones y los espacios de perfil.
+
+Versión 0.10.0 · Edición de perfiles: la ficha edita SOUL, MEMORY y USER reales de Hermes (decisión del usuario; AGENTS.md actualizado), con confirmación, copia previa, control de conflictos, bloqueo de memoria de Hermes, formato «§» y límites de caracteres. Ver docs/edicion-perfiles.md.
 
 Versión 0.9.0 · Claves ocultas y voz de los perfiles: las líneas que parecen claves se ocultan enteras en la ficha de los perfiles y en las notas del vault, y nunca llegan al modelo; «Mostrar» las enseña solo bajo petición. Los perfiles hablan en primera persona de su personalidad y lo que saben, sin citar sus archivos; la ficha y el interior usan «Personalidad», «Lo que sabe de ti» y «Recuerdos». 
 

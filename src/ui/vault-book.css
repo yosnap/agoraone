@@ -1,0 +1,58 @@
+/* An opened note as a book: two cream pages with a soft spine shadow; one page on narrow screens. */
+.vault-book-backdrop { position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;background:transparent;padding:24px;align-items:center;justify-content:center }
+.vault-book-backdrop[open] { display:flex }
+.vault-book-backdrop::backdrop { background:#1d1a2bb8;backdrop-filter:blur(4px) }
+.book-right:focus { outline:none }
+.vault-book { position:relative;display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);width:min(1180px,100%);height:min(820px,100%);border-radius:10px 14px 14px 10px;background:#5b3f2b;padding:10px;box-shadow:0 30px 80px #0008 }
+.book-page { background:#fbf6e8;overflow:auto;padding:30px 32px;color:#3b3226 }
+.book-left { border-radius:6px 0 0 6px;background:linear-gradient(90deg,#f7f0dc 80%,#e8ddc1);display:flex;flex-direction:column;gap:12px }
+.book-right { position:relative;border-radius:0 6px 6px 0;background:linear-gradient(90deg,#e6dabd,#fbf6e8 6%) }
+.book-eyebrow { font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#8a6d3f }
+.book-left h2 { font:500 26px Georgia,'Times New Roman',serif;margin:0;line-height:1.25;overflow-wrap:anywhere }
+.book-left small { font-size:10px;color:#7a6c55 }
+.book-index { display:flex;flex-direction:column;gap:2px;border-top:1px solid #dccfae;border-bottom:1px solid #dccfae;padding:10px 0;max-height:40%;overflow:auto }
+.book-index strong { font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#8a6d3f;margin-bottom:4px }
+.book-index button { text-align:left;border:0;background:none;color:#4b3d27;font-size:12px;padding:4px 0;border-radius:4px }
+.book-index button:hover { background:#efe4c6 }
+.book-turn { margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:#7a6c55 }
+.book-turn button { border:1px solid #d3c49e;background:#fbf3dc;border-radius:7px;padding:8px 10px;font-size:11px;color:#4b3d27 }
+.book-close { position:sticky;top:0;float:right;margin:-14px -14px 0 0;border:0;background:#efe4c6;color:#4b3d27;width:32px;height:32px;border-radius:50%;font-size:22px;z-index:1 }
+.book-empty { color:#8a7b62;font-style:italic }
+.markdown { font:15px/1.75 Georgia,'Times New Roman',serif;max-width:72ch;margin:0 auto;overflow-wrap:anywhere }
+.markdown h2,.markdown h3,.markdown h4,.markdown h5,.markdown h6 { font-family:Manrope,sans-serif;color:#2f2a20;line-height:1.3;margin:1.4em 0 .5em;scroll-margin-top:12px }
+.markdown h2 { font-size:24px } .markdown h3 { font-size:19px } .markdown h4 { font-size:16px } .markdown h5,.markdown h6 { font-size:14px }
+.markdown p { margin:.6em 0 }
+.markdown ul,.markdown ol { padding-left:1.4em;margin:.5em 0 }
+.markdown .md-list { list-style:none;padding-left:0 }
+.markdown .md-list li { display:flex;gap:.5em }
+.markdown .md-marker { flex:none;min-width:1em;color:#8a6d3f }
+.markdown .md-sr { position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0) }
+.markdown code { font:13px ui-monospace,Menlo,monospace;background:#efe6cf;border-radius:4px;padding:1px 5px }
+.markdown .md-code { background:#2c2618;color:#f3ead2;border-radius:8px;padding:14px;overflow:auto;font:12px/1.6 ui-monospace,Menlo,monospace }
+.markdown .md-code code { background:none;padding:0;color:inherit }
+.markdown blockquote { margin:.8em 0;padding:10px 14px;background:#f1e8d0;border:1px solid #e1d3ae;border-radius:8px;color:#55482f }
+.markdown blockquote p { margin:.3em 0 }
+.markdown .md-callout { background:#e8eef3;border-color:#cbd8e2 }
+.markdown .md-callout strong { display:block;font-family:Manrope,sans-serif;font-size:13px }
+.markdown hr { border:0;border-top:1px solid #dccfae;margin:1.4em 0 }
+.markdown a { color:#7a4f19 }
+.markdown mark { background:#f5df8f;padding:0 2px }
+.markdown .md-wikilink { border:0;background:none;padding:0;color:#5c3f9a;text-decoration:underline dotted;font:inherit;cursor:pointer }
+.markdown .md-wikilink.missing { color:#9a8f7d;cursor:help }
+.markdown .md-tag { font:12px Manrope,sans-serif;background:#e7e0f2;color:#4d3f74;border-radius:10px;padding:1px 8px }
+.markdown .md-embed { font:12px Manrope,sans-serif;background:#ece5d3;color:#6b5a3a;border-radius:6px;padding:2px 8px }
+.markdown .md-hidden { font:12px Manrope,sans-serif;color:#8e3d2a;background:#f8e6dc;border:1px solid #efc9b8;border-radius:6px;padding:6px 10px }
+.markdown .md-table { overflow:auto;margin:.8em 0 }
+.markdown table { border-collapse:collapse;font-size:13px }
+.markdown th,.markdown td { border:1px solid #dccfae;padding:6px 10px;text-align:left;vertical-align:top }
+.markdown th { background:#f1e8d0 }
+.markdown .md-props { display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font:12px Manrope,sans-serif;background:#f3ecd8;border:1px solid #e1d3ae;border-radius:8px;padding:10px 14px;margin:0 0 1.2em }
+.markdown .md-props dt { color:#8a6d3f } .markdown .md-props dd { margin:0;overflow-wrap:anywhere }
+@media(max-width:850px) {
+  .vault-book-backdrop { padding:8px }
+  .vault-book { grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);padding:6px }
+  .book-left { border-radius:6px 6px 0 0;padding:16px;gap:8px;max-height:38vh;background:#f7f0dc }
+  .book-right { border-radius:0 0 6px 6px;padding:18px;background:#fbf6e8 }
+  .book-index { display:none }
+  .markdown { font-size:14px }
+}
