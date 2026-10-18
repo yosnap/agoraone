@@ -1,11 +1,25 @@
 import { useState } from 'react';
 import { WorldLabel } from './world-label';
+import { Furniture, Glow, Rug, type Item } from './room-furniture';
 import type { HermesActivity } from '../../shared/hermes-activity';
 import type { ServiceGroup } from '../data/service-groups';
 import { serviceUsage, usageLine } from '../data/activity-format';
 
 const terminalPositions = Array.from({ length: 8 }, (_, index) => ({ x: index % 2 ? 5.5 : -5.5, z: -5 + Math.floor(index / 2) * 2.8 }));
-export const integrationObstacles = terminalPositions.map(({ x, z }) => ({ x, z, halfX: 1.15, halfZ: 1.1 }));
+export const integrationObstacles = [
+  ...terminalPositions.map(({ x, z }) => ({ x, z, halfX: 1.15, halfZ: 1.1 })),
+  { x: 0, z: 1.2, halfX: 2.8, halfZ: 0.8 },
+  ...[-6.3, 6.3].flatMap(x => [-7.4, 6.8].map(z => ({ x, z, halfX: 0.45, halfZ: 0.4 }))),
+];
+
+// Decoration only: equipment racks in the corners, a lounge in the aisle and some plants.
+const furnishing: Item[] = [
+  ...[-6.3, 6.3].flatMap(x => [-7.4, 6.8].map(z => ({ model: 'steelShelves' as const, at: [x, 0, z] as [number, number, number], turn: Math.PI / 2 }))),
+  { model: 'modernTable', at: [0, 0, 1.2] }, { model: 'laptop', at: [0, 0.39, 1.2], turn: Math.PI / 2 },
+  { model: 'modernChair', at: [-1.35, 0, 1.2], turn: Math.PI / 2 }, { model: 'modernChair', at: [1.35, 0, 1.2], turn: -Math.PI / 2 },
+  { model: 'plantTall', at: [-2.6, 0, -7.3] }, { model: 'plantTall', at: [2.6, 0, -7.3], turn: 1.5 },
+  { model: 'plant', at: [-2.4, 0, 1.2] }, { model: 'plant', at: [2.4, 0, 1.2], turn: 2 },
+];
 
 export function IntegrationsInterior({ services, activity, onSelect, onExit }: {
   services: ServiceGroup[]; activity?: HermesActivity | null; onSelect: (id: string) => void; onExit: () => void;
@@ -22,6 +36,9 @@ export function IntegrationsInterior({ services, activity, onSelect, onExit }: {
     {[-8, 8].map(z => <mesh key={z} position={[0, 2.5, z]}><boxGeometry args={[14, 5, 0.3]}/><meshStandardMaterial color="#18343d"/></mesh>)}
     {[-3.5, 3.5].map(x => <mesh key={x} position={[x, 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]}><planeGeometry args={[0.08, 15]}/><meshBasicMaterial color="#8cd1d5"/></mesh>)}
     {[-4, 0, 4].map(z => <mesh key={z} position={[0, 4.95, z]}><boxGeometry args={[8, 0.05, 0.16]}/><meshBasicMaterial color="#d0f5eb"/></mesh>)}
+    <Rug at={[0, 1.2]} size={[4.4, 2.4]} color="#2f5560" border="#8cd1d5"/>
+    <Furniture items={furnishing}/>
+    <Glow at={[0, 2.4, 1.2]} color="#ffe7c4" intensity={5}/>
     <mesh position={[0, 2.8, -7.8]}><boxGeometry args={[8, 2.2, 0.1]}/><meshStandardMaterial color="#0a202a"/></mesh>
     <WorldLabel position={[0, 2.8, -7.6]} distanceFactor={12}><span className="place-label">CENTRO DE INTEGRACIONES · MCP</span></WorldLabel>
     {services.slice(current * 8, current * 8 + 8).map((service, index) => {

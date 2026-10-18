@@ -19,9 +19,10 @@ localmente desde `public/world/`; la aplicación nunca los pide a un CDN.
 | Tejados | grey_roof_tiles_02 (1k) | textures/grey_roof_tiles_02 | teñido en material |
 | Hormigón/bordillo | concrete_wall_008 (1k) | textures/concrete_wall_008 | ninguno |
 | Parqué biblioteca | wood_floor (1k) | textures/wood_floor | ninguno |
+| Mobiliario de interiores (0.12.0) | potted_plant_01, potted_plant_02, planter_box_01, Sofa_01, ArmChair_01, GreenChair_01, Rockingchair_01, mid_century_lounge_chair, modern_arm_chair_01, metal_stool_01, coffee_table_round_01, modern_coffee_table_01, side_table_01, outdoor_table_chair_set_01, vintage_cabinet_01, steel_frame_shelves_02, classic_laptop, desk_lamp_arm_01, book_encyclopedia_set_01, ceramic_vase_01, fancy_picture_frame_01, Chandelier_01, marble_bust_01, chess_set, vintage_spacecraft_instrument | models/interior/*.glb (nombre en minúsculas) | glTF 1k, `gltf-transform optimize`: simplificado al 50 % (la planta grande al 15 %), WebP 512, meshopt; el ajedrez sin instanciado GPU (`--instance false`), que el cargador de la ciudad no aplica; 4,6 MB en total. Se descartó hanging_picture_frame_01 porque su lámina lleva un texto inventado |
 
 Cada textura incluye `diffuse.jpg`, `nor_gl.jpg` y `rough.jpg`. Tamaño total ≈33 MB (personas 2,2 MB)
-(modelos 3,6 MB; los originales sumaban 122 MB).
+(modelos 3,6 MB; los originales sumaban 122 MB; mobiliario de interiores 4,6 MB).
 
 ## Personas
 CC0 de [Quaternius](https://quaternius.com) (licencia incluida en cada paquete: CC0 1.0).

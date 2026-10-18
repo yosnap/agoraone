@@ -40,3 +40,11 @@ reposo; no hay animaciones de hablar o trabajar para no simular actividad.
 - `src/world/standing-person.tsx`: persona en reposo (también Luma en la biblioteca).
 - `src/ui/scene-copy.tsx`: textos de cada escena.
 - Verificación: `node scripts/verify-profile-room.mjs` (escritorio y móvil, sin inferencia).
+
+## Interiores vivos (0.12.0)
+A petición del usuario («las vistas internas son pobres, tristes»), los interiores se amueblan con modelos CC0 de Poly Haven (ver docs/recursos-visuales.md), cargados aparte para que la sala aparezca al momento (`src/world/room-furniture.tsx`: `Furniture`, `Rug`, `Glow`).
+- **Espacios de perfil**: plantas en las esquinas, alfombra bajo el escritorio teñida con el color del perfil, portátil, flexo, libros y jarrón en la mesa, cuadros en la pared izquierda y un retrato estilizado (silueta) en el marco de la personalidad. Cada estilo suma lo suyo: taburetes en el taller, butaca e instrumento en el observatorio, sillas verdes y jardineras en el invernadero, mesas de terraza en el pabellón, sofás y mesas bajas en la torre, mecedora y busto en el archivo.
+- **Biblioteca de Luma**: rincón de ajedrez con butacas, sillas verdes con mesita, aparador, cuadro, busto, plantas, lámpara de araña y libros y flexo en la mesa.
+- **Centro de integraciones**: estanterías metálicas en las esquinas, una zona de estar con mesa baja y sillones en el pasillo central y plantas.
+- La cámara interior empieza algo más atrás (z 6,4) y con un campo de visión más amplio (56° dentro, 43° fuera), para que la primera vista incluya los laterales.
+Es solo decoración: ningún mueble refleja ni simula actividad, y los obstáculos de cada sala incluyen los muebles nuevos.
