@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, realpathSync, readFileSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, realpathSync, readFileSync, chmodSync, readdirSync, linkSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { VaultNotes, VaultError } from './vault-notes';
+import { VaultNotes, VaultError, VaultWriteError } from './vault-notes';
 import { obsidianVaults } from './resource-discovery';
 
 function fixture() {
@@ -24,7 +24,7 @@ function fixture() {
   writeFileSync(registry, JSON.stringify({ vaults: { a: { path: vault } } }));
   const notes = new VaultNotes(registry);
   const vaultId = obsidianVaults(registry).vaults[0].id;
-  return { notes, vaultId, vault, close: () => rmSync(base, { recursive: true, force: true }) };
+  return { notes, vaultId, vault, base, close: () => rmSync(base, { recursive: true, force: true }) };
 }
 
 test('vault: lista solo notas Markdown propias, sin carpetas ocultas, adjuntos ni enlaces simbólicos', () => {
@@ -104,4 +104,87 @@ test('puente: los patrones de documentos permitidos aceptan notas y copias, y na
   assert.ok(allowed('import-12345678-abcd-abcd-abcd-123456789abc'));
   assert.ok(!allowed('note-../../etc'));
   assert.ok(!allowed(`note-${'a'.repeat(25)}`));
+});
+
+const failsWith = (run: () => unknown, status: number) => assert.throws(run, error => error instanceof VaultWriteError && error.status === status);
+const byTitle = (notes: VaultNotes, vaultId: string, title: string) => notes.list(vaultId).notes.find(note => note.title === title)!;
+
+test('vault editable: guarda con copia previa, conserva las líneas ocultas y respeta los cambios hechos fuera', () => {
+  const { notes, vaultId, vault, base, close } = fixture();
+  const backups = join(base, 'copias');
+  try {
+    writeFileSync(join(vault, 'Claves.md'), 'Servicio\napi_key: CANARY_VAULT_KEY\nfin');
+    chmodSync(join(vault, 'Claves.md'), 0o640);
+    const note = byTitle(notes, vaultId, 'Claves');
+    const opened = notes.read(vaultId, note.id);
+    assert.doesNotMatch(opened.content, /CANARY/);
+    const saved = notes.save(vaultId, note.id, { content: opened.content.replace('fin', 'final editado'), revision: opened.revision }, backups);
+    const disk = readFileSync(join(vault, 'Claves.md'), 'utf8');
+    assert.equal(disk, 'Servicio\napi_key: CANARY_VAULT_KEY\nfinal editado', 'la línea oculta vuelve de disco');
+    assert.equal(statSync(join(vault, 'Claves.md')).mode & 0o777, 0o640, 'conserva los permisos');
+    assert.equal(notes.read(vaultId, note.id).revision, saved.revision, 'el listado y la lectura ven la versión nueva');
+    const copies = readdirSync(join(backups, vaultId));
+    assert.equal(copies.length, 1); assert.equal(readFileSync(join(backups, vaultId, copies[0]), 'utf8'), 'Servicio\napi_key: CANARY_VAULT_KEY\nfin');
+    assert.ok(!readdirSync(vault).some(name => name.includes('.agora-')), 'sin temporales');
+    // Changed in Obsidian meanwhile: the old revision no longer saves.
+    writeFileSync(join(vault, 'Claves.md'), 'otra cosa');
+    failsWith(() => notes.save(vaultId, note.id, { content: 'pisado', revision: saved.revision }, backups), 409);
+    assert.equal(readFileSync(join(vault, 'Claves.md'), 'utf8'), 'otra cosa');
+    const fresh = notes.read(vaultId, note.id);
+    failsWith(() => notes.save(vaultId, note.id, { content: 'a\u0007b', revision: fresh.revision }, backups), 400);
+    failsWith(() => notes.save(vaultId, 'note-' + '0'.repeat(24), { content: 'x', revision: fresh.revision }, backups), 404);
+  } finally { close(); }
+});
+
+test('vault editable: no escribe a través de enlaces ni crea fuera de carpetas existentes o pisando notas', () => {
+  const { notes, vaultId, vault, base, close } = fixture();
+  const backups = join(base, 'copias');
+  try {
+    // A note that became a hard link after it was listed is refused, and nothing is written.
+    const note = byTitle(notes, vaultId, 'Inicio');
+    const { revision } = notes.read(vaultId, note.id);
+    linkSync(join(vault, 'Inicio.md'), join(base, 'segundo-nombre.md'));
+    failsWith(() => notes.save(vaultId, note.id, { content: 'cambio', revision }, backups), 404);
+    assert.equal(readFileSync(join(vault, 'Inicio.md'), 'utf8'), '# Inicio\nBienvenida al vault.');
+
+    const created = notes.create(vaultId, 'Proyectos/Activos', 'Huerto nuevo', '# Huerto\nSemillas.');
+    assert.equal(readFileSync(join(vault, 'Proyectos/Activos/Huerto nuevo.md'), 'utf8'), '# Huerto\nSemillas.');
+    assert.equal(byTitle(notes, vaultId, 'Huerto nuevo').id, created.id, 'aparece en el listado al momento');
+    failsWith(() => notes.create(vaultId, 'Proyectos/Activos', 'Huerto nuevo', 'pisar'), 409);
+    assert.equal(readFileSync(join(vault, 'Proyectos/Activos/Huerto nuevo.md'), 'utf8'), '# Huerto\nSemillas.');
+    for (const title of ['../fuera', 'a/b', '.oculta', '', 'x'.repeat(260), 'ñ'.repeat(130), 'a:b', 'a\u202eb']) failsWith(() => notes.create(vaultId, '', title, 'x'), 400);
+    failsWith(() => notes.create(vaultId, 'Carpeta enlazada', 'Nota', 'x'), 404);
+    failsWith(() => notes.create(vaultId, '../fuera', 'Nota', 'x'), 404);
+    failsWith(() => notes.create(vaultId, 'No existe', 'Nota', 'x'), 404);
+    assert.equal(existsSync(join(base, 'fuera', 'Nota.md')), false);
+    notes.create(vaultId, '', 'En la raíz', 'texto');
+    assert.equal(readFileSync(join(vault, 'En la raíz.md'), 'utf8'), 'texto');
+  } finally { close(); }
+});
+
+test('vault editable: conserva el mismo archivo, los finales de línea, el BOM y los permisos, y no toca notas con caracteres de control', () => {
+  const { notes, vaultId, vault, base, close } = fixture();
+  const backups = join(base, 'copias');
+  try {
+    writeFileSync(join(vault, 'Control.md'), 'texto\u000cpágina');
+    const crlf = join(vault, 'Windows.md');
+    writeFileSync(crlf, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('uno\r\napi_key: CANARY_CRLF\r\ndos')]));
+    chmodSync(crlf, 0o664);
+    const before = statSync(crlf);
+    const note = byTitle(notes, vaultId, 'Windows');
+    const opened = notes.read(vaultId, note.id);
+    notes.save(vaultId, note.id, { content: opened.content.replace('dos', 'tres'), revision: opened.revision }, backups);
+    const bytes = readFileSync(crlf);
+    assert.deepEqual([...bytes.subarray(0, 3)], [0xef, 0xbb, 0xbf], 'el BOM se conserva');
+    assert.equal(bytes.subarray(3).toString(), 'uno\r\napi_key: CANARY_CRLF\r\ntres', 'CRLF en todas las líneas, también la oculta');
+    const after = statSync(crlf);
+    assert.equal(after.ino, before.ino, 'el mismo archivo: Obsidian conserva su fecha de creación');
+    assert.equal(after.mode & 0o777, 0o664);
+    assert.equal(notes.read(vaultId, note.id).revision, notes.read(vaultId, note.id).revision);
+
+    const control = byTitle(notes, vaultId, 'Control');
+    const read = notes.read(vaultId, control.id);
+    failsWith(() => notes.save(vaultId, control.id, { content: 'nuevo', revision: read.revision }, backups), 400);
+    assert.equal(readFileSync(join(vault, 'Control.md'), 'utf8'), 'texto\u000cpágina');
+  } finally { close(); }
 });

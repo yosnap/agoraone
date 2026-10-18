@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listVaultNotes, type VaultListing } from '../api/client';
 
 export type VaultBook = { id: string; title: string; section: number; readable: boolean };
@@ -8,14 +8,17 @@ export type VaultShelf = { folder: string; notes: number; books: VaultBook[] };
 export function useVaultNotes(vaultId: string | null) {
   const [listing, setListing] = useState<VaultListing | null>(null);
   const [error, setError] = useState('');
+  const [version, setVersion] = useState(0);
+  /** Reads the listing again (after a note was saved or created) without blanking the current one. */
+  const reload = useCallback(() => setVersion(value => value + 1), []);
   useEffect(() => {
-    setListing(null); setError('');
+    setListing(previous => previous?.vault.id === vaultId ? previous : null); setError('');
     if (!vaultId) return;
     let live = true;
     listVaultNotes(vaultId).then(data => { if (live) setListing(data); })
       .catch(() => { if (live) setError('No se pudo leer el vault. Puede estar en un volumen desconectado.'); });
     return () => { live = false; };
-  }, [vaultId]);
+  }, [vaultId, version]);
   // Shelves for the 3D room: one per top-level folder, largest first. Each shelf holds up to 36 of
   // its notes as books, grouped by subfolder; the rest are reached from the panel.
   const shelves = useMemo<VaultShelf[]>(() => {
@@ -30,5 +33,5 @@ export function useVaultNotes(vaultId: string | null) {
       return { folder, notes: notes.length, books: sorted.slice(0, 36).map(note => ({ id: note.id, title: note.title, section: sections.indexOf(note.folder), readable: note.readable })) };
     }).sort((a, b) => b.notes - a.notes || a.folder.localeCompare(b.folder, 'es'));
   }, [listing]);
-  return { listing, error, shelves };
+  return { listing, error, shelves, reload };
 }

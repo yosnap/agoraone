@@ -65,3 +65,8 @@
 .tools-used { font-size:10px;color:#5d7466;margin:6px 0 }
 .approval-warning { background:#f8e3d6;border:1px solid #eec5ae;border-radius:6px;padding:6px 8px;color:#7a3a1d;font-size:11px }
 .stop-turn { margin-left:10px;border:1px solid #c9b98f;background:#fff;border-radius:6px;padding:3px 9px;font-size:11px;color:#5a4a22 }
+.vault-new { margin-top:12px;border:1px dashed #b9a9d6;background:#f7f4fb;border-radius:8px;padding:9px;color:#4d3f74;font-size:12px;width:100% }
+.vault-new-form { margin-top:12px;display:flex;flex-direction:column;gap:6px }
+.vault-new-form label { margin:0 }
+.vault-new-form div { display:flex;gap:8px }
+.vault-new-form div button:not(.primary) { border:1px solid #cbd6c9;background:#f4f4ea;border-radius:7px;padding:7px 10px;font-size:11px }

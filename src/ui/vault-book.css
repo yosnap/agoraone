@@ -56,3 +56,12 @@
   .book-index { display:none }
   .markdown { font-size:14px }
 }
+.book-edit { align-self:flex-start;border:1px solid #c9b183;background:#fbf3dc;border-radius:7px;padding:8px 12px;font-size:12px;color:#4b3d27 }
+.book-saved { font-size:11px;color:#3f5f3f;background:#e6f0df;border:1px solid #c9dcbd;border-radius:6px;padding:6px 8px }
+.vault-editor { display:flex;flex-direction:column;gap:8px;height:100% }
+.vault-editor label { font:11px Manrope,sans-serif;color:#8a6d3f }
+.vault-editor textarea { flex:1;min-height:320px;width:100%;resize:vertical;border:1px solid #dccfae;border-radius:8px;padding:14px;background:#fffdf7;color:#2f2a20;font:13px/1.7 ui-monospace,Menlo,monospace }
+.vault-editor small { font-size:11px;color:#7a6c55 }
+.vault-editor .editor-actions,.vault-editor .editor-confirm div { display:flex;gap:8px }
+.vault-editor .editor-actions button:not(.primary),.vault-editor .editor-confirm button:not(.primary) { border:1px solid #d3c49e;background:#fbf3dc;border-radius:7px;padding:9px 12px;font-size:12px;color:#4b3d27 }
+.vault-editor .editor-confirm { background:#f3ecd8;border:1px solid #e1d3ae;border-radius:8px;padding:10px;font-size:12px }

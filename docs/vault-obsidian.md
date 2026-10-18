@@ -1,6 +1,29 @@
 # Vault de Obsidian (18/10/2026)
 
-El usuario aprobó leer sus notas de Obsidian desde AgoraOne. Es solo lectura: no se crea, modifica ni mueve nada en el vault y no se guardan copias ni índices en disco.
+El usuario aprobó leer sus notas de Obsidian desde AgoraOne y, desde 0.14.0, editarlas y crear notas nuevas (decisión del 18/10/2026). No se mueve, renombra ni borra nada, no se guardan índices en disco y, antes de cada guardado, se copia la versión anterior.
+
+## Editar y crear notas (0.14.0)
+- **Editar**:
+  - El libro abierto tiene **Editar nota**: un editor de Markdown sobre el texto tal como se lee, con las líneas que parecen claves como «[línea oculta N]» salvo que se hayan mostrado.
+  - **Guardar en el vault** pide confirmación. El servidor (`VaultNotes.save`) comprueba que la nota no haya cambiado desde que se abrió (revisión SHA-256 de sus bytes); si cambió en Obsidian, responde 409 y la interfaz ofrece **Recargar y conservar mi texto** o **Descartar mi texto**. **Cancelar** pide confirmación si hay cambios, y Escape no cierra el libro mientras se edita.
+  - Repone las líneas ocultas desde el disco y copia la versión actual en `.agora/vault-backups/<vault>/` (20 copias por nota).
+  - Escribe sobre el mismo archivo con un descriptor abierto sin seguir enlaces, tras comprobar con ese mismo descriptor que sigue siendo la nota del vault (mismo inodo, carpeta sin enlaces) y que sus bytes son la revisión abierta. Así se conservan la fecha de creación que usa Obsidian, los permisos y los atributos, y no queda hueco para pisar un guardado de Obsidian.
+  - Conserva los finales de línea (CRLF o LF) y el BOM del archivo.
+  - Las notas con caracteres de control no se editan aquí: se avisa de que se editen en Obsidian, para no alterarlos.
+  - Si se quita una línea «[línea oculta N]», esa línea se borra del archivo, y si se repite, se copia. La confirmación lo avisa.
+  - Mientras se edita, el libro no se cierra ni pasa de página, para no perder el borrador.
+- **Crear**:
+  - **+ Nueva nota** crea `<título>.md` en la carpeta abierta (o en la raíz) con un encabezado y la abre en el editor.
+  - Solo en carpetas que ya tienen notas y nunca sobrescribe. Rechaza títulos con `/ \ : * ? " < > | # ^ [ ]`, caracteres invisibles, punto inicial o más de 250 bytes; si la carpeta se cambia por un enlace mientras se crea, se deshace.
+- **Límites**:
+  - Se rechazan las notas que son enlaces simbólicos o duros y las carpetas enlazadas.
+  - Máximo 256 KiB.
+  - El texto no puede llevar caracteres de control.
+- **Dónde corre**: las escrituras se hacen en el mismo hilo que las lecturas, así que el listado y la búsqueda ven la nueva versión al momento. Rutas `PUT /api/hermes/vaults/:id/notes/:noteId` y `POST /api/hermes/vaults/:id/notes`, con CSRF.
+- **Verificación**:
+  - `server/vault-notes.test.ts` comprueba que las claves se conservan, la copia, los permisos, el conflicto, los enlaces, las carpetas inexistentes o enlazadas y que no se sobrescribe.
+  - `server/app.test.ts` comprueba CSRF y el cuerpo estricto.
+  - `scripts/verify-vault-editor.mjs` usa un vault ficticio interceptado: nunca lee ni escribe tus notas.
 
 ## Qué se lee
 - **Vaults**: los del registro de Obsidian (`obsidian.json`), igual que la detección del catálogo. El cliente solo envía identificadores opacos (`vault-…`, `note-…`); las rutas se resuelven en el backend con un recorrido nuevo del vault (reutilizado 15 s).

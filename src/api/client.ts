@@ -7,6 +7,8 @@ import type { HermesCatalog, HermesProfile, HermesFile } from '../../shared/herm
 import type { McpTools } from '../../shared/hermes-catalog';
 import type { HermesActivity } from '../../shared/hermes-activity';
 let csrf = '';
+/** An error answered by the backend, with its HTTP status (409 means the data changed meanwhile). */
+export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
 async function request<T>(path: string, body?: unknown, method = body ? 'POST' : 'GET'): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,
@@ -14,7 +16,7 @@ async function request<T>(path: string, body?: unknown, method = body ? 'POST' :
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'El backend no está disponible.');
+  if (!response.ok) throw new ApiError(data.error || 'El backend no está disponible.', response.status);
   return data;
 }
 export async function getStatus() { const status = await request<Status>('/status'); csrf = status.csrf; return status; }
@@ -29,6 +31,11 @@ export type VaultNote = { id: string; title: string; folder: string; bytes: numb
 export type VaultListing = { vault: { id: string; name: string }; truncated: boolean; notes: VaultNote[] };
 export const listVaultNotes = (vaultId: string) => request<VaultListing>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes`);
 export const readVaultNote = (vaultId: string, noteId: string, reveal = false) => request<VaultNote & { content: string; revision: string; hidden: number }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes/${encodeURIComponent(noteId)}${reveal ? '?reveal=1' : ''}`);
+/** Writes a real Obsidian note; `revision` is the version the user opened (sha-256 of its bytes). */
+export const saveVaultNote = (vaultId: string, noteId: string, edit: { content: string; revision: string; revealed?: boolean }) =>
+  request<{ id: string; revision: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes/${encodeURIComponent(noteId)}`, edit, 'PUT');
+export const createVaultNote = (vaultId: string, folder: string, title: string, content: string) =>
+  request<{ id: string; folder: string; title: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes`, { folder, title, content });
 export const searchVault = (vaultId: string, query: string) => request<{ results: { id: string; title: string; folder: string; snippet: string }[]; truncated: boolean }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/search?q=${encodeURIComponent(query)}`);
 export const getMcpTools = (profileId: string, serverId: string) => request<McpTools>(`/hermes/profiles/${encodeURIComponent(profileId)}/mcp/${encodeURIComponent(serverId)}/tools`);
 export const createConversation = (profileId?: string) => request<Conversation>('/conversations', profileId ? { profileId } : { agent: 'luma', context: 'library-lobby' });
