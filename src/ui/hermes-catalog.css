@@ -96,3 +96,13 @@
 .directory-group > summary small { margin-left:auto;font-size:9px;opacity:.7 }
 .directory-group > summary:focus-visible { outline:3px solid #ae7827;outline-offset:2px;border-radius:4px }
 .directory-empty { font-size:11px;color:#718078;margin:12px 0 0 }
+.place-signal { display:inline-block;margin-top:5px;font-style:normal;font-size:9px;font-weight:700;letter-spacing:.4px;padding:2px 7px;border-radius:10px;background:#e3ebe2;color:#2f5a4b }
+.place-signal.signal-approval { background:#f6e3b4;color:#7a4f0e }
+.place-signal.signal-busy { background:#dfe9f2;color:#2c5170 }
+.place-dot.signal-live, .place-dot.signal-busy, .place-dot.signal-approval { animation:place-pulse 1.6s ease-out infinite }
+.place-dot.signal-approval { box-shadow:0 0 0 0 #d9a23a }
+@keyframes place-pulse { 0% { box-shadow:0 0 0 0 #2f8f6a88 } 70% { box-shadow:0 0 0 7px #2f8f6a00 } 100% { box-shadow:0 0 0 0 #2f8f6a00 } }
+@media (prefers-reduced-motion: reduce) { .place-dot.signal-live, .place-dot.signal-busy, .place-dot.signal-approval { animation:none;outline:2px solid #2f8f6a66;outline-offset:2px } }
+.detail-panel[hidden] { display:none }
+.approval-toast { position:absolute;left:50%;bottom:60px;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:14px;max-width:calc(100vw - 32px);padding:12px 14px 12px 18px;border:1px solid #d9b86a;border-radius:12px;background:#fbf2d8;color:#5e3f0c;font-size:12px;box-shadow:0 14px 40px #193f4033 }
+.approval-toast button { border:0;border-radius:8px;padding:8px 12px;background:#214b44;color:#fff9e7;font-size:11px;white-space:nowrap }

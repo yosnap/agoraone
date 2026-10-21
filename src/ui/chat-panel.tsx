@@ -2,9 +2,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { cancelTurn, createConversation, getConversation, sendMessage, type Conversation, type Status, type DocumentSource, type ToolApproval } from '../api/client';
 import { ApprovalCard } from './approval-card';
 
-export function ChatPanel({ status, onConnected, document, onDetach, profile }: {
+export type ChatState = { busy: boolean; approvals: number };
+
+export function ChatPanel({ status, onConnected, document, onDetach, profile, onState }: {
   status: Status | null; onConnected: () => void; document?: DocumentSource; onDetach?: () => void;
   profile?: { id: string; label: string };
+  /** Tells the app while a turn runs and how many approvals wait, so it can keep this chat alive and point back to it. */
+  onState?: (state: ChatState) => void;
 }) {
   const label = profile?.label || 'Luma';
   const storageKey = profile ? `agora-profile-conversation-${profile.id}` : 'agora-luma-conversation';
@@ -34,6 +38,9 @@ export function ChatPanel({ status, onConnected, document, onDetach, profile }: 
     return () => { live = false; };
   }, [storageKey, profile?.id]);
   useEffect(() => { bottom.current?.scrollIntoView({ block: 'nearest' }); }, [conversation, busy, partial]);
+  const waiting = approvals.filter(item => !item.expired).length;
+  // Only the values matter: the callback may be a new function on every render.
+  useEffect(() => { onState?.({ busy, approvals: waiting }); }, [busy, waiting]);
   useEffect(() => {
     if (!busy) return;
     const started = Date.now();
