@@ -3,7 +3,7 @@ import type { HermesCatalog, HermesFile } from '../../shared/hermes-catalog';
 import { getHermesProfile, type ProfileLimits } from '../api/client';
 import { ProfileFileEditor } from './profile-file-editor';
 import type { DocumentSource, Status } from '../api/client';
-import { ChatPanel } from './chat-panel';
+import { ChatPanel, type ChatState } from './chat-panel';
 import { serviceGroups } from '../data/service-groups';
 import type { HermesActivity } from '../../shared/hermes-activity';
 import { ActivitySection } from './activity-panel';
@@ -14,10 +14,11 @@ export type ProfileTab = 'info' | 'chat' | 'skills';
 
 export const fileTitles: Record<HermesFile['name'], string> = { 'SOUL.md': 'Personalidad', 'USER.md': 'Lo que sabe de ti', 'MEMORY.md': 'Recuerdos' };
 
-export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, onTab, inside, onEnter, activity, document, onDetach }: {
+export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, onTab, inside, onEnter, activity, document, onDetach, onChatState }: {
   id: string; catalog: HermesCatalog; onSelect: (id: string) => void; status: Status | null; onConnected: () => void;
   tab: ProfileTab; onTab: (tab: ProfileTab) => void; inside: boolean; onEnter: () => void;
   activity: { activity: HermesActivity | null; error: boolean; reload?: () => void }; document?: DocumentSource; onDetach: () => void;
+  onChatState?: (state: ChatState) => void;
 }) {
   const profile = catalog.profiles.find(item => item.id === id);
   const space = catalog.spaces.find(item => item.id === id);
@@ -42,7 +43,7 @@ export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, o
   return <div className="profile-panel">
     {profile && !inside && <button className="enter-library" onClick={onEnter}>Entrar en el espacio de {profile.label} →</button>}
     {profile && <nav className="library-tabs" aria-label="Acciones del perfil"><button aria-pressed={tab === 'info'} onClick={() => onTab('info')}>Ficha del perfil</button><button aria-pressed={tab === 'chat'} onClick={() => onTab('chat')}>Conversar con {profile.label}</button><button aria-pressed={tab === 'skills'} onClick={() => onTab('skills')}>Skills de {profile.label}</button></nav>}
-    {profile && <div className="chat-slot" style={{ display: tab === 'chat' ? 'flex' : 'none' }}><ChatPanel key={profile.id} profile={profile} status={status} onConnected={onConnected} document={document} onDetach={onDetach}/></div>}
+    {profile && <div className="chat-slot" style={{ display: tab === 'chat' ? 'flex' : 'none' }}><ChatPanel key={profile.id} profile={profile} status={status} onConnected={onConnected} document={document} onDetach={onDetach} onState={onChatState}/></div>}
     {profile && <div className="chat-slot" style={{ display: tab === 'skills' ? 'flex' : 'none' }}><ProfileSkills key={profile.id} profileId={profile.id}/></div>}
     <div className="hermes-details" hidden={tab !== 'info'}>
     <p className="notice">Datos reales de Hermes · solo lectura. Esta ficha no inicia el agente ni activa sus herramientas.</p>

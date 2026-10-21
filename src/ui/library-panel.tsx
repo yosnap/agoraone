@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import { listDocuments, readDocument, type DocumentSource, type LibraryDocument, type Status, type CatalogEntry } from '../api/client';
-import { ChatPanel } from './chat-panel';
+import { ChatPanel, type ChatState } from './chat-panel';
 import { DocumentImport } from './document-import';
 import { DocumentActions } from './document-actions';
 import { ConsultWith, type ConsultTarget } from './consult-with';
 import './library.css';
 
-export function LibraryPanel({ status, onConnected, inside, onEnter, tab, onTab, document, onDetach, targets, onConsult, onChanged }: {
+export function LibraryPanel({ status, onConnected, inside, onEnter, tab, onTab, document, onDetach, targets, onConsult, onChanged, onChatState }: {
   status: Status | null; onConnected: () => void; inside: boolean; onEnter: () => void;
   tab: 'chat' | 'documents'; onTab: (tab: 'chat' | 'documents') => void;
   document?: DocumentSource; onDetach: () => void; targets: ConsultTarget[];
   onConsult: (document: DocumentSource, target: string) => void; onChanged: (id: string, document?: DocumentSource) => void;
+  onChatState?: (state: ChatState) => void;
 }) {
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [query, setQuery] = useState('');
@@ -37,7 +38,7 @@ export function LibraryPanel({ status, onConnected, inside, onEnter, tab, onTab,
       <button aria-pressed={tab === 'documents'} onClick={() => onTab('documents')}>Documentos</button>
     </nav>
     <div className="chat-slot" style={{ display: tab === 'chat' ? 'flex' : 'none' }}>
-      <ChatPanel status={status} onConnected={onConnected} document={document} onDetach={onDetach}/>
+      <ChatPanel status={status} onConnected={onConnected} document={document} onDetach={onDetach} onState={onChatState}/>
     </div>
     {tab === 'documents' && <section className="library-reader" aria-label="Catálogo de biblioteca">
       <DocumentImport onImported={document => {
