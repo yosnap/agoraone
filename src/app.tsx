@@ -15,6 +15,7 @@ import { gatewaySummary } from './data/activity-format';
 import { ActivityLog } from './ui/activity-log';
 import { VaultPanel } from './ui/vault-panel';
 import { VaultBook } from './ui/vault-book';
+import { CityDirectory } from './ui/city-directory';
 import { useVaultNotes } from './data/use-vault-notes';
 import { lightModeLabels, useDaylightClock, type LightMode } from './world/daylight';
 
@@ -112,6 +113,18 @@ export default function App() {
   const kind = vaultRoom ? 'vault' : integrationsInside ? 'integrations' : room ? 'profile' : inside ? 'library' : 'city';
   const copy = sceneCopy(kind, firstPerson, vaultRoom ? vaultName : room?.profile.label);
   const indoors = kind !== 'city';
+  // Esc steps back one level: the open panel, then the activity log, then out of an interior or the walk.
+  // Fields, editors, menus and the book handle their own Esc first.
+  useEffect(() => {
+    const back = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || window.document.querySelector('dialog[open]')) return;
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable="true"]')) return;
+      if (selected) setSelected(null); else if (logOpen) setLogOpen(false); else if (indoors || firstPerson) exit(); else return;
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', back);
+    return () => window.removeEventListener('keydown', back);
+  });
   return <main className={indoors || daylight.night > 0.5 ? 'inside-world' : undefined}>
     <div className="world"><WorldBoundary><Suspense fallback={<div className="canvas-fallback" role="status">Cargando la ciudad…</div>}><City places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected || bookOpen} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf} onBook={id => vaultRoom && openBook(vaultRoom, id)}/></Suspense></WorldBoundary></div>
     <header className="topbar"><a className="brand" href="/">a<span>AGORA<span className="brand-light">ONE</span></span></a><span className="top-note">TU MUNDO, EN UN LUGAR</span><div className="local-status"><i/> LOCAL · MAC</div></header>
@@ -128,12 +141,7 @@ export default function App() {
         canvas.focus();
       });
     }}>{walkHint}</button>}
-    {vaultRoom ? <nav className="interior-tools" aria-label="Acciones del vault"><button onClick={() => openShelf(null)}>Ver notas</button><button onClick={exit}>Salir del vault</button></nav> : room ? <nav className="interior-tools" aria-label={`Acciones del espacio de ${room.profile.label}`}><button onClick={() => station('identity')}>Ver ficha</button><button onClick={() => station('chat')}>Conversar con {room.profile.label}</button><button onClick={exit}>Salir del espacio</button></nav> : integrationsInside ? <nav className="interior-tools" aria-label="Acciones del centro de integraciones"><button onClick={() => select('mcp-center')}>Ver MCPs</button><button onClick={exit}>Salir del centro</button></nav> : inside ? <nav className="interior-tools" aria-label="Acciones de biblioteca"><button onClick={browse}>Abrir catálogo</button><button onClick={() => select('library')}>Hablar con Luma</button><button onClick={exit}>Salir de la biblioteca</button></nav> : <aside className="directory"><div className="eyebrow">TU HERMES <span>{catalog?.profiles.length || 0} perfiles</span></div>
-      <div className="catalog-status" role="status">{catalog ? <>{catalog.spaces.length} proyectos · {catalog.vaults?.length || 0} vaults · {serviceGroups(catalog).length} nombres MCP<p>Lectura: {new Date(catalog.scannedAt).toLocaleTimeString()} · actualización cada 30 s</p><p>Selecciona un perfil o MCP para ver sus vínculos declarados.</p></> : 'Detectando instalación…'}
-        {catalogError && <p className="error">{catalogError}</p>}
-        {!!catalog?.warnings.length && <details><summary>Detalles de detección ({catalog.warnings.length})</summary>{catalog.warnings.map((warning, i) => <p key={i}>{warning}</p>)}</details>}
-      </div>
-      {places.map(p => <button key={p.id} onClick={() => select(p.id)} className={selected === p.id ? 'chosen' : ''}><span className="place-dot" style={{ background: p.color }}/><span><strong>{p.name}</strong><small>{p.kind === 'profile' ? 'Identidad y memoria · Hermes' : p.kind === 'space' ? 'Espacio registrado · Hermes' : p.kind === 'vault' ? 'Notas de Obsidian · solo lectura' : p.kind === 'service' ? 'Configurado · conexión no comprobada' : 'Luma · biblioteca propia de AgoraOne'}</small></span><span className="arrow">↗</span></button>)}</aside>}
+    {vaultRoom ? <nav className="interior-tools" aria-label="Acciones del vault"><button onClick={() => openShelf(null)}>Ver notas</button><button onClick={exit}>Salir del vault</button></nav> : room ? <nav className="interior-tools" aria-label={`Acciones del espacio de ${room.profile.label}`}><button onClick={() => station('identity')}>Ver ficha</button><button onClick={() => station('chat')}>Conversar con {room.profile.label}</button><button onClick={exit}>Salir del espacio</button></nav> : integrationsInside ? <nav className="interior-tools" aria-label="Acciones del centro de integraciones"><button onClick={() => select('mcp-center')}>Ver MCPs</button><button onClick={exit}>Salir del centro</button></nav> : inside ? <nav className="interior-tools" aria-label="Acciones de biblioteca"><button onClick={browse}>Abrir catálogo</button><button onClick={() => select('library')}>Hablar con Luma</button><button onClick={exit}>Salir de la biblioteca</button></nav> : <CityDirectory catalog={catalog} error={catalogError} places={places} selected={selected} onSelect={select}/>}
     <div className="world-caption"><span>{copy.caption}</span><small>{copy.hint}</small></div>
     {logOpen && !place && <ActivityLog activity={hermesActivity.activity} catalog={catalog} error={hermesActivity.error} onSelect={select} onClose={() => setLogOpen(false)}/>}
     {place && <aside className="detail-panel" aria-label={`Espacio ${place.name}`}><button className="close" aria-label="Cerrar espacio" onClick={() => setSelected(null)}>×</button><div className="eyebrow">{place.kind === 'profile' ? 'PERFIL HERMES' : place.kind === 'space' ? 'ESPACIO HERMES' : place.kind === 'vault' ? 'OBSIDIAN · VAULT LOCAL' : place.kind === 'service' ? 'MCP · SERVICIO CONFIGURADO' : 'BIBLIOTECA · AGORAONE'}</div><h2>{place.character || place.name}<span style={{ background: place.color }}/></h2><p className="description">{place.description}</p>
