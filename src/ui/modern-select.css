@@ -1,0 +1,15 @@
+/* The application's own select: a button that opens a scrollable list of option buttons, so options
+   can carry colours, dots and indents that a native <select> cannot show. */
+.modern-select { position:relative }
+.modern-select-button { width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px;background:#fffdf4;border:1px solid #ccd5c6;border-radius:7px;font:inherit;font-size:12px;color:#325746 }
+.modern-select-button[aria-expanded=true] { border-color:#a3854c;background:#fffbef }
+.modern-select-button span:last-child { color:#8a7b62;flex:none }
+.modern-select-current { flex:1;min-width:0;text-align:left;overflow-wrap:anywhere }
+.modern-select-list { position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:40;max-height:320px;overflow:auto;display:grid;background:#fffdf4;border:1px solid #ccd5c6;border-radius:9px;box-shadow:0 14px 34px #26423e2e }
+.modern-select-list [role=option] { display:flex;align-items:center;gap:8px;min-width:0;text-align:left;border:0;border-bottom:1px solid #efe8d5;background:none;padding:9px 10px;font:inherit;font-size:12px;color:#325746;cursor:pointer }
+.modern-select-list [role=option]:last-child { border-bottom:0 }
+.modern-select-list [role=option][aria-selected=true] { background:#efe9f6;color:#3a2f5c }
+.modern-select-active { background:#f4f0ff }
+.modern-select-list .ms-text { flex:1;min-width:0;overflow-wrap:anywhere }
+.modern-select-list .ms-dot { width:9px;height:9px;border-radius:3px;flex:none }
+.modern-select-list .ms-indent { flex:none }

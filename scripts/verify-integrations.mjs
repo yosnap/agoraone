@@ -27,7 +27,8 @@ try {
   await page.getByLabel('Buscar herramienta').fill('no-such-tool-test');
   assert.equal(await page.locator('.mcp-tools details').count(), 0);
   await page.getByLabel('Buscar herramienta').fill('');
-  await page.getByLabel('Perfil de Hermes').selectOption({ label: target('uncachedProfile') });
+  await page.getByLabel('Perfil de Hermes').click();
+  await page.locator('.modern-select-list [role=option]').filter({ hasText: new RegExp(`^${target('uncachedProfile')}$`) }).click();
   await page.getByText('Hermes no tiene un catálogo guardado para este servidor y perfil.', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Cerrar espacio' }).click();
   await page.getByRole('button', { name: 'Ver MCPs', exact: true }).click();

@@ -19,7 +19,8 @@ try {
   await page.getByLabel('Buscar por título').fill('huerto');
   await page.getByRole('button', { name: 'Huerto orbital · ejemplo' }).click();
   await page.getByText('SEMILLA-582', { exact: false }).waitFor();
-  await page.getByLabel('Consultar con').selectOption({ label: profile });
+  await page.getByLabel('Consultar con').click();
+  await page.locator('.modern-select-list [role=option]').filter({ hasText: new RegExp(`^${profile}$`) }).click();
   await page.getByRole('button', { name: `Consultar este documento con ${profile}` }).click();
   const chat = page.getByRole('region', { name: `Conversación con ${profile}` });
   await chat.getByText(/Solo lectura: Huerto orbital/).waitFor();

@@ -1,6 +1,7 @@
 import type { HermesCatalog } from '../../shared/hermes-catalog';
 import { serviceGroups } from '../data/service-groups';
 import { useState } from 'react';
+import { ModernSelect } from './modern-select';
 import { McpToolsPanel } from './mcp-tools-panel';
 import type { HermesActivity } from '../../shared/hermes-activity';
 import { mcpUsage, usageLine } from '../data/activity-format';
@@ -9,9 +10,11 @@ export function ResourcePanel({ id, catalog, onSelect, activity }: { id: string;
   const service = serviceGroups(catalog).find(item => item.id === id);
   const [profileId, setProfileId] = useState('');
   const binding = service?.bindings.find(item => item.profile.id === profileId) || service?.bindings[0];
+  const profileOptions = (service?.bindings ?? []).map(item => ({ value: item.profile.id, label: item.profile.label,
+    render: <><span className="ms-dot" style={{ background: item.profile.color }} aria-hidden="true"/><span className="ms-text">{item.profile.label}</span></> }));
   return <div className="hermes-details">
     {service && <><h3>Configuración por perfil</h3><p>Las líneas muestran relaciones declaradas, no conexiones activas. El uso registrado sale de las llamadas que Hermes guardó (solo nombre de herramienta y hora). El mismo nombre puede tener destinos o credenciales diferentes en cada perfil.</p>
-      <label className="mcp-search">Perfil de Hermes<select value={binding?.profile.id || ''} onChange={event => setProfileId(event.target.value)}>{service.bindings.map(item => <option key={item.profile.id} value={item.profile.id}>{item.profile.label}</option>)}</select></label>
+      <label className="mcp-search" htmlFor="mcp-profile">Perfil de Hermes<ModernSelect id="mcp-profile" value={binding?.profile.id || ''} onChange={setProfileId} options={profileOptions}/></label>
       {(binding ? [binding] : []).map(({ profile, server }) => { const use = activity ? mcpUsage(activity.profiles[profile.id], server.name) : undefined; const days = activity?.profiles[profile.id]?.usage?.windowDays ?? 30; return <section key={server.id}><button className="catalog-link" onClick={() => onSelect(profile.id)}>Ver perfil · {profile.label}</button><dl>
         <dt>Configuración</dt><dd>{server.enabled ? 'Habilitado en Hermes' : 'Deshabilitado en Hermes'}</dd>
         <dt>Transporte declarado</dt><dd>{server.transport === 'stdio' ? 'Proceso local (stdio)' : server.transport === 'http' ? 'HTTP' : 'No reconocido'}</dd>

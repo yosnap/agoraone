@@ -16,6 +16,26 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await page.locator('.directory').getByRole('button', { name: /^Obsidian · / }).first().click({ timeout: 120_000 });
   const shelves = page.locator('.vault-panel .vault-shelves button'), notes = page.locator('.vault-panel .vault-books button:not([disabled])');
   await shelves.or(notes).first().waitFor();
+  assert.equal(await page.locator('.vault-panel select').count(), 0, 'no queda ningún select nativo en la ficha');
+  // Like the profile SOUL editor, the vault card opens as wide as the screen allows.
+  const panelBox = await page.locator('.detail-panel').boundingBox();
+  assert.equal(Math.round(panelBox.width), Math.min(760, viewport.width - 40), 'la ficha del vault abre a su ancho');
+  // The coloured folder tree on the left navigates like the shelves and the crumbs.
+  const treeItems = page.locator('.vault-panel .vault-tree .vault-tree-item');
+  if ((await treeItems.count()) > 0) {
+    const before = await page.locator('.vault-panel .vault-tree .vault-tree-row').count();
+    const firstToggle = page.locator('.vault-panel .vault-tree .vault-tree-toggle').first();
+    assert.equal((await firstToggle.textContent()) ?? '', '▾', 'el primer nivel arranca desplegado');
+    await firstToggle.click(); await firstToggle.click();
+    assert.equal(await page.locator('.vault-panel .vault-tree .vault-tree-row').count(), before, 'plegar y desplegar no pierde ramas');
+    const first = treeItems.first(), folderName = (await first.locator('strong').textContent()) ?? '';
+    await first.click();
+    const current = page.locator('.vault-crumbs [aria-current]');
+    await current.waitFor();
+    assert.equal(await current.textContent(), folderName, 'el árbol lleva a su carpeta');
+    await page.locator('.vault-crumbs button').first().click();
+    await page.locator('.vault-crumbs [aria-current]').waitFor();
+  }
   // Folders are walked down until one holds readable notes; the breadcrumb tracks the path.
   for (let depth = 0; !(await notes.count()) && depth < 12; depth++) { await shelves.first().click(); await page.locator('.vault-crumbs [aria-current]').waitFor(); }
   assert.ok(await notes.count() > 0);
@@ -48,7 +68,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   assert.equal(errors.length, 0, errors.join('\n'));
   assert.equal(posts.length, 0, 'sin peticiones mutadoras ni de inferencia');
-  console.log(`${viewport.width}px: vault por carpetas, libro abierto, búsqueda, interior y consulta preparada OK`);
+  console.log(`${viewport.width}px: vault por carpetas (árbol a la izquierda), libro abierto, búsqueda, interior y consulta preparada OK`);
   await page.close();
 }
 await browser.close();

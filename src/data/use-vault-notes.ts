@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listVaultNotes, type VaultListing } from '../api/client';
 
-export type VaultBook = { id: string; title: string; section: number; readable: boolean };
+export type VaultBook = { id: string; title: string; folder: string; readable: boolean };
 export type VaultShelf = { folder: string; notes: number; books: VaultBook[] };
 
 /** Note listing (titles and folders only) of the vault being viewed; reloads when the vault changes. */
@@ -29,8 +29,7 @@ export function useVaultNotes(vaultId: string | null) {
     }
     return [...groups].map(([folder, notes]) => {
       const sorted = [...notes].sort((a, b) => a.folder.localeCompare(b.folder, 'es') || a.title.localeCompare(b.title, 'es'));
-      const sections = [...new Set(sorted.map(note => note.folder))];
-      return { folder, notes: notes.length, books: sorted.slice(0, 36).map(note => ({ id: note.id, title: note.title, section: sections.indexOf(note.folder), readable: note.readable })) };
+      return { folder, notes: notes.length, books: sorted.slice(0, 36).map(note => ({ id: note.id, title: note.title, folder: note.folder, readable: note.readable })) };
     }).sort((a, b) => b.notes - a.notes || a.folder.localeCompare(b.folder, 'es'));
   }, [listing]);
   return { listing, error, shelves, reload };

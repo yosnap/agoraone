@@ -45,18 +45,39 @@
 .editor-confirm p { margin:0 0 8px }
 /* Editing a profile needs room: the side panel widens while an editor is open. */
 .detail-panel:has(.profile-editor) { width:min(760px, calc(100vw - 40px)) }
+.detail-panel:has(.vault-panel) { width:min(760px, calc(100vw - 40px)) }
 .memory-card textarea { min-height:84px }
 .memory-card button { flex:none;white-space:nowrap }
 .vault-crumbs { display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin:10px 0 0;font-size:11px;color:#8a7b62 }
 .vault-crumbs span { display:flex;align-items:center;gap:4px }
 .vault-crumbs button { border:0;background:#efeadb;border-radius:6px;padding:5px 8px;color:#3d5a4c;font-size:11px }
 .vault-crumbs button[aria-current] { background:#5c4a8a;color:#fff }
+/* Coloured folder tree on the left, notes on the right: the same palette as the books in the 3D room. */
+.vault-layout { display:grid;grid-template-columns:minmax(180px,230px) minmax(0,1fr);gap:4px 18px;align-items:start }
+.vault-tree { display:grid;gap:2px;margin-top:12px;max-height:480px;overflow:auto;border:1px solid #ddd2ec;border-radius:9px;padding:8px;background:#faf8fd }
+.vault-tree-row { display:flex;align-items:center;gap:2px;min-width:0 }
+.vault-tree-toggle { flex:none;width:20px;border:0;background:none;color:#7c6f96;font-size:10px;padding:4px 0 }
+.vault-tree-item { display:flex;align-items:center;gap:6px;flex:1;min-width:0;text-align:left;border:1px solid transparent;border-radius:7px;padding:5px 6px;background:none;color:#463b63;font-size:11.5px }
+.vault-tree-item:hover { background:#f1ecf8 }
+.vault-tree-item[aria-current] { background:#efe9f6;border-color:#c9bce0;color:#3a2f5c }
+.vault-tree-root { flex:1 }
+.vault-tree-dot { width:9px;height:9px;border-radius:3px;flex:none }
+.vault-tree-item strong { flex:1;min-width:0;font-weight:500;overflow-wrap:anywhere }
+.vault-tree-item small, .vault-tree-root small { color:#7c7392;font-size:10px;flex:none }
+.vault-tree-root strong { flex:1;min-width:0;font-weight:500;overflow-wrap:anywhere }
+.vault-browse { min-width:0 }
+@media(max-width:700px) {
+.vault-layout { display:block }
+.vault-tree { max-height:190px }
+}
 .vault-shelves { display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:7px;margin-top:15px }
 .vault-shelves button { display:grid;grid-template-columns:auto 1fr;gap:2px 8px;text-align:left;border:1px solid #d8cfe6;background:#f1edf7;border-radius:8px;padding:10px;color:#3f355c }
 .vault-shelves button span { grid-row:span 2;font-size:18px;color:#7d6aa8 }
+.vault-shelves button .shelf-dot { grid-row:span 2;width:14px;height:14px;border-radius:5px;font-size:0 }
 .vault-shelves strong { font-size:12px;font-weight:500;overflow-wrap:anywhere }
 .vault-shelves small { font-size:10px;color:#7c7392 }
 .vault-books button span:empty { display:none }
+
 .approval-card { border:1px solid #d9b86a;background:#fbf2d8;border-radius:10px;padding:12px;margin:10px 0;font-size:12px }
 .approval-card strong { display:block;font-size:13px;margin-bottom:4px }
 .approval-card pre { white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;background:#fffdf5;border:1px solid #ead8a6;border-radius:6px;padding:8px;font-size:11px }
