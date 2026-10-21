@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { cancelTurn, createConversation, getConversation, sendMessage, type Conversation, type Status, type DocumentSource, type ToolApproval } from '../api/client';
 import { ApprovalCard } from './approval-card';
 
@@ -25,6 +25,17 @@ export function ChatPanel({ status, onConnected, document, onDetach, profile, on
   // Profiles answer with their own agent and provider; only Luma depends on AgoraOne's provider.
   const ready = !!profile || status?.state === 'configured';
   const bottom = useRef<HTMLDivElement>(null);
+  // Several chats can be mounted at once (one keeps running while another is shown), so ids must be unique.
+  const fieldId = useId();
+  const sendShortcut = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘ Enter' : 'Ctrl Enter';
+  // ⌘/Ctrl+Enter sends; ↑ in an empty field brings back your last message to edit or resend.
+  const shortcuts = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
+    else if (event.key === 'ArrowUp' && !message) {
+      const last = [...(conversation?.messages ?? [])].reverse().find(item => item.role === 'user');
+      if (last) { event.preventDefault(); setMessage(last.content); }
+    }
+  };
   useEffect(() => {
     let live = true;
     const id = localStorage.getItem(storageKey);
@@ -75,7 +86,7 @@ export function ChatPanel({ status, onConnected, document, onDetach, profile, on
     {error && <p role="alert" className="error">{error}</p>}
     {!ready && <p className="notice">{status?.detail || 'Comprobando el backend…'}</p>}
     {document && <div className="document-attached"><span>Solo lectura: {document.title}</span><button disabled={busy} onClick={onDetach} aria-label="Quitar documento">×</button></div>}
-    <form onSubmit={submit}><label htmlFor="message">Tu mensaje a {label}</label><textarea id="message" placeholder="¿Qué te gustaría explorar?" maxLength={6000} value={message} onChange={e => setMessage(e.target.value)} disabled={busy || restoring}/><button className="primary" disabled={busy || restoring || !message.trim() || !ready}>{busy ? 'Consultando…' : 'Enviar a Hermes ↗'}</button></form>
+    <form onSubmit={submit}><label htmlFor={fieldId}>Tu mensaje a {label} <span className="chat-shortcut">{sendShortcut} para enviar · ↑ recupera el último</span></label><textarea id={fieldId} aria-keyshortcuts="Meta+Enter Control+Enter" onKeyDown={shortcuts} placeholder="¿Qué te gustaría explorar?" maxLength={6000} value={message} onChange={e => setMessage(e.target.value)} disabled={busy || restoring}/><button className="primary" disabled={busy || restoring || !message.trim() || !ready}>{busy ? 'Consultando…' : 'Enviar a Hermes ↗'}</button></form>
     <small>{profile ? `Usa el proveedor, las herramientas, los MCP y la memoria del propio perfil${document ? ', con el texto del documento adjunto' : ''}. Las consultas que solo leen se hacen sin preguntar; todo lo que cambie algo espera a que lo permitas.` : document ? 'Se enviará el texto del documento seleccionado a tu proveedor de inferencia. Se vuelve a leer en cada envío.' : 'Sin acceso directo al disco. Las respuestas utilizan tu proveedor de inferencia.'}</small>
   </section>;
 }

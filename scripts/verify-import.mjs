@@ -40,7 +40,7 @@ try {
   if (live) {
     await page.getByLabel('Tu mensaje a Luma').fill('¿Cuál es la clave de este documento? Responde con la clave exacta y cita el título.');
     await page.getByRole('button', { name: 'Enviar a Hermes' }).click();
-    await page.waitForFunction(() => !document.querySelector('#message')?.disabled, null, { timeout: 125_000 });
+    await page.waitForFunction(() => !document.querySelector('.detail-panel:not([hidden]) .chat textarea')?.disabled, null, { timeout: 125_000 });
     assert.equal(await page.locator('[role="alert"]').count(), 0);
     assert.ok((await page.locator('.message.assistant').innerText()).includes(marker));
     console.log('Hermes real ha respondido usando la clave del archivo importado.');

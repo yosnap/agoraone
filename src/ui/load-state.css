@@ -1,0 +1,6 @@
+.skeleton { display:flex;flex-direction:column;gap:9px;padding:6px 0 10px }
+.skeleton-line { display:block;height:11px;border-radius:6px;background:linear-gradient(90deg,#e4e8dc 25%,#f1f3ea 45%,#e4e8dc 65%);background-size:300% 100%;animation:skeleton-shine 1.4s ease-in-out infinite }
+@keyframes skeleton-shine { from { background-position:100% 0 } to { background-position:0 0 } }
+@media (prefers-reduced-motion: reduce) { .skeleton-line { animation:none } }
+.load-error { display:flex;align-items:center;justify-content:space-between;gap:12px }
+.load-error button { flex:none;border:1px solid #8e3d2a55;border-radius:7px;padding:6px 10px;background:#fffaf6;color:#8e3d2a;font-size:11px }

@@ -16,6 +16,7 @@ import { ActivityLog } from './ui/activity-log';
 import { VaultPanel } from './ui/vault-panel';
 import { VaultBook } from './ui/vault-book';
 import { CityDirectory, type PlaceSignal } from './ui/city-directory';
+import { readView, writeView, type SavedView } from './data/saved-view';
 import { CityMinimap } from './ui/city-minimap';
 import { Breadcrumbs, type Crumb } from './ui/breadcrumbs';
 import { CommandPalette, paletteShortcut, type Command } from './ui/command-palette';
@@ -50,7 +51,8 @@ export default function App() {
   const [libraryTab, setLibraryTab] = useState<'chat' | 'documents'>('chat');
   // Attachment waiting in each chat, keyed by 'library' (Luma) or profile id.
   const [attachments, setAttachments] = useState<Record<string, DocumentSource>>({});
-  const [lightMode, setLightMode] = useState<LightMode>('auto');
+  const [lightMode, setLightMode] = useState<LightMode>(() => readView().lightMode ?? 'auto');
+  const [restored, setRestored] = useState(false);
   const daylight = useDaylightClock(lightMode);
   const hermesActivity = useHermesActivity(status?.csrf);
   const [logOpen, setLogOpen] = useState(false);
@@ -128,6 +130,27 @@ export default function App() {
   const kind = vaultRoom ? 'vault' : integrationsInside ? 'integrations' : room ? 'profile' : inside ? 'library' : 'city';
   const copy = sceneCopy(kind, firstPerson, vaultRoom ? vaultName : room?.profile.label);
   const indoors = kind !== 'city';
+  // The last view comes back once the catalogue says which profiles, vaults and places still exist.
+  useEffect(() => {
+    if (restored || !catalog) return;
+    const saved = readView(), exists = (id?: string | null) => !!id && [...catalogPlaces(catalog), ...servicePlaces(catalog)].some(item => item.id === id);
+    const interior = saved.interior;
+    if (interior?.kind === 'library') { setInside(true); setFirstPerson(true); }
+    else if (interior?.kind === 'integrations') enterIntegrations();
+    else if (interior?.kind === 'profile' && exists(interior.id)) enterProfile(interior.id);
+    else if (interior?.kind === 'vault' && exists(interior.id)) enterVault(interior.id);
+    else if (saved.firstPerson) setFirstPerson(true);
+    if (exists(saved.selected)) setSelected(saved.selected!);
+    if (saved.profileTab) setProfileTab(saved.profileTab);
+    if (saved.libraryTab) setLibraryTab(saved.libraryTab);
+    setRestored(true);
+  }, [catalog, restored]); // runs once per load; the enter* helpers only set state
+  useEffect(() => {
+    if (!restored) return;
+    const interior: SavedView['interior'] = vaultRoom ? { kind: 'vault', id: vaultRoom } : profileRoom ? { kind: 'profile', id: profileRoom }
+      : integrationsInside ? { kind: 'integrations' } : inside ? { kind: 'library' } : null;
+    writeView({ lightMode, firstPerson, selected, profileTab, libraryTab, interior });
+  }, [restored, lightMode, firstPerson, selected, profileTab, libraryTab, vaultRoom, profileRoom, integrationsInside, inside]);
   const panelPlaces = selectablePlaces.filter(item => item.id === selected || chats[item.id]?.busy);
   const signals = useMemo(() => {
     const result: Record<string, PlaceSignal> = {};
@@ -203,9 +226,9 @@ export default function App() {
     }}>{walkHint}</button>}
     {vaultRoom ? <nav className="interior-tools" aria-label="Acciones del vault"><button onClick={() => openShelf(null)}>Ver notas</button><button onClick={exit}>Salir del vault</button></nav> : room ? <nav className="interior-tools" aria-label={`Acciones del espacio de ${room.profile.label}`}><button onClick={() => station('identity')}>Ver ficha</button><button onClick={() => station('chat')}>Conversar con {room.profile.label}</button><button onClick={exit}>Salir del espacio</button></nav> : integrationsInside ? <nav className="interior-tools" aria-label="Acciones del centro de integraciones"><button onClick={() => select('mcp-center')}>Ver MCPs</button><button onClick={exit}>Salir del centro</button></nav> : inside ? <nav className="interior-tools" aria-label="Acciones de biblioteca"><button onClick={browse}>Abrir catálogo</button><button onClick={() => select('library')}>Hablar con Luma</button><button onClick={exit}>Salir de la biblioteca</button></nav> : <CityDirectory catalog={catalog} error={catalogError} places={places} selected={selected} onSelect={select} signals={signals} onOpenChat={openChat}/>}
     <div className="world-caption"><span>{copy.caption}</span><small>{copy.hint}</small></div>
-    {logOpen && !place && <ActivityLog activity={hermesActivity.activity} catalog={catalog} error={hermesActivity.error} onSelect={select} onClose={() => setLogOpen(false)}/>}
+    {logOpen && !place && <ActivityLog activity={hermesActivity.activity} catalog={catalog} error={hermesActivity.error} onRetry={hermesActivity.reload} onSelect={select} onClose={() => setLogOpen(false)}/>}
     {panelPlaces.map(place => <aside key={place.id} hidden={place.id !== selected} className="detail-panel" aria-label={`Espacio ${place.name}`}><button className="close" aria-label="Cerrar espacio" onClick={() => setSelected(null)}>×</button><div className="eyebrow">{place.kind === 'profile' ? 'PERFIL HERMES' : place.kind === 'space' ? 'ESPACIO HERMES' : place.kind === 'vault' ? 'OBSIDIAN · VAULT LOCAL' : place.kind === 'service' ? 'MCP · SERVICIO CONFIGURADO' : 'BIBLIOTECA · AGORAONE'}</div><h2>{place.character || place.name}<span style={{ background: place.color }}/></h2><p className="description">{place.description}</p>
-      {place.id === 'library' ? <LibraryPanel status={status} onConnected={() => setConnected(true)} inside={inside} onEnter={() => { setVaultRoom(null); setIntegrationsInside(false); setProfileRoom(null); setInside(true); setFirstPerson(true); setSelected(null); }} tab={libraryTab} onTab={setLibraryTab} document={attachments.library} onDetach={() => attach('library')} targets={consultTargets} onConsult={consult} onChanged={changeAttachment} onChatState={state => reportChat('library', state)}/> : catalog && (place.id === 'mcp-center' ? <IntegrationsPanel catalog={catalog} inside={integrationsInside} onEnter={enterIntegrations} onSelect={select}/> : place.kind === 'vault' ? <VaultPanel key={place.id} vaultId={place.id} listing={vault.listing} error={vault.error} inside={vaultRoom === place.id} onEnter={() => enterVault(place.id)} folder={vaultFolder} onFolder={setVaultFolder} onRead={id => openBook(place.id, id)} reading={book?.vault === place.id ? book.note : null} onCreated={id => { vault.reload(); openBook(place.id, id, true); }}/> : place.kind === 'service' ? <ResourcePanel key={place.id} id={place.id} catalog={catalog} onSelect={select} activity={hermesActivity.activity}/> : <HermesPanel key={place.id} id={place.id} catalog={catalog} onSelect={select} status={status} onConnected={() => setConnected(true)} tab={place.id === selected ? profileTab : 'chat'} onTab={setProfileTab} inside={profileRoom === place.id} onEnter={() => enterProfile(place.id)} activity={hermesActivity} document={attachments[place.id]} onDetach={() => attach(place.id)} onChatState={state => reportChat(place.id, state)}/>)}
+      {place.id === 'library' ? <LibraryPanel status={status} onConnected={() => setConnected(true)} inside={inside} onEnter={() => { setVaultRoom(null); setIntegrationsInside(false); setProfileRoom(null); setInside(true); setFirstPerson(true); setSelected(null); }} tab={libraryTab} onTab={setLibraryTab} document={attachments.library} onDetach={() => attach('library')} targets={consultTargets} onConsult={consult} onChanged={changeAttachment} onChatState={state => reportChat('library', state)}/> : catalog && (place.id === 'mcp-center' ? <IntegrationsPanel catalog={catalog} inside={integrationsInside} onEnter={enterIntegrations} onSelect={select}/> : place.kind === 'vault' ? <VaultPanel key={place.id} vaultId={place.id} listing={vault.listing} error={vault.error} onRetry={vault.reload} inside={vaultRoom === place.id} onEnter={() => enterVault(place.id)} folder={vaultFolder} onFolder={setVaultFolder} onRead={id => openBook(place.id, id)} reading={book?.vault === place.id ? book.note : null} onCreated={id => { vault.reload(); openBook(place.id, id, true); }}/> : place.kind === 'service' ? <ResourcePanel key={place.id} id={place.id} catalog={catalog} onSelect={select} activity={hermesActivity.activity}/> : <HermesPanel key={place.id} id={place.id} catalog={catalog} onSelect={select} status={status} onConnected={() => setConnected(true)} tab={place.id === selected ? profileTab : 'chat'} onTab={setProfileTab} inside={profileRoom === place.id} onEnter={() => enterProfile(place.id)} activity={hermesActivity} document={attachments[place.id]} onDetach={() => attach(place.id)} onChatState={state => reportChat(place.id, state)}/>)}
     </aside>)}
     {waitingPlace && <div className="approval-toast" role="alert"><span>{catalog?.profiles.find(profile => profile.id === waitingPlace.id)?.label ?? 'Luma'} espera tu permiso para usar una herramienta.</span><button onClick={() => openChat(waitingPlace.id)}>Ver conversación</button></div>}
     {firstPerson && kind === 'city' && <CityMinimap places={places} onSelect={select}/>}

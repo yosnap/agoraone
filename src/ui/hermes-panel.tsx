@@ -9,6 +9,7 @@ import type { HermesActivity } from '../../shared/hermes-activity';
 import { ActivitySection } from './activity-panel';
 import { HiddenLines } from './hidden-lines';
 import { ProfileSkills } from './profile-skills';
+import { Loading, LoadError } from './load-state';
 
 export type ProfileTab = 'info' | 'chat' | 'skills';
 
@@ -57,8 +58,8 @@ export function HermesPanel({ id, catalog, onSelect, status, onConnected, tab, o
       <ActivitySection activity={activity.activity?.profiles[id]} data={activity.activity} error={activity.error} declared={profile.mcp?.map(server => server.name)} profileId={id} onChanged={activity.reload}/>
       <h3>Personalidad y memoria</h3>
       <small>Lo que este perfil sabe de sí mismo y de ti, leído de sus archivos de Hermes. Abrir esta ficha solo lee localmente; se envían al proveedor únicamente al enviar un mensaje en la conversación.</small>
-      {loading && <p role="status">Leyendo archivos del perfil…</p>}
-      {error && <p className="error" role="alert">{error}</p>}
+      {loading && !files.length && <Loading label="Leyendo archivos del perfil…" lines={4}/>}
+      {error && <LoadError message={error} onRetry={() => setVersion(value => value + 1)}/>}
       <HiddenLines count={files.reduce((sum, file) => sum + (file.hidden ?? 0), 0)} revealed={revealed} disabled={!!editing} onToggle={() => setRevealed(value => !value)}/>
       {saved && <p className="notice" role="status">{saved}</p>}
       {files.map(file => <details key={file.name}><summary>{fileTitles[file.name]} <small>{file.name}</small> · {file.state === 'available' ? `${file.bytes} bytes` : file.state === 'missing' ? 'no encontrado' : 'no legible'}</summary>
