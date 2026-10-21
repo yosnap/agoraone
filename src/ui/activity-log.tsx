@@ -18,8 +18,9 @@ export function ActivityLog({ activity, catalog, error, onSelect, onClose, onRet
     // A profile missing from the catalog (not loaded yet, or just removed) still shows its events, without a link.
     const profile = catalog?.profiles.find(item => item.id === profileId);
     const mcpName = (key: string) => profile?.mcp?.find(server => mcpServerKey(server.name) === key)?.name ?? key;
-    return data.events.map(event => ({ event, profileId, profile, text: describe(event, mcpName),
-      key: `${profileId}|${event.kind}|${event.at}|${event.kind === 'mcp' ? event.server : event.kind === 'session' ? event.source : event.name}` }));
+    // Hermes can record two events of the same kind in the same millisecond (parallel subagents), so the position disambiguates.
+    return data.events.map((event, index) => ({ event, profileId, profile, text: describe(event, mcpName),
+      key: `${profileId}|${index}|${event.kind}|${event.at}|${event.kind === 'mcp' ? event.server : event.kind === 'session' ? event.source : event.name}` }));
   }).sort((a, b) => b.event.at.localeCompare(a.event.at)).slice(0, 60);
   const clock = (iso: string) => new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
   return <aside className="detail-panel activity-log" aria-label="Registro de actividad de Hermes">
