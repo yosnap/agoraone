@@ -7,3 +7,8 @@ dist/
 __pycache__/
 *.pyc
 test-results/
+.DS_Store
+brag-output/
+.agents/
+.claude/
+skills-lock.json

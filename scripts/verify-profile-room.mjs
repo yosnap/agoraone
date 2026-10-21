@@ -10,9 +10,14 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   page.on('pageerror', e => errors.push(e.message));
   page.on('request', r => { if (r.method() !== 'GET' && !r.url().endsWith('/api/session')) posts.push(r.url()); });
   await page.goto(appUrl());
+  // The skills shelf loads the profile's real listing when the room mounts.
+  const skillsLoad = page.waitForRequest(/\/api\/hermes\/profiles\/[^/]+\/skills$/, { timeout: 120_000 });
   await page.getByRole('button', { name: new RegExp(`Perfil · ${escape(profile)}`) }).first().click();
   await page.getByRole('button', { name: new RegExp(`Entrar en el espacio de ${escape(profile)}`) }).click();
+  await skillsLoad;
   await page.getByText(`04 / ESPACIO DE ${profile.toUpperCase()}`).waitFor();
+  // The label lives in the DOM even before the camera faces it; the count comes from the real listing.
+  await page.locator('button').filter({ hasText: /^Skills · \d+ |Todavía no hay skills/ }).first().waitFor({ state: 'attached', timeout: 30_000 });
   await page.getByRole('button', { name: `Conversar con ${profile}` }).first().click();
   await page.getByLabel(/Tu mensaje/).waitFor();
   await page.getByRole('button', { name: 'Cerrar espacio' }).click();

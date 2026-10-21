@@ -10,6 +10,7 @@ import type { ProfileActivity } from '../../shared/hermes-activity';
 import { ActivityBoards } from './profile-activity-boards';
 import { ago, mcpUsage, recentlyActive, usageLine } from '../data/activity-format';
 import { Furniture, Glow, Rug, type Item } from './room-furniture';
+import { SkillsShelf } from './skills-shelf';
 
 const dayMs = 86_400_000;
 
@@ -17,11 +18,12 @@ export type ProfileRoom = {
   profile: HermesProfile; style: BuildingStyle; seed: number;
   services: { id: string; name: string; enabled: boolean }[];
 };
-export type RoomStation = 'identity' | 'memory' | 'chat';
+export type RoomStation = 'identity' | 'memory' | 'chat' | 'skills';
 
 export const profileObstacles: Obstacle[] = [
   { x: 0, z: -1.2, halfX: 1.6, halfZ: 0.9 },
   { x: -5.9, z: -2.5, halfX: 0.8, halfZ: 1.8 },
+  { x: 4.5, z: 6.3, halfX: 1.6, halfZ: 0.55 },
   ...decorObstacles,
   ...[-6.2, 6.2].flatMap(x => [-7.1, 6.9].map(z => ({ x, z, halfX: 0.45, halfZ: 0.45 }))),
 ];
@@ -95,6 +97,8 @@ export function ProfileInterior({ room, activity, onStation, onService, onExit }
     <StandingPerson seed={seed} color={accent} position={[0, 0, -2.5]} onClick={() => onStation('chat')}/>
     {recentlyActive(activity) && <WorldLabel position={[0, 2.25, -2.5]} distanceFactor={9}><span className="activity-chip" title="Dato real de las sesiones de Hermes"><strong>Actividad registrada {ago(activity?.lastActivityAt ?? null)}</strong></span></WorldLabel>}
 
+    {/* Skills: the profile's real skills as books, coloured by category; the sign opens the skills sheet. */}
+    <SkillsShelf x={4.5} z={6.3} profileId={profile.id} onShelf={() => onStation('skills')}/>
     <ActivityBoards activity={activity}/>
     <ProfileDecor style={style} accent={accent}/>
     <mesh position={[0, 1.7, 7.8]}><boxGeometry args={[2.2, 3.4, 0.12]}/><SurfaceMaterial kind="wood" color="#a77f58"/></mesh>

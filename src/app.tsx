@@ -73,7 +73,7 @@ export default function App() {
   const turnPage = useCallback((note: string) => setBook(previous => previous && { ...previous, note }), []);
   const openShelf = (folder: string | null) => { if (vaultRoom) { setVaultFolder(folder); setSelected(vaultRoom); setLogOpen(false); } };
   // A note or document goes to the chosen chat (Luma or a profile); it is sent only with the user's next message there.
-  const consultTargets = useMemo(() => [{ id: 'library', label: 'Luma' }, ...(catalog?.profiles ?? []).map(profile => ({ id: profile.id, label: profile.label }))], [catalog]);
+  const consultTargets = useMemo(() => [{ id: 'library', label: 'Luma' }, ...(catalog?.profiles ?? []).map(profile => ({ id: profile.id, label: profile.label, color: profile.color }))], [catalog]);
   const attach = (target: string, source?: DocumentSource) => setAttachments(previous => { const next = { ...previous }; if (source) next[target] = source; else delete next[target]; return next; });
   // A renamed or deleted library copy updates or leaves every chat it was attached to.
   const changeAttachment = (id: string, source?: DocumentSource) => setAttachments(previous => Object.fromEntries(Object.entries(previous).flatMap(([target, item]) => item.id !== id ? [[target, item]] : source ? [[target, source]] : [])));
@@ -105,7 +105,7 @@ export default function App() {
     return { profile, style: building.buildingStyle || 'archive', seed: building.position[0] + building.position[2], services };
   }, [catalog, places, profileRoom]);
   useEffect(() => { if (profileRoom && catalog && !room) setProfileRoom(null); }, [profileRoom, catalog, room]);
-  const station = (kind: RoomStation) => { if (room) { setSelected(room.profile.id); setProfileTab(kind === 'chat' ? 'chat' : 'info'); } };
+  const station = (kind: RoomStation) => { if (room) { setSelected(room.profile.id); setProfileTab(kind === 'chat' ? 'chat' : kind === 'skills' ? 'skills' : 'info'); } };
   // The book shows once its vault's listing is loaded; navigation is blocked exactly while it shows.
   const bookOpen = !!book && vault.listing?.vault.id === book.vault;
   const vaultName = catalog?.vaults?.find(item => item.id === vaultRoom)?.name ?? '';

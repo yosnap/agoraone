@@ -334,6 +334,35 @@ test('ninguna otra web puede incrustar AgoraOne en un marco (clickjacking)', asy
 
 const testToken = 'c'.repeat(64);
 
+test('skills por HTTP: CSRF también en lecturas locales, cuerpo estricto y solo perfiles del catálogo', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'agora-skills-http-')));
+  mkdirSync(join(root, 'profiles/alpha/skills/redaccion'), { recursive: true });
+  writeFileSync(join(root, 'profiles/alpha/SOUL.md'), 'Soy alpha.');
+  writeFileSync(join(root, 'profiles/alpha/skills/redaccion/SKILL.md'), '---\nname: redaccion\ndescription: "Tono."\n---\n\n# Redaccion\n');
+  const discovery = new HermesDiscovery({ root, installation: '/not-installed', python: '', source: 'test' });
+  const [alpha] = discovery.scan().profiles;
+  const f = await fixture(async () => 'ok', undefined, discovery);
+  try {
+    const list = `/api/hermes/profiles/${alpha.id}/skills`;
+    assert.equal((await f.request(list, undefined, { 'X-Agora-CSRF': '' })).status, 403);
+    const { skills } = await (await f.request(list)).json();
+    assert.equal(skills.length, 1);
+    const detail = `/api/hermes/profiles/${alpha.id}/skills/${skills[0].id}`;
+    assert.equal((await f.request(detail, undefined, { 'X-Agora-CSRF': '' })).status, 403);
+    const read = await (await f.request(detail)).json();
+    assert.equal((await f.request(detail, { content: 'x', revision: read.revision }, { 'X-Agora-CSRF': '' }, 'PUT')).status, 403);
+    assert.equal((await f.request(detail, { content: 'x' }, {}, 'PUT')).status, 400);
+    assert.equal((await f.request(detail, { content: 'x', revision: '0'.repeat(24) }, {}, 'PUT')).status, 409);
+    assert.equal((await f.request(detail, { content: '# Redaccion\n', revision: read.revision }, {}, 'PUT')).status, 200);
+    const create = `/api/hermes/profiles/${alpha.id}/skills`;
+    assert.equal((await f.request(create, { category: 'nuevo', name: 'b', description: 'd', body: 'texto' }, { 'X-Agora-CSRF': '' })).status, 403);
+    assert.equal((await f.request(create, { category: 'a/b', name: 'b', description: 'd', body: 'texto' }, {})).status, 400);
+    assert.equal((await f.request(create, { category: 'nuevo', name: 'b', description: 'd', body: 'texto' }, {})).status, 201);
+    assert.equal((await f.request(`/api/hermes/profiles/profile-${'0'.repeat(24)}/skills`)).status, 404);
+    assert.equal((await f.request(`/api/hermes/profiles/${alpha.id}/skills/skill-${'0'.repeat(24)}`)).status, 404);
+  } finally { await f.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
 async function fixture(adapter: Adapter, libraryRoot?: string, discovery?: HermesDiscovery, obsidianRegistry: string | null = null) {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), 'agora-test-')));
   const reads = new BackgroundReads(obsidianRegistry);

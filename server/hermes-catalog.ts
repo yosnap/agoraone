@@ -69,6 +69,13 @@ export class HermesDiscovery {
     const home = this.profileHome(root, profile.name);
     return { root, path: name === 'SOUL.md' ? join(home, name) : join(home, 'memories', name), limit: name === 'SOUL.md' ? null : this.memoryLimits(root, home)[name], python: this.location.python };
   }
+  /** Where a profile's skills live, for the skills sheet. The client only names the profile id. */
+  skillHome(id: string) {
+    const root = this.root();
+    const profile = this.scan(true).profiles.find(p => p.id === id);
+    if (!profile) throw new Error('Unknown profile');
+    return { root, home: this.profileHome(root, profile.name), name: profile.name };
+  }
   /** Where to read activity from. Profiles come from the catalog; the client never names a path. */
   activityTargets() {
     const root = this.root();

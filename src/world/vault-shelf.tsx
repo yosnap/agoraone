@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { VaultShelf } from '../data/use-vault-notes';
+import { folderColor } from '../ui/vault-folders';
 import { WorldLabel } from './world-label';
 import { SurfaceMaterial } from './surfaces';
 
-// A shelf for one top-level folder: each book is a real note (up to 36), coloured by its subfolder.
+// A shelf for one top-level folder: each book is a real note (up to 36), coloured by its folder,
+// with the same stable colour as the panel's folder tree and shelves.
 // Pointing at a book shows its title; clicking opens it as a book. Contents are only read on open.
-const palettes = ['#8c79b8', '#b0784f', '#5f8a7d', '#c2a35a', '#7b6290', '#a8605e', '#4f7192', '#8f9a5a'];
 const rows = [0.5, 1.3, 2.1, 2.9], perRow = 9;
 
 export function Shelf({ x, z, shelf, onShelf, onBook }: { x: number; z: number; shelf: VaultShelf; onShelf: () => void; onBook: (id: string) => void }) {
@@ -26,7 +27,7 @@ export function Shelf({ x, z, shelf, onShelf, onBook }: { x: number; z: number; 
         onPointerOver={event => { event.stopPropagation(); point(book.id); }} onPointerOut={() => point(null)}
         onClick={event => { event.stopPropagation(); point(null); if (book.readable) onBook(book.id); else onShelf(); }}>
         <boxGeometry args={[0.18, height, 0.3]}/>
-        <meshStandardMaterial color={book.readable ? palettes[book.section % palettes.length] : '#5a5560'} emissive={lit ? '#ffd38a' : '#000000'} emissiveIntensity={lit ? 0.35 : 0} roughness={0.7}/>
+        <meshStandardMaterial color={book.readable ? folderColor(book.folder) : '#5a5560'} emissive={lit ? '#ffd38a' : '#000000'} emissiveIntensity={lit ? 0.35 : 0} roughness={0.7}/>
       </mesh>;
     })}
     {hover >= 0 && <WorldLabel position={[spot(hover).x, spot(hover).y + 0.45, 0.5]} distanceFactor={7}>

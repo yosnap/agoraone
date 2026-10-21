@@ -61,3 +61,25 @@
 .access-lock { position:absolute;inset:0;margin:auto;width:min(520px,calc(100vw - 32px));height:fit-content;z-index:50;background:#f9f8f0;border:1px solid #e1d3ae;border-radius:16px;padding:26px;box-shadow:0 20px 60px #193f4044;font-size:13px;line-height:1.6;color:#244b40 }
 .access-lock h2 { font:500 24px Manrope,sans-serif;margin:0 0 8px }
 .access-lock code { background:#efe6cf;border-radius:4px;padding:1px 5px }
+/* Skills sheet: categories with a stable colour, skills as rows, content as Markdown. */
+.profile-skills { display:flex;flex-direction:column;gap:8px;overflow:auto;min-height:0;font-size:12px }
+.profile-skills code { background:#efe6cf;border-radius:4px;padding:1px 5px }
+.profile-skills label { margin:6px 0 5px;font-size:11px }
+.profile-skills>input,.skill-create input { width:100%;padding:10px;background:#fffdf4;border:1px solid #ccd5c6;border-radius:7px;font:inherit;font-size:12px }
+.skills-groups { display:grid;gap:7px }
+.skills-category { border:1px solid #d4dccc;border-radius:9px;background:#f1f0e4;padding:8px }
+.skills-category summary { display:flex;align-items:center;gap:7px;cursor:pointer;font-size:12px;color:#325746 }
+.skills-category summary small { color:#768272;font-size:10px }
+.skills-dot { width:11px;height:11px;border-radius:4px;flex:none;display:inline-block }
+.skills-category .skills-dot { width:13px;height:13px }
+.skills-category div { display:grid;gap:6px;margin-top:8px }
+.skills-category div button { display:flex;flex-direction:column;gap:2px;text-align:left;border:1px solid #d4dccc;border-radius:7px;background:#fffdf4;padding:9px;color:#325746;font-size:12px }
+.skills-category div button small { color:#768272;font-size:10.5px;line-height:1.5;overflow-wrap:anywhere }
+.skills-category div button[aria-pressed=true] { border-color:#a3854c;background:#eee2c2 }
+.skill-detail { border-top:1px solid #d4dccc;padding-top:10px }
+.skill-detail h4 { display:flex;align-items:center;gap:7px;margin:0 0 8px;font-weight:500;font-size:13px;color:#244b40 }
+.skill-detail h4 small { color:#768272;font-size:10px;font-weight:400 }
+.skill-body { max-height:420px;overflow:auto;border:1px solid #e6d9b4;border-radius:8px;background:#fffdf5;padding:12px }
+.skill-create { display:flex;flex-direction:column;gap:6px;border:1px dashed #a9bfb4;background:#f1f5ef;border-radius:9px;padding:10px }
+.skill-create h4 { margin:0 0 4px;font-size:12px;color:#2f5247 }
+.skill-create small { color:#647563;font-size:10px;line-height:1.6 }

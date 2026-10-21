@@ -6,6 +6,7 @@ export type Status = { state: string; detail: string; csrf: string };
 import type { HermesCatalog, HermesProfile, HermesFile } from '../../shared/hermes-catalog';
 import type { McpTools } from '../../shared/hermes-catalog';
 import type { HermesActivity } from '../../shared/hermes-activity';
+import type { ProfileSkill, ProfileSkillDetail } from '../../shared/hermes-skills';
 let csrf = '';
 /** An error answered by the backend, with its HTTP status (409 means the data changed meanwhile). */
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
@@ -56,6 +57,15 @@ export const changeJob = (profileId: string, jobId: string, change: { action: 'p
 export const createCard = (profileId: string, card: { title: string; body?: string }) => request<{ card: string }>(`${profilePath(profileId)}/cards`, card);
 export const changeCard = (profileId: string, cardId: string, change: { action: 'complete' | 'unblock' | 'archive' } | { action: 'block'; reason?: string } | { action: 'comment'; body: string }) =>
   request<{ card: string }>(`${profilePath(profileId)}/cards/${encodeURIComponent(cardId)}`, change);
+/** The real skills of a profile (its skills/ folder in Hermes); listing and content never reach the model. */
+export const listProfileSkills = (profileId: string) => request<{ skills: ProfileSkill[]; truncated: boolean }>(`${profilePath(profileId)}/skills`);
+export const readProfileSkill = (profileId: string, skillId: string, reveal = false) =>
+  request<ProfileSkillDetail>(`${profilePath(profileId)}/skills/${encodeURIComponent(skillId)}${reveal ? '?reveal=1' : ''}`);
+/** Saves a skill's SKILL.md; `revision` is the version the user opened (sha-256 truncated). */
+export const saveProfileSkill = (profileId: string, skillId: string, edit: { content: string; revision: string; revealed?: boolean }) =>
+  request<{ revision: string; backup: string | null }>(`${profilePath(profileId)}/skills/${encodeURIComponent(skillId)}`, edit, 'PUT');
+export const createProfileSkill = (profileId: string, skill: { category: string; name: string; description: string; body: string }) =>
+  request<{ id: string; name: string; category: string }>(`${profilePath(profileId)}/skills`, skill);
 export const searchVault = (vaultId: string, query: string) => request<{ results: { id: string; title: string; folder: string; snippet: string }[]; truncated: boolean }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/search?q=${encodeURIComponent(query)}`);
 /** Calls one MCP tool of a profile by hand with the arguments the user confirmed. */
 export const callMcpTool = (profileId: string, serverId: string, tool: string, args: Record<string, unknown>) =>

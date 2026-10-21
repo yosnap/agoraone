@@ -13,6 +13,7 @@ catálogo y abre los paneles existentes; no inicia el agente ni activa herramien
 | Archivo en la pared izquierda | Estado y tamaño de MEMORY.md y USER.md | Abre la ficha del perfil |
 | Pantallas en la pared derecha | MCP declarados para el perfil (máx. 6) y si están habilitados en configuración | Lleva a su terminal del centro de integraciones |
 | Escritorio con la persona | Misma figura que pasea en la ciudad | Abre la pestaña de conversación |
+| Estantería de skills (0.20.0) | Las `SKILL.md` reales de la carpeta `skills/` del perfil, hasta 32 libros con el color de su categoría | Abre la pestaña de skills de la ficha |
 
 Las pantallas reflejan configuración, no conexión activa. En móvil las pantallas
 laterales pueden quedar fuera de vista al entrar; la ficha ofrece los mismos enlaces.
@@ -35,6 +36,7 @@ reposo; no hay animaciones de hablar o trabajar para no simular actividad.
 
 ## Código
 - `src/world/profile-interior.tsx`: sala, estaciones y obstáculos.
+- `src/world/skills-shelf.tsx`: estantería con las skills reales (lectura local del listado; ver docs/skills-perfil.md).
 - `src/world/profile-shell.tsx`: arquitectura de la sala según el tipo de edificio.
 - `src/world/profile-decor.tsx`: mobiliario temático.
 - `src/world/standing-person.tsx`: persona en reposo (también Luma en la biblioteca).

@@ -18,6 +18,7 @@ import { maskSecrets } from './secret-lines';
 import { backupMemories, ProfileEditError, saveProfileFile } from './profile-editor';
 import { jobDetail, manageCard, manageJob, ManageError } from './hermes-manage';
 import { callMcpTool, McpCallError } from './mcp-call';
+import { SkillError, createProfileSkill, listProfileSkills, readProfileSkill, saveProfileSkill } from './hermes-skills';
 import { accessCookie, accessProof, loadAccessToken, sameSecret } from './access-token';
 
 export function createApp(options: { directory?: string; adapter?: Adapter; profileAdapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string; vaultBackups?: string; accessToken?: string } = {}) {
@@ -200,6 +201,30 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
     if (!body.success || req.params.tool.length > 200) return res.status(400).json({ error: 'Argumentos no válidos.' });
     try { res.json(await callMcpTool(discovery, req.params.id, req.params.serverId, req.params.tool, body.data.args)); }
     catch (error) { res.status(error instanceof McpCallError ? error.status : 500).json({ error: error instanceof McpCallError ? error.message : 'No se pudo completar la llamada.' }); }
+  });
+  // The profile's real skills (user's decision, 20/10/2026): list and read are local and never reach the
+  // model; save and create are CSRF-protected, revision-checked and backed up first (server/hermes-skills.ts).
+  const skillParam = z.string().regex(/^skill-[a-f0-9]{24}$/);
+  const skillFail = (res: express.Response, error: unknown) => res.status(error instanceof SkillError ? error.status : 500)
+    .json({ error: error instanceof SkillError ? error.message : 'No se pudo completar la operación con la skill.' });
+  app.get('/api/hermes/profiles/:id/skills', (req, res) => {
+    if (!profileParam.safeParse(req.params.id).success) return res.status(404).json({ error: 'Perfil no disponible.' });
+    try { res.json(listProfileSkills(discovery, req.params.id)); } catch { res.status(404).json({ error: 'Perfil no disponible.' }); }
+  });
+  app.get('/api/hermes/profiles/:id/skills/:skillId', (req, res) => {
+    if (!profileParam.safeParse(req.params.id).success || !skillParam.safeParse(req.params.skillId).success) return res.status(404).json({ error: 'Skill no disponible.' });
+    try { res.json(readProfileSkill(discovery, req.params.id, req.params.skillId, req.query.reveal === '1')); } catch (error) { skillFail(res, error); }
+  });
+  app.put('/api/hermes/profiles/:id/skills/:skillId', express.json({ limit: '256kb' }), async (req, res) => {
+    const body = z.object({ content: z.string().max(70_000), revision: z.string().regex(/^[a-f0-9]{24}$/), revealed: z.boolean().optional() }).strict().safeParse(req.body);
+    if (!profileParam.safeParse(req.params.id).success || !skillParam.safeParse(req.params.skillId).success || !body.success) return res.status(400).json({ error: 'Edición no válida.' });
+    try { res.json(await saveProfileSkill(discovery, backups, req.params.id, req.params.skillId, body.data)); } catch (error) { skillFail(res, error); }
+  });
+  app.post('/api/hermes/profiles/:id/skills', express.json({ limit: '256kb' }), async (req, res) => {
+    const body = z.object({ category: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/), name: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/),
+      description: z.string().max(500), body: z.string().trim().min(1).max(70_000) }).strict().safeParse(req.body);
+    if (!profileParam.safeParse(req.params.id).success || !body.success) return res.status(400).json({ error: 'Categoría y nombre: 1 a 64 caracteres, empezando por letra o número, sin espacios.' });
+    try { res.status(201).json(await createProfileSkill(discovery, backups, req.params.id, body.data)); } catch (error) { skillFail(res, error); }
   });
   // Shared demonstration resource for local browser identities; no personal collections.
   app.get('/api/library/documents', (_req, res) => res.json({ resourceId: 'library-test', permissions: ['read'], documents: [

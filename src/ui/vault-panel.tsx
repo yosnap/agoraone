@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { createVaultNote, searchVault, type VaultListing, type VaultNote } from '../api/client';
+import { folderColor, folderTree, type FolderNode } from './vault-folders';
 import './library.css';
 
 const inside = (folder: string, path: string) => !path || folder === path || folder.startsWith(`${path}/`);
@@ -20,9 +21,27 @@ export function VaultPanel({ vaultId, listing, error, inside: inRoom, onEnter, f
   const [searched, setSearched] = useState('');
   const [status, setStatus] = useState('');
   const [failure, setFailure] = useState('');
+  // null means “first sight of the tree”: only the first level stays open; deeper branches are folded.
+  const [collapsed, setCollapsed] = useState<Set<string> | null>(null);
+  const defaultCollapsed = (nodes: FolderNode[]) => {
+    const set = new Set<string>();
+    const walk = (list: FolderNode[]) => { for (const node of list) { if (node.path.includes('/')) set.add(node.path); walk(node.children); } };
+    walk(nodes);
+    return set;
+  };
   // Only the latest search may update the panel; slower earlier answers are dropped.
   const latest = useRef(0);
   useEffect(() => { setFound(null); setFailure(''); }, [vaultId]);
+  // Moving to a folder (also from the 3D room or the crumbs) expands the tree branches leading to it.
+  useEffect(() => {
+    if (!folder) return;
+    setCollapsed(previous => {
+      const next = new Set(previous ?? defaultCollapsed(tree));
+      let branch = '';
+      for (const name of folder.split('/')) { branch = branch ? `${branch}/${name}` : name; next.delete(branch); }
+      return next;
+    });
+  }, [folder]);
   const path = folder ?? '';
   const all = listing?.notes ?? [];
   // Direct subfolders of the current folder, each with the number of notes it holds at any depth.
@@ -62,6 +81,55 @@ export function VaultPanel({ vaultId, listing, error, inside: inRoom, onEnter, f
     finally { setCreating(false); }
   }
   const foundHere = found?.filter(item => inside(item.folder, path)) ?? [];
+  const tree = folderTree(all);
+  const looseNotes = all.length - tree.reduce((sum, node) => sum + node.count, 0);
+  // The tree on the left: every folder as a row with its colour dot and count; the arrow folds or
+  // unfolds the branch, the row itself navigates to the folder.
+  const toggle = (folderPath: string) => setCollapsed(previous => {
+    const next = new Set(previous ?? defaultCollapsed(tree));
+    if (next.has(folderPath)) next.delete(folderPath); else next.add(folderPath);
+    return next;
+  });
+  const rows = (nodes: FolderNode[], depth: number): ReactElement[] => nodes.flatMap(node => {
+    const isCollapsed = collapsed === null ? node.path.includes('/') : collapsed.has(node.path);
+    const row = <div key={node.path} className="vault-tree-row" style={{ marginLeft: depth * 14 }}>
+      <button className="vault-tree-toggle" aria-label={isCollapsed ? `Abrir ${node.name}` : `Plegar ${node.name}`} onClick={() => toggle(node.path)}>{isCollapsed ? '▸' : '▾'}</button>
+      <button className="vault-tree-item" aria-current={path === node.path ? 'location' : undefined} onClick={() => onFolder(node.path)}>
+        <span className="vault-tree-dot" style={{ background: folderColor(node.path) }} aria-hidden="true"/>
+        <strong>{node.name}</strong><small>{node.count} {node.count === 1 ? 'nota' : 'notas'}</small>
+      </button>
+    </div>;
+    return [row, ...(isCollapsed ? [] : rows(node.children, depth + 1))];
+  });
+  const browse = <>
+    <nav className="vault-crumbs" aria-label="Carpeta actual">
+      <button aria-current={!crumbs.length ? 'location' : undefined} onClick={() => go(-1)}>{listing?.vault.name}</button>
+      {crumbs.map((name, depth) => <span key={depth}>›<button aria-current={depth === crumbs.length - 1 ? 'location' : undefined} onClick={() => go(depth)}>{name}</button></span>)}
+    </nav>
+    {newTitle === null ? <button type="button" className="vault-new" onClick={() => setNewTitle('')}>+ Nueva nota{crumbs.length ? ` en ${crumbs.at(-1)}` : ''}</button>
+      : <form className="vault-new-form" onSubmit={event => { event.preventDefault(); void create(); }}>
+        <label htmlFor="vault-new-title">Título de la nota nueva{crumbs.length ? ` (en ${crumbs.join(' › ')})` : ' (en la raíz del vault)'}</label>
+        <input id="vault-new-title" autoFocus maxLength={120} value={newTitle} onChange={event => setNewTitle(event.target.value)} disabled={creating}/>
+        <div><button type="submit" className="primary" disabled={creating || !newTitle.trim()}>{creating ? 'Creando…' : 'Crear y editar'}</button><button type="button" disabled={creating} onClick={() => setNewTitle(null)}>Cancelar</button></div>
+      </form>}
+    <label htmlFor="vault-search">Buscar</label>
+    <form className="vault-search" onSubmit={event => { event.preventDefault(); void search(); }}>
+      <input id="vault-search" value={query} onChange={event => { setQuery(event.target.value); setFound(null); latest.current++; }} placeholder={path ? `Título o texto en ${crumbs.at(-1)}…` : 'Título o texto…'}/>
+      <button type="submit">Buscar en el contenido</button>
+    </form>
+    {status && <p role="status">{status}</p>}
+    {failure && <p className="error" role="alert">{failure}</p>}
+    {found ? <div className="document-list">{foundHere.map(item => <button key={item.id} aria-pressed={reading === item.id} onClick={() => onRead(item.id)}>{item.title}<span>{item.folder || 'Notas sueltas'}</span>{item.snippet && <small>{item.snippet}</small>}</button>)}
+      {!foundHere.length && <p>No hay notas que contengan «{searched}»{path ? ' en esta carpeta' : ''}.</p>}</div>
+      : <>
+        {!titleQuery && shelves.length > 0 && <div className="vault-shelves" aria-label="Carpetas">{shelves.map(([name, count]) =>
+          <button key={name} onClick={() => onFolder(path ? `${path}/${name}` : name)}><span className="shelf-dot" style={{ background: folderColor(path ? `${path}/${name}` : name) }} aria-hidden="true"/><strong>{name}</strong><small>{count} {count === 1 ? 'nota' : 'notas'}</small></button>)}</div>}
+        <div className="document-list vault-books" aria-label="Notas">{books.slice(0, 200).map(note => <button key={note.id} aria-pressed={reading === note.id} disabled={!note.readable} onClick={() => onRead(note.id)}>
+          {note.title}<span>{titleQuery ? note.folder || 'Notas sueltas' : ''}{!note.readable && ' · demasiado grande para abrir'}</span></button>)}
+          {!books.length && <p>{titleQuery ? 'No hay títulos coincidentes en esta carpeta.' : shelves.length ? '' : 'Esta carpeta no tiene notas.'}</p>}
+          {books.length > 200 && <p>Se muestran 200 de {books.length}; afina la búsqueda.</p>}</div>
+      </>}
+  </>;
   return <div className="library-panel vault-panel">
     {!inRoom && <button className="enter-library" onClick={onEnter}>Entrar en el vault →</button>}
     <p className="notice">Tus notas de Obsidian, en tu equipo. Puedes leerlas, editarlas y crear notas nuevas; cada guardado se confirma y guarda antes una copia. Una nota solo se envía al modelo si eliges consultarla y envías un mensaje. No se leen carpetas ocultas, adjuntos ni enlaces a otras carpetas.</p>
@@ -69,33 +137,18 @@ export function VaultPanel({ vaultId, listing, error, inside: inRoom, onEnter, f
     {!listing && !error && <p role="status">Leyendo el vault…</p>}
     {listing && <section className="library-reader" aria-label={`Notas de ${listing.vault.name}`}>
       <p className="library-permissions">{all.length} notas · {new Set(all.map(note => note.folder).filter(Boolean)).size} carpetas{listing.truncated ? ' · listado limitado' : ''}</p>
-      <nav className="vault-crumbs" aria-label="Carpeta actual">
-        <button aria-current={!crumbs.length ? 'location' : undefined} onClick={() => go(-1)}>{listing.vault.name}</button>
-        {crumbs.map((name, depth) => <span key={depth}>›<button aria-current={depth === crumbs.length - 1 ? 'location' : undefined} onClick={() => go(depth)}>{name}</button></span>)}
-      </nav>
-      {newTitle === null ? <button type="button" className="vault-new" onClick={() => setNewTitle('')}>+ Nueva nota{crumbs.length ? ` en ${crumbs.at(-1)}` : ''}</button>
-        : <form className="vault-new-form" onSubmit={event => { event.preventDefault(); void create(); }}>
-          <label htmlFor="vault-new-title">Título de la nota nueva{crumbs.length ? ` (en ${crumbs.join(' › ')})` : ' (en la raíz del vault)'}</label>
-          <input id="vault-new-title" autoFocus maxLength={120} value={newTitle} onChange={event => setNewTitle(event.target.value)} disabled={creating}/>
-          <div><button type="submit" className="primary" disabled={creating || !newTitle.trim()}>{creating ? 'Creando…' : 'Crear y editar'}</button><button type="button" disabled={creating} onClick={() => setNewTitle(null)}>Cancelar</button></div>
-        </form>}
-      <label htmlFor="vault-search">Buscar</label>
-      <form className="vault-search" onSubmit={event => { event.preventDefault(); void search(); }}>
-        <input id="vault-search" value={query} onChange={event => { setQuery(event.target.value); setFound(null); latest.current++; }} placeholder={path ? `Título o texto en ${crumbs.at(-1)}…` : 'Título o texto…'}/>
-        <button type="submit">Buscar en el contenido</button>
-      </form>
-      {status && <p role="status">{status}</p>}
-      {failure && <p className="error" role="alert">{failure}</p>}
-      {found ? <div className="document-list">{foundHere.map(item => <button key={item.id} aria-pressed={reading === item.id} onClick={() => onRead(item.id)}>{item.title}<span>{item.folder || 'Notas sueltas'}</span>{item.snippet && <small>{item.snippet}</small>}</button>)}
-        {!foundHere.length && <p>No hay notas que contengan «{searched}»{path ? ' en esta carpeta' : ''}.</p>}</div>
-        : <>
-          {!titleQuery && shelves.length > 0 && <div className="vault-shelves" aria-label="Carpetas">{shelves.map(([name, count]) =>
-            <button key={name} onClick={() => onFolder(path ? `${path}/${name}` : name)}><span aria-hidden="true">▤</span><strong>{name}</strong><small>{count} {count === 1 ? 'nota' : 'notas'}</small></button>)}</div>}
-          <div className="document-list vault-books" aria-label="Notas">{books.slice(0, 200).map(note => <button key={note.id} aria-pressed={reading === note.id} disabled={!note.readable} onClick={() => onRead(note.id)}>
-            {note.title}<span>{titleQuery ? note.folder || 'Notas sueltas' : ''}{!note.readable && ' · demasiado grande para abrir'}</span></button>)}
-            {!books.length && <p>{titleQuery ? 'No hay títulos coincidentes en esta carpeta.' : shelves.length ? '' : 'Esta carpeta no tiene notas.'}</p>}
-            {books.length > 200 && <p>Se muestran 200 de {books.length}; afina la búsqueda.</p>}</div>
-        </>}
+      {tree.length > 0
+        ? <div className="vault-layout">
+          <nav className="vault-tree" aria-label="Carpetas del vault">
+            <button className="vault-tree-row vault-tree-root" aria-current={!crumbs.length ? 'location' : undefined} onClick={() => onFolder(null)}>
+              <span className="vault-tree-dot" style={{ background: folderColor('') }} aria-hidden="true"/>
+              <strong>{listing.vault.name}</strong><small>{looseNotes} {looseNotes === 1 ? 'nota suelta' : 'notas sueltas'}</small>
+            </button>
+            {rows(tree, 0)}
+          </nav>
+          <div className="vault-browse">{browse}</div>
+        </div>
+        : <div className="vault-browse">{browse}</div>}
     </section>}
   </div>;
 }

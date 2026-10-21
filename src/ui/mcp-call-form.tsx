@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { callMcpTool } from '../api/client';
+import { ModernSelect } from './modern-select';
 import type { McpTools } from '../../shared/hermes-catalog';
 
 type Tool = McpTools['tools'][number];
@@ -51,8 +52,8 @@ export function McpCallForm({ profileId, serverId, profileLabel, tool }: { profi
     const id = `mcp-${tool.name}-${parameter.name}`, current = fields[parameter.name] ?? '';
     const set = (text: string) => { setFields({ ...fields, [parameter.name]: text }); setReview(null); };
     const label = <>{parameter.name}{parameter.required ? ' (obligatorio)' : ''}{parameter.description && <small>{parameter.description}</small>}</>;
-    if (parameter.options?.length) return <label key={id} htmlFor={id}>{label}<select id={id} value={current} onChange={event => set(event.target.value)}><option value="">{parameter.required ? 'Elige…' : 'Sin valor'}</option>{parameter.options.map(option => <option key={option} value={option}>{option}</option>)}</select></label>;
-    if (parameter.type === 'boolean') return <label key={id} htmlFor={id}>{label}<select id={id} value={current} onChange={event => set(event.target.value)}><option value="">{parameter.required ? 'Elige…' : 'Sin valor'}</option><option value="true">Sí</option><option value="false">No</option></select></label>;
+    if (parameter.options?.length) return <label key={id} htmlFor={id}>{label}<ModernSelect id={id} value={current} onChange={set} options={[{ value: '', label: parameter.required ? 'Elige…' : 'Sin valor' }, ...parameter.options.map(option => ({ value: option, label: option }))]}/></label>;
+    if (parameter.type === 'boolean') return <label key={id} htmlFor={id}>{label}<ModernSelect id={id} value={current} onChange={set} options={[{ value: '', label: parameter.required ? 'Elige…' : 'Sin valor' }, { value: 'true', label: 'Sí' }, { value: 'false', label: 'No' }]}/></label>;
     if (parameter.type === 'array' || parameter.type === 'object') return <label key={id} htmlFor={id}>{label}<textarea id={id} value={current} placeholder="JSON" onChange={event => set(event.target.value)}/></label>;
     return <label key={id} htmlFor={id}>{label}<input id={id} type={parameter.type === 'integer' || parameter.type === 'number' ? 'number' : 'text'} value={current} onChange={event => set(event.target.value)}/></label>;
   };

@@ -32,7 +32,8 @@ try {
   await form.getByText('Falta «texto», que es obligatorio.').waitFor();
   await form.getByLabel(/^texto/).fill('hola');
   await form.getByLabel(/^veces/).fill('2');
-  await form.getByLabel(/^modo/).selectOption('grito');
+  await form.getByLabel(/^modo/).click();
+  await form.locator('.modern-select-list [role=option]').filter({ hasText: 'grito' }).click();
   await form.getByLabel(/^extra/).fill('{"a": 1');
   await form.getByRole('button', { name: 'Revisar antes de ejecutar' }).click();
   await form.getByText(/debe escribirse en JSON/).waitFor();
