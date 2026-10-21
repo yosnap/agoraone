@@ -106,3 +106,25 @@
 .detail-panel[hidden] { display:none }
 .approval-toast { position:absolute;left:50%;bottom:60px;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:14px;max-width:calc(100vw - 32px);padding:12px 14px 12px 18px;border:1px solid #d9b86a;border-radius:12px;background:#fbf2d8;color:#5e3f0c;font-size:12px;box-shadow:0 14px 40px #193f4033 }
 .approval-toast button { border:0;border-radius:8px;padding:8px 12px;background:#214b44;color:#fff9e7;font-size:11px;white-space:nowrap }
+.breadcrumbs { pointer-events:auto;min-width:0 }
+.breadcrumbs ol { display:flex;align-items:center;gap:6px;margin:0;padding:0;list-style:none;font-size:11px;letter-spacing:.5px;white-space:nowrap }
+.breadcrumbs li { display:flex;align-items:center;gap:6px;min-width:0 }
+.breadcrumbs li + li::before { content:'›';opacity:.55 }
+.breadcrumbs button { border:0;background:none;padding:4px 2px;color:inherit;font-size:inherit;text-decoration:underline;text-decoration-color:#21473555;text-underline-offset:3px }
+.breadcrumbs button:hover { text-decoration-color:currentColor }
+.breadcrumbs [aria-current] { font-weight:700;overflow:hidden;text-overflow:ellipsis }
+.inside-world .breadcrumbs { color:#d7e8dd }
+.inside-world .breadcrumbs button { text-decoration-color:#d7e8dd66 }
+/* The open panel starts below the view bar, so camera, log, light and palette stay reachable. */
+@media (min-width:851px) { main .detail-panel { top:186px } }
+@media (max-width:850px) {
+  .view-switch .view-label { display:none }
+  main .view-switch { top:82px }
+  .view-switch button { min-width:40px;min-height:40px;font-size:15px }
+  main .intro { top:140px }
+  main .detail-panel { top:140px }
+  .topbar .breadcrumbs ~ .local-status { display:none }
+  .breadcrumbs { max-width:58vw }
+  .breadcrumbs li:not(:last-child):not(:nth-last-child(2)) { display:none }
+  .breadcrumbs li:nth-last-child(2)::before { content:none }
+}

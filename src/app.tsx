@@ -16,6 +16,7 @@ import { ActivityLog } from './ui/activity-log';
 import { VaultPanel } from './ui/vault-panel';
 import { VaultBook } from './ui/vault-book';
 import { CityDirectory, type PlaceSignal } from './ui/city-directory';
+import { Breadcrumbs, type Crumb } from './ui/breadcrumbs';
 import { CommandPalette, paletteShortcut, type Command } from './ui/command-palette';
 import type { ChatState } from './ui/chat-panel';
 import { recentActivityMs } from '../shared/hermes-activity';
@@ -141,6 +142,19 @@ export default function App() {
   // The first chat waiting for «Permitir» while its conversation is not on screen.
   const waitingId = Object.keys(chats).find(id => chats[id].approvals && !(id === selected && (id === 'library' ? libraryTab : profileTab) === 'chat'));
   const waitingPlace = selectablePlaces.find(item => item.id === waitingId);
+  const closePanel = () => { setSelected(null); setLogOpen(false); };
+  const interiorLabel = kind === 'vault' ? `Vault ${vaultName}` : kind === 'profile' ? `Espacio de ${room?.profile.label}` : kind === 'library' ? 'Biblioteca'
+    : kind === 'integrations' ? 'Centro de integraciones' : firstPerson ? 'Paseo' : null;
+  const placeLabel = place && (catalog?.profiles.find(profile => profile.id === place.id)?.label ?? place.name);
+  const tabLabel = place?.id === 'library' ? { chat: 'Conversación', documents: 'Documentos' }[libraryTab]
+    : place?.kind === 'profile' ? { info: 'Ficha', chat: 'Conversación', skills: 'Skills' }[profileTab] : null;
+  const crumbs: Crumb[] = [
+    { label: 'Ciudad', onClick: exit },
+    ...(interiorLabel ? [{ label: interiorLabel, onClick: closePanel }] : []),
+    ...(logOpen && !place ? [{ label: 'Registro' }] : []),
+    ...(place && placeLabel ? [{ label: placeLabel, onClick: () => place.id === 'library' ? setLibraryTab('chat') : setProfileTab('info') }] : []),
+    ...(tabLabel ? [{ label: tabLabel }] : []),
+  ];
   const commands: Command[] = [
     ...places.map(item => ({ id: `open:${item.id}`, label: `Abrir ${item.name}`, group: 'Ir a', run: () => select(item.id) })),
     ...(catalog?.profiles ?? []).flatMap(profile => [
@@ -171,12 +185,12 @@ export default function App() {
   });
   return <main className={indoors || daylight.night > 0.5 ? 'inside-world' : undefined}>
     <div className="world"><WorldBoundary><Suspense fallback={<div className="canvas-fallback" role="status">Cargando la ciudad…</div>}><City places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected || bookOpen} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf} onBook={id => vaultRoom && openBook(vaultRoom, id)}/></Suspense></WorldBoundary></div>
-    <header className="topbar"><a className="brand" href="/">a<span>AGORA<span className="brand-light">ONE</span></span></a><span className="top-note">TU MUNDO, EN UN LUGAR</span><div className="local-status"><i/> LOCAL · MAC</div></header>
+    <header className="topbar"><a className="brand" href="/">a<span>AGORA<span className="brand-light">ONE</span></span></a>{crumbs.length > 1 ? <Breadcrumbs crumbs={crumbs}/> : <span className="top-note">TU MUNDO, EN UN LUGAR</span>}<div className="local-status"><i/> LOCAL · MAC</div></header>
     <section className={`intro ${indoors || daylight.night > 0.5 ? 'interior-intro' : ''}`}><div className="eyebrow">{copy.eyebrow}</div><h1>{copy.title}</h1><p>{copy.text}</p></section>
-    <nav className="view-switch" aria-label="Modo de cámara"><button className={!firstPerson ? 'active' : ''} onClick={exit}>↗ Vista ciudad</button><button className={firstPerson ? 'active' : ''} onClick={() => setFirstPerson(true)}>◎ Primera persona</button>
-      <button aria-pressed={logOpen} title="Registro de lo que Hermes ha hecho en las últimas 24 horas" onClick={() => { setSelected(null); setLogOpen(!logOpen); }}>◷ Registro</button>
-      <button title="Iluminación de la ciudad: hora real de Madrid o fija" onClick={() => setLightMode(lightModes[(lightModes.indexOf(lightMode) + 1) % lightModes.length])}>☀ {lightModeLabels[lightMode]}</button>
-      <button title="Paleta de comandos: ir a cualquier lugar o acción" aria-keyshortcuts="Meta+K Control+K" onClick={() => setPaletteOpen(true)}>⌕ {paletteShortcut}</button></nav>
+    <nav className="view-switch" aria-label="Modo de cámara"><button className={!firstPerson ? 'active' : ''} aria-label="Vista ciudad" onClick={exit}><span aria-hidden="true">↗</span> <span className="view-label">Vista ciudad</span></button><button className={firstPerson ? 'active' : ''} aria-label="Primera persona" onClick={() => setFirstPerson(true)}><span aria-hidden="true">◎</span> <span className="view-label">Primera persona</span></button>
+      <button aria-pressed={logOpen} aria-label="Registro" title="Registro de lo que Hermes ha hecho en las últimas 24 horas" onClick={() => { setSelected(null); setLogOpen(!logOpen); }}><span aria-hidden="true">◷</span> <span className="view-label">Registro</span></button>
+      <button aria-label={`Luz: ${lightModeLabels[lightMode]}`} title="Iluminación de la ciudad: hora real de Madrid o fija" onClick={() => setLightMode(lightModes[(lightModes.indexOf(lightMode) + 1) % lightModes.length])}><span aria-hidden="true">☀</span> <span className="view-label">{lightModeLabels[lightMode]}</span></button>
+      <button aria-label="Paleta de comandos" title="Paleta de comandos: ir a cualquier lugar o acción" aria-keyshortcuts="Meta+K Control+K" onClick={() => setPaletteOpen(true)}><span aria-hidden="true">⌕</span> <span className="view-label">{paletteShortcut}</span></button></nav>
     {firstPerson && !selected && <button id="walk-button" className="walk-button" onClick={() => {
       const canvas = window.document.querySelector('canvas');
       if (!canvas) return;
