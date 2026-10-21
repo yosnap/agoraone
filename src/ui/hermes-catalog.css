@@ -128,3 +128,4 @@
   .breadcrumbs li:not(:last-child):not(:nth-last-child(2)) { display:none }
   .breadcrumbs li:nth-last-child(2)::before { content:none }
 }
+.chat-shortcut { float:right;opacity:.6;font-size:9px }

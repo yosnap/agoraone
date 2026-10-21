@@ -25,11 +25,11 @@ try {
     await page.getByLabel('Tu mensaje a Luma').fill(`Recuerda esta palabra para nuestro siguiente turno: ${marker}. Confirma brevemente.`);
     await page.getByRole('button', { name: 'Enviar a Hermes' }).click();
     await page.locator('.message.assistant').first().waitFor({ timeout: 125_000 });
-    await page.waitForFunction(() => !document.querySelector('#message')?.disabled, null, { timeout: 125_000 });
+    await page.waitForFunction(() => !document.querySelector('.detail-panel:not([hidden]) .chat textarea')?.disabled, null, { timeout: 125_000 });
     await page.getByLabel('Tu mensaje a Luma').fill('¿Qué palabra te pedí recordar? Responde solo la palabra.');
     await page.getByRole('button', { name: 'Enviar a Hermes' }).click();
     await page.locator('.message.assistant').nth(1).waitFor({ timeout: 125_000 });
-    await page.waitForFunction(() => !document.querySelector('#message')?.disabled, null, { timeout: 125_000 });
+    await page.waitForFunction(() => !document.querySelector('.detail-panel:not([hidden]) .chat textarea')?.disabled, null, { timeout: 125_000 });
     assert.ok((await page.locator('.message.assistant').nth(1).innerText()).includes(marker));
     await page.reload();
     await page.getByRole('button', { name: 'Luma', exact: true }).click();

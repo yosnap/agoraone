@@ -1,6 +1,7 @@
 import { mcpServerKey, type HermesActivity, type ProfileActivity } from '../../shared/hermes-activity';
 import { BoardManager, JobManager } from './profile-tasks';
 import { ago, platformName, platformStates, recentlyActive, sourceLabel, statusLabel, usageLine, when } from '../data/activity-format';
+import { Loading, LoadError } from './load-state';
 
 export function JobList({ jobs }: { jobs: ProfileActivity['jobs'] }) {
   if (!jobs) return <p>Sin archivo de tareas programadas en este perfil.</p>;
@@ -34,8 +35,8 @@ export function BoardList({ board }: { board: ProfileActivity['board'] }) {
 export function ActivitySection({ activity, data, error, declared, profileId, onChanged }: { activity: ProfileActivity | undefined; data: HermesActivity | null; error: boolean; declared?: string[]; profileId?: string; onChanged?: () => void }) {
   return <section className="activity-section" aria-label="Actividad real registrada por Hermes">
     <h3>Actividad real</h3>
-    {error && <p className="error" role="alert">No se pudo leer la actividad de Hermes. No se muestran datos anteriores.</p>}
-    {!data && !error && <p role="status">Leyendo registros de Hermes…</p>}
+    {error && <LoadError message="No se pudo leer la actividad de Hermes. No se muestran datos anteriores." onRetry={onChanged}/>}
+    {!data && !error && <Loading label="Leyendo registros de Hermes…"/>}
     {data && !activity && <p>Hermes no tiene registros de actividad para este perfil.</p>}
     {data && activity && <>
       <small>Fuente: estado del gateway, sesiones (solo fechas y origen), nombres de herramientas llamadas, tareas programadas y kanban de Hermes. Leído {new Date(data.readAt).toLocaleTimeString('es-ES')}; se actualiza cada 15 s. Sin contenido de mensajes ni títulos de conversaciones. Las tareas programadas y las tarjetas del kanban se pueden gestionar aquí.</small>

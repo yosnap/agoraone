@@ -36,7 +36,7 @@ try {
   if (live) {
     await page.getByLabel('Tu mensaje a Luma').fill('Según el documento adjunto, ¿cuál es el presupuesto total y la clave de referencia? Cita el título y el ID del documento.');
     await page.getByRole('button', { name: 'Enviar a Hermes' }).click();
-    await page.waitForFunction(() => !document.querySelector('#message')?.disabled, null, { timeout: 125_000 });
+    await page.waitForFunction(() => !document.querySelector('.detail-panel:not([hidden]) .chat textarea')?.disabled, null, { timeout: 125_000 });
     assert.equal(await page.locator('[role="alert"]').count(), 0);
     const answer = await page.locator('.message.assistant').innerText();
     assert.match(answer, /84/); assert.match(answer, /SEMILLA-582/); assert.match(answer, /orbital-garden/);

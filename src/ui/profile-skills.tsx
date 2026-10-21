@@ -6,6 +6,7 @@ import { Markdown } from './markdown';
 import { HiddenLines } from './hidden-lines';
 import { folderColor } from './vault-folders';
 import './hermes-catalog.css';
+import { Loading, LoadError } from './load-state';
 
 const markers = (text: string) => text.match(/^\s*\[línea oculta \d+\]\s*$/gm)?.map(line => line.trim()) ?? [];
 const nameHelp = '1 a 64 caracteres, empezando por letra o número; solo letras minúsculas, números, guion y guion bajo.';
@@ -88,11 +89,11 @@ export function ProfileSkills({ profileId }: { profileId: string }) {
   const skill = detail;
   return <section className="profile-skills" aria-label="Skills del perfil">
     <p className="notice">Las skills reales de este perfil, guardadas en su carpeta <code>skills/</code> de Hermes. Leerlas no las envía al modelo; son el propio agente del perfil quien las usa. Editarlas o crearlas se confirma y guarda antes una copia.</p>
-    {error && <p className="error" role="alert">{error}</p>}
+    {error && <LoadError message={error} onRetry={skills ? undefined : () => void load()}/>}
     {notice && <p className="notice" role="status">{notice}</p>}
     <label htmlFor="skills-search">Buscar en sus skills</label>
     <input id="skills-search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Nombre, categoría o descripción…"/>
-    {!skills && !error && <p role="status">Leyendo las skills del perfil…</p>}
+    {!skills && !error && <Loading label="Leyendo las skills del perfil…"/>}
     {skills && <>
       <small>{skills.length} {skills.length === 1 ? 'skill' : 'skills'}{truncated ? ' (se muestran 300; hay más)' : ''} en {groups.length || 'ninguna'} {groups.length === 1 ? 'categoría' : 'categorías'}.</small>
       {groups.length > 0 && <details className="skills-groups" open>{groups.map(([label, items]) => <details key={label || 'raíz'} className="skills-category" open>

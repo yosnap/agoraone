@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { createVaultNote, searchVault, type VaultListing, type VaultNote } from '../api/client';
 import { folderColor, folderTree, type FolderNode } from './vault-folders';
 import './library.css';
+import { Loading, LoadError } from './load-state';
 
 const inside = (folder: string, path: string) => !path || folder === path || folder.startsWith(`${path}/`);
 const byTitle = (a: VaultNote, b: VaultNote) => a.title.localeCompare(b.title, 'es');
@@ -9,8 +10,8 @@ const byTitle = (a: VaultNote, b: VaultNote) => a.title.localeCompare(b.title, '
 // Notes of a registered Obsidian vault, browsed like a library: folders and subfolders as shelves,
 // notes as books that open in the book reader, where they can be edited; a note reaches the model only when the
 // user picks «Consultar con…» in the book and then sends a message.
-export function VaultPanel({ vaultId, listing, error, inside: inRoom, onEnter, folder, onFolder, onRead, reading, onCreated }: {
-  vaultId: string; listing: VaultListing | null; error: string; inside: boolean; onEnter: () => void;
+export function VaultPanel({ vaultId, listing, error, onRetry, inside: inRoom, onEnter, folder, onFolder, onRead, reading, onCreated }: {
+  vaultId: string; listing: VaultListing | null; error: string; onRetry?: () => void; inside: boolean; onEnter: () => void;
   folder: string | null; onFolder: (folder: string | null) => void; onRead: (id: string) => void; reading: string | null;
   onCreated: (id: string) => void;
 }) {
@@ -133,8 +134,8 @@ export function VaultPanel({ vaultId, listing, error, inside: inRoom, onEnter, f
   return <div className="library-panel vault-panel">
     {!inRoom && <button className="enter-library" onClick={onEnter}>Entrar en el vault →</button>}
     <p className="notice">Tus notas de Obsidian, en tu equipo. Puedes leerlas, editarlas y crear notas nuevas; cada guardado se confirma y guarda antes una copia. Una nota solo se envía al modelo si eliges consultarla y envías un mensaje. No se leen carpetas ocultas, adjuntos ni enlaces a otras carpetas.</p>
-    {error && <p className="error" role="alert">{error}</p>}
-    {!listing && !error && <p role="status">Leyendo el vault…</p>}
+    {error && <LoadError message={error} onRetry={onRetry}/>}
+    {!listing && !error && <Loading label="Leyendo el vault…" lines={5}/>}
     {listing && <section className="library-reader" aria-label={`Notas de ${listing.vault.name}`}>
       <p className="library-permissions">{all.length} notas · {new Set(all.map(note => note.folder).filter(Boolean)).size} carpetas{listing.truncated ? ' · listado limitado' : ''}</p>
       {tree.length > 0

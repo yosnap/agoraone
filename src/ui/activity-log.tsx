@@ -1,6 +1,7 @@
 import { mcpServerKey, type ActivityEvent, type HermesActivity } from '../../shared/hermes-activity';
 import type { HermesCatalog } from '../../shared/hermes-catalog';
 import { ago, platformName, platformStates, sourceLabel, statusLabel } from '../data/activity-format';
+import { Loading, LoadError } from './load-state';
 
 function describe(event: ActivityEvent, mcpName: (key: string) => string) {
   if (event.kind === 'session') return `Sesión desde ${sourceLabel(event.source)}`;
@@ -10,8 +11,8 @@ function describe(event: ActivityEvent, mcpName: (key: string) => string) {
 }
 
 // City-wide log of what Hermes recorded in the last 24 h. Real records only: times, origins and names.
-export function ActivityLog({ activity, catalog, error, onSelect, onClose }: {
-  activity: HermesActivity | null; catalog: HermesCatalog | null; error: boolean; onSelect: (id: string) => void; onClose: () => void;
+export function ActivityLog({ activity, catalog, error, onSelect, onClose, onRetry }: {
+  activity: HermesActivity | null; catalog: HermesCatalog | null; error: boolean; onSelect: (id: string) => void; onClose: () => void; onRetry?: () => void;
 }) {
   const events = Object.entries(activity?.profiles ?? {}).flatMap(([profileId, data]) => {
     // A profile missing from the catalog (not loaded yet, or just removed) still shows its events, without a link.
@@ -26,8 +27,8 @@ export function ActivityLog({ activity, catalog, error, onSelect, onClose }: {
     <div className="eyebrow">REGISTRO · ÚLTIMAS 24 H</div>
     <h2>Actividad</h2>
     <p className="description">Lo que Hermes ha registrado: sesiones por origen, tareas programadas, llamadas a MCP agrupadas por hora y cambios de conexión. Sin contenido de mensajes ni títulos de conversaciones.</p>
-    {error && <p className="error" role="alert">No se pudo leer la actividad de Hermes.</p>}
-    {!activity && !error && <p role="status">Leyendo registros de Hermes…</p>}
+    {error && <LoadError message="No se pudo leer la actividad de Hermes." onRetry={onRetry}/>}
+    {!activity && !error && <Loading label="Leyendo registros de Hermes…" lines={5}/>}
     {activity && !events.length && <p>Hermes no ha registrado actividad en las últimas 24 horas.</p>}
     <ol className="activity-events">{events.map(({ event, profileId, profile, text, key }) => <li key={key}>
       <time dateTime={event.at} title={new Date(event.at).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}>{clock(event.at)}</time>
