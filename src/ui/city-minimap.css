@@ -1,0 +1,14 @@
+.city-minimap { position:absolute;right:32px;bottom:60px;z-index:10;margin:0;width:190px;padding:8px;border:1px solid #ffffff90;border-radius:14px;background:#f5f4e9e0;backdrop-filter:blur(10px);box-shadow:0 12px 34px #193f4030 }
+.city-minimap svg { display:block;width:100%;height:auto }
+.city-minimap figcaption { margin-top:5px;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:#4c6b60;text-align:center }
+.minimap-ground { fill:#cfdcc4 }
+.minimap-road { fill:#8f9890 }
+.minimap-plot { stroke:#ffffffcc;stroke-width:.4;cursor:pointer }
+.minimap-plot:hover { stroke:#173d3c;stroke-width:.7 }
+.minimap-cone { fill:#ffd27a66 }
+.minimap-arrow { fill:#d1452f;stroke:#fff;stroke-width:.45;transform:scale(1.25) }
+.inside-world .city-minimap { background:#17302ce0;border-color:#ffffff30 }
+.inside-world .city-minimap figcaption { color:#d7e8dd }
+.inside-world .minimap-ground { fill:#2c4a40 }
+.inside-world .minimap-road { fill:#566b63 }
+@media (max-width:850px) { .city-minimap { width:128px;right:12px;bottom:52px;padding:6px } }

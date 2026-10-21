@@ -5,6 +5,11 @@ import { Euler, Vector3, PerspectiveCamera } from 'three';
 import { cityExtent, type Place } from '../data/city';
 import type { Obstacle } from './profile-decor';
 import { cityGrid } from './city-layout';
+import { playerPose } from './player-pose';
+
+// Arrow keys move and turn as in a game; WASD keeps strafing. Their default (scrolling) is suppressed while walking.
+const walkKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+const turnSpeed = 1.9;
 
 // `room` identifies the current interior (camera resets when it changes); `obstacles` are its collision boxes.
 export function Navigation({ places, firstPerson, blocked, inside = false, room = '', obstacles = [] }: { places: Place[]; firstPerson: boolean; blocked: boolean; inside?: boolean; room?: string; obstacles?: Obstacle[] }) {
@@ -28,7 +33,9 @@ export function Navigation({ places, firstPerson, blocked, inside = false, room 
   }, [camera, firstPerson, inside, room, extent, spawnX]);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (document.pointerLockElement === gl.domElement || document.activeElement === gl.domElement) keys.current.add(e.code);
+      if (!walkKeys.has(e.code) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (document.pointerLockElement !== gl.domElement && document.activeElement !== gl.domElement) return;
+      keys.current.add(e.code); e.preventDefault();
     };
     const up = (e: KeyboardEvent) => keys.current.delete(e.code);
     const clear = () => keys.current.clear();
@@ -38,6 +45,10 @@ export function Navigation({ places, firstPerson, blocked, inside = false, room 
       window.removeEventListener('blur', clear); document.removeEventListener('pointerlockchange', clear); };
   }, [gl]);
   useEffect(() => { if (blocked && document.pointerLockElement) document.exitPointerLock(); }, [blocked]);
+  // Entering the walk (or closing a panel during it) hands the keyboard to the scene, so keys work at once.
+  useEffect(() => {
+    if (firstPerson && !blocked && !(document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement)) gl.domElement.focus({ preventScroll: true });
+  }, [firstPerson, blocked, room, gl]);
   useEffect(() => {
     const rotation = new Euler(0, 0, 0, 'YXZ');
     const look = (event: MouseEvent) => {
@@ -53,9 +64,16 @@ export function Navigation({ places, firstPerson, blocked, inside = false, room 
     return () => document.removeEventListener('mousemove', look);
   }, [firstPerson, blocked, camera, gl]);
   useFrame((_, delta) => {
+    if (firstPerson && !inside) {
+      camera.getWorldDirection(direction.current);
+      playerPose.x = camera.position.x; playerPose.z = camera.position.z; playerPose.heading = Math.atan2(direction.current.x, -direction.current.z);
+    }
     if (!firstPerson || blocked || (document.pointerLockElement !== gl.domElement && document.activeElement !== gl.domElement)) return;
-    const forward = Number(keys.current.has('KeyW')) - Number(keys.current.has('KeyS'));
-    const sideways = Number(keys.current.has('KeyD')) - Number(keys.current.has('KeyA'));
+    const has = (code: string) => Number(keys.current.has(code));
+    const forward = Math.sign(has('KeyW') + has('ArrowUp') - has('KeyS') - has('ArrowDown'));
+    const sideways = has('KeyD') - has('KeyA');
+    const turn = has('ArrowRight') - has('ArrowLeft');
+    if (turn) camera.rotateOnWorldAxis(camera.up, -turn * turnSpeed * Math.min(delta, 0.05));
     camera.getWorldDirection(direction.current); direction.current.y = 0; direction.current.normalize();
     right.current.crossVectors(direction.current, camera.up).normalize();
     const next = camera.position.clone();

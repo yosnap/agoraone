@@ -50,7 +50,7 @@ La comprobación normal no llama a modelos. La variante live verifica dos turnos
 
 ## Controles
 - Vista ciudad: arrastrar para orbitar, rueda para zoom, seleccionar personaje o directorio.
-- Primera persona: activar modo y pulsar Entrar al recorrido; WASD y ratón, Esc libera el cursor. Abrir un espacio también libera el cursor.
+- Primera persona: al activar el modo el teclado ya mueve la escena. Flechas arriba y abajo para avanzar y retroceder, izquierda y derecha para girar; W, A, S y D para caminar y moverse de lado. «Entrar al recorrido» captura el ratón para mirar; Esc lo libera. Abrir un espacio también libera el cursor. En la ciudad, un minimapa abajo a la derecha muestra tu posición y hacia dónde miras (norte arriba); pulsar un edificio del minimapa abre su ficha.
 - Si el navegador rechaza la captura del ratón, se muestra la alternativa: WASD con el lienzo enfocado y arrastrar para mirar. Pulsa de nuevo Entrar al recorrido para enfocar el lienzo.
 - Nueva: comienza otra conversación, sin borrar la anterior del servidor.
 - Los perfiles y espacios se obtienen del catálogo Hermes; los personajes ficticios adicionales del prototipo ya no se muestran.

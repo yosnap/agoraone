@@ -16,6 +16,7 @@ import { ActivityLog } from './ui/activity-log';
 import { VaultPanel } from './ui/vault-panel';
 import { VaultBook } from './ui/vault-book';
 import { CityDirectory, type PlaceSignal } from './ui/city-directory';
+import { CityMinimap } from './ui/city-minimap';
 import { Breadcrumbs, type Crumb } from './ui/breadcrumbs';
 import { CommandPalette, paletteShortcut, type Command } from './ui/command-palette';
 import type { ChatState } from './ui/chat-panel';
@@ -62,7 +63,7 @@ export default function App() {
   const reportChat = useCallback((id: string, state: ChatState) => setChats(previous =>
     previous[id]?.busy === state.busy && previous[id]?.approvals === state.approvals ? previous : { ...previous, [id]: state }), []);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [walkHint, setWalkHint] = useState('Entrar al recorrido · WASD / ratón · Esc para salir');
+  const [walkHint, setWalkHint] = useState('Entrar al recorrido · flechas o WASD / ratón · Esc para salir');
   useEffect(() => { getStatus().then(setStatus).catch(error => setStatus(error instanceof ApiError && error.status === 401
     ? { state: 'locked', csrf: '', detail: error.message } : { state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con npm run dev.' })); }, []);
   useEffect(() => {
@@ -196,7 +197,7 @@ export default function App() {
       if (!canvas) return;
       canvas.focus();
       Promise.resolve(canvas.requestPointerLock()).catch(() => {
-        setWalkHint('Ratón libre · WASD para caminar · arrastra para mirar');
+        setWalkHint('Ratón libre · flechas o WASD para caminar · arrastra para mirar');
         canvas.focus();
       });
     }}>{walkHint}</button>}
@@ -207,6 +208,7 @@ export default function App() {
       {place.id === 'library' ? <LibraryPanel status={status} onConnected={() => setConnected(true)} inside={inside} onEnter={() => { setVaultRoom(null); setIntegrationsInside(false); setProfileRoom(null); setInside(true); setFirstPerson(true); setSelected(null); }} tab={libraryTab} onTab={setLibraryTab} document={attachments.library} onDetach={() => attach('library')} targets={consultTargets} onConsult={consult} onChanged={changeAttachment} onChatState={state => reportChat('library', state)}/> : catalog && (place.id === 'mcp-center' ? <IntegrationsPanel catalog={catalog} inside={integrationsInside} onEnter={enterIntegrations} onSelect={select}/> : place.kind === 'vault' ? <VaultPanel key={place.id} vaultId={place.id} listing={vault.listing} error={vault.error} inside={vaultRoom === place.id} onEnter={() => enterVault(place.id)} folder={vaultFolder} onFolder={setVaultFolder} onRead={id => openBook(place.id, id)} reading={book?.vault === place.id ? book.note : null} onCreated={id => { vault.reload(); openBook(place.id, id, true); }}/> : place.kind === 'service' ? <ResourcePanel key={place.id} id={place.id} catalog={catalog} onSelect={select} activity={hermesActivity.activity}/> : <HermesPanel key={place.id} id={place.id} catalog={catalog} onSelect={select} status={status} onConnected={() => setConnected(true)} tab={place.id === selected ? profileTab : 'chat'} onTab={setProfileTab} inside={profileRoom === place.id} onEnter={() => enterProfile(place.id)} activity={hermesActivity} document={attachments[place.id]} onDetach={() => attach(place.id)} onChatState={state => reportChat(place.id, state)}/>)}
     </aside>)}
     {waitingPlace && <div className="approval-toast" role="alert"><span>{catalog?.profiles.find(profile => profile.id === waitingPlace.id)?.label ?? 'Luma'} espera tu permiso para usar una herramienta.</span><button onClick={() => openChat(waitingPlace.id)}>Ver conversación</button></div>}
+    {firstPerson && kind === 'city' && <CityMinimap places={places} onSelect={select}/>}
     <CommandPalette commands={commands} open={paletteOpen} onOpen={setPaletteOpen}/>
     {bookOpen && book && vault.listing && <VaultBook vaultId={book.vault} vaultName={vault.listing.vault.name} noteId={book.note} notes={vault.listing.notes}
       onOpen={turnPage} onClose={closeBook} targets={consultTargets} onConsult={consult} onChanged={vault.reload} startEditing={book.edit}/>}
