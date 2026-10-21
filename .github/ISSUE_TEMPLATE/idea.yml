@@ -1,0 +1,23 @@
+name: Proponer una mejora
+description: Una idea o una función nueva para AgoraOne.
+labels: [mejora]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Qué problema resuelve
+      description: Cuéntanos qué te cuesta hoy o qué echas en falta.
+    validations:
+      required: true
+  - type: textarea
+    id: propuesta
+    attributes:
+      label: Propuesta
+      description: Cómo te imaginas que funcionaría.
+    validations:
+      required: true
+  - type: textarea
+    id: privacidad
+    attributes:
+      label: Datos y permisos
+      description: ¿Lee o escribe datos de Hermes, notas o credenciales? ¿Necesita la aprobación del usuario?
