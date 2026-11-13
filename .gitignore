@@ -6,6 +6,8 @@ dist/
 .agora/
 __pycache__/
 *.pyc
+core/.venv/
+.pytest_cache/
 test-results/
 .DS_Store
 brag-output/
