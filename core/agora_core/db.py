@@ -42,6 +42,17 @@ def connect(path: Path) -> sqlite3.Connection:
     return connection
 
 
+def connect_readonly(path: Path) -> sqlite3.Connection:
+    """Read-only access for other processes (the MCP server): no writes, no migrations, no file creation."""
+    if not path.exists():
+        raise FileNotFoundError("Todavía no hay cerebro: arranca AgoraOne una vez para crearlo.")
+    # as_uri() percent-encodes the path: a folder with '#' or '?' must not cut off "mode=ro".
+    connection = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout = 5000")
+    return connection
+
+
 def available_migrations() -> list[tuple[int, str, str]]:
     folder = resources.files("agora_core") / "migrations"
     found = []

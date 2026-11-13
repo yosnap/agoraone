@@ -33,9 +33,13 @@ TOOLSETS_FROM = "telegram"  # same tools as the profile's Telegram bot
 CARD_LIMIT = 12_000          # characters of arguments shown on an approval card
 
 # Tools that only read local data run without asking. Anything that reaches the network (where read data
-# could be sent away), changes something, or is not in this list waits for the user. MCP tools always ask.
+# could be sent away), changes something, or is not in this list waits for the user. MCP tools always ask,
+# except the brain's own read-only ones listed here.
 READ_ONLY = frozenset({
     "read_file", "search_files", "skills_list", "skill_view", "session_search", "kanban_show", "kanban_list", "clarify",
+    # AgoraOne's brain over MCP (docs/mcp-cerebro.md): read-only, never returns local-only or private notes
+    # (user's decision, 13/11/2026). Exact names Hermes gives them for the server key "agoraone-cerebro".
+    "mcp__agoraone_cerebro__buscar_en_cerebro", "mcp__agoraone_cerebro__leer_nota", "mcp__agoraone_cerebro__estado_del_cerebro",
 })
 FILE_READERS = frozenset({"read_file", "search_files"})
 # Work that would go on after the turn without asking again is not started from AgoraOne.

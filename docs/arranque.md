@@ -75,7 +75,7 @@ uv run python -m agora_core.cli backup            # copia manual ahora
 uv run python -m agora_core.cli restore <archivo> # con AgoraOne parado; --recovery pide la clave de recuperación
 ```
 
-Restaurar conserva la base anterior junto a la nueva como `agora.db.before-restore-<fecha>`. En otro Mac, `restore --recovery` guarda además esa clave en su Llavero para las copias siguientes. AgoraOne recuerda la huella (no la clave) de la última clave de recuperación que te mostró y avisa si la del Llavero es otra.
+Restaurar conserva la base anterior junto a la nueva como `agora.db.before-restore-<fecha>`. Si un perfil de Hermes usa el MCP del cerebro, detén también su gateway mientras restauras (`hermes -p <perfil> gateway stop`). En otro Mac, `restore --recovery` guarda además esa clave en su Llavero para las copias siguientes. AgoraOne recuerda la huella (no la clave) de la última clave de recuperación que te mostró y avisa si la del Llavero es otra.
 
 ## Datos y diagnóstico
 `.agora/conversations` contiene conversaciones privadas. `.agora/hermes` contiene estado de Hermes aislado. `.env`, `.agora`, node_modules y dist están ignorados. No compartir esos archivos ni logs sin revisarlos.
