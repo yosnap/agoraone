@@ -17,7 +17,9 @@ from fastapi.responses import JSONResponse
 from . import __version__
 from .backup import clean_leftovers, create_backup, ensure_daily, list_backups, prune
 from .db import DB_NAME, connect, migrate
+from .embed import DEFAULT_MODEL, DEFAULT_URL, Embedder, OllamaEmbedder, VectorCache
 from .keystore import KeychainStore, KeyStore, recovery_pending
+from .routes_index import embed_worker, index_router
 from .settings import Settings
 
 SECRET_HEADER = "x-agora-core-secret"
@@ -35,8 +37,18 @@ def _daily_backups(settings: Settings, store: KeyStore, stop: threading.Event) -
         stop.wait(DAILY_CHECK_SECONDS)
 
 
-def create_app(settings: Settings, store: KeyStore | None = None, scheduler: bool = True) -> FastAPI:
+_DEFAULT = object()
+
+
+def create_app(
+    settings: Settings, store: KeyStore | None = None, scheduler: bool = True, embedder: Embedder | None | object = _DEFAULT,
+) -> FastAPI:
+    """`scheduler` starts the background work (daily backups, embeddings); tests turn it off. `embedder`
+    defaults to the local ollama; None disables search by meaning."""
     store = store or KeychainStore()
+    if embedder is _DEFAULT:
+        embedder = OllamaEmbedder(DEFAULT_URL, DEFAULT_MODEL)
+    cache = VectorCache()
     expected = settings.secret.encode()
 
     @asynccontextmanager
@@ -51,6 +63,8 @@ def create_app(settings: Settings, store: KeyStore | None = None, scheduler: boo
         stop = threading.Event()
         if scheduler:
             threading.Thread(target=_daily_backups, args=(settings, store, stop), daemon=True).start()
+            if embedder is not None:
+                threading.Thread(target=embed_worker, args=(settings, embedder, stop), daemon=True).start()
         try:
             yield
         finally:
@@ -108,4 +122,5 @@ def create_app(settings: Settings, store: KeyStore | None = None, scheduler: boo
             return JSONResponse({"error": f"No se pudo hacer la copia: {error}"}, status_code=503)
         return {"name": made.name, "kind": made.kind}
 
+    app.include_router(index_router(settings, embedder, cache))
     return app
