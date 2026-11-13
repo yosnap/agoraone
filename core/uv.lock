@@ -13,6 +13,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
     { name = "keyring" },
+    { name = "mcp" },
     { name = "numpy" },
     { name = "uvicorn" },
 ]
@@ -31,6 +32,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "keyring", specifier = ">=25" },
+    { name = "mcp", specifier = ">=1.20" },
     { name = "numpy", specifier = ">=2.1" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
