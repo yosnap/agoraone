@@ -9,7 +9,7 @@ from agora_core.db import DB_NAME, MigrationError, connect, migrate
 
 def test_esquema_inicial_y_datos_genericos(tmp_path):
     database = connect(tmp_path / "data" / DB_NAME)
-    assert migrate(database) == [1]
+    assert migrate(database) == [m[0] for m in db.available_migrations()]
     assert migrate(database) == [], "una migración aplicada no se repite"
     assert [r[0] for r in database.execute("SELECT slug FROM scope")] == ["personal"]
     assert database.execute("SELECT count(*) FROM kind").fetchone()[0] == 6
@@ -44,7 +44,7 @@ def test_restricciones(tmp_path):
 
 def _with_extra_migration(monkeypatch, sql):
     original = db.available_migrations()
-    monkeypatch.setattr(db, "available_migrations", lambda: original + [(2, "extra", sql)])
+    monkeypatch.setattr(db, "available_migrations", lambda: original + [(999, "extra", sql)])
 
 
 def test_migracion_pendiente_hace_copia_previa(tmp_path, monkeypatch):
@@ -52,7 +52,7 @@ def test_migracion_pendiente_hace_copia_previa(tmp_path, monkeypatch):
     migrate(database)
     _with_extra_migration(monkeypatch, "CREATE TABLE extra (id INTEGER PRIMARY KEY);")
     calls = []
-    assert migrate(database, backup_first=lambda: calls.append("copia")) == [2]
+    assert migrate(database, backup_first=lambda: calls.append("copia")) == [999]
     assert calls == ["copia"]
 
 
@@ -76,7 +76,7 @@ def test_migracion_fallida_se_deshace_entera(tmp_path, monkeypatch):
     with pytest.raises(MigrationError):
         migrate(database)
     assert database.execute("SELECT count(*) FROM sqlite_master WHERE name = 'extra'").fetchone()[0] == 0
-    assert 2 not in db.applied_versions(database)
+    assert 999 not in db.applied_versions(database)
 
 
 def test_division_de_sentencias(monkeypatch):

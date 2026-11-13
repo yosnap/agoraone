@@ -7,7 +7,7 @@ import { VaultError, VaultNotes, VaultWriteError } from './vault-notes';
 const vault = new VaultNotes(workerData?.obsidianRegistry);
 type Task =
   | { task: 'activity'; root: string; profiles: Parameters<typeof readActivity>[1] }
-  | { task: 'vault-list'; vaultId: string }
+  | { task: 'vault-list'; vaultId: string; fresh?: boolean }
   | { task: 'vault-read'; vaultId: string; noteId: string; reveal?: boolean }
   | { task: 'vault-search'; vaultId: string; query: string }
   | { task: 'vault-document'; noteId: string }
@@ -16,7 +16,7 @@ type Task =
 
 function run(job: Task) {
   if (job.task === 'activity') return readActivity(job.root, job.profiles);
-  if (job.task === 'vault-list') return vault.list(job.vaultId);
+  if (job.task === 'vault-list') return vault.list(job.vaultId, job.fresh);
   if (job.task === 'vault-read') return vault.read(job.vaultId, job.noteId, job.reveal);
   if (job.task === 'vault-search') return vault.search(job.vaultId, job.query);
   // Writes run here too, so this worker's cached listing is refreshed at once.

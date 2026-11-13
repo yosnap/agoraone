@@ -104,13 +104,13 @@ test('el proxy añade secreto y propietario, conserva método, cuerpo y estado, 
   } finally { await app.close(); await core.close(); }
 });
 
-test('una ruta con doble barra no cambia el destino del proxy', async () => {
+test('una ruta con doble barra se rechaza y no cambia el destino del proxy', async () => {
   const core = await fakeCore();
   const app = await agora(core.url);
   try {
     const response = await app.call('/api/core//evil.example/x');
-    assert.equal(response.status, 200);
-    assert.equal(core.seen.at(-1)?.headers.host, new URL(core.url).host);
+    assert.equal(response.status, 400);
+    assert.equal(core.seen.length, 0);
   } finally { await app.close(); await core.close(); }
 });
 
@@ -183,4 +183,16 @@ test('el tiempo límite cubre la espera de la respuesta, no la duración de un f
     assert.equal(slow.text, 'data: uno\n\ndata: dos\n\n', 'el flujo sigue pasado el tiempo límite');
     assert.equal((await send(`${url}/hang`)).status, 503, 'sin respuesta a tiempo, 503');
   } finally { http.closeAllConnections(); await new Promise<void>(resolve => http.close(() => resolve())); await core.close(); }
+});
+
+test('el navegador no puede llegar a las rutas internas del núcleo', async () => {
+  const core = await fakeCore();
+  const app = await agora(core.url);
+  try {
+    for (const path of ['/api/core/internal/index/notes', '/api/core/INTERNAL/index/state', '/api/core/%69nternal/index/notes', '/api/core//internal/x', '/api/core/a/../internal/x']) {
+      const response = await app.call(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      assert.ok([400, 404].includes(response.status), `${path} respondió ${response.status}`);
+    }
+    assert.equal(core.seen.length, 0, 'nada llega al núcleo');
+  } finally { await app.close(); await core.close(); }
 });
