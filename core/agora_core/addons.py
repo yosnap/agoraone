@@ -34,15 +34,29 @@ MANIFESTS = {m.id: m for m in [
 ]}
 
 
+ALLOWED = {"central": {"path", "port"}, "fabrica": {"path", "port"}, "costguard": {"dataPath"}}
+COSTGUARD_COLUMNS = {"hora", "agente", "gi", "go", "cr", "cw", "turnos"}
+
+
 class AddonError(ValueError):
     pass
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+# Health checks go straight to 127.0.0.1: no proxy and no redirect that could send them elsewhere.
+_LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+
+
 def _read_json(path: Path) -> dict:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 def recognised(addon: str, folder: Path) -> bool:
@@ -69,9 +83,8 @@ def _listening(port: int | None) -> bool:
 def _healthy(port: int | None, path: str) -> bool:
     if not _listening(port):
         return False
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        with opener.open(f"http://127.0.0.1:{port}{path}", timeout=1) as response:
+        with _LOCAL.open(f"http://127.0.0.1:{port}{path}", timeout=1) as response:
             return response.status == 200
     except OSError:
         return False
@@ -83,24 +96,30 @@ def config(connection: sqlite3.Connection, addon: str) -> dict:
 
 
 def save_config(connection: sqlite3.Connection, addon: str, changes: dict) -> dict:
-    """Validates where the add-on is (absolute path that holds it, port 1024-65535) and stores it."""
+    """Validates where the add-on is and stores it. Each add-on accepts only its own settings; None forgets
+    a setting (back to the default or to «not configured»)."""
     if addon not in MANIFESTS:
         raise AddonError("Complemento desconocido.")
     current = config(connection, addon)
     for key, value in changes.items():
+        if key not in ALLOWED[addon]:
+            raise AddonError("Ajuste no válido para este complemento.")
+        if value is None:
+            current.pop(key, None)
+            if key in MANIFESTS[addon].defaults:
+                current[key] = MANIFESTS[addon].defaults[key]
+            continue
         if key == "port":
-            if not isinstance(value, int) or not 1024 <= value <= 65535:
+            if type(value) is not int or not 1024 <= value <= 65535:
                 raise AddonError("Puerto no válido.")
-        elif key in ("path", "dataPath"):
+        else:
             if not isinstance(value, str) or not Path(value).is_absolute() or len(value) > 500:
                 raise AddonError("La ruta debe ser absoluta.")
             target = Path(value)
             if key == "path" and not (target.is_dir() and recognised(addon, target)):
                 raise AddonError(f"Esa carpeta no contiene {MANIFESTS[addon].name}.")
-            if key == "dataPath" and not target.is_file():
-                raise AddonError("No se encuentra ese archivo de datos.")
-        else:
-            raise AddonError("Ajuste desconocido.")
+            if key == "dataPath" and not is_costguard_data(target):
+                raise AddonError("Ese archivo no es una base de datos de CostGuard.")
         current[key] = value
     stored = {k: v for k, v in current.items() if MANIFESTS[addon].defaults.get(k) != v}
     connection.execute(
@@ -111,21 +130,26 @@ def save_config(connection: sqlite3.Connection, addon: str, changes: dict) -> di
 
 
 def status(addon: str, settings: dict) -> str:
-    """not_configured, not_found, detected or running."""
-    if addon == "costguard":
-        data = Path(settings.get("dataPath") or "")
-        if not settings.get("dataPath"):
+    """not_configured, not_found, unreadable, detected, responding (its web answers) or recording (CostGuard
+    has usage from the last hours: it is a menu-bar app without a web of its own). Never raises."""
+    try:
+        if addon == "costguard":
+            if not settings.get("dataPath"):
+                return "not_configured"
+            data = Path(settings["dataPath"])
+            if not data.is_file():
+                return "not_found"
+            if not is_costguard_data(data):
+                return "unreadable"
+            return "recording" if costguard_usage(data, hours=2)["turns"] else "detected"
+        if not settings.get("path"):
             return "not_configured"
-        if not data.is_file():
+        if not recognised(addon, Path(settings["path"])):
             return "not_found"
-        usage = costguard_usage(data, hours=2)
-        return "running" if usage["turns"] else "detected"
-    if not settings.get("path"):
-        return "not_configured"
-    if not recognised(addon, Path(settings["path"])):
-        return "not_found"
-    running = _listening(settings.get("port")) if addon == "central" else _healthy(settings.get("port"), "/salud")
-    return "running" if running else "detected"
+        answers = _listening(settings.get("port")) if addon == "central" else _healthy(settings.get("port"), "/salud")
+        return "responding" if answers else "detected"
+    except Exception:  # noqa: BLE001 - one add-on in a bad state must not break the whole registry
+        return "unreadable"
 
 
 def describe(connection: sqlite3.Connection) -> list[dict]:
@@ -139,20 +163,46 @@ def describe(connection: sqlite3.Connection) -> list[dict]:
     return found
 
 
-def costguard_usage(database: Path, hours: int = 5, now: float | None = None) -> dict:
-    """Tokens per agent in the last `hours`, read from CostGuard's own database in read-only mode."""
-    since = int((now or time.time()) - hours * 3600)
-    connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+def _open_costguard(database: Path) -> sqlite3.Connection:
+    """Read-only. With no WAL file present (CostGuard closed), immutable=1 so SQLite creates nothing next to it."""
+    wal = Path(f"{database}-wal").exists()
+    uri = database.resolve().as_uri() + ("?mode=ro" if wal else "?mode=ro&immutable=1")
+    connection = sqlite3.connect(uri, uri=True, timeout=2)
+    return connection
+
+
+def is_costguard_data(database: Path) -> bool:
+    """A SQLite file with CostGuard's hourly usage table and its columns."""
+    if not database.is_file():
+        return False
     try:
-        rows = connection.execute(
-            """SELECT agente, sum(gi), sum(go), sum(cr), sum(cw), sum(turnos) FROM horas
-               WHERE hora >= ? GROUP BY agente ORDER BY sum(gi) + sum(go) DESC""",
-            (since - since % 3600,),
-        ).fetchall()
+        connection = _open_costguard(database)
+        try:
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(horas)")}
+        finally:
+            connection.close()
+    except sqlite3.Error:
+        return False
+    return COSTGUARD_COLUMNS <= columns
+
+
+def costguard_usage(database: Path, hours: int = 5, now: float | None = None) -> dict:
+    """Tokens per agent in the last `hours` hourly buckets (the current one included), read from
+    CostGuard's own database in read-only mode. Its `hora` column is the epoch second the hour starts."""
+    moment = int(time.time() if now is None else now)
+    start = (moment // 3600 - (hours - 1)) * 3600
+    try:
+        connection = _open_costguard(database)
+        try:
+            rows = connection.execute(
+                """SELECT agente, sum(gi), sum(go), sum(cr), sum(cw), sum(turnos) FROM horas
+                   WHERE hora >= ? GROUP BY agente ORDER BY sum(gi) + sum(go) DESC""",
+                (start,),
+            ).fetchall()
+        finally:
+            connection.close()
     except sqlite3.Error as error:
         raise AddonError("No se pudieron leer los datos de CostGuard.") from error
-    finally:
-        connection.close()
     agents = [{"agent": a, "input": i or 0, "output": o or 0, "cacheRead": r or 0, "cacheWrite": w or 0, "turns": t or 0}
               for a, i, o, r, w, t in rows]
     return {"hours": hours, "agents": agents, "turns": sum(a["turns"] for a in agents)}

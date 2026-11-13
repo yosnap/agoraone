@@ -17,6 +17,14 @@ from agora_core.settings import load_settings
 SECRET = "a" * 64
 
 
+@pytest.fixture(autouse=True)
+def no_real_costguard(tmp_path, monkeypatch):
+    """The default points at the user's real CostGuard data: tests never touch it."""
+    manifest = addons.MANIFESTS["costguard"]
+    fake = addons.Manifest(manifest.id, manifest.name, manifest.description, manifest.offers, {"dataPath": str(tmp_path / "sin-costguard.sqlite")})
+    monkeypatch.setitem(addons.MANIFESTS, "costguard", fake)
+
+
 @pytest.fixture
 def db(tmp_path):
     connection = connect(tmp_path / "data" / DB_NAME)
@@ -50,7 +58,7 @@ def test_reconoce_solo_la_carpeta_correcta(tmp_path, db):
     other.mkdir()
     (other / "package.json").write_text(json.dumps({"name": "central"}))
     assert not addons.recognised("central", other), "hace falta también su servidor MCP"
-    for bad in ({"path": "relativa"}, {"path": str(other)}, {"port": 80}, {"port": "3099"}, {"otro": 1}):
+    for bad in ({"path": "relativa"}, {"path": str(other)}, {"port": 80}, {"port": "3099"}, {"otro": 1}, {"dataPath": "/x"}):
         with pytest.raises(addons.AddonError):
             addons.save_config(db, "central", bad)
     assert addons.save_config(db, "central", {"path": str(folder)})["port"] == 3099
@@ -69,7 +77,7 @@ def test_estados(tmp_path, db):
         server.bind(("127.0.0.1", 0))
         server.listen()
         addons.save_config(db, "central", {"port": server.getsockname()[1]})
-        assert {a["id"]: a["status"] for a in addons.describe(db)}["central"] == "running"
+        assert {a["id"]: a["status"] for a in addons.describe(db)}["central"] == "responding"
     (folder / "package.json").unlink()
     assert {a["id"]: a["status"] for a in addons.describe(db)}["central"] == "not_found"
 
@@ -91,7 +99,7 @@ def test_fabrica_en_marcha_si_su_panel_responde(tmp_path, db):
     threading.Thread(target=panel.serve_forever, daemon=True).start()
     try:
         addons.save_config(db, "fabrica", {"path": str(folder), "port": panel.server_port})
-        assert {a["id"]: a["status"] for a in addons.describe(db)}["fabrica"] == "running"
+        assert {a["id"]: a["status"] for a in addons.describe(db)}["fabrica"] == "responding"
     finally:
         panel.shutdown()
 
@@ -116,9 +124,63 @@ def test_rutas(tmp_path):
     app = create_app(settings, MemoryStore(), scheduler=False, embedder=None)
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
         headers = {SECRET_HEADER: SECRET}
-        assert client.get("/addons/costguard/usage", headers=headers).status_code in (200, 404)
+        assert client.get("/addons/costguard/usage", headers=headers).status_code == 404
         assert client.put("/addons/costguard", json={"dataPath": "/no/existe.sqlite"}, headers=headers).status_code == 422
+        text = tmp_path / "nota.txt"
+        text.write_text("no soy una base")
+        other = tmp_path / "otra.sqlite"
+        sqlite3.connect(other).execute("CREATE TABLE x (a)").connection.commit()
+        for bad in (text, other):
+            assert client.put("/addons/costguard", json={"dataPath": str(bad)}, headers=headers).status_code == 422
+        assert client.get("/addons", headers=headers).status_code == 200, "el registro sigue funcionando"
+        assert client.put("/addons/central", json={"port": "3099"}, headers=headers).status_code == 422
         assert client.put("/addons/otro", json={}, headers=headers).status_code == 422
         listed = client.put("/addons/costguard", json={"dataPath": str(data)}, headers=headers).json()["addons"]
-        assert {a["id"]: a["status"] for a in listed}["costguard"] == "running"
+        assert {a["id"]: a["status"] for a in listed}["costguard"] == "recording"
         assert client.get("/addons/costguard/usage", headers=headers).json()["turns"] == 4
+        forgotten = client.put("/addons/costguard", json={"dataPath": None}, headers=headers).json()["addons"]
+        assert {a["id"]: a["status"] for a in forgotten}["costguard"] == "not_found", "vuelve al valor por defecto"
+
+
+def test_ventana_exacta_de_horas(tmp_path):
+    data = tmp_path / "consumo.sqlite"
+    now = 1_800_000_000 - 1_800_000_000 % 3600 + 1800  # half past an hour
+    costguard_db(data, now)
+    connection = sqlite3.connect(data)
+    hour = now - now % 3600
+    connection.execute("INSERT INTO horas VALUES (1, ?, 'limite', 'a', 'm', 'p', 1, 1, 0, 0, 1)", (hour - 5 * 3600,))
+    connection.commit()
+    connection.close()
+    agents = [a["agent"] for a in addons.costguard_usage(data, 5, now)["agents"]]
+    assert "limite" not in agents, "5 horas son 5 cubos: el actual y los 4 anteriores"
+    assert addons.costguard_usage(data, 1, now)["turns"] == 3
+
+
+def test_un_complemento_roto_no_rompe_el_registro(tmp_path, db):
+    folder = central(tmp_path / "central")
+    addons.save_config(db, "central", {"path": str(folder)})
+    (folder / "package.json").write_text("[1, 2]")
+    listed = {a["id"]: a["status"] for a in addons.describe(db)}
+    assert listed["central"] == "not_found"
+
+
+def test_costguard_cerrado_no_deja_archivos(tmp_path):
+    data = tmp_path / "consumo.sqlite"
+    costguard_db(data, time.time())
+    connection = sqlite3.connect(data)
+    connection.execute("PRAGMA journal_mode = WAL")
+    connection.close()
+    before = sorted(p.name for p in tmp_path.iterdir())
+    assert addons.is_costguard_data(data)
+    addons.costguard_usage(data, 5)
+    assert sorted(p.name for p in tmp_path.iterdir()) == before
+
+
+def test_olvidar_ajustes_y_solo_los_propios(tmp_path, db):
+    folder = central(tmp_path / "central")
+    addons.save_config(db, "central", {"path": str(folder), "port": 4000})
+    with pytest.raises(addons.AddonError):
+        addons.save_config(db, "central", {"dataPath": str(tmp_path)})
+    forgotten = addons.save_config(db, "central", {"path": None, "port": None})
+    assert "path" not in forgotten and forgotten["port"] == 3099
+    assert {a["id"]: a["status"] for a in addons.describe(db)}["central"] == "not_configured"

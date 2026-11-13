@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 from . import addons
 from .db import DB_NAME, connect
@@ -17,7 +17,7 @@ from .settings import Settings
 class AddonIn(BaseModel):
     path: str | None = Field(default=None, max_length=500)
     dataPath: str | None = Field(default=None, max_length=500)
-    port: int | None = None
+    port: StrictInt | None = None
 
 
 def addons_router(settings: Settings) -> APIRouter:
@@ -43,7 +43,7 @@ def addons_router(settings: Settings) -> APIRouter:
 
     @router.put("/{addon}")
     async def configure(addon: Literal["central", "costguard", "fabrica"], body: AddonIn):
-        changes = body.model_dump(exclude_none=True)
+        changes = body.model_dump(exclude_unset=True)  # an explicit null forgets that setting
         try:
             await db(lambda c: addons.save_config(c, addon, changes))
         except addons.AddonError as error:
@@ -55,7 +55,7 @@ def addons_router(settings: Settings) -> APIRouter:
         hours = max(1, min(hours, 168))
         current = await db(lambda c: addons.config(c, "costguard"))
         data = Path(current.get("dataPath") or "")
-        if not data.is_file():
+        if not addons.is_costguard_data(data):
             return JSONResponse({"error": "CostGuard no está instalado o no se encuentra su archivo de datos."}, status_code=404)
         try:
             return await run_in_threadpool(addons.costguard_usage, data, hours)
