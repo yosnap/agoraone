@@ -227,7 +227,7 @@ fn write_new(file: &Path, value: &Value) -> Result<(), LibraryError> {
 }
 
 /// A random version 4 UUID, as `crypto.randomUUID()` prints it.
-fn uuid_v4() -> String {
+pub fn uuid_v4() -> String {
     let mut bytes: [u8; 16] = rand::random();
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;

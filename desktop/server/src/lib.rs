@@ -4,6 +4,7 @@
 
 pub mod access;
 pub mod brain_sync;
+pub mod chat;
 pub mod core;
 pub mod hermes;
 pub mod js;
@@ -61,6 +62,15 @@ pub struct AppState {
     pub hermes: HermesDiscovery,
     pub vault: Arc<vault::VaultNotes>,
     pub library: library::PrivateLibrary,
+    pub conversations: chat::store::Conversations,
+    /// Luma's adapter and the profiles' agent adapter (tests replace them).
+    pub luma: chat::Adapter,
+    pub agent: chat::Adapter,
+    /// Copy a profile's memory before its agent runs (only with the real agent).
+    pub backup_memories: bool,
+    /// Conversations with a turn running, and those whose turn the user stopped.
+    pub busy: std::sync::Mutex<std::collections::HashSet<String>>,
+    pub stopped: std::sync::Mutex<std::collections::HashSet<String>>,
 }
 
 impl AppState {
@@ -69,7 +79,25 @@ impl AppState {
         let hermes = HermesDiscovery::new(config.hermes.clone());
         let vault = Arc::new(vault::VaultNotes::new(config.obsidian_registry.clone()));
         let library = library::PrivateLibrary::new(config.data.join("library"));
-        Arc::new(Self { config, proof: proof(token), csrf: access::random_hex(), core, http, hermes, vault, library })
+        let conversations = chat::store::Conversations::new(config.data.join("conversations"));
+        let luma = chat::luma_adapter(config.hermes.clone(), config.data.clone());
+        let agent = chat::agent_adapter(config.hermes.clone(), chat::app_dir(&config.data));
+        Arc::new(Self {
+            config,
+            proof: proof(token),
+            csrf: access::random_hex(),
+            core,
+            http,
+            hermes,
+            vault,
+            library,
+            conversations,
+            luma,
+            agent,
+            backup_memories: true,
+            busy: Default::default(),
+            stopped: Default::default(),
+        })
     }
 
     /// The brain's index kept in step with the vaults (None without a core).
@@ -98,16 +126,14 @@ async fn session(State(state): State<Arc<AppState>>, headers: axum::http::Header
 }
 
 async fn status(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
-    let mut readiness = hermes_readiness();
+    let mut readiness = hermes_readiness_at(&state.config.hermes);
     readiness["csrf"] = json!(state.csrf);
     Json(readiness)
 }
 
 /// Whether Hermes is installed and the profile chats' provider configured (the same answer as before).
-pub fn hermes_readiness() -> serde_json::Value {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let installation = std::env::var("HERMES_INSTALLATION").unwrap_or_else(|_| format!("{home}/.hermes/hermes-agent"));
-    let installed = PathBuf::from(&installation).join("run_agent.py").exists() && PathBuf::from(&installation).join("venv/bin/python").exists();
+pub fn hermes_readiness_at(location: &HermesLocation) -> serde_json::Value {
+    let installed = location.installation.join("run_agent.py").exists() && location.python.exists();
     let configured = ["AGORA_MODEL", "AGORA_BASE_URL", "AGORA_API_KEY"].iter().all(|k| std::env::var(k).map(|v| !v.is_empty()).unwrap_or(false));
     let (state, detail) = if !installed {
         ("missing", "No se encuentra la instalación de Hermes.")
@@ -146,6 +172,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/library/imports", post(library::routes::import).layer(DefaultBodyLimit::max(8 * 1024 * 1024)).fallback(library::routes::not_allowed))
         .route("/api/library", any(library::routes::not_allowed))
         .route("/api/library/{*rest}", any(library::routes::not_allowed))
+        .route("/api/conversations", post(chat::routes::create))
+        .route("/api/conversations/{id}", get(chat::routes::read))
+        .route("/api/conversations/{id}/messages", post(chat::routes::send))
+        .route("/api/conversations/{id}/cancel", post(chat::routes::cancel))
+        .route("/api/conversations/{id}/approvals/{request}", post(chat::routes::approve))
         .route("/api/core", any(core::proxy))
         .route("/api/core/{*rest}", any(core::proxy))
         .route("/api/{*rest}", any(not_found))
