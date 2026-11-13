@@ -24,7 +24,7 @@
 .brain-legend li { display:flex; align-items:center; gap:5px }
 .brain-legend span { width:9px; height:9px; border-radius:50% }
 .brain-legend small { color:var(--c-8a9a91) }
-.graph-label { display:block; white-space:nowrap; transform:translateY(-18px); background:var(--c-173d3ce6); color:var(--c-fff9e7); font:500 11px 'DM Sans',sans-serif; padding:4px 8px; border-radius:6px }
+.graph-label { display:block; pointer-events:none; white-space:nowrap; transform:translateY(-18px); background:var(--c-173d3ce6); color:var(--c-fff9e7); font:500 11px 'DM Sans',sans-serif; padding:4px 8px; border-radius:6px }
 
 @media (max-width:850px) {
   .brain { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(300px,48%) minmax(0,1fr) }

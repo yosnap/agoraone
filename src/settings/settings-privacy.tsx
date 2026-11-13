@@ -31,6 +31,7 @@ export function PrivacySettingsCard() {
     {status ? <p>{status.notes} notas en {status.chunks} fragmentos · {status.byConfidentiality.normal ?? 0} normales, {status.byConfidentiality.local_only ?? 0} solo en este Mac, {status.byConfidentiality.private ?? 0} privadas.
       {' '}{status.semanticSearch ? (status.pendingEmbeddings ? `Calculando significado: faltan ${status.pendingEmbeddings} fragmentos.` : 'Búsqueda por significado activa.') : `Búsqueda por significado en pausa${status.semanticProblem ? `: ${status.semanticProblem}` : ''}.`}</p>
       : !error && <Loading label="Leyendo el índice" lines={2}/>}
+    {status?.entities && <p>Entidades: {Object.values(status.entities.entities).reduce((sum, n) => sum + (n ?? 0), 0)} encontradas · {status.entities.byModel} notas leídas por Claude Haiku, {status.entities.byRules} solo con reglas locales (privadas o solo de este Mac){status.entities.pending ? `, faltan ${status.entities.pending}` : ''}.{status.entities.problem ? ` En pausa: ${status.entities.problem}` : ''}</p>}
     <p>Una nota también puede declararlo en sus propiedades con <code>confidencialidad: privado</code> o <code>solo-local</code>; vale siempre el nivel más estricto. Lo «solo en este Mac» nunca va a un modelo externo; lo privado tampoco sale por MCP ni se ve en modo discreto.</p>
     {rules && <>
       {rules.length ? <table className="data-table"><thead><tr><th>Carpeta</th><th>Vault</th><th>Nivel</th><th><span className="visually-hidden">Quitar</span></th></tr></thead>
