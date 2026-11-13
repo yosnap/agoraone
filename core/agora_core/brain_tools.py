@@ -85,6 +85,7 @@ class Toolbox:
         self.calls = 0
         self.sources: list[dict] = []
         self.events: list[dict] = []
+        self.history: list[dict] = []  # every event of this answer, for the action log
 
     def register(self, results: list[dict]) -> list[dict]:
         """Numbers the notes found (a note found again keeps its number)."""
@@ -101,6 +102,10 @@ class Toolbox:
     def drain(self) -> list[dict]:
         events, self.events = self.events, []
         return events
+
+    def _record(self, event: dict) -> None:
+        self.events.append(event)
+        self.history.append(event)
 
     async def call(self, name: str, args: dict) -> str:
         """Runs a tool and returns its result as JSON text for the model; errors are results too."""
@@ -125,7 +130,7 @@ class Toolbox:
             with self.database() as connection:
                 return search(connection, query, self.embedder, self.cache, AUDIENCE, limit)["results"]
         numbered = self.register(await run_in_threadpool(run))
-        self.events.append({"tool": "search", "query": query, "found": [f"{s['source']}/{s['ref']}" for s in numbered]})
+        self._record({"tool": "search", "query": query, "found": [f"{s['source']}/{s['ref']}" for s in numbered]})
         return json.dumps({
             "notas": [{"n": s["n"], "titulo": s["title"], "carpeta": s["folder"], "fragmento": s["snippet"]} for s in numbered],
             "aviso": DATA_NOTICE,
@@ -142,6 +147,6 @@ class Toolbox:
         found = await run_in_threadpool(run)
         if found is None:
             return json.dumps({"error": "Esa nota ya no está disponible."}, ensure_ascii=False)
-        self.events.append({"tool": "read", "id": f"{source['source']}/{source['ref']}", "title": source["title"], "n": source["n"]})
+        self._record({"tool": "read", "id": f"{source['source']}/{source['ref']}", "title": source["title"], "n": source["n"]})
         return json.dumps({"n": source["n"], "titulo": found["title"], "parte": found["part"], "partes": found["parts"],
                            "texto": found["text"], "aviso": DATA_NOTICE}, ensure_ascii=False)

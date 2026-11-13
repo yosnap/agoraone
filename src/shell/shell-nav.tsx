@@ -9,6 +9,7 @@ type Item = { id: Section; label: string; icon: string; pending?: boolean };
 
 const main: Item[] = [
   { id: 'brain', label: 'Cerebro', icon: '◉' },
+  { id: 'summary', label: 'Resumen', icon: '▤' },
   { id: 'assistant', label: 'Asistente', icon: '✦' },
   { id: 'office', label: 'Oficina 3D', icon: '▦' },
   { id: 'connectors', label: 'Conectores', icon: '⧉' },

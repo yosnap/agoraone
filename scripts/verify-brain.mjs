@@ -44,6 +44,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   const discreet = graphs.at(-1);
   assert.ok(graphs.length > before && discreet.nodes.every(node => node.confidentiality === 'normal'), 'en modo discreto solo hay notas normales');
   await rail.getByRole('button', { name: 'Discreto' }).click();
+  // Summary: status, connected agents and words, from real data.
+  await rail.getByRole('button', { name: 'Resumen' }).click();
+  await page.locator('#summary-status').waitFor({ timeout: 60_000 });
+  await page.locator('.figures dd').first().filter({ hasNotText: '—' }).waitFor({ timeout: 30_000 });
+  console.log(`${viewport.width}px · resumen: ${await page.locator('.agent-list li').count()} agentes, ${await page.locator('.bars li').count()} barras, ${await page.locator('.word-heat li').count()} palabras`);
+  assert.equal(await page.locator('.summary').getByText(/\/Users\/|\/Volumes\//).count(), 0, 'ninguna ruta completa');
   // Assistant: shows the engine, sends nothing.
   await rail.getByRole('button', { name: 'Asistente' }).click();
   await page.getByRole('heading', { level: 1, name: /Watson|Mentor|Viernes|Passepartout|Bernardo/ }).waitFor();

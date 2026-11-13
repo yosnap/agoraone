@@ -200,7 +200,7 @@ def assistant_router(
             return JSONResponse({"error": "Conversación no encontrada."}, status_code=404)
         conversation, current, history = prepared
 
-        def store(reply: str | None, sources: list, engine: str | None, model: str | None):
+        def store(reply: str | None, sources: list, engine: str | None, model: str | None, done: list | None = None):
             """The question is always kept; without a reply it is marked as unanswered."""
             def write(connection):
                 stamp = now()
@@ -214,6 +214,13 @@ def assistant_router(
                         "INSERT INTO message (conversation_id, role, content, sources, engine, model, created_at) VALUES (?, 'assistant', ?, ?, ?, ?, ?)",
                         (conversation_id, reply, json.dumps(sources, ensure_ascii=False), engine, model, stamp),
                     )
+                # What Watson searched and read, in the action log (the summary ranks its searches).
+                connection.executemany(
+                    "INSERT INTO action_log (occurred_at, actor, action, outcome, detail) VALUES (?, 'watson', ?, 'done', ?)",
+                    [(stamp, "buscar" if e["tool"] == "search" else "leer", json.dumps(
+                        {"query": e["query"], "found": len(e["found"])} if e["tool"] == "search" else {"n": e["n"]},
+                        ensure_ascii=False)) for e in done or []],
+                )
                 title = body.message[:60] if conversation["title"] == "Conversación nueva" else conversation["title"]
                 connection.execute("UPDATE conversation SET updated_at = ?, title = ? WHERE id = ?", (stamp, title, conversation_id))
                 connection.execute("COMMIT")
@@ -268,7 +275,7 @@ def assistant_router(
                         last_error = EngineError("El motor no devolvió texto.")
                         continue
                     sources = assistant.cited(reply, toolbox.sources)
-                    await store(reply, sources, engine.name, model)
+                    await store(reply, sources, engine.name, model, toolbox.history)
                     replied = True
                     yield _event("done", {"engine": engine.name, "model": model, "sources": len(sources)})
                     return

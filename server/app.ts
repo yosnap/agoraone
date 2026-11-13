@@ -201,6 +201,11 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
     try { const { root, profiles } = discovery.activityTargets(); res.json(await reads.activity(root, profiles)); }
     catch { res.status(503).json({ error: 'No se pudo leer la actividad de Hermes.' }); }
   });
+  // Tokens per profile and project and the user's most used words, for the summary: counts only.
+  app.get('/api/hermes/summary', async (_req, res) => {
+    try { const { root, profiles } = discovery.activityTargets(); res.json(await reads.summary(root, profiles)); }
+    catch { res.status(503).json({ error: 'No se pudo leer el resumen de Hermes.' }); }
+  });
   app.get('/api/hermes/profiles/:id', (req, res) => {
     // ?reveal=1 shows hidden credential-like lines. Stays under /api/hermes, whose middleware requires the CSRF header on GET too.
     try { res.json(discovery.detail(req.params.id, req.query.reveal === '1')); }

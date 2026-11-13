@@ -122,3 +122,10 @@ export async function importDocument(file: File) {
   return request<LibraryDocument>('/library/imports', { name: file.name, base64 });
 }
 export const csrfToken = () => csrf;
+export type HermesSummary = {
+  readAt: string; days: number; messagesCounted: number;
+  profiles: { profile: string; tokens: number; costUsd: number; sessions: number; lastActivityAt: string | null }[];
+  projects: { project: string; tokens: number; costUsd: number; sessions: number }[];
+  words: { word: string; count: number }[];
+};
+export const getHermesSummary = () => request<HermesSummary>('/hermes/summary');

@@ -1,5 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { readActivity } from './hermes-activity';
+import { readHermesSummary } from './hermes-summary';
 import { VaultError, VaultNotes, VaultWriteError } from './vault-notes';
 
 // Runs the synchronous SQLite and file-system reads (Hermes activity, Obsidian notes) off the
@@ -7,6 +8,7 @@ import { VaultError, VaultNotes, VaultWriteError } from './vault-notes';
 const vault = new VaultNotes(workerData?.obsidianRegistry);
 type Task =
   | { task: 'activity'; root: string; profiles: Parameters<typeof readActivity>[1] }
+  | { task: 'summary'; root: string; profiles: Parameters<typeof readHermesSummary>[1] }
   | { task: 'vault-list'; vaultId: string; fresh?: boolean }
   | { task: 'vault-read'; vaultId: string; noteId: string; reveal?: boolean }
   | { task: 'vault-search'; vaultId: string; query: string }
@@ -16,6 +18,7 @@ type Task =
 
 function run(job: Task) {
   if (job.task === 'activity') return readActivity(job.root, job.profiles);
+  if (job.task === 'summary') return readHermesSummary(job.root, job.profiles);
   if (job.task === 'vault-list') return vault.list(job.vaultId, job.fresh);
   if (job.task === 'vault-read') return vault.read(job.vaultId, job.noteId, job.reveal);
   if (job.task === 'vault-search') return vault.search(job.vaultId, job.query);

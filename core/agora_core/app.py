@@ -10,6 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 import threading
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -24,6 +25,7 @@ from .keystore import KeychainStore, KeyStore, recovery_pending
 from .routes_addons import addons_router
 from .routes_assistant import KeychainSecrets, assistant_router, default_engines
 from .routes_index import EmbedHealth, embed_worker, index_router
+from .routes_summary import summary_router
 from .settings import DEFAULT_DATA, Settings
 
 SECRET_HEADER = "x-agora-core-secret"
@@ -139,5 +141,6 @@ def create_app(
 
     app.include_router(index_router(settings, embedder, cache, embed_health))
     app.include_router(addons_router(settings))
+    app.include_router(summary_router(settings, time.time()))
     app.include_router(assistant_router(settings, embedder, cache, secrets or KeychainSecrets(), engines))
     return app
