@@ -111,6 +111,19 @@ test('chat de perfiles: identidad, memoria, aislamiento, relectura y revocación
   } finally { await f.close(); rmSync(root, { recursive: true }); }
 });
 
+test('las rutas de la API con otras mayúsculas no esquivan la cookie de acceso ni el CSRF', async () => {
+  const f = await fixture(async () => { throw new Error('No debe invocar inferencia'); });
+  try {
+    for (const path of ['/API/status', '/Api/status', '/API/hermes/catalog', '/api/Hermes/catalog']) {
+      const response = await f.request(path, undefined, { Cookie: '' });
+      assert.ok([401, 404].includes(response.status), `${path} respondió ${response.status}`);
+      assert.doesNotMatch(await response.text(), /csrf/i, `${path} no debe revelar el CSRF`);
+    }
+    const posted = await f.request('/API/conversations', { agent: 'luma', context: 'library-lobby' }, { Cookie: '', Origin: '', 'X-Agora-CSRF': '' });
+    assert.ok([401, 403, 404].includes(posted.status), `POST respondió ${posted.status}`);
+  } finally { await f.close(); }
+});
+
 test('catálogo Hermes exige token local, mantiene solo lectura y no dispara inferencia', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'agora-hermes-read-')));
   writeFileSync(join(root, 'SOUL.md'), '# Perfil ficticio\nIdentidad local.');
