@@ -186,6 +186,7 @@ def test_claude_code_sin_herramientas_sin_mcp_y_sin_guardar_sesion(tmp_path):
     assert options.mcp_servers == {} and options.strict_mcp_config is True and options.setting_sources == []
     assert options.cwd == str(tmp_path / "vacia")
     assert "no-session-persistence" in options.extra_args
+    assert options.env == {"ENABLE_CLAUDEAI_MCP_SERVERS": "false"}, "nunca los conectores de la cuenta"
     assert options.model == "claude-sonnet-5-5"
 
 
