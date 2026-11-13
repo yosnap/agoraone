@@ -58,6 +58,21 @@ La comprobación normal no llama a modelos. La variante live verifica dos turnos
 - Nueva: comienza otra conversación, sin borrar la anterior del servidor.
 - Los perfiles y espacios se obtienen del catálogo Hermes; los personajes ficticios adicionales del prototipo ya no se muestran.
 
+## Copias de seguridad del núcleo
+La base de datos del núcleo (`.agora/core/agora.db`) se copia cifrada en `.agora/core/backups`: una vez al día (al arrancar si la última tiene más de 24 h, y comprobando cada hora) y antes de cada cambio de estructura. Se conservan una por día durante 14 días, una por semana durante 8 semanas y las 5 últimas previas a una migración. La clave de cifrado se crea sola y vive en el Llavero de macOS (servicio «AgoraOne», cuenta «backup-key»).
+
+Guarda la clave de recuperación fuera de este Mac (gestor de contraseñas o papel). Sin ella, si pierdes el Mac o su Llavero, las copias no se pueden abrir. Se muestra una vez, solo en tu terminal:
+
+```sh
+cd core
+uv run python -m agora_core.cli recovery-key      # --again para verla de nuevo
+uv run python -m agora_core.cli list              # copias existentes
+uv run python -m agora_core.cli backup            # copia ahora
+uv run python -m agora_core.cli restore <archivo> # con AgoraOne parado; --recovery pide la clave de recuperación
+```
+
+Restaurar conserva la base anterior junto a la nueva como `agora.db.before-restore-<fecha>`.
+
 ## Datos y diagnóstico
 `.agora/conversations` contiene conversaciones privadas. `.agora/hermes` contiene estado de Hermes aislado. `.env`, `.agora`, node_modules y dist están ignorados. No compartir esos archivos ni logs sin revisarlos.
 

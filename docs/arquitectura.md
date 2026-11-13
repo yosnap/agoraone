@@ -18,6 +18,8 @@ El núcleo (`core/`, paquete `agora_core`, Python 3.13 con uv y FastAPI) alojar�
 - `server/core-process.ts` lo lanza con un secreto aleatorio en cada arranque y un entorno mínimo (sin `.env` ni claves del backend), y lo detiene al salir. El núcleo vigila a su proceso padre y termina si desaparece.
 - `server/core-proxy.ts` reenvía `/api/core/*` tras las comprobaciones de siempre (Host, Origin, cookie de acceso y CSRF también en GET). Añade el secreto y el propietario autenticado; no reenvía las cookies del navegador; solo usa la ruta y la consulta de la petición, así que no puede apuntar a otro servidor; limita el cuerpo a 1 MiB y transmite la respuesta en streaming (apto para SSE). Si el núcleo no responde, 503.
 - El núcleo rechaza toda petición sin el secreto (comparación en tiempo constante) o con un Host distinto de `127.0.0.1:4318`, y no publica documentación de su API.
+- Datos en `.agora/core` (`AGORA_CORE_DATA`): SQLite con WAL y claves foráneas (`core/agora_core/db.py`), migraciones SQL numeradas en `core/agora_core/migrations/` aplicadas al arrancar, cada una en su transacción y con copia previa si ya hay datos. Modelo: ámbitos y tipos como ejes independientes, proyectos, actividades con fecha, elementos indexados con su confidencialidad (`normal`, `local_only`, `private`), línea de tiempo, registro de acciones y agentes.
+- Copias (`core/agora_core/backup.py`): instantánea con la API de SQLite, comprimida y cifrada con AES-256-GCM, clave en el Llavero (`keystore.py`), retención diaria y semanal, restauración solo por terminal (`cli.py`) con el núcleo parado. Instrucciones en docs/arranque.md.
 
 ## Módulos
 - `src/world`: geometría, selección, cámaras, movimiento y colisiones exteriores sencillas. No conoce credenciales ni llama a modelos.
