@@ -128,3 +128,18 @@ test('cuerpo demasiado grande y núcleo ausente devuelven errores claros', async
     assert.match(JSON.parse((await none.call('/api/core/health')).text).error, /núcleo/);
   } finally { await app.close(); await down.close(); await none.close(); await core.close(); }
 });
+
+test('las rutas de la API con otras mayúsculas no esquivan la cookie de acceso ni el CSRF', async () => {
+  const core = await fakeCore();
+  const app = await agora(core.url);
+  try {
+    for (const path of ['/API/status', '/Api/core/whoami', '/API/CORE/health', '/api/Core/health']) {
+      const response = await app.call(path, { headers: { Cookie: '' } });
+      assert.ok([401, 404].includes(response.status), `${path} respondió ${response.status}`);
+      assert.doesNotMatch(response.text, /csrf/i, `${path} no debe revelar el CSRF`);
+    }
+    const posted = await app.call('/API/conversations', { method: 'POST', headers: { Cookie: '', Origin: '', 'X-Agora-CSRF': '', 'Content-Type': 'application/json' }, body: '{}' });
+    assert.ok([401, 403, 404].includes(posted.status), `POST respondió ${posted.status}`);
+    assert.equal(core.seen.length, 0, 'nada llega al núcleo');
+  } finally { await app.close(); await core.close(); }
+});

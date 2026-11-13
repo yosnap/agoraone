@@ -49,7 +49,11 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
   const hosts = new Set(['127.0.0.1:4317', '127.0.0.1:5173']);
   const origins = new Set([...hosts].map(host => `http://${host}`));
   app.disable('x-powered-by');
+  // Express matches routes case-insensitively by default: /API/... would reach the API handlers while the
+  // checks below look for /api. Exact-case routing plus a case-insensitive check close that gap twice.
+  app.set('case sensitive routing', true);
   app.use((req, res, next) => {
+    const api = req.path.toLowerCase().startsWith('/api');
     if (!hosts.has(req.headers.host || '')) return res.status(403).json({ error: 'Host no permitido.' });
     const origin = req.headers.origin;
     if (origin && !origins.has(origin)) return res.status(403).json({ error: 'Origen no permitido.' });
@@ -58,9 +62,9 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
     // The browser proves once that it holds the access token (see server/access-token.ts).
     if (req.path === '/api/session' && req.method === 'POST') return next();
     const cookieProof = req.headers.cookie?.match(new RegExp(`(?:^|;\\s*)${accessCookie}=([a-f0-9]{64})(?:;|$)`))?.[1];
-    if (req.path.startsWith('/api') && !sameSecret(cookieProof, proof))
+    if (api && !sameSecret(cookieProof, proof))
       return res.status(401).json({ error: 'Abre AgoraOne con el enlace de acceso: lo muestra «npm run dev» al arrancar, o usa «npm run open».' });
-    if (req.path.startsWith('/api') && req.method !== 'GET' &&
+    if (api && req.method !== 'GET' &&
       (!origin || req.headers['x-agora-csrf'] !== csrf)) {
       return res.status(403).json({ error: 'Sesión de navegador no válida. Recarga la página.' });
     }
