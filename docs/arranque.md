@@ -11,7 +11,9 @@ npm run check:hermes
 npm run dev
 ```
 
-`npm run dev` y `npm start` arrancan también el núcleo Python en 127.0.0.1:4318 y lo detienen al salir; si el backend muere de golpe, el núcleo termina solo en unos segundos. El puerto es fijo: si está ocupado, el núcleo lo dice y no arranca, y `/api/core/*` responde 503 mientras el resto de AgoraOne funciona igual. Para comprobar quién lo ocupa: `lsof -iTCP:4318 -sTCP:LISTEN`. Pruebas del núcleo: `npm run test:core`.
+Para la búsqueda por significado hace falta [ollama](https://ollama.com) con el modelo de embeddings (`ollama pull qwen3-embedding:0.6b`); sin él, el cerebro busca solo por palabras.
+
+`npm run dev` y `npm start` arrancan también el núcleo Python en 127.0.0.1:4318 y lo detienen al salir; si el backend muere de golpe, el núcleo termina solo en unos segundos. El puerto es fijo: si está ocupado, el núcleo lo dice y no arranca, y `/api/core/*` responde 503 mientras el resto de AgoraOne funciona igual. Para comprobar quién lo ocupa: `lsof -iTCP:4318 -sTCP:LISTEN`. Pruebas del núcleo: `npm run test:core`. A los pocos segundos de arrancar, el backend indexa las notas de tus vaults de Obsidian en el núcleo y repite cada 5 minutos; para que una nota no salga nunca hacia modelos externos, añade en sus propiedades `confidencialidad: solo-local` (o `privado` para que tampoco salga por Telegram ni MCP).
 
 Abrir el enlace de acceso que muestra la terminal (`http://127.0.0.1:5173/#acceso=…`) o ejecutar `npm run open` (usar esta dirección, no otra interfaz de red). El navegador canjea el token por una cookie y lo borra de la barra de direcciones; las siguientes veces basta con http://127.0.0.1:5173. Sin esa cookie la API responde 401 y la página explica cómo entrar. Seleccionar Luma o Biblioteca, escribir y pulsar **Enviar a Hermes**. Configuración actual guardada en `.env` privado. `check:hermes` instancia el agente y comprueba cero herramientas sin pedir inferencia; no confirma la conexión al proveedor.
 
