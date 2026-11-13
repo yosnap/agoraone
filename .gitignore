@@ -17,3 +17,5 @@ skills-lock.json
 
 # Plans live in their own private repository (../agoraone-plans), linked here as plans/.
 /plans
+# Compiled Rust output of the desktop app.
+/desktop/target

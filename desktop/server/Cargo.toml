@@ -1,0 +1,23 @@
+[package]
+name = "agora-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = "0.8"
+bytes = "1"
+futures-util = "0.3"
+hex = "0.4"
+rand = "0.9"
+reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+subtle = "2"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["fs"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
