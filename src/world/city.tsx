@@ -26,8 +26,8 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
   render() { return this.state.failed ? <div className="canvas-fallback">No se pudo iniciar WebGL. Puedes usar el directorio de espacios y el chat.</div> : this.props.children; }
 }
 
-export function City({ places, selected, onSelect, firstPerson, blocked, inside = false, integrations = false, room, services = [], onBrowse, onExit, onStation, activity, vault, onShelf, onBook, daylight = daylightAt(new Date(), 'day') }: {
-  places: Place[];
+export function City({ places, paused = false, selected, onSelect, firstPerson, blocked, inside = false, integrations = false, room, services = [], onBrowse, onExit, onStation, activity, vault, onShelf, onBook, daylight = daylightAt(new Date(), 'day') }: {
+  places: Place[]; paused?: boolean;
   selected: string | null; onSelect: (id: string) => void; firstPerson: boolean; blocked: boolean;
   inside?: boolean; onBrowse: () => void; onExit: () => void;
   integrations?: boolean; services?: ServiceGroup[]; daylight?: Daylight;
@@ -41,7 +41,7 @@ export function City({ places, selected, onSelect, firstPerson, blocked, inside 
     : room ? { key: `profile:${room.profile.id}`, background: shellBackground[room.style] ?? '#d9d2c4', obstacles: profileObstacles, node: <ProfileInterior room={room} activity={activity?.profiles[room.profile.id]} onStation={station => onStation?.(station)} onService={onSelect} onExit={onExit}/> }
     : inside ? { key: 'library', background: '#213c36', obstacles: libraryObstacles, node: <LibraryInterior seed={library ? library.position[0] + library.position[2] : 0} onBrowse={onBrowse} onChat={() => onSelect('library')} onExit={onExit}/> }
     : null;
-  return <SceneBoundary><Canvas tabIndex={0} shadows={{ type: PCFShadowMap }} dpr={[1, 1.7]} camera={{ position: [24, 25, 30], fov: 43, far: 1000 }} onCreated={({ gl }) => { gl.domElement.tabIndex = 0; }} fallback={<p>WebGL no disponible. Usa el directorio.</p>}><DaylightProvider value={daylight}>
+  return <SceneBoundary><Canvas frameloop={paused ? 'never' : 'always'} tabIndex={0} shadows={{ type: PCFShadowMap }} dpr={[1, 1.7]} camera={{ position: [24, 25, 30], fov: 43, far: 1000 }} onCreated={({ gl }) => { gl.domElement.tabIndex = 0; }} fallback={<p>WebGL no disponible. Usa el directorio.</p>}><DaylightProvider value={daylight}>
     {interior ? <><color attach="background" args={[interior.background]}/><Suspense fallback={null}>{interior.node}</Suspense><Reflections/></> : <Suspense fallback={null}>
     <CityLighting extent={extent} firstPerson={firstPerson}/>
     <CityStreets places={places} extent={extent}/>

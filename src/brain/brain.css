@@ -1,0 +1,35 @@
+/* The brain page: the graph fills the space and a panel on the right holds asking, search and lists. */
+.brain { display:grid; grid-template-columns:minmax(0,1fr) 340px; height:100%; color:#173d3c }
+.brain-stage { position:relative; min-width:0; min-height:0; background:#f1f2ea }
+.brain-stage canvas { display:block }
+.brain-message { position:absolute; inset:0; display:grid; place-items:center; padding:24px; font-size:13px; color:#4c6b62; text-align:center }
+.brain-message > * { max-width:420px }
+.brain-panel { overflow-y:auto; padding:28px 22px 32px; background:#fbfaf3; border-left:1px solid #dfe3d6; display:flex; flex-direction:column; gap:12px }
+.brain-panel h1 { font:500 32px/1.1 Manrope,sans-serif; letter-spacing:-1px; margin:4px 0 0 }
+.brain-stats { font-size:11px; color:#5f7a71; margin:0 }
+.brain-ask { display:flex; flex-direction:column; gap:6px; padding:14px; border-radius:14px; background:#173d3c; color:#e9efe5 }
+.brain-ask label { font-size:11px; letter-spacing:.4px }
+.brain-ask .muted { color:#b9cbc2; font-size:10px; line-height:1.5 }
+.brain-ask-row { display:flex; gap:6px }
+.brain-ask input { flex:1; min-width:0; border:0; border-radius:9px; padding:10px 12px; font:inherit; font-size:13px; background:#fffffa; color:#173d3c }
+.brain-ask .button.primary { background:#e2bf72; border-color:#e2bf72; color:#173d3c }
+.brain-search { font-size:11px; color:#355a50; margin-top:6px }
+#brain-find { border:1px solid #cbd6c9; border-radius:9px; padding:10px 12px; background:#fffffa; color:#173d3c; font:inherit; font-size:13px }
+.brain-toggles { display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:11px; color:#355a50 }
+.brain-toggles label { display:flex; gap:6px; align-items:center }
+.brain-list h2 { font:600 12px Manrope,sans-serif; letter-spacing:.3px; margin:8px 0 6px; color:#355a50 }
+.brain-list ul { list-style:none; margin:0; padding:0 }
+.brain-list button { width:100%; text-align:left; background:none; border:0; border-top:1px solid #e6eadf; padding:9px 2px; color:#173d3c; display:flex; flex-direction:column; gap:2px }
+.brain-list button:hover strong { color:#996a25 }
+.brain-list strong { font-size:12px; font-weight:500 }
+.brain-list small { font-size:10px; color:#6f8379 }
+.brain-legend { list-style:none; margin:auto 0 0; padding:12px 0 0; border-top:1px solid #e6eadf; display:flex; flex-wrap:wrap; gap:6px 12px; font-size:10px; color:#4c6b62 }
+.brain-legend li { display:flex; align-items:center; gap:5px }
+.brain-legend span { width:9px; height:9px; border-radius:50% }
+.brain-legend small { color:#8a9a91 }
+.graph-label { display:block; white-space:nowrap; transform:translateY(-18px); background:#173d3ce6; color:#fff9e7; font:500 11px 'DM Sans',sans-serif; padding:4px 8px; border-radius:6px }
+
+@media (max-width:850px) {
+  .brain { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(260px,45%) minmax(0,1fr) }
+  .brain-panel { border-left:0; border-top:1px solid #dfe3d6; padding:18px 16px 24px }
+}

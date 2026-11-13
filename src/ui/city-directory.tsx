@@ -30,6 +30,7 @@ export function CityDirectory({ catalog, error, places, selected, onSelect, sign
   useEffect(() => {
     const focus = (event: KeyboardEvent) => {
       if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey || editable(event.target) || window.document.querySelector('dialog[open]')) return;
+      if (!input.current?.offsetParent) return; // the office is not on screen
       event.preventDefault(); input.current?.focus();
     };
     window.addEventListener('keydown', focus);

@@ -10,7 +10,7 @@ import type { ProfileSkill, ProfileSkillDetail } from '../../shared/hermes-skill
 let csrf = '';
 /** An error answered by the backend, with its HTTP status (409 means the data changed meanwhile). */
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
-async function request<T>(path: string, body?: unknown, method = body ? 'POST' : 'GET'): Promise<T> {
+export async function request<T>(path: string, body?: unknown, method = body ? 'POST' : 'GET'): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,
     headers: { ...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}), ...(csrf ? { 'X-Agora-CSRF': csrf } : {}) },
@@ -121,3 +121,4 @@ export async function importDocument(file: File) {
   const base64 = btoa(raw);
   return request<LibraryDocument>('/library/imports', { name: file.name, base64 });
 }
+export const csrfToken = () => csrf;
