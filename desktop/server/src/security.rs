@@ -71,10 +71,10 @@ fn check(state: &AppState, request: &mut Request) -> Option<Response> {
         return Some(error(StatusCode::FORBIDDEN, "Host no permitido."));
     }
     let origin = headers.get(header::ORIGIN).and_then(|o| o.to_str().ok()).map(str::to_string);
-    if let Some(origin) = &origin {
-        if !state.config.hosts.iter().any(|allowed| origin == &format!("http://{allowed}")) {
-            return Some(error(StatusCode::FORBIDDEN, "Origen no permitido."));
-        }
+    if let Some(origin) = &origin
+        && !state.config.hosts.iter().any(|allowed| origin == &format!("http://{allowed}"))
+    {
+        return Some(error(StatusCode::FORBIDDEN, "Origen no permitido."));
     }
     if path == "/api/session" && request.method() == Method::POST {
         return None;
