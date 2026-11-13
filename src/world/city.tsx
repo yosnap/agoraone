@@ -1,3 +1,4 @@
+import type { AgentStatus } from '../office/agent-state';
 import { Canvas } from '@react-three/fiber';
 import { PCFShadowMap } from 'three';
 import { Component, Suspense, type ReactNode } from 'react';
@@ -26,8 +27,8 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
   render() { return this.state.failed ? <div className="canvas-fallback">No se pudo iniciar WebGL. Puedes usar el directorio de espacios y el chat.</div> : this.props.children; }
 }
 
-export function City({ places, paused = false, selected, onSelect, firstPerson, blocked, inside = false, integrations = false, room, services = [], onBrowse, onExit, onStation, activity, vault, onShelf, onBook, daylight = daylightAt(new Date(), 'day') }: {
-  places: Place[]; paused?: boolean;
+export function City({ places, paused = false, statuses = {}, selected, onSelect, firstPerson, blocked, inside = false, integrations = false, room, services = [], onBrowse, onExit, onStation, activity, vault, onShelf, onBook, daylight = daylightAt(new Date(), 'day') }: {
+  places: Place[]; paused?: boolean; statuses?: Record<string, AgentStatus>;
   selected: string | null; onSelect: (id: string) => void; firstPerson: boolean; blocked: boolean;
   inside?: boolean; onBrowse: () => void; onExit: () => void;
   integrations?: boolean; services?: ServiceGroup[]; daylight?: Daylight;
@@ -47,7 +48,7 @@ export function City({ places, paused = false, selected, onSelect, firstPerson, 
     <CityStreets places={places} extent={extent}/>
     <CityNature places={places} extent={extent}/>
     <CityPedestrians places={places} extent={extent}/>
-    {places.map(place => <Building key={place.id} place={place} selected={selected === place.id} onSelect={() => onSelect(place.id)} activity={activity?.profiles[place.id]}/>)}
+    {places.map(place => <Building key={place.id} place={place} selected={selected === place.id} onSelect={() => onSelect(place.id)} activity={activity?.profiles[place.id]} status={statuses[place.id]}/>)}
     <ResourceLinks places={places} selected={selected}/>
     </Suspense>}
     <SceneEffects/>

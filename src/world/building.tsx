@@ -1,4 +1,5 @@
 import { WorldLabel } from './world-label';
+import { shownInWorld, type AgentStatus } from '../office/agent-state';
 import type { Place } from '../data/city';
 import { BuildingModel } from './building-model';
 import { styleLabels } from '../data/building-style';
@@ -9,7 +10,7 @@ import { SurfaceMaterial } from './surfaces';
 import type { ProfileActivity } from '../../shared/hermes-activity';
 import { ago, platformName, platformStates, recentlyActive } from '../data/activity-format';
 
-export function Building({ place, selected, onSelect, activity }: { place: Place; selected: boolean; onSelect: () => void; activity?: ProfileActivity }) {
+export function Building({ place, selected, onSelect, activity, status }: { place: Place; selected: boolean; onSelect: () => void; activity?: ProfileActivity; status?: AgentStatus }) {
   const style = place.buildingStyle || (place.id === 'library' ? 'library' : 'archive');
   // Real record, not ambient motion: lit only while Hermes logged activity in the last two minutes.
   const active = recentlyActive(activity);
@@ -30,6 +31,6 @@ export function Building({ place, selected, onSelect, activity }: { place: Place
       </div>
     </WorldLabel>
     {place.character && <><Walker color={place.color} phase={place.position[0] + place.position[2]} selected={selected} working={active} onSelect={onSelect}/>
-      <WorldLabel position={[0, 2.15, 3]} distanceFactor={25}><button className="character-label" title={active ? 'Hermes registró actividad de este perfil hace menos de dos minutos' : 'Paseo ambiental: no representa tareas reales'} onClick={onSelect}>{place.character}{active && ' · actividad registrada'}</button></WorldLabel></>}
+      <WorldLabel position={[0, 2.15, 3]} distanceFactor={25}><button className="character-label" title={active ? 'Hermes registró actividad de este perfil hace menos de dos minutos' : 'Paseo ambiental: no representa tareas reales'} onClick={onSelect}>{place.character}{active && ' · actividad registrada'}{status && shownInWorld(status) && <span className="world-status">{status.label}{status.detail ? ` · ${status.detail}` : ''}</span>}</button></WorldLabel></>}
   </group>;
 }

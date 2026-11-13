@@ -7,6 +7,7 @@ import { Markdown } from '../ui/markdown';
 import { Loading, LoadError } from '../ui/load-state';
 import type { NoteRef } from '../brain/note-reader';
 import { engineName, modelName, stageLabels } from './assistant-labels';
+import { play } from '../sound/sound';
 import './assistant.css';
 
 type Live = { question: string; stage: Stage | null; sources: Source[]; text: string; engine?: string; model?: string; steps: string[] };
@@ -63,8 +64,10 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       const controller = new AbortController();
       abort.current = controller;
       setLive({ question: text, stage: null, sources: [], text: '', steps: [] });
+      play('send');
       const reading: string[] = [];
       await askAssistant(id, text, event => {
+        if (event.kind === 'done') play('receive');
         if (event.kind === 'stage') onThinking?.({ stage: event.stage, label: stageLabels[event.stage], reading });
         else if (event.kind === 'tool' && event.tool === 'search') onThinking?.({ stage: 'busca', label: `Buscando «${event.query}»`, reading });
         else if (event.kind === 'tool' && event.tool === 'read') { reading.push(event.id); onThinking?.({ stage: 'lee', label: `Leyendo «${event.title}»`, reading: [...reading] }); }

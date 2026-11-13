@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Section } from './shell-state';
 import { applyTheme, readTheme, themeLabels, type ThemeChoice } from './theme';
+import { setSound, useSoundOn } from '../sound/sound';
 
 const themeOrder: ThemeChoice[] = ['system', 'light', 'dark'];
 const themeIcons: Record<ThemeChoice, string> = { system: '◑', light: '☀', dark: '☾' };
@@ -31,6 +32,7 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
   waiting: string | null;
 }) {
   const [theme, setTheme] = useState(readTheme);
+  const sound = useSoundOn();
   const nextTheme = () => { const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length]; applyTheme(next); setTheme(next); };
   const button = (item: Item) => <li key={item.id}><button className={`rail-item${item.pending ? ' rail-pending' : ''}`}
     aria-current={section === item.id ? 'page' : undefined} onClick={() => onSection(item.id)} title={item.pending ? `${item.label}: pendiente` : item.label}>
@@ -46,6 +48,9 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
       <button className="rail-item rail-discreet" aria-pressed={discreet} onClick={() => onDiscreet(!discreet)}
         title={discreet ? 'Modo discreto activo: solo se ven las notas normales' : 'Modo discreto: ocultar lo privado y lo solo-local de la pantalla'}>
         <span className="rail-icon" aria-hidden="true">{discreet ? '◐' : '○'}</span><span className="rail-label">Discreto</span>
+      </button>
+      <button className="rail-item" aria-pressed={sound} onClick={() => setSound(!sound)} title={sound ? 'Sonido activado · pulsa para silenciar' : 'Sonido silenciado · pulsa para activarlo'}>
+        <span className="rail-icon" aria-hidden="true">{sound ? '♪' : '♩'}</span><span className="rail-label">{sound ? 'Sonido' : 'Silencio'}</span>
       </button>
       <button className="rail-item" onClick={nextTheme} title={`${themeLabels[theme]} · pulsa para cambiar`} aria-label={`${themeLabels[theme]}. Cambiar tema`}>
         <span className="rail-icon" aria-hidden="true">{themeIcons[theme]}</span><span className="rail-label">Tema</span>

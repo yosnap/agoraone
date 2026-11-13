@@ -24,6 +24,11 @@ import type { ChatState } from './ui/chat-panel';
 import { recentActivityMs } from '../shared/hermes-activity';
 import { useVaultNotes } from './data/use-vault-notes';
 import { lightModeLabels, useDaylightClock, type LightMode } from './world/daylight';
+import { AgentsBoard } from './office/agents-board';
+import { WalkHud } from './office/walk-hud';
+import { agentStatus } from './office/agent-state';
+import { play, setAmbience, useSoundOn } from './sound/sound';
+import type { Place } from './data/city';
 
 const lightModes: LightMode[] = ['auto', 'day', 'dusk', 'night'];
 // The 3D world (three.js and its effects) loads in its own chunk, after the interface is usable.
@@ -37,7 +42,7 @@ class WorldBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 /** The city, now the «Oficina 3D» of the shell: it stays mounted once visited (chats in progress and their
  * «Permitir» are never lost) and its scene stops drawing while another section is on screen. */
-export function Office({ status, active, onWaiting }: { status: Status | null; active: boolean; onWaiting?: (waiting: string | null) => void }) {
+export function Office({ status, active, onWaiting, onWatson }: { status: Status | null; active: boolean; onWaiting?: (waiting: string | null) => void; onWatson?: () => void }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [firstPerson, setFirstPerson] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -63,8 +68,15 @@ export function Office({ status, active, onWaiting }: { status: Status | null; a
   const [book, setBook] = useState<{ vault: string; note: string; edit?: boolean } | null>(null);
   // Chats with a turn in progress stay mounted even when their panel closes, so a pending «Permitir» is never lost.
   const [chats, setChats] = useState<Record<string, ChatState>>({});
-  const reportChat = useCallback((id: string, state: ChatState) => setChats(previous =>
-    previous[id]?.busy === state.busy && previous[id]?.approvals === state.approvals ? previous : { ...previous, [id]: state }), []);
+  const reportChat = useCallback((id: string, state: ChatState) => setChats(previous => {
+    const before = previous[id];
+    if (before?.busy === state.busy && before?.approvals === state.approvals) return previous;
+    // Sound cues follow the real chat: sent, answered, and an agent asking for permission.
+    if (state.approvals > (before?.approvals ?? 0)) play('approval');
+    else if (state.busy && !before?.busy) play('send');
+    else if (!state.busy && before?.busy) play('receive');
+    return { ...previous, [id]: state };
+  }), []);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [walkHint, setWalkHint] = useState('Entrar al recorrido · flechas o WASD / ratón · Esc para salir');
   useEffect(() => {
@@ -150,6 +162,20 @@ export function Office({ status, active, onWaiting }: { status: Status | null; a
       : integrationsInside ? { kind: 'integrations' } : inside ? { kind: 'library' } : null;
     writeView({ lightMode, firstPerson, selected, profileTab, libraryTab, interior });
   }, [restored, lightMode, firstPerson, selected, profileTab, libraryTab, vaultRoom, profileRoom, integrationsInside, inside]);
+  // What each agent is really doing, for its card and its bubble in the city.
+  const statuses = useMemo(() => Object.fromEntries((catalog?.profiles ?? []).map(profile =>
+    [profile.id, agentStatus(hermesActivity.activity?.profiles[profile.id], chats[profile.id])])), [catalog, hermesActivity.activity, chats]);
+  const actNear = useCallback((near: Place) => {
+    if (near.kind === 'profile' || near.id === 'library') openChat(near.id); else select(near.id);
+  }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps -- openChat/select only set state
+  const soundOn = useSoundOn();
+  // Wind with birds by day or crickets by night, only while walking the city on screen (and not when the
+  // system asks to reduce motion).
+  useEffect(() => {
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    setAmbience(active && firstPerson && kind === 'city' && soundOn && !calm ? (daylight.night > 0.5 ? 'night' : 'day') : null);
+  }, [active, firstPerson, kind, soundOn, daylight.night > 0.5]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => setAmbience(null), []);
   const panelPlaces = selectablePlaces.filter(item => item.id === selected || chats[item.id]?.busy);
   const signals = useMemo(() => {
     const result: Record<string, PlaceSignal> = {};
@@ -211,7 +237,7 @@ export function Office({ status, active, onWaiting }: { status: Status | null; a
     return () => window.removeEventListener('keydown', back);
   });
   return <main hidden={!active} className={indoors || daylight.night > 0.5 ? 'inside-world' : undefined}>
-    <div className="world"><WorldBoundary><Suspense fallback={<div className="canvas-fallback" role="status">Cargando la ciudad…</div>}><City paused={!active} places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected || bookOpen} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf} onBook={id => vaultRoom && openBook(vaultRoom, id)}/></Suspense></WorldBoundary></div>
+    <div className="world"><WorldBoundary><Suspense fallback={<div className="canvas-fallback" role="status">Cargando la ciudad…</div>}><City paused={!active} statuses={statuses} places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected || bookOpen} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf} onBook={id => vaultRoom && openBook(vaultRoom, id)}/></Suspense></WorldBoundary></div>
     <header className="topbar" data-theme="light"><a className="brand" href="/">a<span>AGORA<span className="brand-light">ONE</span></span></a>{crumbs.length > 1 ? <Breadcrumbs crumbs={crumbs}/> : <span className="top-note">TU MUNDO, EN UN LUGAR</span>}<div className="local-status"><i/> LOCAL · MAC</div></header>
     <section data-theme="light" className={`intro ${indoors || daylight.night > 0.5 ? 'interior-intro' : ''}`}><div className="eyebrow">{copy.eyebrow}</div><h1>{copy.title}</h1><p>{copy.text}</p></section>
     <nav className="view-switch" aria-label="Modo de cámara"><button className={!firstPerson ? 'active' : ''} aria-label="Vista ciudad" onClick={exit}><span aria-hidden="true">↗</span> <span className="view-label">Vista ciudad</span></button><button className={firstPerson ? 'active' : ''} aria-label="Primera persona" onClick={() => setFirstPerson(true)}><span aria-hidden="true">◎</span> <span className="view-label">Primera persona</span></button>
@@ -228,6 +254,9 @@ export function Office({ status, active, onWaiting }: { status: Status | null; a
       });
     }}>{walkHint}</button>}
     {vaultRoom ? <nav className="interior-tools" aria-label="Acciones del vault"><button onClick={() => openShelf(null)}>Ver notas</button><button onClick={exit}>Salir del vault</button></nav> : room ? <nav className="interior-tools" aria-label={`Acciones del espacio de ${room.profile.label}`}><button onClick={() => station('identity')}>Ver ficha</button><button onClick={() => station('chat')}>Conversar con {room.profile.label}</button><button onClick={exit}>Salir del espacio</button></nav> : integrationsInside ? <nav className="interior-tools" aria-label="Acciones del centro de integraciones"><button onClick={() => select('mcp-center')}>Ver MCPs</button><button onClick={exit}>Salir del centro</button></nav> : inside ? <nav className="interior-tools" aria-label="Acciones de biblioteca"><button onClick={browse}>Abrir catálogo</button><button onClick={() => select('library')}>Hablar con Luma</button><button onClick={exit}>Salir de la biblioteca</button></nav> : <CityDirectory catalog={catalog} error={catalogError} places={places} selected={selected} onSelect={select} signals={signals} onOpenChat={openChat}/>}
+    {kind === 'city' && <AgentsBoard catalog={catalog} statuses={statuses} onWatson={() => onWatson?.()} onChat={openChat}
+      onTasks={id => { select(id); setProfileTab('info'); }} onEnter={enterProfile}/>}
+    {firstPerson && kind === 'city' && !selected && <WalkHud places={selectablePlaces.filter(item => item.kind !== 'service')} onUse={actNear}/>}
     <div className="world-caption" data-theme="light"><span>{copy.caption}</span><small>{copy.hint}</small></div>
     {logOpen && !place && <ActivityLog activity={hermesActivity.activity} catalog={catalog} error={hermesActivity.error} onRetry={hermesActivity.reload} onSelect={select} onClose={() => setLogOpen(false)}/>}
     {panelPlaces.map(place => <aside key={place.id} hidden={place.id !== selected} className="detail-panel" aria-label={`Espacio ${place.name}`}><button className="close" aria-label="Cerrar espacio" onClick={() => setSelected(null)}>×</button><div className="eyebrow">{place.kind === 'profile' ? 'PERFIL HERMES' : place.kind === 'space' ? 'ESPACIO HERMES' : place.kind === 'vault' ? 'OBSIDIAN · VAULT LOCAL' : place.kind === 'service' ? 'MCP · SERVICIO CONFIGURADO' : 'BIBLIOTECA · AGORAONE'}</div><h2>{place.character || place.name}<span style={{ background: place.color }}/></h2><p className="description">{place.description}</p>
