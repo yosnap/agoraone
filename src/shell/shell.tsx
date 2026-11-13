@@ -25,6 +25,7 @@ export function Shell() {
   // Notes to point out on the graph (the sources of an answer).
   const [focus, setFocus] = useState<string[]>([]);
   const [reading, setReading] = useState<NoteRef | null>(null);
+  const [waiting, setWaiting] = useState<string | null>(null);
   useEffect(() => {
     getStatus().then(setStatus).catch(error => setStatus(error instanceof ApiError && error.status === 401
       ? { state: 'locked', csrf: '', detail: error.message } : { state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con npm run dev.' }));
@@ -36,9 +37,9 @@ export function Shell() {
   const showOnGraph = (ids: string[]) => { setFocus(ids); go('brain'); };
   const ready = status?.csrf;
   return <div className="shell">
-    <ShellNav section={section} onSection={go} discreet={discreet} onDiscreet={setDiscreet}/>
+    <ShellNav section={section} onSection={go} discreet={discreet} onDiscreet={setDiscreet} waiting={waiting}/>
     <div className="shell-content">
-      {officeVisited && ready && <Office status={status} active={section === 'office'}/>}
+      {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting}/>}
       {ready && section !== 'office' && <main className="shell-page"><Suspense fallback={<div className="page"><Loading label="Cargando la sección"/></div>}>
         {section === 'brain' ? <BrainView discreet={discreet} focus={focus} onFocus={setFocus} onAsk={ask} onRead={setReading}/>
           : section === 'assistant' ? <AssistantView question={question} onQuestionTaken={() => setQuestion(null)} onRead={setReading} onShowOnGraph={showOnGraph}/>

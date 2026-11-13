@@ -37,7 +37,7 @@ class WorldBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 /** The city, now the «Oficina 3D» of the shell: it stays mounted once visited (chats in progress and their
  * «Permitir» are never lost) and its scene stops drawing while another section is on screen. */
-export function Office({ status, active }: { status: Status | null; active: boolean }) {
+export function Office({ status, active, onWaiting }: { status: Status | null; active: boolean; onWaiting?: (waiting: string | null) => void }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [firstPerson, setFirstPerson] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -163,8 +163,11 @@ export function Office({ status, active }: { status: Status | null; active: bool
     return result;
   }, [places, chats, hermesActivity.activity]);
   // The first chat waiting for «Permitir» while its conversation is not on screen.
-  const waitingId = Object.keys(chats).find(id => chats[id].approvals && !(id === selected && (id === 'library' ? libraryTab : profileTab) === 'chat'));
+  const waitingId = Object.keys(chats).find(id => chats[id].approvals && !(active && id === selected && (id === 'library' ? libraryTab : profileTab) === 'chat'));
   const waitingPlace = selectablePlaces.find(item => item.id === waitingId);
+  // Another section is on screen: the rail tells who is waiting for «Permitir».
+  const waitingName = waitingPlace ? catalog?.profiles.find(profile => profile.id === waitingPlace.id)?.label ?? 'Luma' : null;
+  useEffect(() => { onWaiting?.(waitingName); }, [waitingName, onWaiting]);
   const closePanel = () => { setSelected(null); setLogOpen(false); };
   const interiorLabel = kind === 'vault' ? `Vault ${vaultName}` : kind === 'profile' ? `Espacio de ${room?.profile.label}` : kind === 'library' ? 'Biblioteca'
     : kind === 'integrations' ? 'Centro de integraciones' : firstPerson ? 'Paseo' : null;

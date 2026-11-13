@@ -19,13 +19,16 @@ const later: Item[] = [
 export const sectionLabel = (id: Section) => [...main, ...later, { id: 'settings', label: 'Ajustes' }].find(item => item.id === id)?.label ?? '';
 
 /** The left rail (a bottom bar on phones): the sections, discreet mode and the settings. */
-export function ShellNav({ section, onSection, discreet, onDiscreet }: {
+export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: {
   section: Section; onSection: (section: Section) => void; discreet: boolean; onDiscreet: (on: boolean) => void;
+  /** A profile chat in the office waiting for «Permitir», shown while another section is on screen. */
+  waiting: string | null;
 }) {
   const button = (item: Item) => <li key={item.id}><button className={`rail-item${item.pending ? ' rail-pending' : ''}`}
     aria-current={section === item.id ? 'page' : undefined} onClick={() => onSection(item.id)} title={item.pending ? `${item.label}: pendiente` : item.label}>
     <span className="rail-icon" aria-hidden="true">{item.icon}</span><span className="rail-label">{item.label}</span>
     {item.pending && <span className="visually-hidden"> (pendiente)</span>}
+    {item.id === 'office' && waiting && section !== 'office' && <span className="rail-alert" role="status"><span aria-hidden="true">●</span><span className="visually-hidden">: {waiting} espera tu permiso</span></span>}
   </button></li>;
   return <nav className="rail" aria-label="Secciones de AgoraOne">
     <a className="rail-brand" href="/" aria-label="AgoraOne">a</a>
