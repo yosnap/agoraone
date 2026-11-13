@@ -6,9 +6,10 @@ import type { CoreLink } from './core-proxy';
 
 export const coreUrl = 'http://127.0.0.1:4318';
 
-// What the core may inherit: where to find programs, the user's locale and temp folder, and what uv needs
-// to download Python behind a proxy. Never the backend's .env, provider keys or tokens.
-const inherited = ['PATH', 'HOME', 'LANG', 'TMPDIR', 'UV_CACHE_DIR', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'SSL_CERT_FILE'];
+// What the core may inherit: where to find programs, the user's locale and temp folder, what uv needs to
+// download Python behind a proxy, and what the local Claude Code needs to find the user's own session
+// (user name for the Keychain, its config folder). Never the backend's .env, provider keys or tokens.
+const inherited = ['PATH', 'HOME', 'LANG', 'TMPDIR', 'USER', 'LOGNAME', 'UV_CACHE_DIR', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'SSL_CERT_FILE', 'CLAUDE_CONFIG_DIR'];
 
 /** The core's whole environment: the start secret, the backend's PID to watch, its data folder and the inherited basics. */
 export function coreEnvironment(secret: string, backendPid: number, env: NodeJS.ProcessEnv = process.env, data = resolve('.agora/core')) {
