@@ -19,6 +19,7 @@ from .backup import clean_leftovers, create_backup, ensure_daily, list_backups, 
 from .db import DB_NAME, connect, migrate
 from .embed import DEFAULT_MODEL, DEFAULT_URL, Embedder, OllamaEmbedder, VectorCache
 from .keystore import KeychainStore, KeyStore, recovery_pending
+from .routes_assistant import KeychainSecrets, assistant_router, default_engines
 from .routes_index import EmbedHealth, embed_worker, index_router
 from .settings import Settings
 
@@ -42,6 +43,7 @@ _DEFAULT = object()
 
 def create_app(
     settings: Settings, store: KeyStore | None = None, scheduler: bool = True, embedder: Embedder | None | object = _DEFAULT,
+    secrets=None, engines=default_engines,
 ) -> FastAPI:
     """`scheduler` starts the background work (daily backups, embeddings); tests turn it off. `embedder`
     defaults to the local ollama; None disables search by meaning."""
@@ -124,4 +126,5 @@ def create_app(
         return {"name": made.name, "kind": made.kind}
 
     app.include_router(index_router(settings, embedder, cache, embed_health))
+    app.include_router(assistant_router(settings, embedder, cache, secrets or KeychainSecrets(), engines))
     return app
