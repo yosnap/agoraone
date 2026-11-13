@@ -99,13 +99,17 @@ def test_conversaciones_aisladas_por_propietario(setup):
     assert client.get("/assistant/conversations", headers=other).json() == {"conversations": []}
 
 
-def test_fallo_del_motor_no_guarda_nada(setup):
+def test_fallo_del_motor_guarda_la_pregunta_sin_respuesta(setup):
     client, headers, engine, _ = setup
     engine.fail = True
     conversation = client.post("/assistant/conversations", headers=headers).json()
     response = client.post(f"/assistant/conversations/{conversation['id']}/messages", json={"message": "hola"}, headers=headers)
     assert events(response.text)[-1] == ("error", {"error": "motor caído"})
-    assert client.get(f"/assistant/conversations/{conversation['id']}", headers=headers).json()["messages"] == []
+    messages = client.get(f"/assistant/conversations/{conversation['id']}", headers=headers).json()["messages"]
+    assert [(m["role"], m["content"], m["failed"]) for m in messages] == [("user", "hola", True)]
+    engine.fail = False
+    client.post(f"/assistant/conversations/{conversation['id']}/messages", json={"message": "otra"}, headers=headers)
+    assert all(m["content"] != "hola" for m in engine.turns[-1].messages), "lo fallido no entra en el historial"
 
 
 def test_ajustes_personaje_y_tono(setup):
@@ -113,6 +117,8 @@ def test_ajustes_personaje_y_tono(setup):
     assert client.put("/assistant/settings", json={"persona": "jarvis"}, headers=headers).status_code == 422
     assert client.put("/assistant/settings", json={"tone": {"humor": "absurdo"}}, headers=headers).status_code == 422
     assert client.put("/assistant/settings", json={"compatible": {"baseUrl": "http://inseguro", "model": "m"}}, headers=headers).status_code == 422
+    assert client.put("/assistant/settings", json={"persona": "mentor", "model": "inventado"}, headers=headers).status_code == 422
+    assert client.get("/assistant/settings", headers=headers).json()["persona"] == "watson", "nada se guarda si algo falla"
     saved = client.put("/assistant/settings", json={"persona": "mentor", "tone": {"address": "usted"}}, headers=headers).json()
     assert saved["persona"] == "mentor" and saved["tone"]["address"] == "usted" and saved["tone"]["humor"] == "ligero"
     conversation = client.post("/assistant/conversations", headers=headers).json()
@@ -143,3 +149,55 @@ def test_personajes_de_dominio_publico_y_prompt():
     assert {p["id"] for p in assistant.personas()} == {"watson", "mentor", "viernes", "passepartout", "bernardo"}
     prompt = assistant.system_prompt(assistant.DEFAULTS)
     assert "Eres Watson" in prompt and "cifras" in prompt and "solo lees" in prompt
+
+
+def test_reserva_al_siguiente_motor_si_falla_antes_de_escribir(tmp_path):
+    first, second = FakeEngine("claude-code", fail=True), FakeEngine("anthropic-api", reply=("De reserva.",))
+    settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "d")})
+    app = create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets(), engines=lambda s, k: [first, second])
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        headers = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
+        conversation = client.post("/assistant/conversations", headers=headers).json()
+        done = events(client.post(f"/assistant/conversations/{conversation['id']}/messages", json={"message": "hola"}, headers=headers).text)
+        assert done[-1] == ("done", {"engine": "anthropic-api", "model": "sonnet", "sources": 0})
+
+
+def test_sin_cambio_de_motor_si_ya_habia_empezado_a_responder(tmp_path):
+    class HalfWay(FakeEngine):
+        async def stream(self, turn):
+            yield "Empiezo"
+            raise EngineError("cortado")
+
+    second = FakeEngine("anthropic-api")
+    settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "d")})
+    app = create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets(), engines=lambda s, k: [HalfWay(), second])
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        headers = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
+        conversation = client.post("/assistant/conversations", headers=headers).json()
+        done = events(client.post(f"/assistant/conversations/{conversation['id']}/messages", json={"message": "hola"}, headers=headers).text)
+        assert done[-1] == ("error", {"error": "cortado"}) and second.turns == []
+
+
+def test_claude_code_sin_herramientas_sin_mcp_y_sin_guardar_sesion(tmp_path):
+    from agora_core.engines import ClaudeCodeEngine
+
+    options = ClaudeCodeEngine(tmp_path / "vacia").options(Turn("s", [{"role": "user", "content": "x"}], "sonnet"))
+    assert options.tools == [] and options.allowed_tools == []
+    assert options.mcp_servers == {} and options.strict_mcp_config is True and options.setting_sources == []
+    assert options.cwd == str(tmp_path / "vacia")
+    assert "no-session-persistence" in options.extra_args
+    assert options.model == "claude-sonnet-5-5"
+
+
+def test_clave_del_proveedor_ligada_a_su_direccion(setup):
+    client, headers, _, secrets = setup
+    first = {"compatible": {"baseUrl": "https://api.uno.example.com/v1", "model": "m1"}}
+    assert client.put("/assistant/settings", json=first, headers=headers).status_code == 200
+    client.put("/assistant/keys/compatible", json={"key": "clave-del-proveedor"}, headers=headers)
+    only_model = client.put("/assistant/settings", json={"compatible": {"model": "m2"}}, headers=headers).json()
+    assert only_model["compatible"] == {"baseUrl": "https://api.uno.example.com/v1", "model": "m2"}, "cambiar el modelo no borra la dirección"
+    assert secrets.get("openai-compatible-key") == "clave-del-proveedor"
+    client.put("/assistant/settings", json={"compatible": {"baseUrl": "https://otro.example.com/v1"}}, headers=headers)
+    assert secrets.get("openai-compatible-key") is None, "la clave no viaja a una dirección nueva"
+    for bad in ("https://127.0.0.1/v1", "https://192.168.1.10/v1", "https://localhost/v1", "https://nas.local/v1", "https://[::1]/v1"):
+        assert client.put("/assistant/settings", json={"compatible": {"baseUrl": bad}}, headers=headers).status_code == 422, bad

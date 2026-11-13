@@ -10,11 +10,14 @@ All of them run outside this Mac: callers only give them what the `external` aud
 In this phase engines only write; they get no tools.
 """
 
+import ipaddress
 import json
 import shutil
+import socket
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Protocol
+from urllib.parse import urlparse
 
 import httpx
 
@@ -47,9 +50,15 @@ class Secrets(Protocol):
 
 
 class ClaudeCodeEngine:
-    """The local Claude Code session through the Agent SDK. Its environment is scrubbed of API keys."""
+    """The local Claude Code session through the Agent SDK. Its environment is scrubbed of API keys.
+
+    It only writes: no tools at all, no MCP servers (not even the user's own), an empty working folder,
+    and no session saved to disk (the conversation already lives in the brain)."""
 
     name = "claude-code"
+
+    def __init__(self, workdir=None):
+        self.workdir = workdir
 
     def available(self) -> bool:
         return bool(shutil.which("claude")) or self._bundled()
@@ -62,16 +71,26 @@ class ClaudeCodeEngine:
             return False
         return True
 
+    def options(self, turn: Turn):
+        from claude_agent_sdk import ClaudeAgentOptions
+
+        return ClaudeAgentOptions(
+            system_prompt=turn.system, model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]),
+            tools=[], allowed_tools=[], mcp_servers={}, strict_mcp_config=True, setting_sources=[],
+            max_turns=1, cwd=str(self.workdir) if self.workdir else None,
+            extra_args={"no-session-persistence": None},
+        )
+
     async def stream(self, turn: Turn) -> AsyncIterator[str]:
-        from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ResultMessage, TextBlock, query
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, query
 
         # The child inherits this process's environment, from which scrub_api_keys() removed the API
         # variables at startup: an empty value would not do (an empty base URL breaks the connection).
-        options = ClaudeAgentOptions(
-            system_prompt=turn.system, model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]),
-            allowed_tools=[], max_turns=1, setting_sources=[],
-        )
+        options = self.options(turn)
         prompt = _transcript(turn.messages)
+        workdir = self.workdir
+        if workdir is not None:
+            workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
             async for message in query(prompt=prompt, options=options):
                 if isinstance(message, AssistantMessage):
@@ -101,9 +120,8 @@ class AnthropicApiEngine:
         key = self.secrets.get(SECRET_ACCOUNTS["anthropic"])
         if not key:
             raise EngineError("Falta la clave de API de Anthropic.")
-        client = anthropic.AsyncAnthropic(api_key=key, max_retries=1)
         try:
-            async with client.messages.stream(
+            async with anthropic.AsyncAnthropic(api_key=key, max_retries=1) as client, client.messages.stream(
                 model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]), max_tokens=4096,
                 system=turn.system, messages=turn.messages,
             ) as stream:
@@ -122,12 +140,14 @@ class CompatibleEngine:
         self.secrets, self.base_url, self.model = secrets, (base_url or "").rstrip("/"), model
 
     def available(self) -> bool:
-        return bool(self.base_url.startswith("https://") and self.model and self.secrets.get(SECRET_ACCOUNTS["compatible"]))
+        return bool(public_https(self.base_url) and self.model and self.secrets.get(SECRET_ACCOUNTS["compatible"]))
 
     async def stream(self, turn: Turn) -> AsyncIterator[str]:
         key = self.secrets.get(SECRET_ACCOUNTS["compatible"])
         if not self.available() or not key:
             raise EngineError("El proveedor compatible no está configurado.")
+        if not resolves_public(self.base_url):
+            raise EngineError("La dirección del proveedor apunta a este Mac o a una red privada.")
         body = {"model": self.model, "stream": True,
                 "messages": [{"role": "system", "content": turn.system}, *turn.messages]}
         try:
@@ -166,12 +186,37 @@ def _transcript(messages: list[dict]) -> str:
     return f"<conversacion_previa>\n{earlier}\n</conversacion_previa>\n\n{messages[-1]['content']}"
 
 
+def public_https(url: str | None) -> bool:
+    """An https address whose host is not this Mac nor a private network, judging by its name or literal IP."""
+    parsed = urlparse(url or "")
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or not host or host == "localhost" or host.endswith((".local", ".internal", ".localhost")):
+        return False
+    try:
+        return ipaddress.ip_address(host).is_global
+    except ValueError:
+        return "." in host
+
+
+def resolves_public(url: str) -> bool:
+    """Checked again right before sending: every address the name resolves to must be public."""
+    host = urlparse(url).hostname or ""
+    try:
+        addresses = {info[4][0] for info in socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)}
+    except OSError:
+        return False
+    return bool(addresses) and all(ipaddress.ip_address(a.split("%")[0]).is_global for a in addresses)
+
+
+def usable(engines: list[Engine], preferred: str | None = None) -> list[Engine]:
+    """Usable engines, the preferred one first."""
+    return [e for e in sorted(engines, key=lambda e: e.name != preferred) if e.available()]
+
+
 def choose(engines: list[Engine], preferred: str | None = None) -> Engine:
     """The preferred engine if it is usable, otherwise the first usable one in order."""
-    ordered = sorted(engines, key=lambda e: e.name != preferred)
-    for engine in ordered:
-        if engine.available():
-            return engine
+    for engine in usable(engines, preferred):
+        return engine
     raise EngineError(
         "No hay ningún motor disponible: inicia sesión en Claude Code, añade una clave de API de Anthropic "
         "o configura un proveedor compatible en Ajustes."

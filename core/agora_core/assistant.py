@@ -5,10 +5,11 @@ works). Tone changes wording only: figures, warnings and confirmations are alway
 """
 
 import json
+import re
 import sqlite3
 from dataclasses import asdict, dataclass
 
-from .engines import DEFAULT_MODEL, MODELS
+from .engines import DEFAULT_MODEL, MODELS, public_https
 
 
 @dataclass(frozen=True)
@@ -62,10 +63,15 @@ def load_settings(connection: sqlite3.Connection) -> dict:
     return result
 
 
-def save_settings(connection: sqlite3.Connection, changes: dict) -> dict:
-    """Validates and stores the assistant settings; unknown keys or values are refused."""
+def save_settings(connection: sqlite3.Connection, changes: dict) -> tuple[dict, bool]:
+    """Validates every change first and then stores them all in one transaction; unknown keys or values
+    are refused. Returns the settings and whether the compatible provider's address changed (its key must
+    then be forgotten, so it is never sent to a host it was not given for)."""
     current = load_settings(connection)
+    updated = {}
     for key, value in changes.items():
+        if key not in DEFAULTS:
+            raise SettingsError("Ajuste desconocido.")
         if key == "persona" and value not in PERSONAS:
             raise SettingsError("Personaje desconocido.")
         if key == "model" and value not in MODELS:
@@ -77,20 +83,27 @@ def save_settings(connection: sqlite3.Connection, changes: dict) -> dict:
                 raise SettingsError("Tono no válido.")
             value = {**current["tone"], **value}
         if key == "compatible":
-            base, model = (value or {}).get("baseUrl"), (value or {}).get("model")
-            if base is not None and (not isinstance(base, str) or not base.startswith("https://") or len(base) > 300):
-                raise SettingsError("La dirección del proveedor debe empezar por https://.")
+            value = {**current["compatible"], **(value or {})}
+            base, model = value.get("baseUrl"), value.get("model")
+            if base is not None and (not isinstance(base, str) or len(base) > 300 or not public_https(base)):
+                raise SettingsError("La dirección del proveedor debe ser https y pública (ni este Mac ni tu red local).")
             if model is not None and (not isinstance(model, str) or not 0 < len(model) <= 100):
                 raise SettingsError("Modelo del proveedor no válido.")
             value = {"baseUrl": base, "model": model}
-        if key not in DEFAULTS:
-            raise SettingsError("Ajuste desconocido.")
-        connection.execute(
-            "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-            (f"assistant.{key}", json.dumps(value)),
-        )
-        current[key] = value
-    return current
+        updated[key] = value
+    moved = "compatible" in updated and updated["compatible"]["baseUrl"] != current["compatible"]["baseUrl"]
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        for key, value in updated.items():
+            connection.execute(
+                "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                (f"assistant.{key}", json.dumps(value)),
+            )
+        connection.execute("COMMIT")
+    except BaseException:
+        connection.execute("ROLLBACK")
+        raise
+    return {**current, **updated}, moved
 
 
 def personas() -> list[dict]:
@@ -113,20 +126,24 @@ def system_prompt(settings: dict) -> str:
     )
 
 
-def context_block(results: list[dict]) -> str:
-    """The notes found for the question, numbered for citations and capped in size."""
+def context_block(results: list[dict]) -> tuple[str, int]:
+    """The notes found for the question, numbered for citations and capped in size. Returns the block and
+    how many notes it holds (the sources shown must be exactly those)."""
     if not results:
-        return "<notas>\n(no se encontraron notas relacionadas)\n</notas>"
+        return "<notas>\n(no se encontraron notas relacionadas)\n</notas>", 0
     parts, used = [], 0
     for n, result in enumerate(results, start=1):
-        # A note cannot close its own block and pose as instructions.
-        text = (result.get("text") or result.get("snippet") or "").replace("</nota", "‹/nota").replace("<nota", "‹nota")
+        # A note cannot close its own block and pose as instructions, whatever the letter case.
+        text = _TAG.sub("‹\\1nota", result.get("text") or result.get("snippet") or "")
         piece = f'<nota n="{n}" titulo="{_attr(result["title"])}" carpeta="{_attr(result["folder"])}">\n{text}\n</nota>'
         if used + len(piece) > CONTEXT_CHARS:
             break
         parts.append(piece)
         used += len(piece)
-    return "<notas>\n" + "\n".join(parts) + "\n</notas>"
+    return "<notas>\n" + "\n".join(parts) + "\n</notas>", len(parts)
+
+
+_TAG = re.compile(r"<(/?)\s*nota", re.I)
 
 
 def _attr(value: str | None) -> str:
