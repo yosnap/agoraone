@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import assistant
+from .brain_tools import Toolbox
 from .db import DB_NAME, connect, now
 from .embed import Embedder, VectorCache
 from .engines import (
@@ -23,7 +24,7 @@ from .search import search
 from .settings import Settings
 
 _OWNER = re.compile(r"[a-f0-9]{64}")
-HISTORY = 10
+HISTORY = 20
 SOURCES = 6
 
 
@@ -225,9 +226,10 @@ def assistant_router(
                 # Every engine runs outside this Mac: only what the external audience may see.
                 found = await db(lambda c: search(c, body.message, embedder, cache, "external", SOURCES, with_text=True)["results"])
                 context, included = assistant.context_block(found)
-                sources = [{"n": n, "title": r["title"], "folder": r["folder"], "source": r["source"], "ref": r["ref"]}
-                           for n, r in enumerate(found[:included], start=1)]
-                yield _event("sources", {"sources": sources})
+                # The first notes come with the question; the tools number the next ones after them.
+                toolbox = Toolbox(database, embedder, cache)
+                toolbox.register(found[:included])
+                yield _event("sources", {"sources": toolbox.sources})
                 yield _event("stage", {"stage": "piensa"})
                 candidates = await run_in_threadpool(lambda: usable(build_engines(current), current["engine"]))
                 if not candidates:
@@ -240,12 +242,17 @@ def assistant_router(
                 last_error = None
                 for engine in candidates:
                     model = current["compatible"]["model"] if engine.name == "compatible" else current["model"]
-                    turn = Turn(system, [*history, {"role": "user", "content": question}], model)
+                    turn = Turn(system, [*history, {"role": "user", "content": question}], model, toolbox)
                     parts = []
                     try:
                         # aclosing: if the browser leaves, the engine (and Claude Code's process) is closed too.
                         async with aclosing(engine.stream(turn)) as stream:
                             async for text in stream:
+                                if text is None:  # a tool round: say what was searched and read, for real
+                                    for done in toolbox.drain():
+                                        yield _event("tool", done)
+                                    yield _event("sources", {"sources": toolbox.sources})
+                                    continue
                                 if not parts:
                                     yield _event("stage", {"stage": "responde", "engine": engine.name, "model": model})
                                 parts.append(text)
@@ -260,6 +267,7 @@ def assistant_router(
                     if not reply:
                         last_error = EngineError("El motor no devolvió texto.")
                         continue
+                    sources = assistant.cited(reply, toolbox.sources)
                     await store(reply, sources, engine.name, model)
                     replied = True
                     yield _event("done", {"engine": engine.name, "model": model, "sources": len(sources)})

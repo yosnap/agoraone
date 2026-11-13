@@ -9,14 +9,21 @@ import type { NoteRef } from '../brain/note-reader';
 import { engineName, modelName, stageLabels } from './assistant-labels';
 import './assistant.css';
 
-type Live = { question: string; stage: Stage | null; sources: Source[]; text: string; engine?: string; model?: string };
+type Live = { question: string; stage: Stage | null; sources: Source[]; text: string; engine?: string; model?: string; steps: string[] };
+/** What Watson is doing right now, for the graph beside it: real events only. */
+export type Thinking = { stage: Stage | 'busca' | 'lee' | null; label: string; reading: string[] } | null;
 const noLinks = () => null;
+const sourceId = (source: Source) => `${source.source}/${source.ref}`;
+const lastSources = (messages: AssistantMessage[]) => [...messages].reverse().find(message => message.role === 'assistant')?.sources.map(sourceId) ?? [];
 
 /** Watson (or the chosen character): conversations kept in the brain, answers streamed with their real stages,
  * the engine and model that answered, and the notes cited, which open as books or light up on the graph. */
-export function AssistantView({ question, onQuestionTaken, onRead, onShowOnGraph }: {
-  question: string | null; onQuestionTaken: () => void; onRead: (note: NoteRef) => void; onShowOnGraph: (ids: string[]) => void;
+export function AssistantView({ question = null, onQuestionTaken, onRead, onShowOnGraph, embedded = false, onSources, onThinking }: {
+  question?: string | null; onQuestionTaken?: () => void; onRead: (note: NoteRef) => void; onShowOnGraph?: (ids: string[]) => void;
+  /** Beside the graph: conversations fold into a menu and cited notes light up on their own. */
+  embedded?: boolean; onSources?: (ids: string[]) => void; onThinking?: (thinking: Thinking) => void;
 }) {
+  const [listOpen, setListOpen] = useState(!embedded);
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const [listError, setListError] = useState('');
   const [current, setCurrent] = useState<number | null>(null);
@@ -43,7 +50,8 @@ export function AssistantView({ question, onQuestionTaken, onRead, onShowOnGraph
   const open = useCallback(async (id: number) => {
     abort.current?.abort();
     setCurrent(id); setLive(null); setError(''); setLoading(true);
-    try { setMessages((await getAssistantConversation(id)).messages); }
+    if (embedded) setListOpen(false);
+    try { const found = (await getAssistantConversation(id)).messages; setMessages(found); onSources?.(lastSources(found)); }
     catch (failure) { setMessages([]); setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.'); }
     finally { setLoading(false); }
   }, []);
@@ -54,45 +62,57 @@ export function AssistantView({ question, onQuestionTaken, onRead, onShowOnGraph
       if (id === null) { id = (await createAssistantConversation()).id; shownId.current = id; setCurrent(id); setMessages([]); }
       const controller = new AbortController();
       abort.current = controller;
-      setLive({ question: text, stage: null, sources: [], text: '' });
-      await askAssistant(id, text, event => setLive(previous => previous && (
+      setLive({ question: text, stage: null, sources: [], text: '', steps: [] });
+      const reading: string[] = [];
+      await askAssistant(id, text, event => {
+        if (event.kind === 'stage') onThinking?.({ stage: event.stage, label: stageLabels[event.stage], reading });
+        else if (event.kind === 'tool' && event.tool === 'search') onThinking?.({ stage: 'busca', label: `Buscando «${event.query}»`, reading });
+        else if (event.kind === 'tool' && event.tool === 'read') { reading.push(event.id); onThinking?.({ stage: 'lee', label: `Leyendo «${event.title}»`, reading: [...reading] }); }
+        setLive(previous => previous && (
         event.kind === 'stage' ? { ...previous, stage: event.stage, engine: event.engine ?? previous.engine, model: event.model ?? previous.model }
-          : event.kind === 'sources' ? { ...previous, sources: event.sources }
-          : event.kind === 'delta' ? { ...previous, text: previous.text + event.text } : previous)), controller.signal);
+          : event.kind === 'sources' ? (onSources?.(event.sources.map(sourceId)), { ...previous, sources: event.sources })
+          : event.kind === 'delta' ? { ...previous, text: previous.text + event.text }
+          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : `Leyó [${event.n}] ${event.title}`] }
+          : previous));
+      }, controller.signal);
     } catch (failure) {
       if (!(failure instanceof DOMException && failure.name === 'AbortError')) setError(failure instanceof Error ? failure.message : 'No se pudo responder.');
     } finally {
       abort.current = null;
+      onThinking?.(null);
       if (id !== null && shownId.current === id) { try { setMessages((await getAssistantConversation(id)).messages); } catch { /* the error above is enough */ } }
       if (id === null || shownId.current === id) setLive(null);
       void refreshList();
     }
-  }, [refreshList]);
+  }, [refreshList, onSources]);
   // A question asked from the brain's page starts a new conversation, once.
-  useEffect(() => { if (question) { onQuestionTaken(); void send(question, null); } }, [question, onQuestionTaken, send]);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [messages, live?.text, live?.stage]);
+  useEffect(() => { if (question) { onQuestionTaken?.(); void send(question, null); } }, [question, onQuestionTaken, send]);
+  // Only the message list scrolls (scrollIntoView would also move the page around it).
+  useEffect(() => { const list = end.current?.parentElement; if (list) list.scrollTop = list.scrollHeight; }, [messages, live?.text, live?.stage, live?.steps.length]);
   const submit = (event?: FormEvent) => { event?.preventDefault(); const text = draft.trim(); if (!text || live) return; setDraft(''); void send(text, current); };
-  const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); submit(); } };
-  const fresh = () => { abort.current?.abort(); setCurrent(null); setMessages([]); setLive(null); setError(''); };
+  // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
+  const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
+  const fresh = () => { abort.current?.abort(); setCurrent(null); setMessages([]); setLive(null); setError(''); onSources?.([]); if (embedded) setListOpen(false); };
   const sourceList = (sources: Source[]) => sources.length > 0 && <div className="sources">
     <span className="muted">Fuentes</span>
     <ol>{sources.map(source => <li key={source.n} value={source.n}><button onClick={() => onRead({ vault: source.source, note: source.ref })}>{source.title}</button><small>{source.folder || 'Raíz'}</small></li>)}</ol>
-    <button className="button" onClick={() => onShowOnGraph(sources.map(source => `${source.source}/${source.ref}`))}>Ver en el cerebro</button>
+    {onShowOnGraph && <button className="button" onClick={() => onShowOnGraph(sources.map(sourceId))}>Ver en el cerebro</button>}
   </div>;
   const name = persona?.name ?? 'Watson';
-  return <section className="assistant" aria-labelledby="assistant-title">
-    <aside className="assistant-list" aria-label="Conversaciones">
+  return <section className={`assistant${embedded ? ' embedded' : ''}`} aria-labelledby="assistant-title">
+    {listOpen && <aside className="assistant-list" aria-label="Conversaciones">
       <button className="button primary" onClick={fresh}>Conversación nueva</button>
       {listError ? <LoadError message={listError} onRetry={refreshList}/> : !conversations ? <Loading label="Cargando conversaciones" lines={4}/>
         : !conversations.length ? <p className="muted">Aún no hay conversaciones.</p>
         : <ul>{conversations.map(item => <li key={item.id}><button aria-current={item.id === current ? 'true' : undefined} onClick={() => void open(item.id)}>
           <strong>{item.title}</strong><small>{new Date(item.updated_at).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}</small>
         </button></li>)}</ul>}
-    </aside>
+    </aside>}
     <div className="assistant-main">
       <header className="assistant-head">
         <div><div className="eyebrow">ASISTENTE</div><h1 id="assistant-title">{name}</h1>
           {persona && <p className="muted">{persona.conveys}. Inspirado en {persona.origin}.</p>}</div>
+        {embedded && <div className="actions"><button className="button" aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)}>Conversaciones</button><button className="button" onClick={fresh}>Nueva</button></div>}
         <span className={`chip ${engine?.active ? 'good' : engine ? 'bad' : ''}`} role="status">
           {!engine ? 'Comprobando motor…' : engine.active ? `${engineName(engine.active)} · ${modelName(engine.model)}` : 'Sin motor disponible'}</span>
       </header>
@@ -110,6 +130,7 @@ export function AssistantView({ question, onQuestionTaken, onRead, onShowOnGraph
         {live && <>
           <article className="assistant-message user"><strong>Tú</strong><p>{live.question}</p></article>
           <article className="assistant-message assistant" aria-busy="true"><strong>{name}</strong>
+            {live.steps.length > 0 && <ol className="assistant-steps">{live.steps.map((step, index) => <li key={index}>{step}</li>)}</ol>}
             {live.text ? <Markdown source={live.text} resolve={noLinks}/> : <p className="muted">{live.stage ? stageLabels[live.stage] : 'Enviando…'}</p>}
             {live.engine && <small className="muted">{stageLabels.responde.replace('…', '')} con {engineName(live.engine)}{live.model ? ` · ${modelName(live.model)}` : ''}</small>}
             {sourceList(live.sources)}
@@ -121,11 +142,11 @@ export function AssistantView({ question, onQuestionTaken, onRead, onShowOnGraph
       <form className="assistant-form" onSubmit={submit}>
         <label htmlFor="assistant-input" className="visually-hidden">Pregunta para {name}</label>
         <textarea id="assistant-input" value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={keys} maxLength={8000}
-          placeholder={`Pregunta a ${name}…`} aria-keyshortcuts="Meta+Enter Control+Enter"/>
+          placeholder={`Pregunta a ${name}…`} aria-keyshortcuts="Enter"/>
         <div className="actions">
           {live ? <button type="button" className="button" onClick={() => abort.current?.abort()}>Detener</button>
             : <button className="button primary" disabled={!draft.trim()}>Enviar</button>}
-          <small className="muted">⌘/Ctrl + Enter envía</small>
+          <small className="muted">Enter envía · Mayús + Enter, nueva línea</small>
         </div>
       </form>
     </div>

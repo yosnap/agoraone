@@ -2,12 +2,12 @@
 .settings-side { display:flex; flex-direction:column; gap:16px; min-width:0 }
 .persona-picker { border:0; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px }
 .persona-picker legend { margin-bottom:6px }
-.persona-option { position:relative; display:flex; flex-direction:column; gap:3px; border:1px solid #dfe3d6; border-radius:12px; padding:10px 12px; background:#fffffa; cursor:pointer }
-.persona-option.chosen { border-color:#244e42; box-shadow:0 0 0 1px #244e42 inset; background:#f1f5ee }
+.persona-option { position:relative; display:flex; flex-direction:column; gap:3px; border:1px solid var(--c-dfe3d6); border-radius:12px; padding:10px 12px; background:var(--c-fffffa); cursor:pointer }
+.persona-option.chosen { border-color:var(--c-244e42); box-shadow:0 0 0 1px var(--c-244e42) inset; background:var(--c-f1f5ee) }
 .persona-option input { position:absolute; opacity:0; pointer-events:none }
-.persona-option:focus-within { outline:3px solid #ae7827; outline-offset:2px }
+.persona-option:focus-within { outline:3px solid var(--c-ae7827); outline-offset:2px }
 .persona-option strong { font-size:13px }
-.persona-option small { font-size:10px; line-height:1.4; color:#4c6b62 }
+.persona-option small { font-size:10px; line-height:1.4; color:var(--c-4c6b62) }
 .tone-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px }
-.engine-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; font-size:12px; color:#355a50 }
-.rule-folder { width:100%; min-width:120px; border:1px solid #cbd6c9; border-radius:8px; padding:7px 9px; font:inherit; font-size:12px; background:#fffffa; color:#173d3c }
+.engine-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--c-355a50) }
+.rule-folder { width:100%; min-width:120px; border:1px solid var(--c-cbd6c9); border-radius:8px; padding:7px 9px; font:inherit; font-size:12px; background:var(--c-fffffa); color:var(--c-173d3c) }

@@ -1,22 +1,26 @@
+/* Deep surfaces (rail, code, the ask box) are dark in both themes, so they get their own pair of values. */
+:root, [data-theme="light"] { --deep:#173d3c; --deep-text:#e8efe4; --deep-edge:transparent; --deep-active:#f6f2e2; --deep-active-text:#173d3c; --deep-field:#fffffa; --deep-field-text:#173d3c }
+:root[data-theme="dark"] { --deep:#07111c; --deep-text:#cfe3ea; --deep-edge:#1c3346; --deep-active:#12354a; --deep-active-text:#7fe3f0; --deep-field:#0d1d2b; --deep-field-text:#e3eef2 }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --deep:#07111c; --deep-text:#cfe3ea; --deep-edge:#1c3346; --deep-active:#12354a; --deep-active-text:#7fe3f0; --deep-field:#0d1d2b; --deep-field-text:#e3eef2 } }
 /* The frame: a narrow rail on the left and the section beside it; on phones the rail becomes a bottom bar. */
-.shell { display:grid; grid-template-columns:84px minmax(0,1fr); height:100dvh; background:#eef0e6 }
+.shell { display:grid; grid-template-columns:84px minmax(0,1fr); height:100dvh; background:var(--c-eef0e6) }
 .shell-content { position:relative; min-width:0; min-height:0; overflow:hidden }
 .shell-content > main { height:100%; min-height:0 }
 .shell-content > main[hidden] { display:none }
 
-.rail { display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:14px 8px; background:#173d3c; color:#e8efe4; overflow-y:auto; z-index:30 }
-.rail-brand { display:grid; place-items:center; height:46px; margin-bottom:8px; color:#fff9e7; font:800 30px Manrope,sans-serif; text-decoration:none }
+.rail { display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:14px 8px; background:var(--deep); color:var(--deep-text); border-right:1px solid var(--deep-edge); overflow-y:auto; z-index:30 }
+.rail-brand { display:grid; place-items:center; height:46px; margin-bottom:8px; color:var(--deep-text); font:800 30px Manrope,sans-serif; text-decoration:none }
 .rail-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px }
-.rail-later { margin-top:10px; padding-top:10px; border-top:1px solid #ffffff1f }
+.rail-later { margin-top:10px; padding-top:10px; border-top:1px solid var(--c-ffffff1f) }
 .rail-foot { margin-top:auto; display:flex; flex-direction:column; gap:4px; padding-top:10px }
 .rail-item { width:100%; display:flex; flex-direction:column; align-items:center; gap:4px; border:1px solid transparent; border-radius:12px; background:none; color:inherit; padding:9px 2px; font-size:10px; line-height:1.2 }
-.rail-item:hover { background:#ffffff14 }
-.rail-item[aria-current="page"] { background:#f6f2e2; color:#173d3c }
+.rail-item:hover { background:var(--c-ffffff14) }
+.rail-item[aria-current="page"] { background:var(--deep-active); color:var(--deep-active-text) }
 .rail-icon { font-size:18px; line-height:1 }
 .rail-pending { opacity:.55 }
 .rail-pending .rail-label::after { content:'·'; margin-left:2px }
-.rail-discreet[aria-pressed="true"] { border-color:#e2bf72; color:#f3d690 }
-.rail-item:focus-visible, .rail-brand:focus-visible { outline:3px solid #e2bf72; outline-offset:1px }
+.rail-discreet[aria-pressed="true"] { border-color:var(--c-e2bf72); color:var(--c-f3d690) }
+.rail-item:focus-visible, .rail-brand:focus-visible { outline:3px solid var(--c-e2bf72); outline-offset:1px }
 
 @media (max-width:850px) {
   .shell { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto }
@@ -28,6 +32,10 @@
   .rail-item { width:64px; flex:none; padding:6px 2px }
 }
 
-.note-reader-error { position:fixed; inset:0; margin:auto; width:min(420px,calc(100vw - 32px)); height:fit-content; background:#f9f8f0; border-radius:14px; padding:20px; z-index:60; box-shadow:0 20px 60px #193f4044; display:flex; flex-direction:column; gap:12px }
+.note-reader-error { position:fixed; inset:0; margin:auto; width:min(420px,calc(100vw - 32px)); height:fit-content; background:var(--c-f9f8f0); border-radius:14px; padding:20px; z-index:60; box-shadow:0 20px 60px var(--c-193f4044); display:flex; flex-direction:column; gap:12px }
 .rail-item { position:relative }
-.rail-alert { position:absolute; top:4px; right:12px; color:#f0b45a; font-size:12px; line-height:1 }
+.rail-alert { position:absolute; top:4px; right:12px; color:var(--c-f0b45a); font-size:12px; line-height:1 }
+:root { color-scheme:light }
+:root[data-theme="dark"] { color-scheme:dark }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme:dark } }
+body { background:var(--c-eef0e6) }

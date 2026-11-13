@@ -1,4 +1,9 @@
+import { useState } from 'react';
 import type { Section } from './shell-state';
+import { applyTheme, readTheme, themeLabels, type ThemeChoice } from './theme';
+
+const themeOrder: ThemeChoice[] = ['system', 'light', 'dark'];
+const themeIcons: Record<ThemeChoice, string> = { system: '◑', light: '☀', dark: '☾' };
 
 type Item = { id: Section; label: string; icon: string; pending?: boolean };
 
@@ -24,6 +29,8 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
   /** A profile chat in the office waiting for «Permitir», shown while another section is on screen. */
   waiting: string | null;
 }) {
+  const [theme, setTheme] = useState(readTheme);
+  const nextTheme = () => { const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length]; applyTheme(next); setTheme(next); };
   const button = (item: Item) => <li key={item.id}><button className={`rail-item${item.pending ? ' rail-pending' : ''}`}
     aria-current={section === item.id ? 'page' : undefined} onClick={() => onSection(item.id)} title={item.pending ? `${item.label}: pendiente` : item.label}>
     <span className="rail-icon" aria-hidden="true">{item.icon}</span><span className="rail-label">{item.label}</span>
@@ -38,6 +45,9 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
       <button className="rail-item rail-discreet" aria-pressed={discreet} onClick={() => onDiscreet(!discreet)}
         title={discreet ? 'Modo discreto activo: solo se ven las notas normales' : 'Modo discreto: ocultar lo privado y lo solo-local de la pantalla'}>
         <span className="rail-icon" aria-hidden="true">{discreet ? '◐' : '○'}</span><span className="rail-label">Discreto</span>
+      </button>
+      <button className="rail-item" onClick={nextTheme} title={`${themeLabels[theme]} · pulsa para cambiar`} aria-label={`${themeLabels[theme]}. Cambiar tema`}>
+        <span className="rail-icon" aria-hidden="true">{themeIcons[theme]}</span><span className="rail-label">Tema</span>
       </button>
       <button className="rail-item" aria-current={section === 'settings' ? 'page' : undefined} onClick={() => onSection('settings')} title="Ajustes">
         <span className="rail-icon" aria-hidden="true">⚙</span><span className="rail-label">Ajustes</span>
