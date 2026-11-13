@@ -12,8 +12,13 @@ from .app import create_app
 from .settings import SettingsError, load_settings
 
 
-def _port_free(host: str, port: int) -> bool:
+BACKEND_PID_ENV = "AGORA_BACKEND_PID"
+
+
+def port_free(host: str, port: int) -> bool:
+    """Igual que uvicorn (SO_REUSEADDR): las conexiones en TIME_WAIT de un arranque anterior no cuentan."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind((host, port))
         except OSError:
@@ -21,13 +26,27 @@ def _port_free(host: str, port: int) -> bool:
     return True
 
 
-def _exit_with_parent() -> None:
+def alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def backend_pid(env: dict[str, str]) -> int:
+    """El backend se identifica por su PID: entre ambos está `uv run`, así que el padre directo no sirve."""
+    value = env.get(BACKEND_PID_ENV, "")
+    return int(value) if value.isdigit() else os.getppid()
+
+
+def _exit_with_backend(pid: int) -> None:
     """Si el backend muere sin avisar, el núcleo termina solo en lugar de quedar huérfano."""
-    parent = os.getppid()
-    while True:
+    while alive(pid):
         time.sleep(2)
-        if os.getppid() != parent:
-            os._exit(0)
+    os._exit(0)
 
 
 def main() -> int:
@@ -36,14 +55,14 @@ def main() -> int:
     except SettingsError as error:
         print(error, file=sys.stderr)
         return 2
-    if not _port_free(settings.host, settings.port):
+    if not port_free(settings.host, settings.port):
         print(
             f"El puerto {settings.port} está ocupado: ya hay un núcleo de AgoraOne en marcha u otro "
             "proceso lo usa. Detenlo antes de arrancar de nuevo.",
             file=sys.stderr,
         )
         return 3
-    threading.Thread(target=_exit_with_parent, daemon=True).start()
+    threading.Thread(target=_exit_with_backend, args=(backend_pid(dict(os.environ)),), daemon=True).start()
     uvicorn.run(
         create_app(settings), host=settings.host, port=settings.port,
         log_level="warning", server_header=False, date_header=False,
