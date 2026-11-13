@@ -4,7 +4,10 @@ import { createServer, request as httpRequest, type IncomingMessage, type Server
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import express from 'express';
 import { createApp } from './app';
+import { coreProxy } from './core-proxy';
+import { coreEnvironment } from './core-process';
 import { BackgroundReads } from './background-reads';
 
 const token = 'f'.repeat(64);
@@ -36,6 +39,13 @@ async function fakeCore() {
     let body = '';
     req.setEncoding('utf8').on('data', chunk => { body += chunk; }).on('end', () => {
       seen.push({ method: req.method, url: req.url, headers: req.headers, body });
+      if (req.url === '/hang') return;
+      if (req.url === '/stale') { res.writeHead(401, { 'content-type': 'application/json' }); return res.end('{"error":"x"}'); }
+      if (req.url === '/slow') {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.write('data: uno\n\n'); setTimeout(() => res.end('data: dos\n\n'), 300);
+        return;
+      }
       if (req.url === '/events') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'set-cookie': 'core=1' });
         res.write('data: uno\n\n'); setTimeout(() => res.end('data: dos\n\n'), 20);
@@ -142,4 +152,34 @@ test('las rutas de la API con otras mayúsculas no esquivan la cookie de acceso 
     assert.ok([401, 403, 404].includes(posted.status), `POST respondió ${posted.status}`);
     assert.equal(core.seen.length, 0, 'nada llega al núcleo');
   } finally { await app.close(); await core.close(); }
+});
+
+test('el núcleo recibe solo el entorno mínimo, nunca las claves del backend', () => {
+  const env = coreEnvironment(secret, 1234, { PATH: '/bin', HOME: '/h', AGORA_API_KEY: 'clave', ANTHROPIC_API_KEY: 'otra', AGORA_BASE_URL: 'u', HTTPS_PROXY: 'p' });
+  assert.deepEqual(Object.keys(env).sort(), ['AGORA_BACKEND_PID', 'AGORA_CORE_SECRET', 'HOME', 'HTTPS_PROXY', 'PATH', 'PYTHONUNBUFFERED']);
+  assert.equal(env.AGORA_BACKEND_PID, '1234');
+});
+
+test('métodos no admitidos y un núcleo de otro arranque dan errores propios', async () => {
+  const core = await fakeCore();
+  const app = await agora(core.url);
+  try {
+    assert.equal((await app.call('/api/core/health', { method: 'OPTIONS' })).status, 405);
+    const stale = await app.call('/api/core/stale');
+    assert.equal(stale.status, 503, 'un 401 del núcleo no se confunde con perder la cookie');
+    assert.match(JSON.parse(stale.text).error, /otro arranque/);
+  } finally { await app.close(); await core.close(); }
+});
+
+test('el tiempo límite cubre la espera de la respuesta, no la duración de un flujo', async () => {
+  const core = await fakeCore();
+  const proxy = express().use((_req, res, next) => { res.locals.owner = 'a'.repeat(64); next(); }).use(coreProxy({ url: core.url, secret }, 100));
+  const http = proxy.listen(0, '127.0.0.1');
+  await new Promise<void>(resolve => http.once('listening', resolve));
+  const url = await listen(http);
+  try {
+    const slow = await send(`${url}/slow`);
+    assert.equal(slow.text, 'data: uno\n\ndata: dos\n\n', 'el flujo sigue pasado el tiempo límite');
+    assert.equal((await send(`${url}/hang`)).status, 503, 'sin respuesta a tiempo, 503');
+  } finally { http.closeAllConnections(); await new Promise<void>(resolve => http.close(() => resolve())); await core.close(); }
 });

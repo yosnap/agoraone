@@ -5,6 +5,7 @@ import { Readable } from 'node:stream';
 export type CoreLink = { url: string; secret: string };
 
 const maxBody = 1024 * 1024;
+const methods = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const forwardedRequestHeaders = ['content-type', 'accept', 'last-event-id'];
 const forwardedResponseHeaders = ['content-type', 'content-disposition'];
 
@@ -31,6 +32,7 @@ async function readBody(req: Request) {
 export function coreProxy(link: CoreLink | undefined, timeoutMs = 120_000) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!link) return unavailable(res);
+    if (!methods.has(req.method)) return res.status(405).json({ error: 'Método no admitido.' });
     // Only the path and query of the request: a path such as //host cannot change where it goes.
     const requested = new URL(req.url, 'http://core.invalid');
     const target = new URL(link.url);
@@ -45,24 +47,32 @@ export function coreProxy(link: CoreLink | undefined, timeoutMs = 120_000) {
       if (typeof value === 'string') headers[name] = value;
     }
     const abort = new AbortController();
+    // The time limit covers waiting for the core's answer to start; a stream may then last as long as the
+    // browser keeps it open (closing it aborts the request to the core).
     const timer = setTimeout(() => abort.abort(), timeoutMs);
     res.on('close', () => abort.abort());
     let upstream: globalThis.Response;
     try {
       upstream = await fetch(target, { method: req.method, headers, body, signal: abort.signal, redirect: 'manual' });
     } catch {
-      clearTimeout(timer);
       return res.headersSent ? res.end() : unavailable(res);
+    } finally {
+      clearTimeout(timer);
+    }
+    // A 401 from the core means it does not hold this start's secret (e.g. a core left from another start),
+    // not that the browser lost its access cookie.
+    if (upstream.status === 401) {
+      await upstream.body?.cancel();
+      return res.status(503).json({ error: 'El núcleo en marcha pertenece a otro arranque de AgoraOne. Reinicia AgoraOne.' });
     }
     res.status(upstream.status);
     for (const name of forwardedResponseHeaders) {
       const value = upstream.headers.get(name);
       if (value) res.setHeader(name, value);
     }
-    if (!upstream.body) { clearTimeout(timer); return res.end(); }
+    if (!upstream.body) return res.end();
     Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream)
-      .on('error', error => { clearTimeout(timer); if (!res.headersSent) next(error); else res.end(); })
-      .on('end', () => clearTimeout(timer))
+      .on('error', error => { if (!res.headersSent) next(error); else res.end(); })
       .pipe(res);
   };
 }
