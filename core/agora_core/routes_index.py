@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from .db import DB_NAME, connect
 from .embed import Embedder, VectorCache, embed_pending
 from .graph import graph
+from . import entities as entity_index
 from .index import Note, RuleError, remove_notes, replace_folder_rules, state, status, upsert_notes
 from .search import search
 from .settings import Settings
@@ -93,7 +94,7 @@ def _open(settings: Settings):
         connection.close()
 
 
-def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCache, health: EmbedHealth) -> APIRouter:
+def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCache, health: EmbedHealth, extract_health=None) -> APIRouter:
     router = APIRouter()
 
     def run(work):
@@ -130,7 +131,8 @@ def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCac
     @router.get("/index/status")
     async def index_status():
         result = await run(status)
-        return {**result, "semanticSearch": embedder is not None and health.ok, "semanticProblem": health.problem}
+        extraction = await run(entity_index.status)
+        return {**result, "semanticSearch": embedder is not None and health.ok, "semanticProblem": health.problem, "entities": {**extraction, "problem": getattr(extract_health, "problem", None)}}
 
     @router.get("/index/folder-rules")
     async def folder_rules():
@@ -156,8 +158,9 @@ def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCac
         return await run(lambda c: search(c, q, embedder, cache, audience, limit))
 
     @router.get("/graph")
-    async def brain_graph(discreet: bool = Query(False), near: bool = Query(True)):
+    async def brain_graph(discreet: bool = Query(False), near: bool = Query(True), entities: bool = Query(False),
+                          tags: bool = Query(False), folders: bool = Query(False)):
         """For the owner's screen only: never sent to a model."""
-        return await run(lambda c: graph(c, embedder, cache, discreet, near))
+        return await run(lambda c: graph(c, embedder, cache, discreet, near, entities, tags, folders))
 
     return router

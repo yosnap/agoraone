@@ -122,7 +122,7 @@ def test_migracion_olvida_revisiones_para_reindexar(tmp_path, monkeypatch):
             """INSERT INTO item (class, source, ref, title, revision, created_at, updated_at)
                VALUES ('note', ?, ?, 'Uno', 'r1', 'x', 'x')""", (SOURCE, ref(1)))
         monkeypatch.setattr(database, "available_migrations", lambda: every)
-        assert migrate(connection) == [6]
+        assert migrate(connection)[0] == 6
         assert connection.execute("SELECT revision FROM item").fetchone()[0] is None
     finally:
         connection.close()

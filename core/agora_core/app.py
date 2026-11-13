@@ -24,6 +24,8 @@ from .embed import DEFAULT_MODEL, DEFAULT_URL, Embedder, OllamaEmbedder, VectorC
 from .keystore import KeychainStore, KeyStore, recovery_pending
 from .routes_addons import addons_router
 from .routes_assistant import KeychainSecrets, assistant_router, default_engines
+from .entity_worker import ExtractHealth, entity_worker
+from .engines import AnthropicApiEngine, ClaudeCodeEngine
 from .routes_index import EmbedHealth, embed_worker, index_router
 from .routes_summary import summary_router
 from .settings import DEFAULT_DATA, Settings
@@ -57,6 +59,8 @@ def create_app(
         embedder = OllamaEmbedder(DEFAULT_URL, DEFAULT_MODEL)
     cache = VectorCache()
     embed_health = EmbedHealth()
+    extract_health = ExtractHealth()
+    secrets = secrets or KeychainSecrets()
     expected = settings.secret.encode()
 
     @asynccontextmanager
@@ -73,6 +77,9 @@ def create_app(
             threading.Thread(target=_daily_backups, args=(settings, store, stop), daemon=True).start()
             if embedder is not None:
                 threading.Thread(target=embed_worker, args=(settings, embedder, stop, embed_health), daemon=True).start()
+            # Entities of normal notes, read by Claude Haiku (user's decision, 13/11/2026).
+            extract_engines = lambda: [ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)]  # noqa: E731
+            threading.Thread(target=entity_worker, args=(settings, extract_engines, stop, extract_health), daemon=True).start()
         try:
             yield
         finally:
@@ -139,8 +146,8 @@ def create_app(
             return JSONResponse({"error": f"No se pudo hacer la copia: {error}"}, status_code=503)
         return {"name": made.name, "kind": made.kind}
 
-    app.include_router(index_router(settings, embedder, cache, embed_health))
+    app.include_router(index_router(settings, embedder, cache, embed_health, extract_health))
     app.include_router(addons_router(settings))
     app.include_router(summary_router(settings, time.time()))
-    app.include_router(assistant_router(settings, embedder, cache, secrets or KeychainSecrets(), engines))
+    app.include_router(assistant_router(settings, embedder, cache, secrets, engines))
     return app
