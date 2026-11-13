@@ -47,10 +47,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await book.getByRole('button', { name: 'Cerrar libro' }).click();
   await book.waitFor({ state: 'detached' });
   await page.locator('.vault-crumbs button').first().click();
-  await page.getByLabel('Buscar').fill('zz-no-existe-en-el-vault');
+  await page.getByLabel('Buscar', { exact: true }).fill('zz-no-existe-en-el-vault');
   await page.getByRole('button', { name: 'Buscar en el contenido' }).click();
   await page.getByText(/No hay notas que contengan/).waitFor();
-  await page.getByLabel('Buscar').fill('');
+  await page.getByLabel('Buscar', { exact: true }).fill('');
   await page.getByRole('button', { name: 'Entrar en el vault →' }).click();
   await page.getByText(/^05 \/ VAULT /).waitFor();
   if (shots && viewport.width > 800) { await page.waitForTimeout(6000); await page.screenshot({ path: `${shots}/vault-room.png` }); }

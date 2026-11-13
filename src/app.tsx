@@ -1,6 +1,6 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { catalogPlaces, servicePlaces } from './data/city';
-import { ApiError, getStatus, getHermesCatalog, type Status, type DocumentSource } from './api/client';
+import { getHermesCatalog, type Status, type DocumentSource } from './api/client';
 import { LibraryPanel } from './ui/library-panel';
 import { HermesPanel, type ProfileTab } from './ui/hermes-panel';
 import { sceneCopy } from './ui/scene-copy';
@@ -35,10 +35,11 @@ class WorldBoundary extends Component<{ children: ReactNode }, { failed: boolean
   render() { return this.state.failed ? <div className="canvas-fallback" role="alert">No se pudo cargar la ciudad 3D. Recarga la página; el directorio y el chat siguen disponibles.</div> : this.props.children; }
 }
 
-export default function App() {
+/** The city, now the «Oficina 3D» of the shell: it stays mounted once visited (chats in progress and their
+ * «Permitir» are never lost) and its scene stops drawing while another section is on screen. */
+export function Office({ status, active }: { status: Status | null; active: boolean }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [firstPerson, setFirstPerson] = useState(false);
-  const [status, setStatus] = useState<Status | null>(null);
   const [connected, setConnected] = useState(false);
   const [catalog, setCatalog] = useState<HermesCatalog | null>(null);
   const [catalogError, setCatalogError] = useState('');
@@ -66,8 +67,6 @@ export default function App() {
     previous[id]?.busy === state.busy && previous[id]?.approvals === state.approvals ? previous : { ...previous, [id]: state }), []);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [walkHint, setWalkHint] = useState('Entrar al recorrido · flechas o WASD / ratón · Esc para salir');
-  useEffect(() => { getStatus().then(setStatus).catch(error => setStatus(error instanceof ApiError && error.status === 401
-    ? { state: 'locked', csrf: '', detail: error.message } : { state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con npm run dev.' })); }, []);
   useEffect(() => {
     if (!status?.csrf) return;
     let live = true;
@@ -199,6 +198,7 @@ export default function App() {
   // Fields, editors, menus and the book handle their own Esc first.
   useEffect(() => {
     const back = (event: KeyboardEvent) => {
+      if (!active) return;
       if (event.key !== 'Escape' || event.defaultPrevented || window.document.querySelector('dialog[open]')) return;
       if (event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable="true"]')) return;
       if (selected) setSelected(null); else if (logOpen) setLogOpen(false); else if (indoors || firstPerson) exit(); else return;
@@ -207,8 +207,8 @@ export default function App() {
     window.addEventListener('keydown', back);
     return () => window.removeEventListener('keydown', back);
   });
-  return <main className={indoors || daylight.night > 0.5 ? 'inside-world' : undefined}>
-    <div className="world"><WorldBoundary><Suspense fallback={<div className="canvas-fallback" role="status">Cargando la ciudad…</div>}><City places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected || bookOpen} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf} onBook={id => vaultRoom && openBook(vaultRoom, id)}/></Suspense></WorldBoundary></div>
+  return <main hidden={!active} className={indoors || daylight.night > 0.5 ? 'inside-world' : undefined}>
+    <div className="world"><WorldBoundary><Suspense fallback={<div className="canvas-fallback" role="status">Cargando la ciudad…</div>}><City paused={!active} places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected || bookOpen} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf} onBook={id => vaultRoom && openBook(vaultRoom, id)}/></Suspense></WorldBoundary></div>
     <header className="topbar"><a className="brand" href="/">a<span>AGORA<span className="brand-light">ONE</span></span></a>{crumbs.length > 1 ? <Breadcrumbs crumbs={crumbs}/> : <span className="top-note">TU MUNDO, EN UN LUGAR</span>}<div className="local-status"><i/> LOCAL · MAC</div></header>
     <section className={`intro ${indoors || daylight.night > 0.5 ? 'interior-intro' : ''}`}><div className="eyebrow">{copy.eyebrow}</div><h1>{copy.title}</h1><p>{copy.text}</p></section>
     <nav className="view-switch" aria-label="Modo de cámara"><button className={!firstPerson ? 'active' : ''} aria-label="Vista ciudad" onClick={exit}><span aria-hidden="true">↗</span> <span className="view-label">Vista ciudad</span></button><button className={firstPerson ? 'active' : ''} aria-label="Primera persona" onClick={() => setFirstPerson(true)}><span aria-hidden="true">◎</span> <span className="view-label">Primera persona</span></button>
@@ -232,14 +232,9 @@ export default function App() {
     </aside>)}
     {waitingPlace && <div className="approval-toast" role="alert"><span>{catalog?.profiles.find(profile => profile.id === waitingPlace.id)?.label ?? 'Luma'} espera tu permiso para usar una herramienta.</span><button onClick={() => openChat(waitingPlace.id)}>Ver conversación</button></div>}
     {firstPerson && kind === 'city' && <CityMinimap places={places} onSelect={select}/>}
-    <CommandPalette commands={commands} open={paletteOpen} onOpen={setPaletteOpen}/>
+    <CommandPalette commands={commands} open={paletteOpen} onOpen={setPaletteOpen} enabled={active}/>
     {bookOpen && book && vault.listing && <VaultBook vaultId={book.vault} vaultName={vault.listing.vault.name} noteId={book.note} notes={vault.listing.notes}
       onOpen={turnPage} onClose={closeBook} targets={consultTargets} onConsult={consult} onChanged={vault.reload} startEditing={book.edit}/>}
-    {status?.state === 'locked' && <section className="access-lock" role="alertdialog" aria-label="Acceso a AgoraOne">
-      <h2>Falta el enlace de acceso</h2>
-      <p>Para que ninguna otra app ni otro usuario de este ordenador pueda usar AgoraOne con tus credenciales, la primera vez hay que entrar con un enlace privado. Después este navegador lo recuerda.</p>
-      <p>Ábrelo desde la terminal: <code>npm run dev</code> lo muestra al arrancar («Abre AgoraOne con este enlace…»), o ejecuta <code>npm run open</code>.</p>
-    </section>}
     <footer className="statusbar"><span>● {connected ? 'Hermes conectado · respuesta real recibida' : status?.state === 'configured' ? 'Hermes configurado · respuesta por verificar' : 'Hermes pendiente de conexión'}</span><span role="status" title="Dato real leído del estado del gateway de Hermes cada 15 s">◉ {hermesActivity.error ? 'Gateway Hermes · no se pudo leer su estado' : gatewaySummary(hermesActivity.activity)}</span><span>Paseos y peatones: ambiente, no tareas reales · sin llamadas a modelos</span></footer>
   </main>;
 }
