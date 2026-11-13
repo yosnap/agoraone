@@ -60,9 +60,10 @@ def test_ruta_de_datos_relativa_rechazada():
 
 def test_copias_por_api(client):
     headers = {SECRET_HEADER: SECRET}
-    assert client.get("/backups", headers=headers).json() == {"backups": []}
+    assert client.get("/backups", headers=headers).json() == {"backups": [], "recoveryKeyPending": False}
     made = client.post("/backups", headers=headers)
     assert made.status_code == 201 and made.json()["kind"] == "manual"
-    listed = client.get("/backups", headers=headers).json()["backups"]
-    assert [b["name"] for b in listed] == [made.json()["name"]]
+    listed = client.get("/backups", headers=headers).json()
+    assert [b["name"] for b in listed["backups"]] == [made.json()["name"]]
+    assert listed["recoveryKeyPending"] is True, "la clave se acaba de crear y aún no se ha mostrado"
     assert client.post("/backups").status_code == 401

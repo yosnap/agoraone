@@ -103,6 +103,7 @@ def _statements(sql: str) -> list[str]:
             if current.strip():
                 statements.append(current)
             current = ""
-    if current.strip() and not current.strip().startswith("--"):
-        raise MigrationError("Migración con una sentencia incompleta.")
+    leftover = [line for line in current.splitlines() if line.strip() and not line.strip().startswith("--")]
+    if leftover:
+        raise MigrationError("Migración con una sentencia sin terminar en «;».")
     return statements

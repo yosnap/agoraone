@@ -77,3 +77,10 @@ def test_migracion_fallida_se_deshace_entera(tmp_path, monkeypatch):
         migrate(database)
     assert database.execute("SELECT count(*) FROM sqlite_master WHERE name = 'extra'").fetchone()[0] == 0
     assert 2 not in db.applied_versions(database)
+
+
+def test_division_de_sentencias(monkeypatch):
+    sql = "-- comentario\nCREATE TABLE a (x TEXT DEFAULT ';');\n-- otro\nINSERT INTO a VALUES ('b;c');\n"
+    assert len(db._statements(sql)) == 2
+    with pytest.raises(MigrationError):
+        db._statements("CREATE TABLE a (x INTEGER);\n-- nota\nINSERT INTO a VALUES (1)")

@@ -15,9 +15,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from . import __version__
-from .backup import BackupError, create_backup, ensure_daily, list_backups, prune
+from .backup import clean_leftovers, create_backup, ensure_daily, list_backups, prune
 from .db import DB_NAME, connect, migrate
-from .keystore import KeychainStore, KeyStore
+from .keystore import KeychainStore, KeyStore, recovery_pending
 from .settings import Settings
 
 SECRET_HEADER = "x-agora-core-secret"
@@ -41,9 +41,13 @@ def create_app(settings: Settings, store: KeyStore | None = None, scheduler: boo
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # Each use opens its own connection (sqlite3 connections are not shared between threads here).
+        clean_leftovers(settings.data_dir)
         database = connect(settings.data_dir / DB_NAME)
-        migrate(database, backup_first=lambda: create_backup(settings.data_dir, store, "premigration"))
-        app.state.db = database
+        try:
+            migrate(database, backup_first=lambda: create_backup(settings.data_dir, store, "premigration"))
+        finally:
+            database.close()
         stop = threading.Event()
         if scheduler:
             threading.Thread(target=_daily_backups, args=(settings, store, stop), daemon=True).start()
@@ -51,7 +55,6 @@ def create_app(settings: Settings, store: KeyStore | None = None, scheduler: boo
             yield
         finally:
             stop.set()
-            database.close()
 
     app = FastAPI(title="AgoraOne núcleo", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
@@ -79,14 +82,18 @@ def create_app(settings: Settings, store: KeyStore | None = None, scheduler: boo
         return {"owner": owner}
 
     def described():
-        return [
-            {"name": b.name, "kind": b.kind, "created": b.created.strftime("%Y-%m-%dT%H:%M:%SZ"), "bytes": b.path.stat().st_size}
-            for b in list_backups(settings.data_dir)
-        ]
+        found = []
+        for b in list_backups(settings.data_dir):
+            try:
+                size = b.path.stat().st_size
+            except FileNotFoundError:  # pruned meanwhile
+                continue
+            found.append({"name": b.name, "kind": b.kind, "created": b.created.strftime("%Y-%m-%dT%H:%M:%SZ"), "bytes": size})
+        return {"backups": found, "recoveryKeyPending": recovery_pending(store, settings.data_dir)}
 
     @app.get("/backups")
     async def backups():
-        return {"backups": await run_in_threadpool(described)}
+        return await run_in_threadpool(described)
 
     @app.post("/backups", status_code=201)
     async def backup_now():
@@ -97,7 +104,7 @@ def create_app(settings: Settings, store: KeyStore | None = None, scheduler: boo
 
         try:
             made = await run_in_threadpool(make)
-        except (BackupError, RuntimeError) as error:
+        except Exception as error:  # disk full, locked Keychain, missing key...: a clear 503, never a 500
             return JSONResponse({"error": f"No se pudo hacer la copia: {error}"}, status_code=503)
         return {"name": made.name, "kind": made.kind}
 
