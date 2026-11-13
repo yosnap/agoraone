@@ -1,4 +1,5 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { AssistantView } from '../assistant/assistant-view';
 import { getBrainGraph, levelLabels, searchBrain, type BrainGraph, type SearchResult } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 import { layoutGraph } from './graph-layout';
@@ -13,10 +14,12 @@ const graphPalette = ['#b0564f', '#4f7192', '#7b6290', '#5f8a7d', '#c2913a', '#8
 
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-/** The start page: every indexed note as a graph, a search that lights notes up, and a field to ask Watson. */
-export function BrainView({ discreet, focus, onFocus, onAsk, onRead }: {
-  discreet: boolean; focus: string[]; onFocus: (ids: string[]) => void; onAsk: (question: string) => void; onRead: (note: NoteRef) => void;
+/** The start page: every indexed note as a graph with a floating explorer, and Watson beside it; the notes an
+ * answer uses light up on the graph as they arrive. */
+export function BrainView({ discreet, focus, onFocus, onRead }: {
+  discreet: boolean; focus: string[]; onFocus: (ids: string[]) => void; onRead: (note: NoteRef) => void;
 }) {
+  const [explorer, setExplorer] = useState(true);
   const [near, setNear] = useState(true);
   const [graph, setGraph] = useState<BrainGraph | null>(null);
   const [error, setError] = useState('');
@@ -24,7 +27,6 @@ export function BrainView({ discreet, focus, onFocus, onAsk, onRead }: {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [searchError, setSearchError] = useState('');
-  const [question, setQuestion] = useState('');
   useEffect(() => {
     let live = true;
     setError('');
@@ -49,7 +51,6 @@ export function BrainView({ discreet, focus, onFocus, onAsk, onRead }: {
   }, [graph]);
   const lit = useMemo(() => shown ? new Set(shown.map(result => `${result.source}/${result.ref}`)) : focus.length ? new Set(focus) : null, [shown, focus]);
   const read = (id: string) => { const [vault, note] = id.split('/'); onRead({ vault, note }); };
-  const ask = (event: FormEvent) => { event.preventDefault(); if (question.trim()) { onAsk(question.trim()); setQuestion(''); } };
   const links = graph?.edges.filter(edge => edge.kind === 'link').length ?? 0;
   const { folders, colors } = useMemo(() => {
     const counts = new Map<string, number>();
@@ -68,16 +69,11 @@ export function BrainView({ discreet, focus, onFocus, onAsk, onRead }: {
           <BrainGraphScene graph={graph} positions={positions} lit={lit} colors={colors} still={reducedMotion()} onPick={index => read(graph.nodes[index].id)}/>
         </Suspense>}
     </div>
-    <div className="brain-panel">
+    <div className={`brain-panel${explorer ? '' : ' folded'}`} aria-label="Explorar el cerebro" role="region">
+      <button className="brain-fold button" aria-expanded={explorer} onClick={() => setExplorer(!explorer)}>{explorer ? 'Ocultar' : 'Explorar'}</button>
       <div className="eyebrow">CEREBRO{discreet ? ' · MODO DISCRETO' : ''}</div>
       <h1 id="brain-title">Tu cerebro</h1>
       {graph && <p className="brain-stats">{graph.total} notas · {links} enlaces{graph.semantic ? ' · cercanía por significado activa' : near ? ' · cercanía no disponible (sin vectores locales)' : ''}{graph.truncated ? ` · se muestran las ${graph.nodes.length} más recientes` : ''}</p>}
-      <form className="brain-ask" onSubmit={ask}>
-        <label htmlFor="brain-question">Pregunta a Watson</label>
-        <div className="brain-ask-row"><input id="brain-question" value={question} onChange={event => setQuestion(event.target.value)} placeholder="¿Qué sé sobre…?" maxLength={8000}/>
-          <button className="button primary" disabled={!question.trim()}>Preguntar</button></div>
-        <small className="muted">Watson solo ve las notas normales; nunca las privadas ni las de solo este Mac.</small>
-      </form>
       <label className="brain-search" htmlFor="brain-find">Buscar en el cerebro</label>
       <input id="brain-find" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Palabras o idea…"/>
       <div className="brain-toggles">
@@ -98,5 +94,6 @@ export function BrainView({ discreet, focus, onFocus, onAsk, onRead }: {
       {folders.length > 0 && <ul className="brain-legend" aria-label="Colores por carpeta">{folders.slice(0, graphPalette.length).map(([folder, count]) =>
         <li key={folder}><span style={{ background: colors.get(folder) }} aria-hidden="true"/>{folder || 'Raíz'} <small>{count}</small></li>)}</ul>}
     </div>
+    <AssistantView embedded onRead={onRead} onSources={onFocus}/>
   </section>;
 }

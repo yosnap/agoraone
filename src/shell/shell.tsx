@@ -20,8 +20,6 @@ export function Shell() {
   const [status, setStatus] = useState<Status | null>(null);
   const [{ section, discreet }, setShell] = useState(readShell);
   const [officeVisited, setOfficeVisited] = useState(section === 'office');
-  // A question typed on the brain's page, handed to the assistant once.
-  const [question, setQuestion] = useState<string | null>(null);
   // Notes to point out on the graph (the sources of an answer).
   const [focus, setFocus] = useState<string[]>([]);
   const [reading, setReading] = useState<NoteRef | null>(null);
@@ -33,7 +31,6 @@ export function Shell() {
   useEffect(() => writeShell({ section, discreet }), [section, discreet]);
   const go = useCallback((next: Section) => { if (next === 'office') setOfficeVisited(true); setShell(previous => ({ ...previous, section: next })); }, []);
   const setDiscreet = (on: boolean) => setShell(previous => ({ ...previous, discreet: on }));
-  const ask = (text: string) => { setQuestion(text); go('assistant'); };
   const showOnGraph = (ids: string[]) => { setFocus(ids); go('brain'); };
   const ready = status?.csrf;
   return <div className="shell">
@@ -41,8 +38,8 @@ export function Shell() {
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting}/>}
       {ready && section !== 'office' && <main className="shell-page"><Suspense fallback={<div className="page"><Loading label="Cargando la sección"/></div>}>
-        {section === 'brain' ? <BrainView discreet={discreet} focus={focus} onFocus={setFocus} onAsk={ask} onRead={setReading}/>
-          : section === 'assistant' ? <AssistantView question={question} onQuestionTaken={() => setQuestion(null)} onRead={setReading} onShowOnGraph={showOnGraph}/>
+        {section === 'brain' ? <BrainView discreet={discreet} focus={focus} onFocus={setFocus} onRead={setReading}/>
+          : section === 'assistant' ? <AssistantView onRead={setReading} onShowOnGraph={showOnGraph}/>
           : section === 'connectors' ? <ConnectorsView/>
           : section === 'settings' ? <SettingsView/>
           : <PendingView section={section}/>}
