@@ -14,3 +14,6 @@ brag-output/
 .agents/
 .claude/
 skills-lock.json
+
+# Plans live in their own private repository (../agoraone-plans), linked here as plans/.
+/plans
