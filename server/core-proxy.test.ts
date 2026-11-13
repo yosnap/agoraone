@@ -155,8 +155,9 @@ test('las rutas de la API con otras mayúsculas no esquivan la cookie de acceso 
 });
 
 test('el núcleo recibe solo el entorno mínimo, nunca las claves del backend', () => {
-  const env = coreEnvironment(secret, 1234, { PATH: '/bin', HOME: '/h', AGORA_API_KEY: 'clave', ANTHROPIC_API_KEY: 'otra', AGORA_BASE_URL: 'u', HTTPS_PROXY: 'p' });
-  assert.deepEqual(Object.keys(env).sort(), ['AGORA_BACKEND_PID', 'AGORA_CORE_SECRET', 'HOME', 'HTTPS_PROXY', 'PATH', 'PYTHONUNBUFFERED']);
+  const env = coreEnvironment(secret, 1234, { PATH: '/bin', HOME: '/h', AGORA_API_KEY: 'clave', ANTHROPIC_API_KEY: 'otra', AGORA_BASE_URL: 'u', HTTPS_PROXY: 'p' }, '/datos');
+  assert.deepEqual(Object.keys(env).sort(), ['AGORA_BACKEND_PID', 'AGORA_CORE_DATA', 'AGORA_CORE_SECRET', 'HOME', 'HTTPS_PROXY', 'PATH', 'PYTHONUNBUFFERED']);
+  assert.equal(env.AGORA_CORE_DATA, '/datos');
   assert.equal(env.AGORA_BACKEND_PID, '1234');
 });
 

@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from agora_core import __version__
 from agora_core.app import OWNER_HEADER, SECRET_HEADER, create_app
+from agora_core.keystore import MemoryStore
 from agora_core.settings import SettingsError, load_settings
 
 SECRET = "a" * 64
@@ -10,9 +11,10 @@ OWNER = "b" * 64
 
 
 @pytest.fixture
-def client():
-    settings = load_settings({"AGORA_CORE_SECRET": SECRET})
-    return TestClient(create_app(settings), base_url=f"http://{settings.authority}")
+def client(tmp_path):
+    settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
+    with TestClient(create_app(settings, MemoryStore(), scheduler=False), base_url=f"http://{settings.authority}") as client:
+        yield client
 
 
 def test_no_arranca_sin_secreto_valido():
@@ -49,3 +51,18 @@ def test_whoami_exige_propietario_valido(client):
 def test_sin_documentacion_publica(client):
     for path in ("/docs", "/redoc", "/openapi.json"):
         assert client.get(path, headers={SECRET_HEADER: SECRET}).status_code == 404
+
+
+def test_ruta_de_datos_relativa_rechazada():
+    with pytest.raises(SettingsError):
+        load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": "relativa"})
+
+
+def test_copias_por_api(client):
+    headers = {SECRET_HEADER: SECRET}
+    assert client.get("/backups", headers=headers).json() == {"backups": []}
+    made = client.post("/backups", headers=headers)
+    assert made.status_code == 201 and made.json()["kind"] == "manual"
+    listed = client.get("/backups", headers=headers).json()["backups"]
+    assert [b["name"] for b in listed] == [made.json()["name"]]
+    assert client.post("/backups").status_code == 401

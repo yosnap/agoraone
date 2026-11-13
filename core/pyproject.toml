@@ -5,7 +5,9 @@ description = "Núcleo local de AgoraOne: cerebro, asistente y complementos. Sol
 requires-python = "==3.13.*"
 license = "MIT"
 dependencies = [
+    "cryptography>=44",
     "fastapi>=0.115",
+    "keyring>=25",
     "uvicorn>=0.30",
 ]
 
