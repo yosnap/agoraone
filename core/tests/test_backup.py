@@ -59,7 +59,8 @@ def test_restaurar_con_la_clave_de_recuperacion(data):
     made = create_backup(data, store, at=NOW)
     code = recovery_code(store.key)
     assert key_from_recovery(code.lower()) == store.key
-    typo = code[:-1] + ("A" if code[-1] != "A" else "B")
+    # A middle character: the last one also carries base32 padding bits, so changing it may not alter the key.
+    typo = code[:10] + ("A" if code[10] != "A" else "B") + code[11:]
     with pytest.raises(KeyStoreError):
         key_from_recovery(typo)
     restore(data, made.path, key_from_recovery(code))
