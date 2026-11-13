@@ -10,9 +10,9 @@ export const coreUrl = 'http://127.0.0.1:4318';
 // to download Python behind a proxy. Never the backend's .env, provider keys or tokens.
 const inherited = ['PATH', 'HOME', 'LANG', 'TMPDIR', 'UV_CACHE_DIR', 'HTTPS_PROXY', 'HTTP_PROXY', 'NO_PROXY', 'SSL_CERT_FILE'];
 
-/** The core's whole environment: the start secret, the backend's PID to watch, and the inherited basics. */
-export function coreEnvironment(secret: string, backendPid: number, env: NodeJS.ProcessEnv = process.env) {
-  const result: NodeJS.ProcessEnv = { AGORA_CORE_SECRET: secret, AGORA_BACKEND_PID: String(backendPid), PYTHONUNBUFFERED: '1' };
+/** The core's whole environment: the start secret, the backend's PID to watch, its data folder and the inherited basics. */
+export function coreEnvironment(secret: string, backendPid: number, env: NodeJS.ProcessEnv = process.env, data = resolve('.agora/core')) {
+  const result: NodeJS.ProcessEnv = { AGORA_CORE_SECRET: secret, AGORA_BACKEND_PID: String(backendPid), AGORA_CORE_DATA: data, PYTHONUNBUFFERED: '1' };
   for (const name of inherited) if (env[name]) result[name] = env[name];
   return result;
 }

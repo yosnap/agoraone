@@ -6,21 +6,57 @@ propietario ya autenticado por la cookie de acceso. El navegador nunca habla dir
 
 import hmac
 import re
+import sys
+import threading
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from . import __version__
+from .backup import clean_leftovers, create_backup, ensure_daily, list_backups, prune
+from .db import DB_NAME, connect, migrate
+from .keystore import KeychainStore, KeyStore, recovery_pending
 from .settings import Settings
 
 SECRET_HEADER = "x-agora-core-secret"
 OWNER_HEADER = "x-agora-owner"
 _OWNER = re.compile(r"[a-f0-9]{64}")
+DAILY_CHECK_SECONDS = 3600
 
 
-def create_app(settings: Settings) -> FastAPI:
-    app = FastAPI(title="AgoraOne núcleo", docs_url=None, redoc_url=None, openapi_url=None)
+def _daily_backups(settings: Settings, store: KeyStore, stop: threading.Event) -> None:
+    while not stop.is_set():
+        try:
+            ensure_daily(settings.data_dir, store)
+        except Exception as error:  # a failed backup must not stop the core; it is retried next hour
+            print(f"AgoraOne núcleo: no se pudo hacer la copia diaria ({error}).", file=sys.stderr)
+        stop.wait(DAILY_CHECK_SECONDS)
+
+
+def create_app(settings: Settings, store: KeyStore | None = None, scheduler: bool = True) -> FastAPI:
+    store = store or KeychainStore()
     expected = settings.secret.encode()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Each use opens its own connection (sqlite3 connections are not shared between threads here).
+        clean_leftovers(settings.data_dir)
+        database = connect(settings.data_dir / DB_NAME)
+        try:
+            migrate(database, backup_first=lambda: create_backup(settings.data_dir, store, "premigration"))
+        finally:
+            database.close()
+        stop = threading.Event()
+        if scheduler:
+            threading.Thread(target=_daily_backups, args=(settings, store, stop), daemon=True).start()
+        try:
+            yield
+        finally:
+            stop.set()
+
+    app = FastAPI(title="AgoraOne núcleo", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
     @app.middleware("http")
     async def only_agoraone(request: Request, call_next):
@@ -44,5 +80,32 @@ def create_app(settings: Settings) -> FastAPI:
         if not _OWNER.fullmatch(owner):
             return JSONResponse({"error": "Falta el propietario."}, status_code=400)
         return {"owner": owner}
+
+    def described():
+        found = []
+        for b in list_backups(settings.data_dir):
+            try:
+                size = b.path.stat().st_size
+            except FileNotFoundError:  # pruned meanwhile
+                continue
+            found.append({"name": b.name, "kind": b.kind, "created": b.created.strftime("%Y-%m-%dT%H:%M:%SZ"), "bytes": size})
+        return {"backups": found, "recoveryKeyPending": recovery_pending(store, settings.data_dir)}
+
+    @app.get("/backups")
+    async def backups():
+        return await run_in_threadpool(described)
+
+    @app.post("/backups", status_code=201)
+    async def backup_now():
+        def make():
+            made = create_backup(settings.data_dir, store, "manual")
+            prune(settings.data_dir)
+            return made
+
+        try:
+            made = await run_in_threadpool(make)
+        except Exception as error:  # disk full, locked Keychain, missing key...: a clear 503, never a 500
+            return JSONResponse({"error": f"No se pudo hacer la copia: {error}"}, status_code=503)
+        return {"name": made.name, "kind": made.kind}
 
     return app
