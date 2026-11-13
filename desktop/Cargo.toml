@@ -6,3 +6,7 @@ resolver = "3"
 edition = "2024"
 version = "1.0.0-alpha.12"
 license = "MIT"
+
+# Regex and SQLite are slow unoptimised; the hostile-line timing test runs against real speeds.
+[profile.dev.package."*"]
+opt-level = 3

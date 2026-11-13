@@ -4,6 +4,9 @@
 
 pub mod access;
 pub mod core;
+pub mod hermes;
+pub mod js;
+pub mod secret_lines;
 pub mod security;
 
 use std::path::PathBuf;
@@ -20,6 +23,8 @@ use tower_http::services::ServeDir;
 
 use crate::access::{ACCESS_COOKIE, proof, same_secret};
 use crate::core::CoreLink;
+use crate::hermes::catalog::HermesDiscovery;
+use crate::hermes::location::HermesLocation;
 use crate::security::error;
 
 pub const PORT: u16 = 4317;
@@ -32,6 +37,10 @@ pub struct Config {
     pub web: PathBuf,
     /// Host headers accepted (and their http:// origins).
     pub hosts: Vec<String>,
+    /// Hermes' data folder and code.
+    pub hermes: HermesLocation,
+    /// Obsidian's registry of vaults (None: no vaults).
+    pub obsidian_registry: Option<PathBuf>,
 }
 
 pub struct AppState {
@@ -40,12 +49,14 @@ pub struct AppState {
     pub csrf: String,
     pub core: Option<CoreLink>,
     pub http: reqwest::Client,
+    pub hermes: HermesDiscovery,
 }
 
 impl AppState {
     pub fn new(config: Config, token: &str, core: Option<CoreLink>) -> Arc<Self> {
         let http = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).build().expect("cliente HTTP");
-        Arc::new(Self { config, proof: proof(token), csrf: access::random_hex(), core, http })
+        let hermes = HermesDiscovery::new(config.hermes.clone());
+        Arc::new(Self { config, proof: proof(token), csrf: access::random_hex(), core, http, hermes })
     }
 }
 
@@ -94,6 +105,11 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/session", post(session))
         .route("/api/status", get(status))
+        .route("/api/hermes/catalog", get(hermes::routes::catalog))
+        .route("/api/hermes/activity", get(hermes::routes::activity))
+        .route("/api/hermes/summary", get(hermes::routes::summary))
+        .route("/api/hermes/profiles/{id}", get(hermes::routes::profile))
+        .route("/api/hermes/profiles/{id}/mcp/{server}/tools", get(hermes::routes::mcp_tools))
         .route("/api/core", any(core::proxy))
         .route("/api/core/{*rest}", any(core::proxy))
         .route("/api/{*rest}", any(not_found))
