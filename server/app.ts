@@ -129,6 +129,12 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
     if (!body.success) return res.status(400).json({ error: 'Datos de la nota no válidos.' });
     try { res.status(201).json(await reads.vaultCreate(req.params.id, body.data.folder, body.data.title, body.data.content)); } catch (error) { vaultWrite(res, error); }
   });
+  // Moving and renaming notes (user's decision, 13/11/2026): same guarantees, never overwriting another note.
+  app.post('/api/hermes/vaults/:id/notes/:noteId/move', express.json({ limit: '16kb' }), async (req, res) => {
+    const body = z.object({ folder: z.string().max(1000), title: z.string().max(200), revision: z.string().regex(/^[a-f0-9]{64}$/) }).strict().safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: 'Datos del cambio no válidos.' });
+    try { res.json(await reads.vaultMove(req.params.id, req.params.noteId, body.data, vaultBackups)); } catch (error) { vaultWrite(res, error); }
+  });
   app.use(express.json({ limit: '16kb' }));
   app.get('/api/status', (_req, res) => res.json({ ...readiness(), csrf }));
   app.use('/api/hermes', (req, res, next) => {

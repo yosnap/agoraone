@@ -63,6 +63,7 @@ export class BackgroundReads {
   vaultSearch(vaultId: string, query: string) { return this.ask<ReturnType<VaultNotes['search']>>({ task: 'vault-search', vaultId, query }); }
   vaultSave(vaultId: string, noteId: string, edit: { content: string; revision: string; revealed?: boolean }, backups: string) { return this.ask<ReturnType<VaultNotes['save']>>({ task: 'vault-save', vaultId, noteId, ...edit, backups }); }
   vaultCreate(vaultId: string, folder: string, title: string, content: string) { return this.ask<ReturnType<VaultNotes['create']>>({ task: 'vault-create', vaultId, folder, title, content }); }
+  vaultMove(vaultId: string, noteId: string, target: { folder: string; title: string; revision: string }, backups: string) { return this.ask<ReturnType<VaultNotes['move']>>({ task: 'vault-move', vaultId, noteId, ...target, backups }); }
   vaultDocument(noteId: string) { return this.ask<LibraryDocument>({ task: 'vault-document', noteId }); }
   close() { const worker = this.worker; if (worker) { this.retire(worker); return worker.terminate(); } }
 }

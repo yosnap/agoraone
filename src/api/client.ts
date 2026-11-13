@@ -45,7 +45,9 @@ export const readVaultNote = (vaultId: string, noteId: string, reveal = false) =
 /** Writes a real Obsidian note; `revision` is the version the user opened (sha-256 of its bytes). */
 export const saveVaultNote = (vaultId: string, noteId: string, edit: { content: string; revision: string; revealed?: boolean }) =>
   request<{ id: string; revision: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes/${encodeURIComponent(noteId)}`, edit, 'PUT');
-export const createVaultNote = (vaultId: string, folder: string, title: string, content: string) =>
+export const moveVaultNote = (vaultId: string, noteId: string, target: { folder: string; title: string; revision: string }) =>
+  request<{ id: string; folder: string; title: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes/${encodeURIComponent(noteId)}/move`, target);
+export const createVaultNote =(vaultId: string, folder: string, title: string, content: string) =>
   request<{ id: string; folder: string; title: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes`, { folder, title, content });
 /** A profile's scheduled tasks and kanban cards, managed with Hermes' own functions (user's decision, 18/10/2026). */
 export type JobDetail = { id: string; name: string; schedule: string; once: boolean; prompt: string; revision: string; hidden: number };

@@ -65,3 +65,9 @@
 .vault-editor .editor-actions,.vault-editor .editor-confirm div { display:flex;gap:8px }
 .vault-editor .editor-actions button:not(.primary),.vault-editor .editor-confirm button:not(.primary) { border:1px solid var(--c-d3c49e);background:var(--c-fbf3dc);border-radius:7px;padding:9px 12px;font-size:12px;color:var(--c-4b3d27) }
 .vault-editor .editor-confirm { background:var(--c-f3ecd8);border:1px solid var(--c-e1d3ae);border-radius:8px;padding:10px;font-size:12px }
+.book-actions { display:flex;flex-wrap:wrap;gap:6px }
+.vault-move { display:flex;flex-direction:column;gap:8px;max-width:520px }
+.vault-move label { font:11px Manrope,sans-serif;color:var(--c-8a6d3f) }
+.vault-move input { border:1px solid var(--c-dccfae);border-radius:8px;padding:8px 10px;background:var(--c-fffdf7);color:var(--c-2f2a20);font:13px Manrope,sans-serif }
+.vault-move small { font-size:11px;color:var(--c-7a6c55) }
+.vault-move .vault-tree-dot { display:inline-block;width:8px;height:8px;border-radius:50% }

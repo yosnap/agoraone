@@ -188,3 +188,48 @@ test('vault editable: conserva el mismo archivo, los finales de línea, el BOM y
     assert.equal(readFileSync(join(vault, 'Control.md'), 'utf8'), 'texto\u000cpágina');
   } finally { close(); }
 });
+
+test('vault: mover y renombrar conserva el archivo, copia antes y nunca pisa otra nota', () => {
+  const { notes, vaultId, vault, base, close } = fixture();
+  const backups = join(base, 'copias');
+  try {
+    const file = join(vault, 'Inicio.md');
+    chmodSync(file, 0o640);
+    const before = statSync(file);
+    const note = byTitle(notes, vaultId, 'Inicio');
+    const { revision } = notes.read(vaultId, note.id);
+    const moved = notes.move(vaultId, note.id, { folder: 'Proyectos/Activos', title: 'Portada', revision }, backups);
+    const target = join(vault, 'Proyectos/Activos/Portada.md');
+    assert.equal(existsSync(file), false);
+    assert.equal(readFileSync(target, 'utf8'), '# Inicio\nBienvenida al vault.');
+    assert.equal(statSync(target).ino, before.ino, 'el mismo archivo');
+    assert.equal(statSync(target).mode & 0o777, 0o640);
+    assert.equal(statSync(target).nlink, 1);
+    assert.deepEqual([moved.folder, moved.title], ['Proyectos/Activos', 'Portada']);
+    assert.equal(byTitle(notes, vaultId, 'Portada').id, moved.id, 'aparece en el listado con su id nuevo');
+    assert.equal(readdirSync(join(backups, vaultId)).length, 1, 'copia previa');
+
+    // Never overwrites, never with an old revision, never to the same place or a bad target.
+    const garden = byTitle(notes, vaultId, 'Jardín');
+    const current = notes.read(vaultId, garden.id).revision;
+    failsWith(() => notes.move(vaultId, garden.id, { folder: 'Proyectos/Activos', title: 'Portada', revision: current }, backups), 409);
+    failsWith(() => notes.move(vaultId, garden.id, { folder: '', title: 'Huerta', revision: 'f'.repeat(64) }, backups), 409);
+    failsWith(() => notes.move(vaultId, garden.id, { folder: 'Proyectos/Activos', title: 'Jardín', revision: current }, backups), 400);
+    failsWith(() => notes.move(vaultId, garden.id, { folder: '', title: '../fuera', revision: current }, backups), 400);
+    for (const folder of ['Carpeta enlazada', '../fuera', 'No existe']) failsWith(() => notes.move(vaultId, garden.id, { folder, title: 'X', revision: current }, backups), 404);
+    assert.equal(readFileSync(target, 'utf8'), '# Inicio\nBienvenida al vault.');
+    assert.equal(readFileSync(join(vault, 'Proyectos/Activos/Jardín.md'), 'utf8'), 'Plan del jardín\nRegar las TOMATERAS cada mañana.');
+
+    // Only the case changes: also on a disk that ignores case.
+    const renamed = notes.move(vaultId, garden.id, { folder: 'Proyectos/Activos', title: 'jardín', revision: current }, backups);
+    assert.deepEqual(readdirSync(join(vault, 'Proyectos/Activos')).sort(), ['Portada.md', 'jardín.md']);
+    assert.equal(byTitle(notes, vaultId, 'jardín').id, renamed.id);
+
+    // A note that became a hard link is not moved.
+    const portada = byTitle(notes, vaultId, 'Portada');
+    const rev = notes.read(vaultId, portada.id).revision;
+    linkSync(target, join(base, 'otro-nombre.md'));
+    failsWith(() => notes.move(vaultId, portada.id, { folder: '', title: 'Inicio', revision: rev }, backups), 404);
+    assert.equal(existsSync(target), true);
+  } finally { close(); }
+});

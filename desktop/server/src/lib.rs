@@ -131,6 +131,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/hermes/profiles/{id}/skills/{skill}", get(write::skill).put(write::save_skill))
         .route("/api/hermes/vaults/{id}/notes", get(vault::routes::list).post(vault::routes::create))
         .route("/api/hermes/vaults/{id}/notes/{note}", get(vault::routes::note).put(vault::routes::save))
+        .route("/api/hermes/vaults/{id}/notes/{note}/move", post(vault::routes::move_note))
         .route("/api/hermes/vaults/{id}/search", get(vault::routes::search))
         .route("/api/core", any(core::proxy))
         .route("/api/core/{*rest}", any(core::proxy))

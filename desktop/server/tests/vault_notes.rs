@@ -10,7 +10,7 @@ use agora_server::access::proof;
 use agora_server::hermes::location::HermesLocation;
 use agora_server::hermes::resources::obsidian_vaults;
 use agora_server::security::Failure;
-use agora_server::vault::{NoteEdit, VaultNote, VaultNotes};
+use agora_server::vault::{NoteEdit, NoteMove, VaultNote, VaultNotes};
 use agora_server::{AppState, Config, router};
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
@@ -221,6 +221,57 @@ fn conserva_archivo_finales_de_linea_bom_y_permisos() {
     assert_eq!(read(f.vault.join("Control.md")), "texto\u{c}página");
 }
 
+fn target(folder: &str, title: &str, revision: &str) -> NoteMove {
+    NoteMove { folder: folder.into(), title: title.into(), revision: revision.into() }
+}
+
+#[test]
+fn mover_y_renombrar_conserva_el_archivo_copia_antes_y_nunca_pisa() {
+    let f = fixture();
+    let backups = f.base.join("copias");
+    let file = f.vault.join("Inicio.md");
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o640)).unwrap();
+    let before = fs::metadata(&file).unwrap();
+    let note = by_title(&f, "Inicio");
+    let revision = f.notes.read(&f.id, &note.id, false).unwrap().revision;
+    let moved = f.notes.move_note(&f.id, &note.id, target("Proyectos/Activos", "Portada", &revision), &backups).unwrap();
+    let dest = f.vault.join("Proyectos/Activos/Portada.md");
+    assert!(!file.exists());
+    assert_eq!(read(&dest), "# Inicio\nBienvenida al vault.");
+    let after = fs::metadata(&dest).unwrap();
+    assert_eq!((after.ino(), after.mode() & 0o777, after.nlink()), (before.ino(), 0o640, 1), "el mismo archivo, sus permisos y un solo nombre");
+    assert_eq!((moved.folder.as_str(), moved.title.as_str()), ("Proyectos/Activos", "Portada"));
+    assert_eq!(by_title(&f, "Portada").id, moved.id, "aparece en el listado con su id nuevo");
+    assert_eq!(fs::read_dir(backups.join(&f.id)).unwrap().count(), 1, "copia previa");
+
+    // Never overwrites, never with an old revision, never to the same place or a bad target.
+    let garden = by_title(&f, "Jardín");
+    let current = f.notes.read(&f.id, &garden.id, false).unwrap().revision;
+    assert_eq!(status(f.notes.move_note(&f.id, &garden.id, target("Proyectos/Activos", "Portada", &current), &backups)), 409);
+    assert_eq!(status(f.notes.move_note(&f.id, &garden.id, target("", "Huerta", &"f".repeat(64)), &backups)), 409);
+    assert_eq!(status(f.notes.move_note(&f.id, &garden.id, target("Proyectos/Activos", "Jardín", &current), &backups)), 400);
+    assert_eq!(status(f.notes.move_note(&f.id, &garden.id, target("", "../fuera", &current), &backups)), 400);
+    for folder in ["Carpeta enlazada", "../fuera", "No existe"] {
+        assert_eq!(status(f.notes.move_note(&f.id, &garden.id, target(folder, "X", &current), &backups)), 404, "{folder}");
+    }
+    assert_eq!(read(&dest), "# Inicio\nBienvenida al vault.");
+    assert_eq!(read(f.vault.join("Proyectos/Activos/Jardín.md")), "Plan del jardín\nRegar las TOMATERAS cada mañana.");
+
+    // Only the case changes: also on a disk that ignores case.
+    let renamed = f.notes.move_note(&f.id, &garden.id, target("Proyectos/Activos", "jardín", &current), &backups).unwrap();
+    let mut names: Vec<String> = fs::read_dir(f.vault.join("Proyectos/Activos")).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    names.sort();
+    assert_eq!(names, ["Portada.md", "jardín.md"]);
+    assert_eq!(by_title(&f, "jardín").id, renamed.id);
+
+    // A note that became a hard link is not moved.
+    let portada = by_title(&f, "Portada");
+    let rev = f.notes.read(&f.id, &portada.id, false).unwrap().revision;
+    fs::hard_link(&dest, f.base.join("otro-nombre.md")).unwrap();
+    assert_eq!(status(f.notes.move_note(&f.id, &portada.id, target("", "Inicio", &rev), &backups)), 404);
+    assert!(dest.exists());
+}
+
 const TOKEN: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const HOST: &str = "127.0.0.1:4317";
 
@@ -281,4 +332,16 @@ async fn rutas_del_vault_con_csrf_y_validacion() {
     let (status, body) = call(&state, "POST", &notes, true, Some(json!({ "folder": "", "title": "Nueva" }))).await;
     assert_eq!((status, body), (StatusCode::BAD_REQUEST, json!({ "error": "Datos de la nota no válidos." })));
     assert_eq!(call(&state, "POST", &notes, true, Some(json!({ "folder": "", "title": "Nueva", "content": "otra" }))).await.0, StatusCode::CONFLICT);
+
+    let created_id = created["id"].as_str().unwrap();
+    let (_, nueva) = call(&state, "GET", &format!("{notes}/{created_id}"), true, None).await;
+    let move_path = format!("{notes}/{created_id}/move");
+    let body = json!({ "folder": "Proyectos", "title": "Movida", "revision": nueva["revision"] });
+    assert_eq!(call(&state, "POST", &move_path, false, Some(body.clone())).await.0, StatusCode::FORBIDDEN);
+    let (status, refused) = call(&state, "POST", &move_path, true, Some(json!({ "folder": "Proyectos", "title": "Movida" }))).await;
+    assert_eq!((status, refused), (StatusCode::BAD_REQUEST, json!({ "error": "Datos del cambio no válidos." })));
+    let (status, moved) = call(&state, "POST", &move_path, true, Some(body)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!((moved["folder"].as_str(), moved["title"].as_str()), (Some("Proyectos"), Some("Movida")));
+    assert_eq!(read(f.vault.join("Proyectos/Movida.md")), "hola");
 }

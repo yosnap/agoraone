@@ -18,7 +18,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
-pub use write::NoteEdit;
+pub use write::{NoteEdit, NoteMove};
 
 use crate::hermes::safe_read::{decode_utf8, read_hermes_file, redact_str};
 use crate::js::{digest, iso_ms, js_trim, locale_cmp, slice_utf16};

@@ -4,7 +4,7 @@
 use std::fs::{self, DirBuilder, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 use std::os::unix::fs::{DirBuilderExt, FileExt, MetadataExt, OpenOptionsExt};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -22,6 +22,7 @@ const KEEP_BACKUPS: usize = 20;
 static BAD_TITLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"[\\/:*?"<>|#^\[\]\x00-\x1f]"#).unwrap());
 static INVISIBLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[\p{Cf}\u{2028}\u{2029}]").unwrap());
 const LINKED_FOLDER: &str = "La carpeta de la nota es un enlace y no se escribe en ella.";
+const LINKED: &str = "La carpeta es un enlace y no se escribe en ella.";
 
 fn conflict() -> Failure {
     Failure::new(409, "La nota cambió (en Obsidian o en otro sitio) mientras la editabas. Vuelve a cargarla para ver la versión actual.")
@@ -41,6 +42,12 @@ pub struct NoteEdit {
     pub revealed: bool,
 }
 
+pub struct NoteMove {
+    pub folder: String,
+    pub title: String,
+    pub revision: String,
+}
+
 #[derive(Serialize, Debug)]
 pub struct Saved {
     pub id: String,
@@ -52,6 +59,27 @@ pub struct Created {
     pub id: String,
     pub folder: String,
     pub title: String,
+}
+
+/// A valid note name (NFC) from a title, or a refusal saying what a title may hold.
+fn note_name(title: &str) -> Result<String, Failure> {
+    let name: String = js_trim(title).nfc().collect();
+    if name.is_empty() || name.starts_with('.') || BAD_TITLE.is_match(&name) || INVISIBLE.is_match(&name) || name.len() + 3 > 255 {
+        return Err(refused("Usa un título corto (hasta 250 bytes) sin / \\ : * ? \" < > | # ^ [ ], caracteres invisibles ni punto inicial."));
+    }
+    Ok(name)
+}
+
+/// A folder that already holds notes (or the vault's top level), and that is no link.
+fn folder_of(index: &Index, folder: &str) -> Result<PathBuf, Failure> {
+    if !folder.is_empty() && !index.notes.iter().any(|e| e.note.folder == folder || e.note.folder.starts_with(&format!("{folder}/"))) {
+        return Err(Failure::new(404, "Esa carpeta no existe en el vault."));
+    }
+    let directory = folder.split('/').filter(|p| !p.is_empty()).fold(index.vault.root.clone(), |path, part| path.join(part));
+    if fs::canonicalize(&directory).map_err(internal)? != directory {
+        return Err(refused(LINKED));
+    }
+    Ok(directory)
 }
 
 fn check(content: &str) -> Result<(), Failure> {
@@ -150,19 +178,10 @@ impl VaultNotes {
     /// Creates a new note in a folder that already holds notes (or the vault's top level); never overwrites.
     pub fn create(&self, vault_id: &str, folder: &str, title: &str, content: &str) -> Result<Created, Failure> {
         let index = self.index(vault_id, true)?;
-        let name: String = js_trim(title).nfc().collect();
-        if name.is_empty() || name.starts_with('.') || BAD_TITLE.is_match(&name) || INVISIBLE.is_match(&name) || name.len() + 3 > 255 {
-            return Err(refused("Usa un título corto (hasta 250 bytes) sin / \\ : * ? \" < > | # ^ [ ], caracteres invisibles ni punto inicial."));
-        }
-        if !folder.is_empty() && !index.notes.iter().any(|e| e.note.folder == folder || e.note.folder.starts_with(&format!("{folder}/"))) {
-            return Err(Failure::new(404, "Esa carpeta no existe en el vault."));
-        }
+        let name = note_name(title)?;
         check(content)?;
-        let directory = folder.split('/').filter(|p| !p.is_empty()).fold(index.vault.root.clone(), |path, part| path.join(part));
+        let directory = folder_of(&index, folder)?;
         let linked = || fs::canonicalize(&directory).map(|real| real != directory);
-        if linked().map_err(internal)? {
-            return Err(refused("La carpeta es un enlace y no se escribe en ella."));
-        }
         let file = directory.join(format!("{name}.md"));
         let mut handle = OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW).mode(0o644).open(&file).map_err(|error| {
             if error.kind() == ErrorKind::AlreadyExists {
@@ -174,12 +193,68 @@ impl VaultNotes {
         // The folder was swapped for a link between the check and the creation: undo and stop.
         if linked().unwrap_or(true) {
             let _ = fs::remove_file(&file);
-            return Err(refused("La carpeta es un enlace y no se escribe en ella."));
+            return Err(refused(LINKED));
         }
         handle.write_all(content.as_bytes()).map_err(internal)?;
         handle.sync_all().map_err(internal)?;
         self.forget(vault_id);
-        let path = file.strip_prefix(&index.vault.root).unwrap_or(&file).to_string_lossy().into_owned();
-        Ok(Created { id: format!("note-{}", digest(&format!("{vault_id}:{path}"))), folder: folder.to_string(), title: name })
+        Ok(created(&index, vault_id, &file, folder, name))
     }
+
+    /// Moves a note to another folder of the vault and/or gives it a new title (user's decision, 13/11/2026).
+    /// The user confirmed the revision they saw; the previous version is copied first. The note keeps its
+    /// file (a hard link to the new name, then the old name is removed), so Obsidian keeps its creation date,
+    /// and an existing note is never overwritten. Links to it from other notes are not rewritten.
+    pub fn move_note(&self, vault_id: &str, note_id: &str, target: NoteMove, backups: &Path) -> Result<Created, Failure> {
+        let index = self.index(vault_id, true)?;
+        let entry = index
+            .notes
+            .iter()
+            .find(|e| e.note.id == note_id && e.note.readable)
+            .ok_or_else(|| Failure::new(404, "Esta nota no se puede mover: no existe, es demasiado grande o es un enlace."))?;
+        let name = note_name(&target.title)?;
+        if target.folder == entry.note.folder && name == entry.note.title {
+            return Err(refused("La nota ya tiene ese título y está en esa carpeta."));
+        }
+        let listed = safe_target(&index, &entry.file)?;
+        let directory = folder_of(&index, &target.folder)?;
+        let file = directory.join(format!("{name}.md"));
+        let handle = OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW).open(&entry.file).map_err(|_| conflict())?;
+        let opened = handle.metadata().map_err(internal)?;
+        if !opened.is_file() || opened.nlink() != 1 || opened.ino() != listed.ino() || opened.len() > MAX_NOTE_BYTES {
+            return Err(refused("Esta nota no se puede mover: es un enlace o cambió de archivo."));
+        }
+        let mut bytes = Vec::new();
+        handle.take(opened.len()).read_to_end(&mut bytes).map_err(internal)?;
+        if sha256_hex(&bytes) != target.revision {
+            return Err(conflict());
+        }
+        backup(backups, vault_id, note_id, &bytes).map_err(internal)?;
+        if let Err(error) = fs::hard_link(&entry.file, &file) {
+            // Same file under another spelling (only case or accents change on a case-insensitive disk): a plain rename.
+            let exists = error.kind() == ErrorKind::AlreadyExists;
+            if exists && fs::symlink_metadata(&file).is_ok_and(|m| m.ino() == listed.ino()) {
+                fs::rename(&entry.file, &file).map_err(internal)?;
+                self.forget(vault_id);
+                return Ok(created(&index, vault_id, &file, &target.folder, name));
+            }
+            return Err(if exists { Failure::new(409, "Ya existe una nota con ese título en esa carpeta.") } else { refused("No se pudo mover la nota en este disco.") });
+        }
+        // The destination folder was swapped for a link meanwhile: undo and stop.
+        if fs::canonicalize(&directory).map(|real| real != directory).unwrap_or(true) {
+            let _ = fs::remove_file(&file);
+            return Err(refused(LINKED));
+        }
+        if let Err(error) = fs::remove_file(&entry.file) {
+            let _ = fs::remove_file(&file);
+            return Err(internal(error));
+        }
+        self.forget(vault_id);
+        Ok(created(&index, vault_id, &file, &target.folder, name))
+    }
+}
+
+fn created(index: &Index, vault_id: &str, file: &Path, folder: &str, title: String) -> Created {
+    let path = file.strip_prefix(&index.vault.root).unwrap_or(file).to_string_lossy().into_owned();
+    Created { id: format!("note-{}", digest(&format!("{vault_id}:{path}"))), folder: folder.to_string(), title }
 }

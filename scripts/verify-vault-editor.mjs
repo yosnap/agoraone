@@ -34,6 +34,14 @@ try {
     if (noteId) return route.fulfill({ json: { ...notes.find(note => note.id === noteId), content: content[noteId], revision: 'a'.repeat(64), hidden: 0 } });
     return route.fulfill({ json: { vault: { id: vault, name: 'Vault de prueba' }, truncated: false, notes } });
   });
+  await page.route(/\/api\/hermes\/vaults\/[^/]+\/notes\/[^/]+\/move$/, route => {
+    const body = route.request().postDataJSON();
+    writes.push({ method: 'MOVE', body });
+    const id = 'note-' + 'd'.repeat(24);
+    content[id] = content[notes[0].id];
+    Object.assign(notes[0], { id, folder: body.folder, title: body.title });
+    return route.fulfill({ json: { id, folder: body.folder, title: body.title } });
+  });
   await page.goto(appUrl());
   // Initial scene load only: headless Chromium renders WebGL in software, so allow it time.
   await page.locator('.directory').getByRole('button', { name: /^Obsidian · / }).first().click({ timeout: 120_000 });
@@ -90,7 +98,22 @@ try {
   await book.getByRole('button', { name: 'Recargar y conservar mi texto' }).waitFor();
   await book.getByRole('button', { name: 'Descartar mi texto' }).click();
   await book.getByRole('button', { name: 'Editar nota' }).waitFor();
-  await book.getByRole('button', { name: 'Cerrar libro' }).click();
+
+  // Moving and renaming: nothing is sent until the user confirms.
+  conflict = false;
+  await book.getByRole('button', { name: 'Mover o renombrar' }).click();
+  await book.getByLabel('Título').fill('Huerto 2026');
+  await book.locator('#vault-move-folder').click();
+  await page.getByRole('option', { name: 'Vault de prueba (raíz)' }).click();
+  await book.getByRole('button', { name: 'Revisar el cambio' }).click();
+  await book.getByText(/Mover «Plan del huerto» de Proyectos a la raíz de Vault de prueba y llamarla «Huerto 2026»/).waitFor();
+  assert.equal(writes.some(write => write.method === 'MOVE'), false, 'no se mueve antes de confirmar');
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/mover-nota.png` });
+  await book.getByRole('button', { name: 'Confirmar' }).click();
+  // The book follows the note under its new title.
+  await page.getByRole('dialog', { name: /^Libro: Huerto 2026/ }).getByText(/Movida o renombrada en tu vault/).waitFor();
+  assert.deepEqual(writes.find(write => write.method === 'MOVE').body, { folder: '', title: 'Huerto 2026', revision: 'a'.repeat(64) });
+  await page.getByRole('button', { name: 'Cerrar libro' }).click();
 
   // A new note in the current folder opens straight in the editor.
   await page.getByRole('button', { name: '+ Nueva nota en Proyectos' }).click();
@@ -100,5 +123,5 @@ try {
   const created = writes.find(write => write.method === 'POST');
   assert.deepEqual(created.body, { folder: 'Proyectos', title: 'Semillas', content: '# Semillas\n\n' });
   assert.deepEqual(errors, []);
-  console.log('Editor del vault: cancelar, confirmar, guardar, conflicto y nota nueva (vault ficticio interceptado, sin tocar tus notas).');
+  console.log('Editor del vault: cancelar, confirmar, guardar, conflicto, mover y renombrar, y nota nueva (vault ficticio interceptado, sin tocar tus notas).');
 } finally { await browser.close(); }

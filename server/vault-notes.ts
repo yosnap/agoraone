@@ -1,4 +1,4 @@
-import { closeSync, constants, fstatSync, fsyncSync, ftruncateSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, unlinkSync, writeSync } from 'node:fs';
+import { closeSync, constants, fstatSync, fsyncSync, ftruncateSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, unlinkSync, writeSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { readHermesFile, redact } from './hermes-safe-read';
@@ -29,6 +29,13 @@ const conflict = () => new VaultWriteError('La nota cambió (en Obsidian o en ot
 const keepBackups = 20;
 // Characters Obsidian does not accept in a note name, plus path separators.
 const badTitle = /[\\/:*?"<>|#^[\]\x00-\x1f]/;
+/** A valid note name (NFC) from a title, or a refusal saying what a title may hold. */
+function noteName(title: string) {
+  const name = title.trim().normalize('NFC');
+  if (!name || name.startsWith('.') || badTitle.test(name) || /[\p{Cf}\u2028\u2029]/u.test(name) || Buffer.byteLength(`${name}.md`) > 255)
+    throw new VaultWriteError('Usa un título corto (hasta 250 bytes) sin / \\ : * ? " < > | # ^ [ ], caracteres invisibles ni punto inicial.');
+  return name;
+}
 
 export class VaultNotes {
   private indexes = new Map<string, Index>();
@@ -183,13 +190,9 @@ export class VaultNotes {
   /** Creates a new note in a folder that already holds notes (or the vault's top level); never overwrites. */
   create(vaultId: string, folder: string, title: string, content: string) {
     const index = this.index(vaultId, true);
-    const name = title.trim().normalize('NFC');
-    if (!name || name.startsWith('.') || badTitle.test(name) || /[\p{Cf}\u2028\u2029]/u.test(name) || Buffer.byteLength(`${name}.md`) > 255)
-      throw new VaultWriteError('Usa un título corto (hasta 250 bytes) sin / \\ : * ? " < > | # ^ [ ], caracteres invisibles ni punto inicial.');
-    if (folder !== '' && !index.notes.some(note => note.folder === folder || note.folder.startsWith(`${folder}/`))) throw new VaultWriteError('Esa carpeta no existe en el vault.', 404);
+    const name = noteName(title);
     this.check(content);
-    const directory = join(index.vault.root, ...folder.split('/').filter(Boolean));
-    if (realpathSync(directory) !== directory) throw new VaultWriteError('La carpeta es un enlace y no se escribe en ella.');
+    const directory = this.folderOf(index, folder);
     const file = join(directory, `${name}.md`);
     let handle: number;
     try { handle = openSync(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o644); }
@@ -204,6 +207,63 @@ export class VaultNotes {
     } finally { closeSync(handle); }
     this.indexes.delete(vaultId);
     return { id: `note-${hash(`${vaultId}:${relative(index.vault.root, file)}`)}`, folder, title: name };
+  }
+
+  /**
+   * Moves a note to another folder of the vault and/or gives it a new title (user's decision, 13/11/2026).
+   * The user confirmed the revision they saw; the previous version is copied first. The note keeps its file
+   * (a hard link to the new name, then the old name is removed), so Obsidian keeps its creation date, and an
+   * existing note is never overwritten. Links to it from other notes are not rewritten.
+   */
+  move(vaultId: string, noteId: string, target: { folder: string; title: string; revision: string }, backups: string) {
+    const index = this.index(vaultId, true);
+    const note = index.notes.find(item => item.id === noteId);
+    if (!note || !note.readable) throw new VaultWriteError('Esta nota no se puede mover: no existe, es demasiado grande o es un enlace.', 404);
+    const name = noteName(target.title);
+    if (target.folder === note.folder && name === note.title) throw new VaultWriteError('La nota ya tiene ese título y está en esa carpeta.');
+    const listed = this.safeTarget(index, note.file);
+    const directory = this.folderOf(index, target.folder);
+    const file = join(directory, `${name}.md`);
+    let handle: number;
+    try { handle = openSync(note.file, constants.O_RDONLY | constants.O_NOFOLLOW); } catch { throw conflict(); }
+    let bytes: Buffer;
+    try {
+      const opened = fstatSync(handle);
+      if (!opened.isFile() || opened.nlink !== 1 || opened.ino !== listed.ino || opened.size > maxNoteBytes) throw new VaultWriteError('Esta nota no se puede mover: es un enlace o cambió de archivo.');
+      bytes = Buffer.alloc(opened.size);
+      let read = 0;
+      while (read < bytes.length) { const count = readSync(handle, bytes, read, bytes.length - read, read); if (!count) break; read += count; }
+      bytes = bytes.subarray(0, read);
+    } finally { closeSync(handle); }
+    if (createHash('sha256').update(bytes).digest('hex') !== target.revision) throw conflict();
+    this.backup(backups, vaultId, noteId, bytes);
+    try { linkSync(note.file, file); }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // Same file under another spelling (only case or accents change on a case-insensitive disk): a plain rename.
+      let same = false;
+      try { same = code === 'EEXIST' && lstatSync(file).ino === listed.ino; } catch { /* gone: not the same */ }
+      if (same) { renameSync(note.file, file); this.indexes.delete(vaultId); return this.moved(index, vaultId, file, target.folder, name); }
+      if (code === 'EEXIST') throw new VaultWriteError('Ya existe una nota con ese título en esa carpeta.', 409);
+      throw new VaultWriteError('No se pudo mover la nota en este disco.');
+    }
+    // The destination folder was swapped for a link meanwhile: undo and stop.
+    if (realpathSync(directory) !== directory) { unlinkSync(file); throw new VaultWriteError('La carpeta es un enlace y no se escribe en ella.'); }
+    try { unlinkSync(note.file); } catch (error) { unlinkSync(file); throw error; }
+    this.indexes.delete(vaultId);
+    return this.moved(index, vaultId, file, target.folder, name);
+  }
+
+  private moved(index: Index, vaultId: string, file: string, folder: string, title: string) {
+    return { id: `note-${hash(`${vaultId}:${relative(index.vault.root, file)}`)}`, folder, title };
+  }
+
+  /** A folder that already holds notes (or the vault's top level), and that is no link. */
+  private folderOf(index: Index, folder: string) {
+    if (folder !== '' && !index.notes.some(note => note.folder === folder || note.folder.startsWith(`${folder}/`))) throw new VaultWriteError('Esa carpeta no existe en el vault.', 404);
+    const directory = join(index.vault.root, ...folder.split('/').filter(Boolean));
+    if (realpathSync(directory) !== directory) throw new VaultWriteError('La carpeta es un enlace y no se escribe en ella.');
+    return directory;
   }
 
   private check(content: string) {

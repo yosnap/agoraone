@@ -14,7 +14,7 @@ use regex::Regex;
 use serde::Serialize;
 use serde_json::Value;
 
-use super::{NOTE_UNAVAILABLE, NoteEdit};
+use super::{NOTE_UNAVAILABLE, NoteEdit, NoteMove};
 use crate::AppState;
 use crate::hermes::routes::background;
 use crate::hermes::write_routes::{Fields, object};
@@ -82,4 +82,21 @@ pub async fn create(State(state): State<Arc<AppState>>, Path(id): Path<String>, 
     })();
     let Ok((folder, title, content)) = fields else { return error(StatusCode::BAD_REQUEST, "Datos de la nota no válidos.") };
     write(move || state.vault.create(&id, &folder, &title, &content), StatusCode::CREATED).await
+}
+
+// Moving and renaming notes (user's decision, 13/11/2026): same guarantees, never overwriting another note.
+pub async fn move_note(State(state): State<Arc<AppState>>, Path((id, note)): Path<(String, String)>, body: Bytes) -> Response {
+    let map = match object(&body, 16 * 1024) {
+        Ok(map) => map,
+        Err(refusal) => return *refusal,
+    };
+    let f = Fields(&map);
+    let target = (|| {
+        f.only(&["folder", "title", "revision"])?;
+        let revision = map.get("revision").and_then(Value::as_str).filter(|r| REVISION.is_match(r)).ok_or(())?;
+        Ok::<_, ()>(NoteMove { folder: f.required("folder", 0, 1000, false)?, title: f.required("title", 0, 200, false)?, revision: revision.into() })
+    })();
+    let Ok(target) = target else { return error(StatusCode::BAD_REQUEST, "Datos del cambio no válidos.") };
+    let backups = state.config.data.join("vault-backups");
+    write(move || state.vault.move_note(&id, &note, target, &backups), StatusCode::OK).await
 }

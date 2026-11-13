@@ -1,6 +1,6 @@
 # Vault de Obsidian (18/10/2026)
 
-El usuario aprobó leer sus notas de Obsidian desde AgoraOne y, desde 0.14.0, editarlas y crear notas nuevas (decisión del 18/10/2026). No se mueve, renombra ni borra nada, no se guardan índices en disco y, antes de cada guardado, se copia la versión anterior.
+El usuario aprobó leer sus notas de Obsidian desde AgoraOne y, desde 0.14.0, editarlas y crear notas nuevas (decisión del 18/10/2026). Desde 1.0.0-alpha.12 también puede moverlas de carpeta y renombrarlas (decisión del 13/11/2026). No se borra nada, no se guardan índices en disco y, antes de cada cambio, se copia la versión anterior.
 
 ## Editor visual (0.17.0)
 Decisión del usuario (18/10/2026): el editor de notas, de la personalidad (SOUL) y de las instrucciones de tareas y tarjetas es una **vista en vivo como la de Obsidian**, no un WYSIWYG que reescriba el Markdown.
@@ -36,6 +36,16 @@ Decisión del usuario (18/10/2026): el editor de notas, de la personalidad (SOUL
   - `server/vault-notes.test.ts` comprueba que las claves se conservan, la copia, los permisos, el conflicto, los enlaces, las carpetas inexistentes o enlazadas y que no se sobrescribe.
   - `server/app.test.ts` comprueba CSRF y el cuerpo estricto.
   - `scripts/verify-vault-editor.mjs` usa un vault ficticio interceptado: nunca lee ni escribe tus notas.
+
+## Mover y renombrar notas (1.0.0-alpha.12)
+- **Interfaz**: el libro abierto tiene **Mover o renombrar** (`src/ui/vault-note-move.tsx`): título y carpeta de destino (la raíz o cualquier carpeta que ya tenga notas). **Revisar el cambio** muestra qué se hará y nada se toca hasta **Confirmar**. Tras el cambio, el libro sigue a la nota con su nuevo título.
+- **Servidor** (`VaultNotes.move` en Node, `move_note` en `desktop/server/src/vault/write.rs`): ruta `POST /api/hermes/vaults/:id/notes/:noteId/move` con `{ folder, title, revision }`, cuerpo estricto y CSRF.
+  - Comprueba que la nota sigue siendo la revisión que se veía (si no, 409) y copia la versión actual en `.agora/vault-backups/<vault>/`.
+  - Mismas reglas de título y carpeta que al crear; mover al mismo sitio con el mismo título se rechaza.
+  - Crea un enlace duro con el nombre nuevo (falla si ya existe: nunca pisa otra nota) y después quita el nombre antiguo. La nota conserva su archivo, su fecha de creación en Obsidian y sus permisos. Si solo cambian mayúsculas o tildes en un disco que no las distingue, hace un renombrado directo del mismo archivo.
+  - Rechaza notas que son enlaces y carpetas enlazadas; si la carpeta de destino se cambia por un enlace a mitad, se deshace.
+- **Lo que no hace**: no reescribe los `[[enlaces]]` de otras notas (la interfaz lo avisa) ni mueve o renombra carpetas. El id de la nota cambia, y el índice del cerebro lo recoge en su siguiente pasada.
+- **Verificación**: pruebas en `server/vault-notes.test.ts` y `desktop/server/tests/vault_notes.rs` (mismo archivo, copia previa, no pisar, revisión vieja, enlaces duros, solo mayúsculas, rutas con CSRF), y el flujo completo en `scripts/verify-vault-editor.mjs` con el vault ficticio.
 
 ## Qué se lee
 - **Vaults**: los del registro de Obsidian (`obsidian.json`), igual que la detección del catálogo. El cliente solo envía identificadores opacos (`vault-…`, `note-…`); las rutas se resuelven en el backend con un recorrido nuevo del vault (reutilizado 15 s).

@@ -14,7 +14,8 @@ type Task =
   | { task: 'vault-search'; vaultId: string; query: string }
   | { task: 'vault-document'; noteId: string }
   | { task: 'vault-save'; vaultId: string; noteId: string; content: string; revision: string; revealed?: boolean; backups: string }
-  | { task: 'vault-create'; vaultId: string; folder: string; title: string; content: string };
+  | { task: 'vault-create'; vaultId: string; folder: string; title: string; content: string }
+  | { task: 'vault-move'; vaultId: string; noteId: string; folder: string; title: string; revision: string; backups: string };
 
 function run(job: Task) {
   if (job.task === 'activity') return readActivity(job.root, job.profiles);
@@ -25,6 +26,7 @@ function run(job: Task) {
   // Writes run here too, so this worker's cached listing is refreshed at once.
   if (job.task === 'vault-save') return vault.save(job.vaultId, job.noteId, job, job.backups);
   if (job.task === 'vault-create') return vault.create(job.vaultId, job.folder, job.title, job.content);
+  if (job.task === 'vault-move') return vault.move(job.vaultId, job.noteId, job, job.backups);
   return vault.document(job.noteId);
 }
 
