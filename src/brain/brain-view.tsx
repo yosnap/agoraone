@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { AssistantView, type Thinking } from '../assistant/assistant-view';
+import { SummaryStrip } from '../summary/summary-strip';
 import { getBrainGraph, levelLabels, searchBrain, type BrainGraph, type SearchResult } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 import { layoutGraph } from './graph-layout';
@@ -21,8 +22,8 @@ const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.
 
 /** The start page: every indexed note as a graph with a floating explorer, and Watson beside it; the notes an
  * answer uses light up on the graph as they arrive. */
-export function BrainView({ discreet, focus, onFocus, onRead }: {
-  discreet: boolean; focus: string[]; onFocus: (ids: string[]) => void; onRead: (note: NoteRef) => void;
+export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
+  discreet: boolean; focus: string[]; onFocus: (ids: string[]) => void; onRead: (note: NoteRef) => void; onSummary: () => void;
 }) {
   const [explorer, setExplorer] = useState(true);
   const [thinking, setThinking] = useState<Thinking>(null);
@@ -100,6 +101,7 @@ export function BrainView({ discreet, focus, onFocus, onRead }: {
       {folders.length > 0 && <ul className="brain-legend" aria-label="Colores por carpeta">{folders.slice(0, graphPalette.length).map(([folder, count]) =>
         <li key={folder}><span style={{ background: colors.get(folder) }} aria-hidden="true"/>{folder || 'Raíz'} <small>{count}</small></li>)}</ul>}
     </div>
+    <SummaryStrip discreet={discreet} onOpen={onSummary}/>
     {thinking && <div className="brain-thinking" role="status" aria-live="polite">
       <ol>{steps.map(([id, label]) => <li key={id} className={stepState(thinking.stage, id)}>{label}</li>)}</ol>
       <span>{thinking.label}</span>

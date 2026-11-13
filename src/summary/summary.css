@@ -1,0 +1,42 @@
+/* The summary: a dense grid of panels with figures, bars and a word heat strip. */
+.summary-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr)); gap:16px; align-items:start }
+.summary-wide { grid-column:span 2 }
+.summary h3 { font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:1px; text-transform:uppercase; color:var(--c-5f7a71); margin:6px 0 0 }
+.summary h3 .chip { margin-left:6px }
+.summary-split { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px }
+.figures { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:10px; margin:0 }
+.figures div { border:1px solid var(--c-e6eadf); border-radius:10px; padding:9px 11px; display:flex; flex-direction:column; gap:3px }
+.figures dt { font:600 9px ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.8px; text-transform:uppercase; color:var(--c-6f8379) }
+.figures dd { margin:0; font:600 17px Manrope,sans-serif; color:var(--c-173d3c); font-variant-numeric:tabular-nums }
+.figures dd.good { color:var(--c-2d7a4f) }
+.figures dd.bad { color:var(--c-a8483a) }
+.bars { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:7px }
+.bars li { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(60px,1fr) auto; gap:10px; align-items:center; font-size:12px }
+.bars-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--c-173d3c) }
+.bars-label small { display:block; font-size:10px; color:var(--c-6f8379) }
+.bars-track { height:8px; border-radius:4px; background:var(--c-e7ece2); overflow:hidden }
+.bars-track span { display:block; height:100%; border-radius:4px; background:linear-gradient(90deg,var(--c-3f8f9a),var(--c-5fb8c4)) }
+.bars-value { font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--c-355a50); font-variant-numeric:tabular-nums }
+.agent-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px }
+.agent-list li { display:grid; grid-template-columns:auto 1fr; gap:2px 8px; align-items:center }
+.agent-list strong { font-size:12px; font-weight:600 }
+.agent-list small { grid-column:2; font-size:10px; color:var(--c-6f8379) }
+.agent-dot { width:9px; height:9px; border-radius:50%; box-shadow:0 0 0 3px var(--c-dcebdc) }
+.word-heat { list-style:none; margin:0; padding:4px 0; display:flex; flex-wrap:wrap; gap:6px 12px; align-items:baseline }
+.word-heat li { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--c-3f8f9a) }
+.word-heat li[data-heat="mid"] { color:var(--c-b08a3e) }
+.word-heat li[data-heat="high"] { color:var(--c-b0564f); font-weight:700 }
+.cited { margin:0; padding-left:20px; font-size:12px; display:flex; flex-direction:column; gap:5px }
+.cited button { border:0; background:none; padding:0; color:var(--c-2d5f52); text-decoration:underline; text-underline-offset:2px; font-size:12px; text-align:left }
+.cited small { margin-left:6px; font-size:10px; color:var(--c-6f8379) }
+@media (max-width:850px) { .summary-wide { grid-column:auto } }
+
+/* The compact strip over the brain's graph. */
+.summary-strip { position:absolute; top:16px; left:332px; right:calc(max(360px, 30vw) + 16px); z-index:3; display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; padding:9px 14px; border-radius:12px;
+  background:var(--deep); color:var(--deep-text); border:1px solid var(--deep-edge); font:500 11px ui-monospace,SFMono-Regular,Menlo,monospace }
+.summary-strip b { color:var(--deep-active-text); font-weight:700 }
+.summary-strip .live { color:var(--signal-live) }
+.summary-strip .off { color:var(--signal-off) }
+.summary-strip button { border:0; background:none; color:inherit; font:inherit; text-decoration:underline; text-underline-offset:2px; padding:0 }
+.brain-panel.folded ~ .summary-strip { left:110px }
+@media (max-width:1100px) { .summary-strip { display:none } }

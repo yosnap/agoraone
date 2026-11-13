@@ -59,6 +59,7 @@ def test_resumen_del_nucleo(tmp_path, monkeypatch):
         assert watson["cited"][0]["title"] == "Viaje" and watson["searches"] == [{"query": "congreso hotel", "count": 1}]
         assert watson["words"][0] == {"word": "congreso", "count": 1}
         every = {w["word"] for w in summary["noteWords"]}
+        assert "oculta" not in every, "las marcas de líneas ocultas no cuentan"
         discreet = {w["word"] for w in client.get("/summary", params={"discreet": "1"}, headers=headers).json()["noteWords"]}
         assert "secreta" in every and "secreta" not in discreet and "facturas" not in discreet, "el modo discreto solo cuenta notas normales"
         logged = json.loads(client.get("/summary", headers=headers).text)["watson"]["searches"]

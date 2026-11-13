@@ -36,7 +36,7 @@
 .brain-thinking ol { list-style:none; margin:0; padding:0; display:flex; gap:4px }
 .brain-thinking li { padding:4px 9px; border-radius:7px; border:1px solid var(--deep-edge); opacity:.55 }
 .brain-thinking li.done { opacity:.85 }
-.brain-thinking li.now { opacity:1; background:var(--c-e2bf72); color:var(--c-173d3c) }
+.brain-thinking li.now { opacity:1; background:var(--signal-amber); color:var(--signal-amber-ink) }
 .brain-thinking > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100% }
-.graph-label.reading { background:var(--c-e2bf72); color:var(--c-173d3c); box-shadow:0 0 0 3px var(--c-e2bf7255) }
+.graph-label.reading { background:var(--signal-amber); color:var(--signal-amber-ink); box-shadow:0 0 0 3px var(--signal-amber-glow) }
 @media (max-width:850px) { .brain-thinking { right:16px; bottom:auto; top:calc(48% - 70px) } }

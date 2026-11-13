@@ -92,3 +92,20 @@ export async function askAssistant(id: number, message: string, onEvent: (event:
     }
   } finally { await reader.cancel().catch(() => undefined); reader.releaseLock(); }
 }
+
+export type WordCount = { word: string; count: number };
+export type TokenProject = { project: string; tokens: number; cacheTokens: number; turns: number };
+export type CoreSummary = {
+  core: { version: string; startedAt: string; uptimeSeconds: number };
+  brain: IndexStatus;
+  watson: {
+    conversations: number; questions: number; questions24h: number; failed: number;
+    impact: { question: string; at: string; sources: number }[];
+    cited: { title: string; folder: string; source: string; ref: string; count: number }[];
+    searches: { query: string; count: number }[];
+    words: WordCount[];
+  };
+  noteWords: WordCount[];
+  costguard: { available: false } | ({ available: true } & Record<'24h' | '7d' | '30d', { projects: TokenProject[]; agents: AgentUsage[] }>);
+};
+export const getCoreSummary = (discreet: boolean) => core<CoreSummary>(`/summary?discreet=${+discreet}`);

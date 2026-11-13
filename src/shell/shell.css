@@ -1,3 +1,5 @@
+/* Signals drawn on deep surfaces keep one colour in both themes. */
+:root { --signal-live:#5fd38a; --signal-off:#e07a6a; --signal-amber:#e2bf72; --signal-amber-ink:#173d3c; --signal-amber-glow:#e2bf7255 }
 /* Deep surfaces (rail, code, the ask box) are dark in both themes, so they get their own pair of values. */
 :root, [data-theme="light"] { --deep:#173d3c; --deep-text:#e8efe4; --deep-edge:transparent; --deep-active:#f6f2e2; --deep-active-text:#173d3c; --deep-field:#fffffa; --deep-field-text:#173d3c }
 :root[data-theme="dark"] { --deep:#07111c; --deep-text:#cfe3ea; --deep-edge:#1c3346; --deep-active:#12354a; --deep-active-text:#7fe3f0; --deep-field:#0d1d2b; --deep-field-text:#e3eef2 }

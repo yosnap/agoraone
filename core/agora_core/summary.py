@@ -13,6 +13,7 @@ from pathlib import Path
 WORD = re.compile(r"[^\W\d_]{4,20}")
 LOOKS_LIKE_KEY = re.compile(r"[^\W\d_]{21,}|[A-Za-z]+\d|\d+[A-Za-z]")
 TOP_WORDS = 40
+HIDDEN_LINE = re.compile(r"\[línea oculta \d+\]")
 
 
 @cache
@@ -59,7 +60,8 @@ class NoteWords:
             if cached and cached[0] == signature:
                 return cached[1]
         hidden = "AND item.confidentiality = 'normal'" if discreet else ""
-        texts = (row[0].split("\n\n", 1)[-1] for row in connection.execute(
+        # Hidden credential lines arrive as «[línea oculta N]» (server/secret-lines.ts): they are not words.
+        texts = (HIDDEN_LINE.sub(" ", row[0].split("\n\n", 1)[-1]) for row in connection.execute(
             f"SELECT chunk.text FROM chunk JOIN item ON item.id = chunk.item_id WHERE item.class = 'note' {hidden}"
         ))
         words = top(count_words(texts))

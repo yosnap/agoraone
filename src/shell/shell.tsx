@@ -10,6 +10,7 @@ import './shell.css';
 import './page.css';
 
 const BrainView = lazy(() => import('../brain/brain-view').then(module => ({ default: module.BrainView })));
+const SummaryView = lazy(() => import('../summary/summary-view').then(module => ({ default: module.SummaryView })));
 const AssistantView = lazy(() => import('../assistant/assistant-view').then(module => ({ default: module.AssistantView })));
 const ConnectorsView = lazy(() => import('../connectors/connectors-view').then(module => ({ default: module.ConnectorsView })));
 const SettingsView = lazy(() => import('../settings/settings-view').then(module => ({ default: module.SettingsView })));
@@ -38,7 +39,8 @@ export function Shell() {
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting}/>}
       {ready && section !== 'office' && <main className="shell-page"><Suspense fallback={<div className="page"><Loading label="Cargando la sección"/></div>}>
-        {section === 'brain' ? <BrainView discreet={discreet} focus={focus} onFocus={setFocus} onRead={setReading}/>
+        {section === 'brain' ? <BrainView discreet={discreet} focus={focus} onFocus={setFocus} onRead={setReading} onSummary={() => go('summary')}/>
+          : section === 'summary' ? <SummaryView discreet={discreet} onRead={setReading}/>
           : section === 'assistant' ? <AssistantView onRead={setReading} onShowOnGraph={showOnGraph}/>
           : section === 'connectors' ? <ConnectorsView/>
           : section === 'settings' ? <SettingsView/>

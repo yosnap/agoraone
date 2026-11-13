@@ -22,7 +22,7 @@ NOTES = [
     ("Ponencia", "Ideas para la ponencia sobre agentes"),
     ("Diario", "---\nconfidencialidad: privado\n---\nponencia secreta sobre agentes"),
     ("Fiscal", "---\nconfidencialidad: solo-local\n---\nponencia y facturas de agentes"),
-    ("Viaje", "Hotel y vuelo para el congreso de agentes"),
+    ("Viaje", "Hotel y vuelo para el congreso de agentes\n[línea oculta 1]"),
 ]
 
 
