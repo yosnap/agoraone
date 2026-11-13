@@ -33,9 +33,15 @@ export function coreProxy(link: CoreLink | undefined, timeoutMs = 120_000) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!link) return unavailable(res);
     if (!methods.has(req.method)) return res.status(405).json({ error: 'Método no admitido.' });
-    // Only the path and query of the request: a path such as //host cannot change where it goes.
+    // A path starting with // would be read as another host; it has no use here, so it is refused outright.
+    if (req.url.startsWith('//')) return res.status(400).json({ error: 'Ruta no válida.' });
+    // Only the path and query of the request.
     const requested = new URL(req.url, 'http://core.invalid');
     const target = new URL(link.url);
+    // /internal/* is for the backend's own calls (e.g. writing the index): never from the browser.
+    let decoded = requested.pathname;
+    try { decoded = decodeURIComponent(requested.pathname); } catch { return res.status(400).json({ error: 'Ruta no válida.' }); }
+    if (/^\/+internal(\/|$)/i.test(decoded)) return res.status(404).json({ error: 'No disponible.' });
     target.pathname = requested.pathname;
     target.search = requested.search;
     const hasBody = !['GET', 'HEAD'].includes(req.method);

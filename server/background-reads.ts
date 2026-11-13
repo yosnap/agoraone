@@ -56,7 +56,7 @@ export class BackgroundReads {
   }
 
   activity(root: string, profiles: { id: string; name: string; home: string; mcp?: string[] }[]) { return this.ask<HermesActivity>({ task: 'activity', root, profiles }); }
-  vaultList(vaultId: string) { return this.ask<ReturnType<VaultNotes['list']>>({ task: 'vault-list', vaultId }); }
+  vaultList(vaultId: string, fresh = false) { return this.ask<ReturnType<VaultNotes['list']>>({ task: 'vault-list', vaultId, fresh }); }
   vaultRead(vaultId: string, noteId: string, reveal = false) { return this.ask<ReturnType<VaultNotes['read']>>({ task: 'vault-read', vaultId, noteId, reveal }); }
   vaultSearch(vaultId: string, query: string) { return this.ask<ReturnType<VaultNotes['search']>>({ task: 'vault-search', vaultId, query }); }
   vaultSave(vaultId: string, noteId: string, edit: { content: string; revision: string; revealed?: boolean }, backups: string) { return this.ask<ReturnType<VaultNotes['save']>>({ task: 'vault-save', vaultId, noteId, ...edit, backups }); }

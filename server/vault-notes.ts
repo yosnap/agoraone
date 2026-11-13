@@ -89,8 +89,9 @@ export class VaultNotes {
     return index;
   }
 
-  list(vaultId: string) {
-    const { vault, notes, truncated } = this.index(vaultId);
+  /** `fresh` skips the 15-second cache (the brain's index wants the vault as it is now). */
+  list(vaultId: string, fresh = false) {
+    const { vault, notes, truncated } = this.index(vaultId, fresh);
     return { vault: { id: vault.id, name: vault.name }, truncated, notes: notes.map(({ file: _file, ...note }) => note) };
   }
 
