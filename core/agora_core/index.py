@@ -80,6 +80,30 @@ def chunks(title: str, text: str) -> list[str]:
     return [f"{title}\n\n{piece}" for piece in pieces] or [title]
 
 
+_WIKILINK = re.compile(r"!?\[\[([^\[\]\n]{1,400})\]\]")
+_FENCE = re.compile(r"^(```|~~~).*?^\1", re.S | re.M)
+MAX_LINKS = 500
+
+
+def link_key(name: str) -> str:
+    """How a link target and a note title are compared: last path step, no extension, NFC, case-folded."""
+    name = unicodedata.normalize("NFC", name).replace("\\", "/").rsplit("/", 1)[-1].strip()
+    if name.lower().endswith(".md"):
+        name = name[:-3]
+    return name.casefold().strip()[:300]
+
+
+def links(text: str) -> list[str]:
+    """Targets of the [[links]] (and ![[embeds]]) in a note, outside code blocks; unique and normalised."""
+    _, body = split_frontmatter(text)
+    found: dict[str, None] = {}
+    for raw in _WIKILINK.findall(_FENCE.sub("", body)):
+        key = link_key(re.split(r"[|#^]", raw, maxsplit=1)[0])
+        if key:
+            found[key] = None
+    return list(found)[:MAX_LINKS]
+
+
 def folder_level(connection: sqlite3.Connection, source: str, folder: str) -> str:
     level = "normal"
     lowered = normal_folder(folder)
@@ -121,6 +145,10 @@ def upsert_notes(connection: sqlite3.Connection, source: str, source_name: str, 
             connection.executemany(
                 "INSERT INTO chunk (item_id, ord, text) VALUES (?, ?, ?)",
                 [(row["id"], n, piece) for n, piece in enumerate(chunks(note.title, note.text))],
+            )
+            connection.execute("DELETE FROM note_link WHERE item_id = ?", (row["id"],))
+            connection.executemany(
+                "INSERT INTO note_link (item_id, target) VALUES (?, ?)", [(row["id"], t) for t in links(note.text)]
             )
         connection.execute("COMMIT")
     except BaseException:

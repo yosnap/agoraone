@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from .db import DB_NAME, connect
 from .embed import Embedder, VectorCache, embed_pending
+from .graph import graph
 from .index import Note, RuleError, remove_notes, replace_folder_rules, state, status, upsert_notes
 from .search import search
 from .settings import Settings
@@ -153,5 +154,10 @@ def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCac
         audience: Literal["owner", "external"] = Query(),
     ):
         return await run(lambda c: search(c, q, embedder, cache, audience, limit))
+
+    @router.get("/graph")
+    async def brain_graph(discreet: bool = Query(False), near: bool = Query(True)):
+        """For the owner's screen only: never sent to a model."""
+        return await run(lambda c: graph(c, embedder, cache, discreet, near))
 
     return router
