@@ -43,3 +43,4 @@
 .assistant.embedded .assistant-head .muted { display:none }
 .assistant.embedded .assistant-messages, .assistant.embedded .assistant-form { padding-left:18px; padding-right:18px }
 .assistant.embedded .assistant-message.user { max-width:92% }
+.assistant-steps { margin:0; padding-left:18px; font-size:11px; color:var(--c-5f7a71); display:flex; flex-direction:column; gap:2px }

@@ -57,6 +57,8 @@ export type AssistantEvent =
   | { kind: 'stage'; stage: Stage; engine?: string; model?: string }
   | { kind: 'sources'; sources: Source[] }
   | { kind: 'delta'; text: string }
+  | { kind: 'tool'; tool: 'search'; query: string; found: string[] }
+  | { kind: 'tool'; tool: 'read'; id: string; title: string; n: number }
   | { kind: 'done'; engine: string; model: string };
 
 /** Sends a question and follows the answer's Server-Sent Events until it ends; an `error` event throws. */

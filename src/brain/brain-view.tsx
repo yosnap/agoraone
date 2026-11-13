@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { AssistantView } from '../assistant/assistant-view';
+import { AssistantView, type Thinking } from '../assistant/assistant-view';
 import { getBrainGraph, levelLabels, searchBrain, type BrainGraph, type SearchResult } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 import { layoutGraph } from './graph-layout';
@@ -12,6 +12,11 @@ const BrainGraphScene = lazy(() => import('./brain-graph'));
 // Distinct colours for the top folders, largest first; the rest share a neutral tone.
 const graphPalette = ['#b0564f', '#4f7192', '#7b6290', '#5f8a7d', '#c2913a', '#8c79b8', '#a8605e', '#3f8f9a', '#8f9a5a', '#b0784f', '#5a6fb0', '#9a5a86'];
 
+// Watson's real stages, in order; searching and reading may repeat while it thinks.
+const steps = [['recuerda', 'Recuerda'], ['busca', 'Busca'], ['lee', 'Lee'], ['piensa', 'Piensa'], ['responde', 'Responde']] as const;
+const order: string[] = ['recuerda', 'piensa', 'busca', 'lee', 'responde'];
+const stepState = (current: string | null, step: string) => current === step ? 'now' : current && order.indexOf(step) < order.indexOf(current) ? 'done' : '';
+
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** The start page: every indexed note as a graph with a floating explorer, and Watson beside it; the notes an
@@ -20,6 +25,7 @@ export function BrainView({ discreet, focus, onFocus, onRead }: {
   discreet: boolean; focus: string[]; onFocus: (ids: string[]) => void; onRead: (note: NoteRef) => void;
 }) {
   const [explorer, setExplorer] = useState(true);
+  const [thinking, setThinking] = useState<Thinking>(null);
   const [near, setNear] = useState(true);
   const [graph, setGraph] = useState<BrainGraph | null>(null);
   const [error, setError] = useState('');
@@ -66,7 +72,7 @@ export function BrainView({ discreet, focus, onFocus, onRead }: {
         : !graph ? <div className="brain-message"><Loading label="Leyendo el cerebro"/></div>
         : !graph.nodes.length ? <div className="brain-message"><p>{discreet ? 'En modo discreto no hay notas normales que mostrar.' : 'El cerebro aún no tiene notas. AgoraOne indexa tus vaults de Obsidian al arrancar y cada 5 minutos.'}</p></div>
         : <Suspense fallback={<div className="brain-message"><Loading label="Preparando el grafo"/></div>}>
-          <BrainGraphScene graph={graph} positions={positions} lit={lit} colors={colors} still={reducedMotion()} onPick={index => read(graph.nodes[index].id)}/>
+          <BrainGraphScene graph={graph} positions={positions} lit={lit} colors={colors} reading={thinking?.reading ?? null} still={reducedMotion()} onPick={index => read(graph.nodes[index].id)}/>
         </Suspense>}
     </div>
     <div className={`brain-panel${explorer ? '' : ' folded'}`} aria-label="Explorar el cerebro" role="region">
@@ -94,6 +100,10 @@ export function BrainView({ discreet, focus, onFocus, onRead }: {
       {folders.length > 0 && <ul className="brain-legend" aria-label="Colores por carpeta">{folders.slice(0, graphPalette.length).map(([folder, count]) =>
         <li key={folder}><span style={{ background: colors.get(folder) }} aria-hidden="true"/>{folder || 'Raíz'} <small>{count}</small></li>)}</ul>}
     </div>
-    <AssistantView embedded onRead={onRead} onSources={onFocus}/>
+    {thinking && <div className="brain-thinking" role="status" aria-live="polite">
+      <ol>{steps.map(([id, label]) => <li key={id} className={stepState(thinking.stage, id)}>{label}</li>)}</ol>
+      <span>{thinking.label}</span>
+    </div>}
+    <AssistantView embedded onRead={onRead} onSources={onFocus} onThinking={setThinking}/>
   </section>;
 }

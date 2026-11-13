@@ -9,17 +9,19 @@ import type { NoteRef } from '../brain/note-reader';
 import { engineName, modelName, stageLabels } from './assistant-labels';
 import './assistant.css';
 
-type Live = { question: string; stage: Stage | null; sources: Source[]; text: string; engine?: string; model?: string };
+type Live = { question: string; stage: Stage | null; sources: Source[]; text: string; engine?: string; model?: string; steps: string[] };
+/** What Watson is doing right now, for the graph beside it: real events only. */
+export type Thinking = { stage: Stage | 'busca' | 'lee' | null; label: string; reading: string[] } | null;
 const noLinks = () => null;
 const sourceId = (source: Source) => `${source.source}/${source.ref}`;
 const lastSources = (messages: AssistantMessage[]) => [...messages].reverse().find(message => message.role === 'assistant')?.sources.map(sourceId) ?? [];
 
 /** Watson (or the chosen character): conversations kept in the brain, answers streamed with their real stages,
  * the engine and model that answered, and the notes cited, which open as books or light up on the graph. */
-export function AssistantView({ question = null, onQuestionTaken, onRead, onShowOnGraph, embedded = false, onSources }: {
+export function AssistantView({ question = null, onQuestionTaken, onRead, onShowOnGraph, embedded = false, onSources, onThinking }: {
   question?: string | null; onQuestionTaken?: () => void; onRead: (note: NoteRef) => void; onShowOnGraph?: (ids: string[]) => void;
   /** Beside the graph: conversations fold into a menu and cited notes light up on their own. */
-  embedded?: boolean; onSources?: (ids: string[]) => void;
+  embedded?: boolean; onSources?: (ids: string[]) => void; onThinking?: (thinking: Thinking) => void;
 }) {
   const [listOpen, setListOpen] = useState(!embedded);
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
@@ -60,15 +62,24 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       if (id === null) { id = (await createAssistantConversation()).id; shownId.current = id; setCurrent(id); setMessages([]); }
       const controller = new AbortController();
       abort.current = controller;
-      setLive({ question: text, stage: null, sources: [], text: '' });
-      await askAssistant(id, text, event => setLive(previous => previous && (
+      setLive({ question: text, stage: null, sources: [], text: '', steps: [] });
+      const reading: string[] = [];
+      await askAssistant(id, text, event => {
+        if (event.kind === 'stage') onThinking?.({ stage: event.stage, label: stageLabels[event.stage], reading });
+        else if (event.kind === 'tool' && event.tool === 'search') onThinking?.({ stage: 'busca', label: `Buscando «${event.query}»`, reading });
+        else if (event.kind === 'tool' && event.tool === 'read') { reading.push(event.id); onThinking?.({ stage: 'lee', label: `Leyendo «${event.title}»`, reading: [...reading] }); }
+        setLive(previous => previous && (
         event.kind === 'stage' ? { ...previous, stage: event.stage, engine: event.engine ?? previous.engine, model: event.model ?? previous.model }
           : event.kind === 'sources' ? (onSources?.(event.sources.map(sourceId)), { ...previous, sources: event.sources })
-          : event.kind === 'delta' ? { ...previous, text: previous.text + event.text } : previous)), controller.signal);
+          : event.kind === 'delta' ? { ...previous, text: previous.text + event.text }
+          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : `Leyó [${event.n}] ${event.title}`] }
+          : previous));
+      }, controller.signal);
     } catch (failure) {
       if (!(failure instanceof DOMException && failure.name === 'AbortError')) setError(failure instanceof Error ? failure.message : 'No se pudo responder.');
     } finally {
       abort.current = null;
+      onThinking?.(null);
       if (id !== null && shownId.current === id) { try { setMessages((await getAssistantConversation(id)).messages); } catch { /* the error above is enough */ } }
       if (id === null || shownId.current === id) setLive(null);
       void refreshList();
@@ -76,7 +87,8 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [refreshList, onSources]);
   // A question asked from the brain's page starts a new conversation, once.
   useEffect(() => { if (question) { onQuestionTaken?.(); void send(question, null); } }, [question, onQuestionTaken, send]);
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [messages, live?.text, live?.stage]);
+  // Only the message list scrolls (scrollIntoView would also move the page around it).
+  useEffect(() => { const list = end.current?.parentElement; if (list) list.scrollTop = list.scrollHeight; }, [messages, live?.text, live?.stage, live?.steps.length]);
   const submit = (event?: FormEvent) => { event?.preventDefault(); const text = draft.trim(); if (!text || live) return; setDraft(''); void send(text, current); };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
@@ -118,6 +130,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         {live && <>
           <article className="assistant-message user"><strong>Tú</strong><p>{live.question}</p></article>
           <article className="assistant-message assistant" aria-busy="true"><strong>{name}</strong>
+            {live.steps.length > 0 && <ol className="assistant-steps">{live.steps.map((step, index) => <li key={index}>{step}</li>)}</ol>}
             {live.text ? <Markdown source={live.text} resolve={noLinks}/> : <p className="muted">{live.stage ? stageLabels[live.stage] : 'Enviando…'}</p>}
             {live.engine && <small className="muted">{stageLabels.responde.replace('…', '')} con {engineName(live.engine)}{live.model ? ` · ${modelName(live.model)}` : ''}</small>}
             {sourceList(live.sources)}
