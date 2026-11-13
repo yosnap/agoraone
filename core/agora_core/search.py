@@ -1,5 +1,7 @@
 """Hybrid search over the index: words (FTS5, accent-insensitive) and meaning (local embeddings), fused by
-rank. Callers that must not see some levels (MCP, Telegram) pass them in `exclude`."""
+rank. Every search names its audience and the core removes what that audience may not see before ranking:
+`owner` (the user on this Mac) sees everything; `external` (a model outside this Mac, Telegram, MCP)
+never gets `local_only` or `private` items."""
 
 import re
 import sqlite3
@@ -8,6 +10,7 @@ from .embed import EmbedError, Embedder, VectorCache
 
 RRF_K = 60
 CANDIDATES = 50
+AUDIENCES = {"owner": (), "external": ("local_only", "private")}
 
 
 def fts_query(text: str) -> str | None:
@@ -18,17 +21,22 @@ def fts_query(text: str) -> str | None:
 
 def search(
     connection: sqlite3.Connection, query: str, embedder: Embedder | None, cache: VectorCache,
-    limit: int = 10, exclude: tuple[str, ...] = (),
+    audience: str, limit: int = 10,
 ) -> dict:
+    if audience not in AUDIENCES:
+        raise ValueError("Audiencia de búsqueda no válida.")
+    exclude = AUDIENCES[audience]
+    hidden = ",".join(f"'{level}'" for level in exclude) or "''"
     ranks: dict[int, float] = {}
     snippets: dict[int, str] = {}
     matched: dict[int, set[str]] = {}
     expression = fts_query(query)
     if expression:
         rows = connection.execute(
-            """SELECT chunk.id, snippet(chunk_fts, 0, '«', '»', '…', 16) AS snippet
-               FROM chunk_fts JOIN chunk ON chunk.id = chunk_fts.rowid
-               WHERE chunk_fts MATCH ? ORDER BY bm25(chunk_fts) LIMIT ?""",
+            f"""SELECT chunk.id, snippet(chunk_fts, 0, '«', '»', '…', 16) AS snippet
+               FROM chunk_fts JOIN chunk ON chunk.id = chunk_fts.rowid JOIN item ON item.id = chunk.item_id
+               WHERE chunk_fts MATCH ? AND item.confidentiality NOT IN ({hidden})
+               ORDER BY bm25(chunk_fts) LIMIT ?""",
             (expression, CANDIDATES),
         ).fetchall()
         for rank, row in enumerate(rows):
@@ -38,7 +46,7 @@ def search(
     semantic = False
     if embedder is not None and query.strip():
         try:
-            nearest = cache.nearest(connection, embedder, query, CANDIDATES)
+            nearest = cache.nearest(connection, embedder, query, CANDIDATES, exclude)
         except EmbedError:
             nearest = None
         for rank, chunk_id in enumerate(nearest or []):

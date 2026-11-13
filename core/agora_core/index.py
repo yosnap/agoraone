@@ -6,14 +6,16 @@ masked; the core never reads the vault itself.
 
 import re
 import sqlite3
+import unicodedata
 from dataclasses import dataclass
 
 from .db import now
 
 LEVELS = ("normal", "local_only", "private")
 CHUNK_CHARS = 1000
-_FRONTMATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?", re.S)
-_DECLARED = re.compile(r"^(?:confidencialidad|confidentiality)\s*:\s*[\"']?([^\"'\n#]+)", re.I | re.M)
+_FRONTMATTER = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
+# Lenient on purpose: quoted keys, spaces, repeated keys. Every match counts and the strictest wins.
+_DECLARED = re.compile(r"^\s*[\"']?(?:confidencialidad|confidentiality)[\"']?\s*:\s*[\"']?([^\"'\n#]*)", re.I | re.M)
 _ALIASES = {
     "normal": "normal", "publico": "normal", "público": "normal",
     "solo-local": "local_only", "solo local": "local_only", "sololocal": "local_only", "local_only": "local_only",
@@ -42,12 +44,17 @@ def split_frontmatter(text: str) -> tuple[str, str]:
 
 
 def declared_level(text: str) -> str:
-    """The level a note declares in its properties; anything unrecognised counts as private, to be safe."""
+    """The level a note declares in its properties: the strictest of every mention; a value that is not
+    recognised counts as private, to be safe."""
     properties, _ = split_frontmatter(text)
-    match = _DECLARED.search(properties)
-    if not match:
-        return "normal"
-    return _ALIASES.get(match[1].strip().lower(), "private")
+    levels = [_ALIASES.get(value.strip().lower(), "private") for value in _DECLARED.findall(properties)]
+    return strictest("normal", *levels)
+
+
+def normal_folder(folder: str) -> str:
+    """One spelling for a folder: NFC, case-folded, forward slashes, no empty, '.' or surrounding spaces."""
+    parts = unicodedata.normalize("NFC", folder).replace("\\", "/").casefold().split("/")
+    return "/".join(part.strip() for part in parts if part.strip() not in ("", "."))
 
 
 def chunks(title: str, text: str) -> list[str]:
@@ -75,11 +82,11 @@ def chunks(title: str, text: str) -> list[str]:
 
 def folder_level(connection: sqlite3.Connection, source: str, folder: str) -> str:
     level = "normal"
-    lowered = folder.lower()
+    lowered = normal_folder(folder)
     for rule in connection.execute(
         "SELECT folder, confidentiality FROM folder_rule WHERE source IN (?, '*')", (source,)
     ):
-        prefix = rule["folder"].strip("/").lower()
+        prefix = normal_folder(rule["folder"])
         if lowered == prefix or lowered.startswith(prefix + "/"):
             level = strictest(level, rule["confidentiality"])
     return level
@@ -139,14 +146,21 @@ def remove_notes(connection: sqlite3.Connection, source: str, refs: list[str]) -
     return removed
 
 
+class RuleError(ValueError):
+    pass
+
+
 def replace_folder_rules(connection: sqlite3.Connection, rules: list[tuple[str, str, str]]) -> int:
     """Replaces every folder rule and reclassifies the indexed notes. Returns how many changed level."""
+    for _, folder, _ in rules:
+        if not normal_folder(folder) or normal_folder(folder) in ("*", ".."):
+            raise RuleError("Carpeta no válida en una regla de confidencialidad.")
     connection.execute("BEGIN IMMEDIATE")
     try:
         connection.execute("DELETE FROM folder_rule")
         connection.executemany(
-            "INSERT INTO folder_rule (source, folder, confidentiality) VALUES (?, ?, ?)",
-            [(source, folder.strip("/"), level) for source, folder, level in rules],
+            "INSERT OR REPLACE INTO folder_rule (source, folder, confidentiality) VALUES (?, ?, ?)",
+            [(source, folder.strip().strip("/"), level) for source, folder, level in rules],
         )
         changed = 0
         for item in connection.execute(

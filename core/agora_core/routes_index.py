@@ -1,6 +1,7 @@
 """HTTP routes of the index. `/internal/*` is for the backend only: the browser proxy does not forward it,
 so the browser cannot write into the index."""
 
+import re
 import sqlite3
 import sys
 import threading
@@ -8,12 +9,13 @@ from contextlib import contextmanager
 from typing import Literal
 
 from fastapi import APIRouter, Query
+from fastapi.responses import JSONResponse
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from .db import DB_NAME, connect
-from .embed import EmbedError, Embedder, VectorCache, embed_pending
-from .index import Note, remove_notes, replace_folder_rules, state, status, upsert_notes
+from .embed import Embedder, VectorCache, embed_pending
+from .index import Note, RuleError, remove_notes, replace_folder_rules, state, status, upsert_notes
 from .search import search
 from .settings import Settings
 
@@ -42,6 +44,10 @@ class RemoveIn(BaseModel):
     refs: list[str] = Field(max_length=5000)
 
 
+class SourcesIn(BaseModel):
+    keep: list[str] = Field(max_length=100)
+
+
 class RuleIn(BaseModel):
     source: str = Field(pattern=r"^(\*|vault-[a-f0-9]{24})$")
     folder: str = Field(min_length=1, max_length=500)
@@ -52,18 +58,26 @@ class RulesIn(BaseModel):
     rules: list[RuleIn] = Field(max_length=200)
 
 
-def embed_worker(settings: Settings, embedder: Embedder, stop: threading.Event) -> None:
-    """Embeds pending fragments in the background; when there is nothing to do or ollama is away, waits."""
-    warned = False
+class EmbedHealth:
+    """Whether the background embedding works right now, for /index/status."""
+
+    def __init__(self):
+        self.ok = True
+        self.problem: str | None = None
+
+
+def embed_worker(settings: Settings, embedder: Embedder, stop: threading.Event, health: EmbedHealth) -> None:
+    """Embeds pending fragments in the background. Any failure (ollama away, a database error, an odd
+    answer) pauses it and is retried later; it never ends the thread."""
     while not stop.is_set():
         try:
             with _open(settings) as connection:
                 done = embed_pending(connection, embedder)
-            warned = False
-        except EmbedError as error:
-            if not warned:
+            health.ok, health.problem = True, None
+        except Exception as error:  # noqa: BLE001 - the worker must survive anything and say so
+            if health.ok:
                 print(f"AgoraOne núcleo: búsqueda por significado en pausa: {error}", file=sys.stderr)
-                warned = True
+            health.ok, health.problem = False, str(error)[:200]
             done = 0
         if not done:
             stop.wait(IDLE_SECONDS)
@@ -78,7 +92,7 @@ def _open(settings: Settings):
         connection.close()
 
 
-def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCache) -> APIRouter:
+def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCache, health: EmbedHealth) -> APIRouter:
     router = APIRouter()
 
     def run(work):
@@ -100,10 +114,22 @@ def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCac
     async def index_remove(body: RemoveIn):
         return {"removed": await run(lambda c: remove_notes(c, body.source, body.refs))}
 
+    @router.post("/internal/index/sources")
+    async def index_sources(body: SourcesIn):
+        """Vaults no longer in Obsidian's registry leave the index (a disconnected one stays listed)."""
+        keep = [source for source in body.keep if re.fullmatch(SOURCE.strip("^$"), source)]
+
+        def prune(connection: sqlite3.Connection):
+            placeholders = ",".join("?" * len(keep)) or "''"
+            return connection.execute(
+                f"DELETE FROM item WHERE class = 'note' AND source LIKE 'vault-%' AND source NOT IN ({placeholders})", keep
+            ).rowcount
+        return {"removed": await run(prune)}
+
     @router.get("/index/status")
     async def index_status():
         result = await run(status)
-        return {**result, "semanticSearch": embedder is not None}
+        return {**result, "semanticSearch": embedder is not None and health.ok, "semanticProblem": health.problem}
 
     @router.get("/index/folder-rules")
     async def folder_rules():
@@ -115,14 +141,17 @@ def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCac
     @router.put("/index/folder-rules")
     async def put_folder_rules(body: RulesIn):
         rules = [(r.source, r.folder, r.confidentiality) for r in body.rules]
-        return {"reclassified": await run(lambda c: replace_folder_rules(c, rules))}
+        try:
+            return {"reclassified": await run(lambda c: replace_folder_rules(c, rules))}
+        except RuleError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
 
     @router.get("/search")
     async def find(
         q: str = Query(min_length=1, max_length=500),
         limit: int = Query(10, ge=1, le=50),
-        exclude: list[Literal["local_only", "private"]] = Query(default=[]),
+        audience: Literal["owner", "external"] = Query(),
     ):
-        return await run(lambda c: search(c, q, embedder, cache, limit, tuple(exclude)))
+        return await run(lambda c: search(c, q, embedder, cache, audience, limit))
 
     return router

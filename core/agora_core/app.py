@@ -19,7 +19,7 @@ from .backup import clean_leftovers, create_backup, ensure_daily, list_backups, 
 from .db import DB_NAME, connect, migrate
 from .embed import DEFAULT_MODEL, DEFAULT_URL, Embedder, OllamaEmbedder, VectorCache
 from .keystore import KeychainStore, KeyStore, recovery_pending
-from .routes_index import embed_worker, index_router
+from .routes_index import EmbedHealth, embed_worker, index_router
 from .settings import Settings
 
 SECRET_HEADER = "x-agora-core-secret"
@@ -49,6 +49,7 @@ def create_app(
     if embedder is _DEFAULT:
         embedder = OllamaEmbedder(DEFAULT_URL, DEFAULT_MODEL)
     cache = VectorCache()
+    embed_health = EmbedHealth()
     expected = settings.secret.encode()
 
     @asynccontextmanager
@@ -64,7 +65,7 @@ def create_app(
         if scheduler:
             threading.Thread(target=_daily_backups, args=(settings, store, stop), daemon=True).start()
             if embedder is not None:
-                threading.Thread(target=embed_worker, args=(settings, embedder, stop), daemon=True).start()
+                threading.Thread(target=embed_worker, args=(settings, embedder, stop, embed_health), daemon=True).start()
         try:
             yield
         finally:
@@ -122,5 +123,5 @@ def create_app(
             return JSONResponse({"error": f"No se pudo hacer la copia: {error}"}, status_code=503)
         return {"name": made.name, "kind": made.kind}
 
-    app.include_router(index_router(settings, embedder, cache))
+    app.include_router(index_router(settings, embedder, cache, embed_health))
     return app
