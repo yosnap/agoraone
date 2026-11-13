@@ -6,7 +6,9 @@ propietario ya autenticado por la cookie de acceso. El navegador nunca habla dir
 
 import hmac
 import re
+import shutil
 import sys
+from pathlib import Path
 import threading
 from contextlib import asynccontextmanager
 
@@ -22,7 +24,7 @@ from .keystore import KeychainStore, KeyStore, recovery_pending
 from .routes_addons import addons_router
 from .routes_assistant import KeychainSecrets, assistant_router, default_engines
 from .routes_index import EmbedHealth, embed_worker, index_router
-from .settings import Settings
+from .settings import DEFAULT_DATA, Settings
 
 SECRET_HEADER = "x-agora-core-secret"
 OWNER_HEADER = "x-agora-owner"
@@ -98,6 +100,15 @@ def create_app(
         if not _OWNER.fullmatch(owner):
             return JSONResponse({"error": "Falta el propietario."}, status_code=400)
         return {"owner": owner}
+
+    @app.get("/brain-mcp")
+    async def brain_mcp_setup():
+        """What the user types to connect the brain's MCP server to a Hermes profile (AgoraOne never writes
+        Hermes' configuration). Paths of this Mac, shown only to the owner on screen."""
+        core_dir = Path(__file__).resolve().parents[1]
+        args = ["run", "--directory", str(core_dir), "--frozen", "--quiet", "python", "-m", "agora_core.brain_mcp"]
+        env = {} if settings.data_dir == DEFAULT_DATA else {"AGORA_CORE_DATA": str(settings.data_dir)}
+        return {"name": "agoraone-cerebro", "command": shutil.which("uv"), "args": args, "env": env}
 
     def described():
         found = []

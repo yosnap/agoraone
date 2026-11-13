@@ -126,3 +126,13 @@ def test_migracion_olvida_revisiones_para_reindexar(tmp_path, monkeypatch):
         assert connection.execute("SELECT revision FROM item").fetchone()[0] is None
     finally:
         connection.close()
+
+
+def test_instrucciones_del_mcp_del_cerebro(tmp_path):
+    settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
+    app = create_app(settings, MemoryStore(), scheduler=False, embedder=None)
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        assert client.get("/brain-mcp").status_code == 401
+        setup = client.get("/brain-mcp", headers={SECRET_HEADER: SECRET}).json()
+        assert setup["name"] == "agoraone-cerebro" and setup["args"][-3:] == ["python", "-m", "agora_core.brain_mcp"]
+        assert setup["env"] == {"AGORA_CORE_DATA": str(tmp_path / "data")}, "otra carpeta de datos va en el entorno"
