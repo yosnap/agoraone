@@ -1,5 +1,6 @@
 import { Worker } from 'node:worker_threads';
 import type { HermesActivity } from '../shared/hermes-activity';
+import type { HermesSummary } from './hermes-summary';
 import type { LibraryDocument } from './library';
 import { VaultError, VaultWriteError, type VaultNotes } from './vault-notes';
 
@@ -56,6 +57,7 @@ export class BackgroundReads {
   }
 
   activity(root: string, profiles: { id: string; name: string; home: string; mcp?: string[] }[]) { return this.ask<HermesActivity>({ task: 'activity', root, profiles }); }
+  summary(root: string, profiles: { id: string; name: string; home: string }[]) { return this.ask<HermesSummary>({ task: 'summary', root, profiles }); }
   vaultList(vaultId: string, fresh = false) { return this.ask<ReturnType<VaultNotes['list']>>({ task: 'vault-list', vaultId, fresh }); }
   vaultRead(vaultId: string, noteId: string, reveal = false) { return this.ask<ReturnType<VaultNotes['read']>>({ task: 'vault-read', vaultId, noteId, reveal }); }
   vaultSearch(vaultId: string, query: string) { return this.ask<ReturnType<VaultNotes['search']>>({ task: 'vault-search', vaultId, query }); }

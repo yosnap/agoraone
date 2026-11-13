@@ -206,3 +206,34 @@ def costguard_usage(database: Path, hours: int = 5, now: float | None = None) ->
     agents = [{"agent": a, "input": i or 0, "output": o or 0, "cacheRead": r or 0, "cacheWrite": w or 0, "turns": t or 0}
               for a, i, o, r, w, t in rows]
     return {"hours": hours, "agents": agents, "turns": sum(a["turns"] for a in agents)}
+
+
+def costguard_projects(database: Path, hours: int, now: float | None = None, limit: int = 15) -> list[dict]:
+    """Tokens per project (CostGuard's `proyecto_raw`, reduced to its last name, never a path) in the last
+    `hours`, read-only like costguard_usage."""
+    moment = int(time.time() if now is None else now)
+    start = (moment // 3600 - (hours - 1)) * 3600
+    try:
+        connection = _open_costguard(database)
+        try:
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(horas)")}
+            if "proyecto_raw" not in columns:
+                return []
+            rows = connection.execute(
+                """SELECT proyecto_raw, sum(gi) + sum(go), sum(cr) + sum(cw), sum(turnos) FROM horas
+                   WHERE hora >= ? GROUP BY proyecto_raw""",
+                (start,),
+            ).fetchall()
+        finally:
+            connection.close()
+    except sqlite3.Error as error:
+        raise AddonError("No se pudieron leer los datos de CostGuard.") from error
+    totals: dict[str, list[int]] = {}
+    for raw, tokens, cached, turns in rows:
+        name = Path(str(raw or "").rstrip("/")).name.strip() or "Sin proyecto"
+        total = totals.setdefault(name, [0, 0, 0])
+        total[0] += tokens or 0
+        total[1] += cached or 0
+        total[2] += turns or 0
+    ranked = sorted(totals.items(), key=lambda item: -item[1][0])[:limit]
+    return [{"project": name, "tokens": t, "cacheTokens": c, "turns": n} for name, (t, c, n) in ranked]
