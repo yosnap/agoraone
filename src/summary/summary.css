@@ -34,7 +34,7 @@
 /* The compact strip over the brain's graph. */
 .summary-strip { position:absolute; top:16px; left:332px; right:calc(max(360px, 30vw) + 16px); z-index:3; display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; padding:9px 14px; border-radius:12px;
   background:var(--deep); color:var(--deep-text); border:1px solid var(--deep-edge); font:500 11px ui-monospace,SFMono-Regular,Menlo,monospace }
-.summary-strip b { color:var(--deep-active-text); font-weight:700 }
+.summary-strip b { color:var(--deep-figure); font-weight:700 }
 .summary-strip .live { color:var(--signal-live) }
 .summary-strip .off { color:var(--signal-off) }
 .summary-strip button { border:0; background:none; color:inherit; font:inherit; text-decoration:underline; text-underline-offset:2px; padding:0 }
