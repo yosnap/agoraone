@@ -20,8 +20,9 @@ import { jobDetail, manageCard, manageJob, ManageError } from './hermes-manage';
 import { callMcpTool, McpCallError } from './mcp-call';
 import { SkillError, createProfileSkill, listProfileSkills, readProfileSkill, saveProfileSkill } from './hermes-skills';
 import { accessCookie, accessProof, loadAccessToken, sameSecret } from './access-token';
+import { coreProxy, type CoreLink } from './core-proxy';
 
-export function createApp(options: { directory?: string; adapter?: Adapter; profileAdapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string; vaultBackups?: string; accessToken?: string } = {}) {
+export function createApp(options: { directory?: string; adapter?: Adapter; profileAdapter?: Adapter; libraryRoot?: string; privateLibraryRoot?: string; discovery?: HermesDiscovery; obsidianRegistry?: string | null; reads?: BackgroundReads; backups?: string; vaultBackups?: string; accessToken?: string; core?: CoreLink } = {}) {
   const app = express();
   // No other site may frame AgoraOne (clickjacking): neither the page nor the API.
   app.use((_req, res, next) => { res.setHeader('X-Frame-Options', 'DENY'); res.setHeader('Content-Security-Policy', "frame-ancestors 'none'"); next(); });
@@ -78,6 +79,10 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
     res.cookie(accessCookie, proof, { httpOnly: true, sameSite: 'strict', path: '/', maxAge: 365 * 86400_000 });
     res.status(204).end();
   });
+  // The Python core (server/core-proxy.ts): after the access cookie and Origin checks above, with CSRF on
+  // GET too, like /api/hermes. Mounted before the JSON parser so the body reaches the core untouched.
+  app.use('/api/core', (req, res, next) => req.headers['x-agora-csrf'] === csrf ? next()
+    : res.status(403).json({ error: 'Sesión de navegador no válida. Recarga la página.' }), coreProxy(options.core));
   app.post('/api/library/imports', express.json({ limit: '7mb' }), async (req, res) => {
     const parsed = uploadSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Elige TXT, Markdown, PDF o DOCX. No se permiten rutas ni campos adicionales.' });
