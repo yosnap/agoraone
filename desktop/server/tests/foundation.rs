@@ -60,7 +60,7 @@ fn app(core: Option<CoreLink>) -> (Router, Arc<AppState>) {
     let web = tempfile::tempdir().unwrap().keep();
     std::fs::write(web.join("index.html"), "<!doctype html>").unwrap();
     let hermes = agora_server::hermes::location::hermes_location(|_| None, &web.join("sin-hermes"));
-    let config = Config { data: web.clone(), web, hosts: vec![HOST.into(), "127.0.0.1:5173".into()], hermes, obsidian_registry: None };
+    let config = Config { data: web.clone(), web, hosts: vec![HOST.into(), "127.0.0.1:5173".into()], hermes, obsidian_registry: None, examples: std::path::PathBuf::from("/no-examples"), extractor: None };
     let state = AppState::new(config, TOKEN, core);
     (router(state.clone()), state)
 }

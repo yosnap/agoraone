@@ -7,6 +7,7 @@ pub mod brain_sync;
 pub mod core;
 pub mod hermes;
 pub mod js;
+pub mod library;
 pub mod secret_lines;
 pub mod security;
 pub mod vault;
@@ -17,6 +18,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{any, get, post, put};
 use axum::{Json, Router, middleware};
 use serde::Deserialize;
@@ -44,6 +46,10 @@ pub struct Config {
     pub hermes: HermesLocation,
     /// Obsidian's registry of vaults (None: no vaults).
     pub obsidian_registry: Option<PathBuf>,
+    /// The library's fixed example documents.
+    pub examples: PathBuf,
+    /// The core's Python that extracts PDF and DOCX text (None: those imports are refused).
+    pub extractor: Option<library::extract::Extractor>,
 }
 
 pub struct AppState {
@@ -54,6 +60,7 @@ pub struct AppState {
     pub http: reqwest::Client,
     pub hermes: HermesDiscovery,
     pub vault: Arc<vault::VaultNotes>,
+    pub library: library::PrivateLibrary,
 }
 
 impl AppState {
@@ -61,7 +68,8 @@ impl AppState {
         let http = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).build().expect("cliente HTTP");
         let hermes = HermesDiscovery::new(config.hermes.clone());
         let vault = Arc::new(vault::VaultNotes::new(config.obsidian_registry.clone()));
-        Arc::new(Self { config, proof: proof(token), csrf: access::random_hex(), core, http, hermes, vault })
+        let library = library::PrivateLibrary::new(config.data.join("library"));
+        Arc::new(Self { config, proof: proof(token), csrf: access::random_hex(), core, http, hermes, vault, library })
     }
 
     /// The brain's index kept in step with the vaults (None without a core).
@@ -133,6 +141,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/hermes/vaults/{id}/notes/{note}", get(vault::routes::note).put(vault::routes::save))
         .route("/api/hermes/vaults/{id}/notes/{note}/move", post(vault::routes::move_note))
         .route("/api/hermes/vaults/{id}/search", get(vault::routes::search))
+        .route("/api/library/documents", get(library::routes::list).fallback(library::routes::not_allowed))
+        .route("/api/library/documents/{id}", get(library::routes::read).patch(library::routes::rename).delete(library::routes::delete).fallback(library::routes::not_allowed))
+        .route("/api/library/imports", post(library::routes::import).layer(DefaultBodyLimit::max(8 * 1024 * 1024)).fallback(library::routes::not_allowed))
+        .route("/api/library", any(library::routes::not_allowed))
+        .route("/api/library/{*rest}", any(library::routes::not_allowed))
         .route("/api/core", any(core::proxy))
         .route("/api/core/{*rest}", any(core::proxy))
         .route("/api/{*rest}", any(not_found))

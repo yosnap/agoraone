@@ -297,7 +297,7 @@ async fn call(state: &Arc<AppState>, method: &str, path: &str, csrf: bool, body:
 async fn rutas_del_vault_con_csrf_y_validacion() {
     let f = fixture();
     let hermes = HermesLocation { root: f.base.clone(), installation: f.base.join("hermes-agent"), python: f.base.join("python"), source: "test".into() };
-    let config = Config { data: f.base.join("datos"), web: f.base.clone(), hosts: vec![HOST.into()], hermes, obsidian_registry: Some(f.base.join("obsidian.json")) };
+    let config = Config { data: f.base.join("datos"), web: f.base.clone(), hosts: vec![HOST.into()], hermes, obsidian_registry: Some(f.base.join("obsidian.json")), examples: PathBuf::from("/no-examples"), extractor: None };
     let state = AppState::new(config, TOKEN, None);
     let notes = format!("/api/hermes/vaults/{}/notes", f.id);
     assert_eq!(call(&state, "GET", &notes, false, None).await.0, StatusCode::FORBIDDEN);

@@ -1,6 +1,7 @@
 //! /api/hermes reads through the router: CSRF on GET too, opaque ids only, and the catalog with its vaults.
 
 use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use agora_server::access::proof;
@@ -24,7 +25,7 @@ fn state() -> (tempfile::TempDir, Arc<AppState>) {
     fs::create_dir(&vault).unwrap();
     fs::write(root.join("obsidian.json"), json!({ "vaults": { "a": { "path": vault } } }).to_string()).unwrap();
     let hermes = HermesLocation { root: root.clone(), installation: root.join("hermes-agent"), python: root.join("python"), source: "test".into() };
-    let config = Config { data: root.clone(), web: root.clone(), hosts: vec![HOST.into()], hermes, obsidian_registry: Some(root.join("obsidian.json")) };
+    let config = Config { data: root.clone(), web: root.clone(), hosts: vec![HOST.into()], hermes, obsidian_registry: Some(root.join("obsidian.json")), examples: PathBuf::from("/no-examples"), extractor: None };
     (dir, AppState::new(config, TOKEN, None))
 }
 
