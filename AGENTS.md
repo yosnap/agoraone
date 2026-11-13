@@ -13,6 +13,6 @@
 - Ningún movimiento 3D debe invocar modelos. Identificadores de recursos no son rutas físicas.
 - Marcar explícitamente lo conectado, lo pendiente y lo ilustrativo; nunca simular una respuesta real.
 - La ciudad se deriva del catálogo detectado de Hermes. No reintroducir agentes ficticios como si fueran perfiles reales. Leer SOUL/memoria no inicia ejecución; la conversación requiere envío explícito. Los chats de perfil usan el agente real del perfil con sus herramientas (decisión del usuario, 18/10/2026), y toda herramienta que no sea de solo lectura exige la confirmación del usuario en AgoraOne, aunque el perfil tenga las aprobaciones desactivadas; nunca se guardan permisos permanentes. Luma sigue sin herramientas.
-- Documentación en docs/, planes en plans/. Mantener contexto y siguiente paso al terminar.
+- Documentación en docs/. Los planes y sus informes viven en un repositorio privado aparte (`../agoraone-plans`), enlazado aquí como `plans/` e ignorado por git: nunca se publican con este repositorio (decisión del usuario, 13/11/2026). Mantener contexto y siguiente paso al terminar.
 - La interfaz no usa selects nativos: todo desplegable va por `src/ui/modern-select.tsx` para poder darles color, puntos e indentación (decisión del usuario, 20/10/2026).
 - Verificar con npm test y npm run build; añadir pruebas de aislamiento cuando cambien permisos.
