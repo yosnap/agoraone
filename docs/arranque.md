@@ -59,19 +59,21 @@ La comprobación normal no llama a modelos. La variante live verifica dos turnos
 - Los perfiles y espacios se obtienen del catálogo Hermes; los personajes ficticios adicionales del prototipo ya no se muestran.
 
 ## Copias de seguridad del núcleo
-La base de datos del núcleo (`.agora/core/agora.db`) se copia cifrada en `.agora/core/backups`: una vez al día (al arrancar si la última tiene más de 24 h, y comprobando cada hora) y antes de cada cambio de estructura. Se conservan una por día durante 14 días, una por semana durante 8 semanas y las 5 últimas previas a una migración. La clave de cifrado se crea sola y vive en el Llavero de macOS (servicio «AgoraOne», cuenta «backup-key»).
+La base de datos del núcleo (`.agora/core/agora.db`) se copia cifrada en `.agora/core/backups`: una vez al día (al arrancar si la última tiene más de 24 h, y comprobando cada hora) y antes de cada cambio de estructura. Se conservan una diaria por cada uno de los últimos 14 días, una por semana durante 8 semanas, las 10 últimas copias manuales y las 5 últimas previas a una migración. Una copia con fecha futura (reloj atrasado) no se borra. Límite: la base no puede superar 2 GiB comprimida; si se acerca, la copia falla con un aviso.
 
-Guarda la clave de recuperación fuera de este Mac (gestor de contraseñas o papel). Sin ella, si pierdes el Mac o su Llavero, las copias no se pueden abrir. Se muestra una vez, solo en tu terminal:
+La clave de cifrado se crea con la primera copia y vive en el Llavero de macOS (servicio «AgoraOne», cuenta «backup-key»). Si ya hay copias y la clave falta, AgoraOne no crea otra en silencio: deja de copiar y pide restaurar con la clave de recuperación.
+
+Guarda la clave de recuperación fuera de este Mac (gestor de contraseñas o papel). Sin ella, si pierdes el Mac o su Llavero, las copias no se pueden abrir. **Ejecuta estos comandos en tu propia terminal, nunca desde un chat con un asistente** (en Claude Code, no con `!`): lo que se imprime acaba en el historial de la conversación.
 
 ```sh
 cd core
-uv run python -m agora_core.cli recovery-key      # --again para verla de nuevo
-uv run python -m agora_core.cli list              # copias existentes
-uv run python -m agora_core.cli backup            # copia ahora
+uv run python -m agora_core.cli recovery-key      # se muestra mientras no la hayas guardado; --again para repetir
+uv run python -m agora_core.cli list              # copias existentes, y aviso si la clave de recuperación está pendiente
+uv run python -m agora_core.cli backup            # copia manual ahora
 uv run python -m agora_core.cli restore <archivo> # con AgoraOne parado; --recovery pide la clave de recuperación
 ```
 
-Restaurar conserva la base anterior junto a la nueva como `agora.db.before-restore-<fecha>`.
+Restaurar conserva la base anterior junto a la nueva como `agora.db.before-restore-<fecha>`. En otro Mac, `restore --recovery` guarda además esa clave en su Llavero para las copias siguientes. AgoraOne recuerda la huella (no la clave) de la última clave de recuperación que te mostró y avisa si la del Llavero es otra.
 
 ## Datos y diagnóstico
 `.agora/conversations` contiene conversaciones privadas. `.agora/hermes` contiene estado de Hermes aislado. `.env`, `.agora`, node_modules y dist están ignorados. No compartir esos archivos ni logs sin revisarlos.
