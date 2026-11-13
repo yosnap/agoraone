@@ -85,8 +85,14 @@ export function createApp(options: { directory?: string; adapter?: Adapter; prof
   });
   // The Python core (server/core-proxy.ts): after the access cookie and Origin checks above, with CSRF on
   // GET too, like /api/hermes. Mounted before the JSON parser so the body reaches the core untouched.
-  app.use('/api/core', (req, res, next) => req.headers['x-agora-csrf'] === csrf ? next()
-    : res.status(403).json({ error: 'Sesión de navegador no válida. Recarga la página.' }), coreProxy(options.core));
+  // The core's owner is tied to AgoraOne's access (single user), not to one browser's cookie: the user's
+  // conversations with the assistant are the same in any browser and do not expire.
+  const coreOwner = createHash('sha256').update(`agoraone-core-owner:${proof}`).digest('hex');
+  app.use('/api/core', (req, res, next) => {
+    if (req.headers['x-agora-csrf'] !== csrf) return res.status(403).json({ error: 'Sesión de navegador no válida. Recarga la página.' });
+    res.locals.owner = coreOwner;
+    next();
+  }, coreProxy(options.core));
   app.post('/api/library/imports', express.json({ limit: '7mb' }), async (req, res) => {
     const parsed = uploadSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Elige TXT, Markdown, PDF o DOCX. No se permiten rutas ni campos adicionales.' });
