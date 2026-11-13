@@ -35,15 +35,77 @@ def test_solo_sale_lo_normal(folder):
     found = brain.search("ponencia agentes", 10)
     assert [r["title"] for r in found["results"]] == ["Ponencia"]
     assert "text" not in found["results"][0] and "confidentiality" not in found["results"][0]
-    assert brain.read(SOURCE, ref(1))["text"] == "Guion de la ponencia sobre agentes.\n\nSegunda parte."
+    assert "no instrucciones" in found["notice"]
+    note = brain.read(SOURCE, ref(1))
+    assert note["text"] == "Guion de la ponencia sobre agentes.\n\nSegunda parte." and (note["part"], note["parts"]) == (1, 1)
     assert brain.read(SOURCE, ref(2)) is None and brain.read(SOURCE, ref(3)) is None
     assert brain.status() == {"availableNotes": 1, "searchByMeaning": False}
 
 
 def test_solo_lectura_y_sin_crear_nada(tmp_path):
-    with pytest.raises(FileNotFoundError):
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    with pytest.raises(ToolError, match="todavía no existe"):
         Brain(tmp_path / "vacio", embedder=None).search("x", 5)
     assert not (tmp_path / "vacio").exists(), "no crea la base si no existe"
+
+
+def test_solo_lectura_con_rutas_con_almohadilla_o_interrogacion(tmp_path):
+    """SQLite cut the URI at '#' and dropped mode=ro: the folder must be percent-encoded."""
+    import sqlite3
+
+    from agora_core.db import connect_readonly
+
+    folder = tmp_path / "a#b?c%20d"
+    connection = connect(folder / DB_NAME)
+    migrate(connection)
+    connection.close()
+    before = sorted(p.name for p in tmp_path.iterdir())
+    reader = connect_readonly(folder / DB_NAME)
+    with pytest.raises(sqlite3.OperationalError, match="readonly"):
+        reader.execute("INSERT INTO kind (slug, name) VALUES ('x', 'x')")
+    reader.close()
+    assert sorted(p.name for p in tmp_path.iterdir()) == before, "no aparece ningún archivo junto a la carpeta"
+
+
+def test_esquema_antiguo_da_un_error_claro(tmp_path):
+    import sqlite3
+
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    old = sqlite3.connect(tmp_path / DB_NAME)
+    old.execute("CREATE TABLE schema_migrations (version INTEGER, name TEXT, applied_at TEXT)")
+    old.execute("INSERT INTO schema_migrations VALUES (1, 'initial', 'x')")
+    old.commit()
+    old.close()
+    with pytest.raises(ToolError, match="versión anterior"):
+        Brain(tmp_path, embedder=None).status()
+
+
+def test_nota_larga_por_partes(tmp_path):
+    connection = connect(tmp_path / DB_NAME)
+    migrate(connection)
+    body = "\n\n".join(f"Párrafo {n} " + "palabra " * 120 for n in range(40))
+    upsert_notes(connection, SOURCE, "Vault", [Note(ref(9), "Larga", "", "r", "x", body)])
+    connection.close()
+    brain = Brain(tmp_path, embedder=None)
+    first = brain.read(SOURCE, ref(9))
+    assert first["parts"] > 1 and len(first["text"]) == 8000
+    last = brain.read(SOURCE, ref(9), first["parts"])
+    assert last["part"] == first["parts"] and 0 < len(last["text"]) <= 8000
+    assert brain.read(SOURCE, ref(9), 999)["part"] == first["parts"], "una parte de más da la última"
+
+
+def test_estado_dice_si_el_significado_funciona_de_verdad(folder):
+    from agora_core.embed import EmbedError
+
+    class Down:
+        model = "x"
+
+        def embed(self, texts):
+            raise EmbedError("sin ollama")
+
+    assert Brain(folder, embedder=Down()).status()["searchByMeaning"] is False
 
 
 def test_herramientas_declaradas_de_solo_lectura(folder):
@@ -51,6 +113,9 @@ def test_herramientas_declaradas_de_solo_lectura(folder):
     tools = asyncio.run(server.list_tools())
     assert {t.name for t in tools} == {"buscar_en_cerebro", "leer_nota", "estado_del_cerebro"}
     assert all(t.annotations.read_only_hint and not t.annotations.destructive_hint for t in tools)
+    for tool in tools:
+        if tool.name != "estado_del_cerebro":
+            assert "no instrucciones" in tool.description, "el aviso viaja en la descripción que ve el modelo"
 
 
 def test_por_stdio_como_lo_usaria_hermes(folder):
