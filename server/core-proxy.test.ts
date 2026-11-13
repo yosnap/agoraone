@@ -73,7 +73,7 @@ async function agora(coreUrl?: string) {
   const { csrf } = JSON.parse(status.text);
   const call = (path: string, options: { method?: string; headers?: Record<string, string>; body?: string } = {}) =>
     send(`${url}${path}`, { ...options, headers: { ...base, Cookie: cookie, 'X-Agora-CSRF': csrf, ...options.headers } });
-  return { call, close: async () => { await reads.close(); rmSync(directory, { recursive: true }); return new Promise<void>(resolve => { http.closeAllConnections(); http.close(() => resolve()); }); } };
+  return { call, access, close: async () => { await reads.close(); rmSync(directory, { recursive: true }); return new Promise<void>(resolve => { http.closeAllConnections(); http.close(() => resolve()); }); } };
 }
 
 test('el núcleo solo recibe peticiones con cookie de acceso y CSRF, también en GET', async () => {
@@ -98,6 +98,9 @@ test('el proxy añade secreto y propietario, conserva método, cuerpo y estado, 
     assert.equal(seen.method, 'POST'); assert.equal(seen.url, '/items?x=1'); assert.equal(seen.body, '{"a":1}');
     assert.equal(seen.headers['x-agora-core-secret'], secret);
     assert.match(String(seen.headers['x-agora-owner']), /^[a-f0-9]{64}$/);
+    const otherBrowser = await app.call('/api/core/items', { headers: { Cookie: `${app.access}; agora_user=${'9'.repeat(64)}` } });
+    assert.equal(otherBrowser.status, 200);
+    assert.equal(core.seen.at(-1)!.headers['x-agora-owner'], seen.headers['x-agora-owner'], 'mismo propietario en otro navegador');
     assert.equal(seen.headers.cookie, undefined, 'las cookies del navegador no llegan al núcleo');
     assert.equal(seen.headers['x-agora-csrf'], undefined);
     assert.equal((await app.call('/api/core/missing')).status, 404);

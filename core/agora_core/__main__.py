@@ -9,6 +9,7 @@ import time
 import uvicorn
 
 from .app import create_app
+from .engines import scrub_api_keys
 from .settings import SettingsError, load_settings
 
 
@@ -62,6 +63,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 3
+    scrub_api_keys()
     threading.Thread(target=_exit_with_backend, args=(backend_pid(dict(os.environ)),), daemon=True).start()
     uvicorn.run(
         create_app(settings), host=settings.host, port=settings.port,

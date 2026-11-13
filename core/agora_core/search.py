@@ -21,8 +21,9 @@ def fts_query(text: str) -> str | None:
 
 def search(
     connection: sqlite3.Connection, query: str, embedder: Embedder | None, cache: VectorCache,
-    audience: str, limit: int = 10,
+    audience: str, limit: int = 10, with_text: bool = False,
 ) -> dict:
+    """`with_text` adds the whole best fragment of each result (for the assistant's context)."""
     if audience not in AUDIENCES:
         raise ValueError("Audiencia de búsqueda no válida.")
     exclude = AUDIENCES[audience]
@@ -75,6 +76,7 @@ def search(
                 "folder": row["folder"], "modifiedAt": row["modified_at"], "confidentiality": row["confidentiality"],
                 "snippet": snippets.get(row["chunk_id"]) or body[:240], "score": round(score, 6),
                 "matchedBy": sorted(matched[row["chunk_id"]]),
+                **({"text": body} if with_text else {}),
             }
     results = sorted(best.values(), key=lambda r: r["score"], reverse=True)[:limit]
     return {"results": results, "semantic": semantic}
