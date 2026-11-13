@@ -9,14 +9,15 @@
   },
   "scripts": {
     "dev": "concurrently -k -n backend,web \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "node --env-file-if-exists=.env --import tsx server/index.ts",
+    "dev:server": "cargo run -q --manifest-path desktop/Cargo.toml --bin agoraone",
+    "dev:server:node": "node --env-file-if-exists=.env --import tsx server/index.ts",
     "dev:web": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "test": "node --import tsx --test server/*.test.ts",
     "test:core": "cd core && uv run --frozen pytest -q",
-    "start": "node --env-file-if-exists=.env --import tsx server/index.ts",
+    "start": "AGORA_WEB_PORT=4317 cargo run -q --release --manifest-path desktop/Cargo.toml --bin agoraone",
     "check:hermes": "node --env-file-if-exists=.env --import tsx server/check-hermes.ts",
-    "open": "node scripts/open.mjs"
+    "open": "cargo run -q --manifest-path desktop/Cargo.toml --bin agoraone -- abrir"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

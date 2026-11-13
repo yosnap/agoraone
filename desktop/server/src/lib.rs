@@ -8,6 +8,7 @@ pub mod chat;
 pub mod core;
 pub mod hermes;
 pub mod js;
+pub mod launch;
 pub mod library;
 pub mod secret_lines;
 pub mod security;
