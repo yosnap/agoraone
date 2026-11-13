@@ -30,7 +30,7 @@ const SMALL: usize = 16 * 1024;
 const LARGE: usize = 256 * 1024;
 
 /// The JSON object of a request body; size and syntax refusals answer like the former error handler.
-fn object(body: &Bytes, limit: usize) -> Result<Map<String, Value>, Box<Response>> {
+pub(crate) fn object(body: &Bytes, limit: usize) -> Result<Map<String, Value>, Box<Response>> {
     if body.len() > limit {
         return Err(Box::new(error(StatusCode::PAYLOAD_TOO_LARGE, "El archivo o la solicitud supera el tamaño permitido.")));
     }
@@ -45,14 +45,14 @@ fn object(body: &Bytes, limit: usize) -> Result<Map<String, Value>, Box<Response
 }
 
 /// Field checks with the former schemas' rules; Err(()) means the body is not valid.
-struct Fields<'a>(&'a Map<String, Value>);
+pub(crate) struct Fields<'a>(pub(crate) &'a Map<String, Value>);
 
 impl Fields<'_> {
-    fn only(&self, allowed: &[&str]) -> Result<(), ()> {
+    pub(crate) fn only(&self, allowed: &[&str]) -> Result<(), ()> {
         if self.0.keys().all(|k| allowed.contains(&k.as_str())) { Ok(()) } else { Err(()) }
     }
     /// A string of `min..=max` UTF-16 units (after trimming when `trim`); None when absent.
-    fn text(&self, key: &str, min: usize, max: usize, trim: bool) -> Result<Option<String>, ()> {
+    pub(crate) fn text(&self, key: &str, min: usize, max: usize, trim: bool) -> Result<Option<String>, ()> {
         match self.0.get(key) {
             None => Ok(None),
             Some(Value::String(s)) => {
@@ -63,10 +63,10 @@ impl Fields<'_> {
             Some(_) => Err(()),
         }
     }
-    fn required(&self, key: &str, min: usize, max: usize, trim: bool) -> Result<String, ()> {
+    pub(crate) fn required(&self, key: &str, min: usize, max: usize, trim: bool) -> Result<String, ()> {
         self.text(key, min, max, trim)?.ok_or(())
     }
-    fn flag(&self, key: &str) -> Result<bool, ()> {
+    pub(crate) fn flag(&self, key: &str) -> Result<bool, ()> {
         match self.0.get(key) {
             None => Ok(false),
             Some(Value::Bool(b)) => Ok(*b),

@@ -69,6 +69,23 @@ pub fn start(launch: &CoreLaunch, link: &CoreLink, data: &Path) -> std::io::Resu
         .spawn()
 }
 
+/// The server's own calls to the core (`/internal/index/*`), with the start secret: GET without a body,
+/// POST with JSON; JSON back. Any failure says the core did not answer properly.
+pub async fn core_request(http: &reqwest::Client, link: &CoreLink, path: &str, body: Option<&serde_json::Value>) -> anyhow::Result<serde_json::Value> {
+    let url = format!("{}{path}", link.url);
+    let request = match body {
+        None => http.get(url),
+        Some(body) => http.post(url).header("content-type", "application/json").body(body.to_string()),
+    };
+    let request = request.header("x-agora-core-secret", &link.secret).timeout(Duration::from_secs(60));
+    let answer = request.send().await.map_err(|_| anyhow::anyhow!("El núcleo no responde."))?;
+    if !answer.status().is_success() {
+        anyhow::bail!("El núcleo respondió {}.", answer.status().as_u16());
+    }
+    let body = answer.bytes().await.map_err(|_| anyhow::anyhow!("El núcleo no responde."))?;
+    serde_json::from_slice(&body).map_err(|_| anyhow::anyhow!("El núcleo no responde."))
+}
+
 fn decode(path: &str) -> Option<String> {
     let bytes = path.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());

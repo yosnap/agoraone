@@ -108,6 +108,40 @@ pub fn spanish_key(word: &str) -> String {
         .collect()
 }
 
+/// `a.localeCompare(b)` (ICU's default order) closely enough for file names: first the base letters of the
+/// whole name, with spaces, then symbols, then digits, then letters; then accents; then lowercase before
+/// uppercase; the exact name last.
+pub fn locale_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use unicode_normalization::UnicodeNormalization;
+    use unicode_normalization::char::is_combining_mark;
+    fn primary(text: &str) -> Vec<(u8, char)> {
+        text.nfd()
+            .filter(|c| !is_combining_mark(*c))
+            .flat_map(char::to_lowercase)
+            .map(|c| {
+                let class = if c.is_whitespace() {
+                    0
+                } else if c.is_numeric() {
+                    2
+                } else if c.is_alphabetic() {
+                    3
+                } else {
+                    1
+                };
+                (class, c)
+            })
+            .collect()
+    }
+    let accents = |text: &str| text.nfd().flat_map(char::to_lowercase).collect::<String>();
+    let case = |text: &str| text.chars().map(|c| if c.is_lowercase() { 0 } else { 1 }).collect::<Vec<u8>>();
+    primary(a).cmp(&primary(b)).then_with(|| accents(a).cmp(&accents(b))).then_with(|| case(a).cmp(&case(b))).then_with(|| a.cmp(b))
+}
+
+/// `text.trim()`: JavaScript also trims the byte order mark.
+pub fn js_trim(text: &str) -> &str {
+    text.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
+}
+
 const MAX_MS: i64 = 8_640_000_000_000_000;
 
 /// `Date.parse` for the formats Hermes writes: ISO with or without offset (none means local time, like

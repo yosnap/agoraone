@@ -23,7 +23,7 @@ const RUN_LIMIT: Duration = Duration::from_secs(20);
 static QUEUE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(8));
 
 /// Runs a blocking read; None if it failed, took too long or too many are already waiting.
-async fn background<T: Send + 'static>(read: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Option<T> {
+pub(crate) async fn background<T: Send + 'static>(read: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Option<T> {
     let _permit = QUEUE.try_acquire().ok()?;
     match tokio::time::timeout(RUN_LIMIT, tokio::task::spawn_blocking(read)).await {
         Ok(Ok(Ok(value))) => Some(value),

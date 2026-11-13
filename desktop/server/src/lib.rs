@@ -3,11 +3,13 @@
 //! it; it can also run on its own for the browser.
 
 pub mod access;
+pub mod brain_sync;
 pub mod core;
 pub mod hermes;
 pub mod js;
 pub mod secret_lines;
 pub mod security;
+pub mod vault;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -51,13 +53,21 @@ pub struct AppState {
     pub core: Option<CoreLink>,
     pub http: reqwest::Client,
     pub hermes: HermesDiscovery,
+    pub vault: Arc<vault::VaultNotes>,
 }
 
 impl AppState {
     pub fn new(config: Config, token: &str, core: Option<CoreLink>) -> Arc<Self> {
         let http = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).build().expect("cliente HTTP");
         let hermes = HermesDiscovery::new(config.hermes.clone());
-        Arc::new(Self { config, proof: proof(token), csrf: access::random_hex(), core, http, hermes })
+        let vault = Arc::new(vault::VaultNotes::new(config.obsidian_registry.clone()));
+        Arc::new(Self { config, proof: proof(token), csrf: access::random_hex(), core, http, hermes, vault })
+    }
+
+    /// The brain's index kept in step with the vaults (None without a core).
+    pub fn brain_sync(&self) -> Option<Arc<brain_sync::BrainSync>> {
+        let link = self.core.clone()?;
+        Some(brain_sync::BrainSync::new(self.vault.clone(), link, self.config.obsidian_registry.clone(), self.http.clone()))
     }
 }
 
@@ -119,6 +129,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/hermes/profiles/{id}/cards/{card}", post(write::change_card))
         .route("/api/hermes/profiles/{id}/skills", get(write::skills).post(write::create_skill))
         .route("/api/hermes/profiles/{id}/skills/{skill}", get(write::skill).put(write::save_skill))
+        .route("/api/hermes/vaults/{id}/notes", get(vault::routes::list).post(vault::routes::create))
+        .route("/api/hermes/vaults/{id}/notes/{note}", get(vault::routes::note).put(vault::routes::save))
+        .route("/api/hermes/vaults/{id}/search", get(vault::routes::search))
         .route("/api/core", any(core::proxy))
         .route("/api/core/{*rest}", any(core::proxy))
         .route("/api/{*rest}", any(not_found))
