@@ -6,16 +6,21 @@ const core = <T>(path: string, body?: unknown, method?: string) => request<T>(`/
 export type Level = 'normal' | 'local_only' | 'private';
 export const levelLabels: Record<Level, string> = { normal: 'Normal', local_only: 'Solo en este Mac', private: 'Privada' };
 
-export type GraphNode = { id: string; source: string; sourceName: string | null; ref: string; title: string; folder: string; confidentiality: Level; degree: number };
-export type GraphEdge = { a: string; b: string; kind: 'link' | 'near' };
+export type NodeType = 'note' | 'person' | 'org' | 'project' | 'amount' | 'date' | 'tag' | 'folder';
+/** Notes carry where they live; entity, tag and folder nodes only a type, a title and a degree. */
+export type GraphNode = { id: string; type: NodeType; source?: string; sourceName?: string | null; ref?: string; title: string; folder?: string; confidentiality?: Level; degree: number };
+export type GraphEdge = { a: string; b: string; kind: 'link' | 'near' | 'mention' | 'in' };
+export type GraphLayers = { entities: boolean; tags: boolean; folders: boolean };
 export type BrainGraph = { nodes: GraphNode[]; edges: GraphEdge[]; total: number; truncated: boolean; semantic: boolean };
-export const getBrainGraph = (discreet: boolean, near: boolean) => core<BrainGraph>(`/graph?discreet=${+discreet}&near=${+near}`);
+export const getBrainGraph = (discreet: boolean, near: boolean, layers: GraphLayers) =>
+  core<BrainGraph>(`/graph?discreet=${+discreet}&near=${+near}&entities=${+layers.entities}&tags=${+layers.tags}&folders=${+layers.folders}`);
 
 export type SearchResult = { source: string; sourceName: string | null; ref: string; title: string; folder: string; confidentiality: Level; snippet: string; matchedBy: string[] };
 export const searchBrain = (query: string, limit = 20) =>
   core<{ results: SearchResult[]; semantic: boolean }>(`/search?audience=owner&limit=${limit}&q=${encodeURIComponent(query)}`);
 
-export type IndexStatus = { notes: number; chunks: number; pendingEmbeddings: number; byConfidentiality: Partial<Record<Level, number>>; semanticSearch: boolean; semanticProblem: string | null };
+export type IndexStatus = { notes: number; chunks: number; pendingEmbeddings: number; byConfidentiality: Partial<Record<Level, number>>; semanticSearch: boolean; semanticProblem: string | null;
+  entities?: { entities: Partial<Record<NodeType, number>>; byModel: number; byRules: number; pending: number; problem: string | null } };
 export const getIndexStatus = () => core<IndexStatus>('/index/status');
 export type FolderRule = { source: string; folder: string; confidentiality: Exclude<Level, 'normal'> };
 export const getFolderRules = () => core<{ rules: FolderRule[] }>('/index/folder-rules');

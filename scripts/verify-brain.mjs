@@ -42,7 +42,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await page.waitForFunction(count => document.querySelector('.brain .eyebrow')?.textContent?.includes('DISCRETO'), before);
   await page.waitForTimeout(1500);
   const discreet = graphs.at(-1);
-  assert.ok(graphs.length > before && discreet.nodes.every(node => node.confidentiality === 'normal'), 'en modo discreto solo hay notas normales');
+  assert.ok(graphs.length > before && discreet.nodes.filter(node => node.type === 'note').every(node => node.confidentiality === 'normal'), 'en modo discreto solo hay notas normales');
   await rail.getByRole('button', { name: 'Discreto' }).click();
   // Summary: status, connected agents and words, from real data.
   await rail.getByRole('button', { name: 'Resumen' }).click();

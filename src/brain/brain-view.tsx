@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { AssistantView, type Thinking } from '../assistant/assistant-view';
 import { SummaryStrip } from '../summary/summary-strip';
-import { getBrainGraph, levelLabels, searchBrain, type BrainGraph, type SearchResult } from '../api/core';
+import { getBrainGraph, levelLabels, searchBrain, type BrainGraph, type GraphLayers, type NodeType, type SearchResult } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 import { layoutGraph } from './graph-layout';
 import type { NoteRef } from './note-reader';
@@ -18,6 +18,11 @@ const steps = [['recuerda', 'Recuerda'], ['piensa', 'Piensa'], ['busca', 'Busca'
 const order: string[] = ['recuerda', 'piensa', 'busca', 'lee', 'responde'];
 const stepState = (current: string | null, step: string) => current === step ? 'now' : current && order.indexOf(step) < order.indexOf(current) ? 'done' : '';
 
+// Entity colours by type (notes keep the colour of their top folder).
+export const typeColors: Partial<Record<NodeType, string>> = { person: '#e2bf72', org: '#5fd3e6', project: '#d9708f', amount: '#8fd17a', date: '#b9a6e8', tag: '#f08a4b' };
+export const typeLabels: Record<NodeType, string> = { note: 'Nota', person: 'Persona', org: 'Organización', project: 'Proyecto', amount: 'Cifra', date: 'Fecha', tag: 'Etiqueta', folder: 'Carpeta' };
+const topFolder = (node: { type: NodeType; folder?: string; id: string }) => node.type === 'folder' ? node.id.split('/').slice(1)[0] ?? '' : (node.folder ?? '').split('/')[0];
+
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** The start page: every indexed note as a graph with a floating explorer, and Watson beside it; the notes an
@@ -28,6 +33,8 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
   const [explorer, setExplorer] = useState(true);
   const [thinking, setThinking] = useState<Thinking>(null);
   const [near, setNear] = useState(true);
+  const [layers, setLayers] = useState<GraphLayers>({ entities: true, tags: true, folders: false });
+  const [picked, setPicked] = useState<string | null>(null);
   const [graph, setGraph] = useState<BrainGraph | null>(null);
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
@@ -37,10 +44,10 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
   useEffect(() => {
     let live = true;
     setError('');
-    getBrainGraph(discreet, near).then(data => { if (live) setGraph(data); })
+    getBrainGraph(discreet, near, layers).then(data => { if (live) { setGraph(data); setPicked(null); } })
       .catch(failure => { if (live) setError(failure instanceof Error ? failure.message : 'No se pudo leer el cerebro.'); });
     return () => { live = false; };
-  }, [discreet, near, version]);
+  }, [discreet, near, layers, version]);
   useEffect(() => {
     const text = query.trim();
     if (text.length < 2) { setResults(null); setSearchError(''); return; }
@@ -54,18 +61,26 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
   const positions = useMemo(() => {
     if (!graph) return new Float32Array();
     const order = new Map(graph.nodes.map((node, index) => [node.id, index]));
-    return layoutGraph(graph.nodes, graph.edges.map(edge => ({ a: order.get(edge.a)!, b: order.get(edge.b)!, weight: edge.kind === 'link' ? 1 : 0.35 })));
+    return layoutGraph(graph.nodes.map(node => ({ id: node.id, folder: topFolder(node) })), graph.edges.flatMap(edge => {
+      const a = order.get(edge.a), b = order.get(edge.b);
+      return a === undefined || b === undefined ? [] : [{ a, b, weight: edge.kind === 'link' ? 1 : edge.kind === 'near' ? 0.35 : 0.5 }];
+    }));
   }, [graph]);
-  const lit = useMemo(() => shown ? new Set(shown.map(result => `${result.source}/${result.ref}`)) : focus.length ? new Set(focus) : null, [shown, focus]);
+  // An entity, tag or folder picked on the graph lights up the notes around it.
+  const around = useMemo(() => picked && graph ? graph.edges.flatMap(edge => edge.a === picked ? [edge.b] : edge.b === picked ? [edge.a] : []) : [], [picked, graph]);
+  const lit = useMemo(() => shown ? new Set(shown.map(result => `${result.source}/${result.ref}`)) : picked ? new Set([picked, ...around])
+    : focus.length ? new Set(focus) : null, [shown, focus, picked, around]);
   const read = (id: string) => { const [vault, note] = id.split('/'); onRead({ vault, note }); };
+  const pick = (index: number) => { const node = graph!.nodes[index]; if (node.type === 'note') read(node.id); else setPicked(node.id === picked ? null : node.id); };
+  const pickedNode = graph?.nodes.find(node => node.id === picked);
   const links = graph?.edges.filter(edge => edge.kind === 'link').length ?? 0;
   const { folders, colors } = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const node of graph?.nodes ?? []) { const top = node.folder.split('/')[0]; counts.set(top, (counts.get(top) ?? 0) + 1); }
+    for (const node of graph?.nodes ?? []) { if (node.type !== 'note') continue; const top = topFolder(node); counts.set(top, (counts.get(top) ?? 0) + 1); }
     const ranked = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'));
     return { folders: ranked, colors: new Map(ranked.slice(0, graphPalette.length).map(([folder], rank) => [folder, graphPalette[rank]])) };
   }, [graph]);
-  const hubs = useMemo(() => [...(graph?.nodes ?? [])].sort((a, b) => b.degree - a.degree).filter(node => node.degree > 0).slice(0, 8), [graph]);
+  const hubs = useMemo(() => [...(graph?.nodes ?? [])].filter(node => node.type === 'note').sort((a, b) => b.degree - a.degree).filter(node => node.degree > 0).slice(0, 8), [graph]);
   const titles = useMemo(() => new Map(graph?.nodes.map(node => [node.id, node]) ?? []), [graph]);
   return <section className="brain" aria-labelledby="brain-title">
     <div className="brain-stage">
@@ -73,7 +88,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
         : !graph ? <div className="brain-message"><Loading label="Leyendo el cerebro"/></div>
         : !graph.nodes.length ? <div className="brain-message"><p>{discreet ? 'En modo discreto no hay notas normales que mostrar.' : 'El cerebro aún no tiene notas. AgoraOne indexa tus vaults de Obsidian al arrancar y cada 5 minutos.'}</p></div>
         : <Suspense fallback={<div className="brain-message"><Loading label="Preparando el grafo"/></div>}>
-          <BrainGraphScene graph={graph} positions={positions} lit={lit} colors={colors} reading={thinking?.reading ?? null} still={reducedMotion()} onPick={index => read(graph.nodes[index].id)}/>
+          <BrainGraphScene graph={graph} positions={positions} lit={lit} colors={colors} typeColors={typeColors} reading={thinking?.reading ?? null} still={reducedMotion()} onPick={pick}/>
         </Suspense>}
     </div>
     <div className={`brain-panel${explorer ? '' : ' folded'}`} aria-label="Explorar el cerebro" role="region">
@@ -85,10 +100,17 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
       <input id="brain-find" type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Palabras o idea…"/>
       <div className="brain-toggles">
         <label><input type="checkbox" checked={near} onChange={event => setNear(event.target.checked)}/> Cercanía por significado</label>
+        <label><input type="checkbox" checked={layers.entities} onChange={event => setLayers({ ...layers, entities: event.target.checked })}/> Entidades</label>
+        <label><input type="checkbox" checked={layers.tags} onChange={event => setLayers({ ...layers, tags: event.target.checked })}/> Etiquetas</label>
+        <label><input type="checkbox" checked={layers.folders} onChange={event => setLayers({ ...layers, folders: event.target.checked })}/> Carpetas</label>
         {focus.length > 0 && !shown && <button className="button" onClick={() => onFocus([])}>Quitar resaltado ({focus.length})</button>}
       </div>
       {searchError && <LoadError message={searchError}/>}
-      {shown ? <div className="brain-list" aria-live="polite">
+      {pickedNode && !shown ? <div className="brain-list" aria-live="polite">
+        <h2>{typeLabels[pickedNode.type]}: {pickedNode.title}</h2>
+        <ul>{around.flatMap(id => { const node = titles.get(id); return node?.type === 'note' ? [<li key={id}><button onClick={() => read(id)}><strong>{node.title}</strong><small>{node.folder || 'Raíz'}</small></button></li>] : []; })}</ul>
+        <button className="button" onClick={() => setPicked(null)}>Quitar selección</button>
+      </div> : shown ? <div className="brain-list" aria-live="polite">
         <h2>{shown.length ? `${shown.length} notas encontradas` : 'Sin resultados'}</h2>
         <ul>{shown.map(result => <li key={`${result.source}/${result.ref}`}><button onClick={() => read(`${result.source}/${result.ref}`)}>
           <strong>{result.title}</strong><small>{result.folder || 'Raíz'}{result.confidentiality !== 'normal' ? ` · ${levelLabels[result.confidentiality]}` : ''}</small>
@@ -98,6 +120,9 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
       </div> : hubs.length > 0 && <div className="brain-list"><h2>Notas más conectadas</h2>
         <ul>{hubs.map(node => <li key={node.id}><button onClick={() => read(node.id)}><strong>{node.title}</strong><small>{node.degree} conexiones · {node.folder || 'Raíz'}</small></button></li>)}</ul>
       </div>}
+      {(layers.entities || layers.tags) && <ul className="brain-legend" aria-label="Colores por tipo">{(Object.keys(typeColors) as NodeType[])
+        .filter(type => type === 'tag' ? layers.tags : layers.entities).map(type =>
+          <li key={type}><span style={{ background: typeColors[type] }} aria-hidden="true"/>{typeLabels[type]}</li>)}</ul>}
       {folders.length > 0 && <ul className="brain-legend" aria-label="Colores por carpeta">{folders.slice(0, graphPalette.length).map(([folder, count]) =>
         <li key={folder}><span style={{ background: colors.get(folder) }} aria-hidden="true"/>{folder || 'Raíz'} <small>{count}</small></li>)}</ul>}
     </div>

@@ -9,6 +9,7 @@ import sqlite3
 import unicodedata
 from dataclasses import dataclass
 
+from . import entities
 from .db import now
 
 LEVELS = ("normal", "local_only", "private")
@@ -146,6 +147,7 @@ def upsert_notes(connection: sqlite3.Connection, source: str, source_name: str, 
                 "INSERT INTO chunk (item_id, ord, text) VALUES (?, ?, ?)",
                 [(row["id"], n, piece) for n, piece in enumerate(chunks(note.title, note.text))],
             )
+            entities.on_indexed(connection, row["id"], note.revision, level, note.text)
             connection.execute("DELETE FROM note_link WHERE item_id = ?", (row["id"],))
             connection.executemany(
                 "INSERT INTO note_link (item_id, target) VALUES (?, ?)", [(row["id"], t) for t in links(note.text)]
