@@ -1,0 +1,35 @@
+import { chromium } from '@playwright/test';
+import assert from 'node:assert/strict';
+import { appUrl } from './verify-targets.mjs';
+// The office of agents: one card per agent with its real state, the walking controls, walking with the
+// arrows even when the focus is on a button, and "E" by a building. Read only, no message is sent.
+const browser = await chromium.launch({ headless: true, args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const errors = [], writes = [];
+page.on('pageerror', e => errors.push(e.message));
+page.on('request', r => { if (r.method() !== 'GET' && !r.url().endsWith('/api/session')) writes.push(r.url()); });
+await page.goto(appUrl(5173, 'oficina'));
+await page.locator('.directory').waitFor({ timeout: 120_000 });
+await page.locator('.directory .place-item').nth(1).waitFor();
+const cards = page.locator('.agents-board .agent-card');
+await page.waitForFunction(() => document.querySelectorAll('.agents-board .agent-card').length > 1);
+const states = await cards.locator('small').allTextContents();
+console.log(`tarjetas: ${await cards.count()} · ${states.map(text => text.split('·')[0].trim()).join(' | ')}`);
+assert.match(states[0], /En línea|Sin motor/, 'Watson dice si está en línea');
+await page.getByRole('button', { name: 'Primera persona' }).click();
+await page.locator('.walk-keys').waitFor();
+await page.waitForTimeout(3000);
+const marker = () => page.locator('.minimap-you').getAttribute('transform');
+await page.getByRole('navigation', { name: 'Secciones de AgoraOne' }).getByRole('button', { name: /Tema/ }).focus();
+const before = await marker();
+await page.keyboard.down('ArrowUp'); await page.waitForTimeout(4000); await page.keyboard.up('ArrowUp');
+assert.notEqual(await marker(), before, 'las flechas mueven aunque el foco esté en un botón');
+await page.locator('.walk-use').waitFor({ timeout: 10_000 });
+const use = await page.locator('.walk-use').textContent();
+await page.keyboard.press('KeyE');
+await page.locator('.detail-panel:not([hidden])').waitFor();
+console.log(`junto a un edificio: «${use?.replace(/^E\s*/, '')}» y E abre su ficha`);
+assert.deepEqual(writes, [], 'no se escribió nada');
+assert.deepEqual(errors, [], 'sin errores JS');
+await browser.close();
+console.log('verify-office correcto');
