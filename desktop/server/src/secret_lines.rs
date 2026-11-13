@@ -8,38 +8,43 @@ use fancy_regex::Regex as Fancy;
 use regex::Regex;
 
 const QUOTE_OR_BOLD: &str = r#"["'*`]*"#;
-/// Words that only ever name a credential: any value after them is hidden.
-const STRONG_KEY: &str = r"(?<![A-Za-z])(?:api[_ -]?keys?|access[_ -]?keys?|private[_ -]?keys?|secret[_ -]?(?:access[_ -]?)?keys?|(?:auth|access|refresh|bearer)[_ -]?tokens?|authorization|passwords?|passwd|pwd|contraseñas?|credentials?|claves? (?:de api|api|secretas?|privadas?))(?![A-Za-z])";
+/// Words that only ever name a credential: any value after them is hidden. Lookbehinds are written as
+/// "start of line or another character", which answers the same for a yes/no match and keeps every pattern
+/// in the linear-time engine; the lookahead after the word is implied by what must follow it.
+const STRONG_KEY: &str = r"(?:^|[^A-Za-z])(?:api[_ -]?keys?|access[_ -]?keys?|private[_ -]?keys?|secret[_ -]?(?:access[_ -]?)?keys?|(?:auth|access|refresh|bearer)[_ -]?tokens?|authorization|passwords?|passwd|pwd|contraseñas?|credentials?|claves? (?:de api|api|secretas?|privadas?))";
 
-fn fancy(pattern: &str) -> Fancy {
-    fancy_regex::RegexBuilder::new(pattern).backtrack_limit(5_000_000).build().expect("patrón de claves")
+fn linear(pattern: &str) -> Regex {
+    Regex::new(pattern).expect("patrón de claves")
 }
 
-static SECRET_LINES: LazyLock<Vec<Fancy>> = LazyLock::new(|| {
-    // Everyday words ("Valores clave: honestidad"): hidden only when the value is one opaque token with a
-    // digit or symbol.
-    let weak = format!(
-        r#"(?i)(?<![A-Za-z_])(?:tokens?|claves?|pass|pin|secret|secreto)(?![A-Za-z]){QUOTE_OR_BOLD}\s*[:=]\s*["'`]?(?=[^\s"'`]*[0-9!#$%&()*+./:;<=>?@^_~-])[^\s"'`]{{6,}}["'`]?[,;]?\s*$"#
-    );
+static SECRET_LINES: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [
         format!(r"(?i){STRONG_KEY}{QUOTE_OR_BOLD}\s*[:=]"),
-        weak,
-        r"(?i)(?<![A-Za-z])(?:mi |la |tu )?claves? (?:de )?api (?:es|son)(?![A-Za-z0-9_])".into(),
-        r"(?i)(?<![A-Za-z0-9_])bearer\s+[A-Za-z0-9._~+/=-]{12,}".into(),
-        r"(?i)(?<![A-Za-z0-9_])(?:sk-|sk_live_|ghp_|gho_|github_pat_|xox[baprs]-|AIza)[A-Za-z0-9_\-]{8,}|(?<![A-Za-z0-9_])AKIA[0-9A-Z]{16}(?![A-Za-z0-9_])".into(),
-        // user:password@host, with bounded repetitions so a long line cannot make the scan quadratic
-        r"(?i)(?<![A-Za-z0-9_])[a-z][a-z0-9+.-]{0,31}://[^\s:/@]{1,256}:[^\s@]{1,256}@".into(),
+        r"(?i)(?:^|[^A-Za-z])(?:mi |la |tu )?claves? (?:de )?api (?:es|son)(?:$|[^A-Za-z0-9_])".into(),
+        r"(?i)(?:^|[^A-Za-z0-9_])bearer\s+[A-Za-z0-9._~+/=-]{12,}".into(),
+        r"(?i)(?:^|[^A-Za-z0-9_])(?:sk-|sk_live_|ghp_|gho_|github_pat_|xox[baprs]-|AIza)[A-Za-z0-9_\-]{8,}|(?:^|[^A-Za-z0-9_])AKIA[0-9A-Z]{16}(?:$|[^A-Za-z0-9_])".into(),
+        // user:password@host, with bounded repetitions
+        r"(?i)(?:^|[^A-Za-z0-9_])[a-z][a-z0-9+.-]{0,31}://[^\s:/@]{1,256}:[^\s@]{1,256}@".into(),
     ]
     .iter()
-    .map(|p| fancy(p))
+    .map(|p| linear(p))
     .collect()
 });
-/// Long opaque strings (keys, hashes): letters and digits with a 20-character run, outside links; plain
-/// UUIDs and hyphenated slugs or snake_case names stay visible.
-static OPAQUE: LazyLock<Fancy> = LazyLock::new(|| {
-    fancy(r"(?<![A-Za-z0-9_+=-])(?![0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![A-Za-z0-9_+=-]))(?=[A-Za-z0-9_+=-]*[0-9])(?=[A-Za-z0-9_+=-]*[A-Za-z])(?=[A-Za-z0-9_+=-]*[A-Za-z0-9+=]{20})[A-Za-z0-9_+=-]{32,}(?![A-Za-z0-9_+=-])")
+/// Everyday words ("Valores clave: honestidad"): hidden only when the value is one opaque token with a digit
+/// or symbol. It needs a lookahead, so it only runs on lines that have one of these words before `:` or `=`.
+static WEAK_HINT: LazyLock<Regex> = LazyLock::new(|| linear(&format!(r"(?i)(?:tokens?|claves?|pass|pin|secret|secreto){QUOTE_OR_BOLD}\s*[:=]")));
+static WEAK_KEY: LazyLock<Fancy> = LazyLock::new(|| {
+    fancy_regex::RegexBuilder::new(&format!(
+        r#"(?i)(?<![A-Za-z_])(?:tokens?|claves?|pass|pin|secret|secreto)(?![A-Za-z]){QUOTE_OR_BOLD}\s*[:=]\s*["'`]?(?=[^\s"'`]*[0-9!#$%&()*+./:;<=>?@^_~-])[^\s"'`]{{6,}}["'`]?[,;]?\s*$"#
+    ))
+    .backtrack_limit(5_000_000)
+    .build()
+    .expect("patrón de claves")
 });
-static KEY_AT_END: LazyLock<Fancy> = LazyLock::new(|| fancy(&format!(r"(?i){STRONG_KEY}{QUOTE_OR_BOLD}\s*[:=]\s*$")));
+static KEY_AT_END: LazyLock<Regex> = LazyLock::new(|| linear(&format!(r"(?i){STRONG_KEY}{QUOTE_OR_BOLD}\s*[:=]\s*$")));
+/// Maximal runs of the characters long opaque strings are made of.
+static RUN: LazyLock<Regex> = LazyLock::new(|| linear(r"[A-Za-z0-9_+=-]{32,}"));
+static UUID: LazyLock<Regex> = LazyLock::new(|| linear(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"));
 static LINKS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"https?://\S+|\[\[[^\]]*\]\]").unwrap());
 pub static CONTROLS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]").unwrap());
 static MARKER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\[línea oculta ([0-9]+)\]$").unwrap());
@@ -54,13 +59,21 @@ pub fn is_hidden_marker(line: &str) -> bool {
     MARKER.is_match(line.trim())
 }
 
-/// A pattern that gives up (too much backtracking) counts as a match: hiding is the safe answer.
-fn matches(pattern: &Fancy, text: &str) -> bool {
-    pattern.is_match(text).unwrap_or(true)
+/// Long opaque strings (keys, hashes): a run of 32 or more letters, digits and `_+=-` with at least one
+/// digit, one letter and 20 in a row without `_` or `-`, outside links; plain UUIDs, hyphenated slugs and
+/// snake_case names stay visible.
+fn opaque(text: &str) -> bool {
+    RUN.find_iter(text).any(|run| {
+        let run = run.as_str();
+        let compact = run.split(['_', '-']).any(|part| part.len() >= 20);
+        run.bytes().any(|b| b.is_ascii_digit()) && run.bytes().any(|b| b.is_ascii_alphabetic()) && compact && !UUID.is_match(run)
+    })
 }
 
 fn is_secret(line: &str) -> bool {
-    SECRET_LINES.iter().any(|p| matches(p, line)) || matches(&OPAQUE, &LINKS.replace_all(line, " "))
+    // A lookahead that gives up (too much backtracking) counts as a match: hiding is the safe answer.
+    let weak = || WEAK_HINT.is_match(line) && WEAK_KEY.is_match(line).unwrap_or(true);
+    SECRET_LINES.iter().any(|p| p.is_match(line)) || weak() || opaque(&LINKS.replace_all(line, " "))
 }
 
 pub struct Masked {
@@ -89,7 +102,7 @@ pub fn mask_secrets(raw: &str) -> Masked {
             // A literal marker already in the text is hidden too, so restoring an edit can never confuse it
             // with a secret.
             let secret = pem || next || is_secret(line) || is_hidden_marker(line);
-            next = !pem && matches(&KEY_AT_END, line);
+            next = !pem && KEY_AT_END.is_match(line);
             if PEM_END.is_match(line) {
                 pem = false;
             }

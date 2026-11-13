@@ -15,7 +15,7 @@ use super::database::read_hermes_database;
 use super::location::HermesLocation;
 use super::mcp_tools::{McpTools, read_mcp_tools};
 use super::resources::{McpServer, mcp_id, mcp_metadata};
-use super::safe_read::{read_hermes_file, read_metadata, redact, redact_str};
+use super::safe_read::{decode_utf8, read_hermes_file, read_metadata, redact, redact_str};
 use crate::js::{digest, get, js_string, now_iso, or, slice_utf16, truthy};
 use crate::secret_lines::{is_hidden_marker, mask_secrets, reveal_secrets};
 
@@ -116,6 +116,15 @@ pub struct ProfileTarget {
     pub mcp: Vec<String>,
 }
 
+/// One identity file of a profile, for the editor.
+pub struct EditTarget {
+    pub root: PathBuf,
+    pub path: PathBuf,
+    /// Hermes' character limit (memory files only).
+    pub limit: Option<u64>,
+    pub python: PathBuf,
+}
+
 /// One MCP server of a profile, resolved from an opaque id.
 pub struct McpTarget {
     pub root: PathBuf,
@@ -172,7 +181,7 @@ impl HermesDiscovery {
             .map(|&name| {
                 let file = if name == "SOUL.md" { home.join(name) } else { home.join("memories").join(name) };
                 let blank = HermesFile { name, state: "", bytes: None, revision: None, content: None, hidden: None, hidden_chars: None };
-                let read = read_hermes_file(root, &file, 65536).ok().and_then(|data| String::from_utf8(data).ok());
+                let read = read_hermes_file(root, &file, 65536).ok().and_then(decode_utf8);
                 let Some(content) = read else {
                     return HermesFile { state: if file.exists() { "unavailable" } else { "missing" }, ..blank };
                 };
@@ -213,6 +222,25 @@ impl HermesDiscovery {
         let memory = config.get("memory");
         let limit = |key: &str, fallback: u64| get(memory, key).and_then(|v| crate::js::integer(Some(v))).filter(|v| *v > 0).map(|v| v as u64).unwrap_or(fallback);
         (limit("memory_char_limit", 2200), limit("user_char_limit", 1375))
+    }
+
+    /// Where one identity file of a profile lives, for the editor. The client only names the profile id and
+    /// the file.
+    pub fn edit_target(&self, id: &str, name: &str) -> anyhow::Result<EditTarget> {
+        let (root, _, home) = self.find(id)?;
+        let path = if name == "SOUL.md" { home.join(name) } else { home.join("memories").join(name) };
+        let limit = match name {
+            "SOUL.md" => None,
+            "MEMORY.md" => Some(self.memory_limits(&root, &home).0),
+            _ => Some(self.memory_limits(&root, &home).1),
+        };
+        Ok(EditTarget { root, path, limit, python: self.location.python.clone() })
+    }
+
+    /// Where a profile's skills live, for the skills sheet. The client only names the profile id.
+    pub fn skill_home(&self, id: &str) -> anyhow::Result<(PathBuf, PathBuf, String)> {
+        let (root, profile, home) = self.find(id)?;
+        Ok((root, home, profile.name))
     }
 
     /// Where to read activity from. Profiles come from the catalog; the client never names a path.

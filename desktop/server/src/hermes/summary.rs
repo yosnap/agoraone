@@ -13,7 +13,7 @@ use serde_json::Value;
 use super::activity::{StampCache, file_stamp};
 use super::catalog::ProfileTarget;
 use super::database::with_hermes_database;
-use crate::js::{iso_ms, number, slice_utf16, utf16_len};
+use crate::js::{iso_ms, number, slice_utf16, spanish_key, utf16_len};
 
 const DAYS: i64 = 30;
 const MAX_MESSAGES: i64 = 5000;
@@ -47,22 +47,6 @@ pub fn tally_words<'a>(texts: impl IntoIterator<Item = &'a str>, counts: &mut Ha
             }
         }
     }
-}
-
-/// Spanish order for ties: accents count less than letters, and «ñ» goes between «n» and «o».
-fn spanish_key(word: &str) -> String {
-    word.chars()
-        .map(|c| match c {
-            'á' | 'à' | 'ä' | 'â' => "a".into(),
-            'é' | 'è' | 'ë' | 'ê' => "e".into(),
-            'í' | 'ì' | 'ï' | 'î' => "i".into(),
-            'ó' | 'ò' | 'ö' | 'ô' => "o".into(),
-            'ú' | 'ù' | 'ü' | 'û' => "u".into(),
-            'ç' => "c".into(),
-            'ñ' => "n{".into(),
-            other => other.to_string(),
-        })
-        .collect()
 }
 
 pub fn top_words(counts: &HashMap<String, u64>, top: usize) -> Vec<WordCount> {

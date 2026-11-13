@@ -22,6 +22,33 @@ pub fn error(status: StatusCode, message: &str) -> Response {
     (status, axum::Json(json!({ "error": message }))).into_response()
 }
 
+/// A refusal with its status and a message for the user, from any handler.
+#[derive(Debug)]
+pub struct Failure {
+    pub status: StatusCode,
+    pub message: String,
+}
+
+impl Failure {
+    pub fn new(status: u16, message: impl Into<String>) -> Self {
+        Self { status: StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR), message: message.into() }
+    }
+}
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for Failure {}
+
+impl IntoResponse for Failure {
+    fn into_response(self) -> Response {
+        error(self.status, &self.message)
+    }
+}
+
 pub fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get_all(header::COOKIE).iter().filter_map(|value| value.to_str().ok()).flat_map(|line| line.split(';')).find_map(|pair| {
         let (key, value) = pair.trim().split_once('=')?;

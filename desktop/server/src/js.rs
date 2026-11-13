@@ -92,6 +92,22 @@ pub fn slice_utf16(text: &str, max: usize) -> String {
     text[..end].to_string()
 }
 
+/// Spanish order for ties: accents count less than letters, and «ñ» goes between «n» and «o».
+pub fn spanish_key(word: &str) -> String {
+    word.chars()
+        .map(|c| match c {
+            'á' | 'à' | 'ä' | 'â' => "a".into(),
+            'é' | 'è' | 'ë' | 'ê' => "e".into(),
+            'í' | 'ì' | 'ï' | 'î' => "i".into(),
+            'ó' | 'ò' | 'ö' | 'ô' => "o".into(),
+            'ú' | 'ù' | 'ü' | 'û' => "u".into(),
+            'ç' => "c".into(),
+            'ñ' => "n{".into(),
+            other => other.to_string(),
+        })
+        .collect()
+}
+
 const MAX_MS: i64 = 8_640_000_000_000_000;
 
 /// `Date.parse` for the formats Hermes writes: ISO with or without offset (none means local time, like

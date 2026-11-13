@@ -61,6 +61,12 @@ pub fn read_hermes_file(root: &Path, file: &Path, limit: u64) -> io::Result<Vec<
     Ok(data)
 }
 
+/// Strict UTF-8 like `new TextDecoder('utf-8', { fatal: true })`: a leading BOM is dropped.
+pub fn decode_utf8(data: Vec<u8>) -> Option<String> {
+    let text = String::from_utf8(data).ok()?;
+    Some(text.strip_prefix('\u{feff}').map(str::to_string).unwrap_or(text))
+}
+
 /// YAML from the reader above turned into JSON values (keys as strings, like the former parser).
 pub fn yaml_to_json(value: serde_norway::Value) -> Value {
     use serde_norway::Value as Y;
@@ -96,7 +102,7 @@ pub fn yaml_to_json(value: serde_norway::Value) -> Value {
 
 /// A YAML metadata file (up to 512 KiB) as an object; anything that is not a mapping is empty.
 pub fn read_metadata(root: &Path, file: &Path) -> anyhow::Result<Map<String, Value>> {
-    let text = String::from_utf8(read_hermes_file(root, file, 512 * 1024)?)?;
+    let text = decode_utf8(read_hermes_file(root, file, 512 * 1024)?).ok_or_else(|| anyhow::anyhow!("Invalid metadata"))?;
     let value: serde_norway::Value = serde_norway::from_str(&text)?;
     Ok(match yaml_to_json(value) {
         Value::Object(map) => map,

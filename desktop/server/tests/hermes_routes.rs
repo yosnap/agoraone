@@ -65,3 +65,61 @@ async fn hermes_reads_need_csrf_and_only_take_opaque_ids() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(summary["days"], 30);
 }
+
+async fn send(state: &Arc<AppState>, method: &str, path: &str, csrf: bool, body: &str) -> (StatusCode, Value) {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::HOST, HOST)
+        .header(header::ORIGIN, format!("http://{HOST}"))
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::COOKIE, format!("agora_access={}", proof(TOKEN)));
+    if csrf {
+        request = request.header("x-agora-csrf", state.csrf.clone());
+    }
+    let response = router(state.clone()).oneshot(request.body(Body::from(body.to_string())).unwrap()).await.unwrap();
+    let status = response.status();
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+
+#[tokio::test]
+async fn hermes_writes_need_csrf_and_strict_bodies() {
+    let (_dir, state) = state();
+    let (_, catalog) = get(&state, "/api/hermes/catalog", Some(&state.csrf.clone())).await;
+    let id = catalog["profiles"][0]["id"].as_str().unwrap().to_string();
+    let soul = state.config.hermes.root.join("SOUL.md");
+    let revision = agora_server::hermes::catalog::file_revision(&fs::read_to_string(&soul).unwrap());
+    let file = format!("/api/hermes/profiles/{id}/files/SOUL.md");
+    let edit = json!({ "content": "# Hermes de prueba\n[línea oculta 1]\nNueva línea", "revision": revision }).to_string();
+    assert_eq!(send(&state, "PUT", &file, false, &edit).await.0, StatusCode::FORBIDDEN);
+    let extra = json!({ "content": "x", "revision": revision, "otro": 1 }).to_string();
+    assert_eq!(send(&state, "PUT", &file, true, &extra).await, (StatusCode::BAD_REQUEST, json!({ "error": "Edición no válida." })));
+    let other = format!("/api/hermes/profiles/{id}/files/config.yaml");
+    assert_eq!(send(&state, "PUT", &other, true, &edit).await.0, StatusCode::BAD_REQUEST);
+    assert_eq!(send(&state, "PUT", &file, true, "{roto").await.0, StatusCode::BAD_REQUEST);
+    let huge = json!({ "content": "x".repeat(300_000), "revision": revision }).to_string();
+    assert_eq!(send(&state, "PUT", &file, true, &huge).await.0, StatusCode::PAYLOAD_TOO_LARGE);
+    if agora_server::hermes::python::system_python().is_some() {
+        let (status, saved) = send(&state, "PUT", &file, true, &edit).await;
+        assert_eq!(status, StatusCode::OK, "{saved}");
+        assert_eq!(fs::read_to_string(&soul).unwrap(), "# Hermes de prueba\napi_key: CANARY\nNueva línea");
+        assert!(state.config.data.join("profile-backups").join(&id).exists(), "copia previa en .agora");
+    }
+    let jobs = format!("/api/hermes/profiles/{id}/jobs");
+    assert_eq!(send(&state, "POST", &jobs, true, r#"{"name":"  ","schedule":"every 1h","prompt":"x"}"#).await.1, json!({ "error": "Indica nombre, horario e instrucciones de la tarea." }));
+    assert_eq!(send(&state, "POST", "/api/hermes/profiles/otro/jobs", true, "{}").await.0, StatusCode::NOT_FOUND);
+    let job = format!("/api/hermes/profiles/{id}/jobs/tarea-1");
+    assert_eq!(send(&state, "POST", &job, true, r#"{"action":"update","prompt":"sin revisión"}"#).await.1, json!({ "error": "Operación no válida." }));
+    assert_eq!(send(&state, "POST", &format!("{job}/../x"), true, r#"{"action":"pause"}"#).await.0, StatusCode::NOT_FOUND);
+    let card = format!("/api/hermes/profiles/{id}/cards/c-1");
+    assert_eq!(send(&state, "POST", &card, true, r#"{"action":"comment","body":"   "}"#).await.0, StatusCode::BAD_REQUEST);
+    let skills = format!("/api/hermes/profiles/{id}/skills");
+    let bad = json!({ "category": "a/b", "name": "x", "description": "", "body": "x" }).to_string();
+    assert_eq!(send(&state, "POST", &skills, true, &bad).await.0, StatusCode::BAD_REQUEST);
+    let (status, listing) = get(&state, &skills, Some(&state.csrf.clone())).await;
+    assert_eq!((status, listing), (StatusCode::OK, json!({ "skills": [], "truncated": false })));
+    let call = format!("/api/hermes/profiles/{id}/mcp/mcp-x/tools/eco/call");
+    assert_eq!(send(&state, "POST", &call, true, r#"{"args":[]}"#).await.1, json!({ "error": "Argumentos no válidos." }));
+    assert_eq!(send(&state, "POST", &call, true, r#"{"args":{}}"#).await.0, StatusCode::NOT_FOUND);
+}

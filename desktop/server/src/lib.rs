@@ -15,7 +15,7 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{any, get, post};
+use axum::routing::{any, get, post, put};
 use axum::{Json, Router, middleware};
 use serde::Deserialize;
 use serde_json::json;
@@ -25,6 +25,7 @@ use crate::access::{ACCESS_COOKIE, proof, same_secret};
 use crate::core::CoreLink;
 use crate::hermes::catalog::HermesDiscovery;
 use crate::hermes::location::HermesLocation;
+use crate::hermes::write_routes as write;
 use crate::security::error;
 
 pub const PORT: u16 = 4317;
@@ -110,6 +111,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/hermes/summary", get(hermes::routes::summary))
         .route("/api/hermes/profiles/{id}", get(hermes::routes::profile))
         .route("/api/hermes/profiles/{id}/mcp/{server}/tools", get(hermes::routes::mcp_tools))
+        .route("/api/hermes/profiles/{id}/mcp/{server}/tools/{tool}/call", post(write::call_tool))
+        .route("/api/hermes/profiles/{id}/files/{name}", put(write::save_file))
+        .route("/api/hermes/profiles/{id}/jobs", post(write::create_job))
+        .route("/api/hermes/profiles/{id}/jobs/{job}", get(write::job).post(write::change_job))
+        .route("/api/hermes/profiles/{id}/cards", post(write::create_card))
+        .route("/api/hermes/profiles/{id}/cards/{card}", post(write::change_card))
+        .route("/api/hermes/profiles/{id}/skills", get(write::skills).post(write::create_skill))
+        .route("/api/hermes/profiles/{id}/skills/{skill}", get(write::skill).put(write::save_skill))
         .route("/api/core", any(core::proxy))
         .route("/api/core/{*rest}", any(core::proxy))
         .route("/api/{*rest}", any(not_found))

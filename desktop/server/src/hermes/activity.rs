@@ -15,7 +15,7 @@ use serde_json::{Map, Value, json};
 use super::activity_log::{EVENT_WINDOW_MS, Event, EventBody, activity_log, job_runs, token};
 use super::catalog::ProfileTarget;
 use super::database::with_hermes_database;
-use super::safe_read::{read_hermes_file, redact};
+use super::safe_read::{decode_utf8, read_hermes_file, redact};
 use crate::js::{get, integer, iso, iso_ms, number, parse_date_ms};
 
 // Hermes itself treats its runtime status as stale after 120 s (gateway/status.py).
@@ -32,7 +32,7 @@ pub fn mcp_server_key(name: &str) -> String {
 
 fn json_file(root: &Path, file: &Path, limit: u64) -> Option<Value> {
     let data = read_hermes_file(root, file, limit).ok()?;
-    let value: Value = serde_json::from_str(std::str::from_utf8(&data).ok()?).ok()?;
+    let value: Value = serde_json::from_str(&decode_utf8(data)?).ok()?;
     (value.is_object() || value.is_array()).then_some(value)
 }
 
