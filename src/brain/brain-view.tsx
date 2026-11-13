@@ -13,7 +13,7 @@ const BrainGraphScene = lazy(() => import('./brain-graph'));
 const graphPalette = ['#b0564f', '#4f7192', '#7b6290', '#5f8a7d', '#c2913a', '#8c79b8', '#a8605e', '#3f8f9a', '#8f9a5a', '#b0784f', '#5a6fb0', '#9a5a86'];
 
 // Watson's real stages, in order; searching and reading may repeat while it thinks.
-const steps = [['recuerda', 'Recuerda'], ['busca', 'Busca'], ['lee', 'Lee'], ['piensa', 'Piensa'], ['responde', 'Responde']] as const;
+const steps = [['recuerda', 'Recuerda'], ['piensa', 'Piensa'], ['busca', 'Busca'], ['lee', 'Lee'], ['responde', 'Responde']] as const;
 const order: string[] = ['recuerda', 'piensa', 'busca', 'lee', 'responde'];
 const stepState = (current: string | null, step: string) => current === step ? 'now' : current && order.indexOf(step) < order.indexOf(current) ? 'done' : '';
 
