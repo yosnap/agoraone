@@ -87,6 +87,9 @@ class ClaudeCodeEngine:
             tools=[], allowed_tools=allowed, mcp_servers=servers, strict_mcp_config=True, setting_sources=[],
             max_turns=turns, cwd=str(self.workdir) if self.workdir else None,
             extra_args={"no-session-persistence": None},
+            # Only what is on this computer counts: the account's claude.ai connectors (Gmail, Drive…) may
+            # belong to whoever else shares the account, so they are never loaded (user's decision, 14/11/2026).
+            env={"ENABLE_CLAUDEAI_MCP_SERVERS": "false"},
         )
 
     async def stream(self, turn: Turn) -> AsyncIterator[str | None]:

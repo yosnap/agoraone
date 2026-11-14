@@ -16,7 +16,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Necesitas Node.js 22.12 o superior y una instalación de Hermes. Si no quieres usar la tuya, apunta `AGORA_HERMES_HOME` y `AGORA_HERMES_PATH` a una instalación de prueba.
+Necesitas Rust estable (`cargo`, para el servidor), Node.js 22.12 o superior (para la interfaz), [uv](https://docs.astral.sh/uv/) (para el núcleo) y una instalación de Hermes. Si no quieres usar la tuya, apunta `AGORA_HERMES_HOME` y `AGORA_HERMES_PATH` a una instalación de prueba.
 
 ## Normas del proyecto
 
@@ -30,7 +30,7 @@ Estas normas no se negocian en una pull request:
 
 ## Estilo de código
 
-- TypeScript estricto en la interfaz (`src/`) y en el servidor (`server/`).
+- TypeScript estricto en la interfaz (`src/`), Rust en el servidor (`desktop/server`, con clippy limpio) y Python en el núcleo (`core/`, con ruff).
 - Archivos de menos de 1000 líneas. Si crecen, se dividen por responsabilidad.
 - La interfaz no usa `<select>` nativos: los desplegables van por `src/ui/modern-select.tsx`.
 - Los avisos y las tarjetas no llevan una franja de color en el borde izquierdo. El nivel se indica con el fondo, el color del texto, un icono o un borde completo.
@@ -42,11 +42,13 @@ Estas normas no se negocian en una pull request:
 Antes de abrir una pull request:
 
 ```sh
+cargo test --manifest-path desktop/Cargo.toml
+npm run test:core
 npm test
 npm run build
 ```
 
-- Añade pruebas en `server/*.test.ts` para cualquier cambio de comportamiento del servidor.
+- Añade pruebas en `desktop/server/tests/` para cualquier cambio de comportamiento del servidor.
 - Si tocas permisos, escritura de archivos o acceso a la API, añade pruebas de aislamiento: rutas fuera de la carpeta permitida, falta de token, revisiones desactualizadas.
 - Las pruebas usan instalaciones temporales de Hermes, nunca la tuya.
 
@@ -58,7 +60,7 @@ npm run build
 
 ## Informar de errores y proponer ideas
 
-Usa las plantillas de issues. Incluye el sistema operativo, la versión de Node, la de Hermes y los pasos para reproducir el error. No pegues registros sin revisarlos antes: pueden contener rutas o nombres personales.
+Usa las plantillas de issues. Incluye el sistema operativo, la versión de AgoraOne, la de Hermes y los pasos para reproducir el error. No pegues registros sin revisarlos antes: pueden contener rutas o nombres personales.
 
 Las vulnerabilidades no se publican en un issue: sigue [SECURITY.md](SECURITY.md).
 

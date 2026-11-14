@@ -37,7 +37,7 @@ El backend valida propietario, formato y archivo autorizado antes de ambas opera
 - Hermes conserva cero herramientas. La instantánea autorizada es contexto de lectura, no una capacidad para explorar el disco.
 
 ## Extracción local
-`server/document-extraction.ts` valida la carga y limita a dos extracciones simultáneas. `server/extract-document.mjs` procesa bytes por stdin en un proceso separado, sin variables heredadas ni credenciales: 15 segundos y heap V8 de 128 MiB. Esto limita recursos, pero no es un sandbox de sistema operativo ni un límite total de memoria nativa.
+`desktop/server/src/library/extract.rs` valida la carga y limita a dos extracciones simultáneas. `core/agora_core/extract.py` procesa bytes por stdin en un proceso separado, sin variables heredadas ni credenciales: 15 segundos y heap V8 de 128 MiB. Esto limita recursos, pero no es un sandbox de sistema operativo ni un límite total de memoria nativa.
 
 PDF.js recibe bytes, sin URL, con evaluación desactivada. Mammoth usa `extractRawText({buffer})`, sin conversión HTML ni acceso externo habilitado. DOCX pasa antes por validación ZIP con yauzl: hasta 1000 entradas, 16 MiB descomprimidos declarados y reales, sin entradas cifradas o duplicadas. No se ejecutan macros, scripts o enlaces del documento. Los binarios no se guardan en disco.
 

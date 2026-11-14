@@ -9,7 +9,7 @@ export default defineConfig({
   server: {
     host: '127.0.0.1', port: 5173, strictPort: true,
     headers: { 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'" },
-    fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.agora/**', '**/server/**', '**/resources/**'] },
+    fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.agora/**', '**/resources/**'] },
     proxy: { '/api': 'http://127.0.0.1:4317' },
   },
 });

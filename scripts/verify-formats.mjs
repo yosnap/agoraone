@@ -1,7 +1,7 @@
 import { chromium } from '@playwright/test';
 import { appUrl } from './verify-targets.mjs';
 import assert from 'node:assert/strict';
-import { pdfFixture, docxFixture } from '../server/document-fixtures.ts';
+import { pdfFixture, docxFixture } from './document-fixtures.mjs';
 
 const live = process.argv.includes('--live');
 const browser = await chromium.launch();

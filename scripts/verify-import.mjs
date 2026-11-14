@@ -30,7 +30,14 @@ try {
   await page.getByRole('button', { name: 'Documentos', exact: true }).click();
   await page.getByRole('button', { name: /mi-prueba.md/ }).click();
   await page.getByText(marker, { exact: false }).waitFor();
+  // Another browser: without AgoraOne's access link it reaches nothing; with it, it is another identity
+  // and still cannot read this copy.
   const other = await browser.newContext();
+  assert.equal((await other.request.get(`http://127.0.0.1:4317/api/library/documents/${id}`)).status(), 401);
+  const otherPage = await other.newPage();
+  const admitted = otherPage.waitForResponse(r => r.url().includes('/api/status') && r.ok());
+  await otherPage.goto(appUrl());
+  await admitted;
   const denied = await other.request.get(`http://127.0.0.1:4317/api/library/documents/${id}`);
   assert.equal(denied.status(), 404);
   const list = await (await other.request.get('http://127.0.0.1:4317/api/library/documents')).json();

@@ -1,0 +1,18 @@
+[package]
+name = "agoraone-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "AgoraOne"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+agora-server = { path = "../server" }
+libc = "0.2.191"
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["full"] }

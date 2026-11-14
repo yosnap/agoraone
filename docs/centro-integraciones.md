@@ -64,7 +64,7 @@ Decisión del usuario (18/10/2026): desde la ficha de un MCP en el centro de int
   - **Usar esta herramienta** abre un formulario generado a partir de su esquema: texto, números, sí o no, listas de opciones y JSON para listas y objetos.
   - Se comprueban los obligatorios y los formatos antes de enviar nada.
   - **Revisar antes de ejecutar** muestra el JSON exacto que se enviará y avisa de que se usarán las credenciales del perfil y de que puede cambiar cosas en el servicio. Solo **Ejecutar** lo lanza.
-- **Ejecución** (`server/hermes_mcp_call.py`, un proceso por llamada en su propio grupo):
+- **Ejecución** (`desktop/server/python/hermes_mcp_call.py`, un proceso por llamada en su propio grupo):
   - Retira del entorno las credenciales del perfil principal que carga Hermes al importarse y entra en el ámbito del perfil, así que solo usa su home y sus credenciales.
   - Arranca únicamente ese servidor con la maquinaria MCP de Hermes, llama a la herramienta (90 s como máximo) y apaga el servidor. Si algo se cuelga, a los 120 s se cierra todo el grupo y se avisa de que no se sabe si la acción llegó a completarse.
   - La confirmación en AgoraOne es la aprobación humana de esa llamada, así que la puerta de confianza de Hermes para servidores «no fiables» no vuelve a preguntar.
@@ -75,10 +75,10 @@ Decisión del usuario (18/10/2026): desde la ficha de un MCP en el centro de int
   - Al conectar, Hermes puede actualizar en el home del perfil su catálogo de herramientas (`cache/mcp_schema_cache.json`), sus registros y, si el servidor usa OAuth, la renovación de su token, igual que cuando lo usa el bot.
 - **Resultado**: hasta 50 000 caracteres, con las líneas que parecen claves ocultas. Los errores del propio servicio se muestran marcados como tales y pueden venir en inglés.
 - **Verificación**:
-  - `server/mcp-call.test.ts`: llamada real a través de Hermes con un perfil ficticio y un servidor MCP de eco local marcado como no fiable. Comprueba:
+  - `desktop/server/tests/hermes_manage.rs`: llamada real a través de Hermes con un perfil ficticio y un servidor MCP de eco local marcado como no fiable. Comprueba:
     - el resultado, con la clave oculta;
     - que el servidor no ve las credenciales del perfil principal;
     - el rechazo de herramientas fuera del catálogo, servidores desconocidos o deshabilitados, y parámetros que faltan o sobran;
     - que no quedan procesos.
-  - `server/app.test.ts`: CSRF y cuerpo estricto.
+  - `desktop/server/tests/`: CSRF y cuerpo estricto.
   - `scripts/verify-mcp-call.mjs`: navegador con el catálogo y la llamada interceptados, sin conectar con ningún servicio.
