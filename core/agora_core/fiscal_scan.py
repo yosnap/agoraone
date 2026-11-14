@@ -287,9 +287,9 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
         else:
             read[path] = fields
     own = own_tax_id(connection, folder_id)
-    seen = set(known_files or ())
+    seen: dict[str, str | None] = dict.fromkeys(known_files or ())  # sha256 → first copy seen (None: already filed)
     rel = lambda p: str(p.relative_to(root))  # noqa: E731
-    counts = {"unreadable": [], "duplicates": [], "unplaced": [rel(p) for p in unplaced], "noVat": [],
+    counts = {"unreadable": [], "duplicates": [], "duplicateOf": {}, "unplaced": [rel(p) for p in unplaced], "noVat": [],
               # read by the local rules but not yet by the model (the app closed mid-way, or the model was off)
               "modelPending": [p for p, f in read.items() if not f.get("ai") and not f.get("aiTried") and not f.get("unreadable")]}
 
@@ -302,9 +302,10 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
         digest = fields.get("sha256")
         if digest and digest in seen:
             counts["duplicates"].append(rel(path))
+            counts["duplicateOf"][rel(path)] = seen[digest]
             return False
         if digest:
-            seen.add(digest)
+            seen[digest] = rel(path)
         if fields.get("unreadable"):
             counts["unreadable"].append(rel(path))
             return False

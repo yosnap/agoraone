@@ -424,7 +424,10 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
                 pass
         notes += exchange.to_eur(connection, expenses, "issuedOn")
         issue("unreadable", "{n} facturas de la carpeta no se pudieron leer (protegidas o dañadas): revísalas a mano.", files(counts["unreadable"]))
-        issue("duplicates", "{n} archivos repetidos se han contado una sola vez.", files(counts["duplicates"]))
+        twins = counts["duplicateOf"]
+        issue("duplicates", "{n} archivos son copia idéntica de otro de la carpeta (mismo contenido con otro nombre): se cuenta solo una vez.",
+              [{**item, "detail": f"Copia idéntica de «{twins[item['path']]}»" if twins.get(item["path"]) else "Ya archivada por AgoraOne"}
+               for item in files(counts["duplicates"])])
         issue("unplaced", "{n} archivos de Facturas Entrantes o Salientes están en carpetas que no dicen año y trimestre: no entran en ningún trimestre.",
               files(counts["unplaced"]))
         issue("noVat", "{n} facturas emitidas sin tipo de IVA leído: revisa su base y su IVA.", files(counts["noVat"]))
