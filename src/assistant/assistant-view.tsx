@@ -8,6 +8,7 @@ import { Loading, LoadError } from '../ui/load-state';
 import type { NoteRef } from '../brain/note-reader';
 import { engineName, modelName, stageLabels } from './assistant-labels';
 import { play } from '../sound/sound';
+import { Announcements, useAnnouncements } from './assistant-announce';
 import './assistant.css';
 
 type Live = { question: string; stage: Stage | null; sources: Source[]; text: string; engine?: string; model?: string; steps: string[] };
@@ -35,6 +36,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const [draft, setDraft] = useState('');
   const [persona, setPersona] = useState<Persona | null>(null);
   const [engine, setEngine] = useState<{ active: string | null; model: string } | null>(null);
+  const announced = useAnnouncements();
   const abort = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
   // The conversation on screen, read by answers that finish after the user moved to another one.
@@ -93,7 +95,10 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   useEffect(() => { if (question) { onQuestionTaken?.(); void send(question, null); } }, [question, onQuestionTaken, send]);
   // Only the message list scrolls (scrollIntoView would also move the page around it).
   useEffect(() => { const list = end.current?.parentElement; if (list) list.scrollTop = list.scrollHeight; }, [messages, live?.text, live?.stage, live?.steps.length]);
-  const submit = (event?: FormEvent) => { event?.preventDefault(); const text = draft.trim(); if (!text || live) return; setDraft(''); void send(text, current); };
+  const submit = (event?: FormEvent) => {
+    event?.preventDefault(); const text = draft.trim(); if (!text || live) return; setDraft('');
+    if (!announced.answer(text)) void send(text, current);  // a plain «sí» / «no» answers the open announcement, without a model
+  };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
   const fresh = () => { abort.current?.abort(); setCurrent(null); setMessages([]); setLive(null); setError(''); onSources?.([]); if (embedded) setListOpen(false); };
@@ -121,9 +126,10 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
           {!engine ? 'Comprobando motor…' : engine.active ? `${engineName(engine.active)} · ${modelName(engine.model)}` : 'Sin motor disponible'}</span>
       </header>
       <div className="assistant-messages" aria-live="polite">
+        <Announcements name={persona?.name ?? 'Watson'} items={announced.items} note={announced.note} decide={announced.decide}/>
         {loading ? <Loading label="Abriendo la conversación"/> : !messages.length && !live ? <div className="assistant-empty">
           <h2>¿Qué quieres saber de tu cerebro?</h2>
-          <p>{name} busca en tus notas normales, responde con el motor de Claude y cita lo que ha usado. En esta versión solo lee: no envía, crea ni cambia nada.</p>
+          <p>{name} busca en tus notas normales, responde con el motor de Claude y cita lo que ha usado. También te avisa de lo que espera en la Bandeja. Solo lee: no envía, crea ni cambia nada.</p>
         </div> : messages.map((message, index) => <article key={index} className={`assistant-message ${message.role}${message.failed ? ' failed' : ''}`}>
           <strong>{message.role === 'user' ? 'Tú' : name}</strong>
           {message.role === 'user' ? <p>{message.content}</p> : <Markdown source={message.content} resolve={noLinks}/>}

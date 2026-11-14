@@ -143,3 +143,29 @@ export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail
 export const putMicrosoftClient = (clientId: string | null) => core<{ clientId: string | null }>('/mail/microsoft', { clientId }, 'PUT');
 export const startMicrosoftSignIn = (id: number) => core<MicrosoftSignIn>(`/mail/accounts/${id}/microsoft`, {});
 export const getMicrosoftSignIn = (id: number) => core<MicrosoftSignIn>(`/mail/accounts/${id}/microsoft`);
+export type MailRuleAction = 'invoice' | 'client' | 'personal' | 'important' | 'ignore';
+export type MailRule = {
+  id: number; name: string; sender: string | null; accountId: number | null; subject: string | null; words: string | null;
+  action: MailRuleAction; scopeId: number | null; confidentiality: Level | null; enabled: boolean;
+};
+export type MailRuleIn = Omit<MailRule, 'id'>;
+export const getMailRules = () => core<{ rules: MailRule[] }>('/mail/rules');
+export const createMailRule = (rule: MailRuleIn) => core<{ rules: MailRule[] }>('/mail/rules', rule);
+export const changeMailRule = (id: number, changes: Partial<MailRuleIn>) => core<{ rules: MailRule[] }>(`/mail/rules/${id}`, changes, 'PUT');
+export const deleteMailRule = (id: number) => core<{ rules: MailRule[] }>(`/mail/rules/${id}`, undefined, 'DELETE');
+export type InboxKind = 'invoice' | 'payment' | 'job' | 'client' | 'incident' | 'appointment' | 'personal' | 'important' | 'advertising' | 'other';
+export type InboxState = 'pending' | 'done' | 'dismissed';
+export type InboxItem = {
+  id: number; kind: InboxKind; source: 'rule' | 'model' | 'local'; ruleId: number | null; ruleName: string | null; confidentiality: Level;
+  summary: string | null; details: { asks?: string[]; dates?: string[]; amounts?: string[]; language?: string | null };
+  state: InboxState; proposal: 'archive_invoice' | 'add_to_project' | 'create_event' | null;
+  suggestion: { sender: string; action: MailRuleAction; name: string } | null;
+  from: { name: string | null; address: string | null }; subject: string | null; sentAt: string;
+  account: { id: number; address: string }; scope: { id: number; name: string; color: string | null } | null;
+  attachments: number; announcedAt: string | null;
+};
+export type InboxCounts = { pending: number; done: number; dismissed: number; unread: number };
+export const getInbox = (state: InboxState = 'pending') => core<{ items: InboxItem[]; counts: InboxCounts; problem: string | null }>(`/mail/inbox?state=${state}`);
+export const decideInbox = (id: number, state: InboxState) => core<{ ok: true }>(`/mail/inbox/${id}`, { state }, 'PUT');
+export const getAnnouncements = () => core<{ items: InboxItem[] }>('/mail/inbox/announce');
+export const markAnnounced = (ids: number[]) => core<{ ok: true }>('/mail/inbox/announced', { ids });
