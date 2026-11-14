@@ -1,3 +1,3 @@
 """Núcleo local de AgoraOne."""
 
-__version__ = "1.1.0a2"
+__version__ = "1.1.0a3"
