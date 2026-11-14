@@ -5,6 +5,7 @@ import {
 } from '../api/core';
 import { ModernSelect } from '../ui/modern-select';
 import { MicrosoftClientField, MicrosoftConnect } from './settings-microsoft';
+import { ProviderLogo } from './provider-logos';
 import { Loading, LoadError } from '../ui/load-state';
 
 const statusLabels: Record<MailAccount['status'], string> = {
@@ -52,6 +53,8 @@ export function MailSettingsCard() {
   const [busy, setBusy] = useState<number | 'new' | null>(null);
   const [passwords, setPasswords] = useState<Record<number, string>>({});
   const [removing, setRemoving] = useState<number | null>(null);
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  const toggle = (id: number) => setOpen(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const fail = (failure: unknown, fallback: string) => setError(failure instanceof Error ? failure.message : fallback);
@@ -81,13 +84,26 @@ export function MailSettingsCard() {
   return <article className="card settings-mail" aria-labelledby="settings-mail">
     <h2 id="settings-mail">Cuentas de correo</h2>
     <p>AgoraOne lee la bandeja de entrada en <strong>solo lectura</strong>: no marca nada como leído, no mueve ni borra. Cada cuenta lleva su ámbito y su nivel: lo «solo en este Mac» no va a modelos externos y lo privado no sale del núcleo.</p>
-    {accounts.length ? <ul className="mail-accounts">{accounts.map(account => <li key={account.id}>
-      <div className="mail-account-head">
-        <strong>{account.address}</strong>
-        <span className={`chip mail-${account.status}`}>{account.enabled ? statusLabels[account.status] : 'En pausa'}</span>
+    {accounts.length ? <ul className="mail-accounts compact">{accounts.map(account => <li key={account.id} className={open.has(account.id) ? 'open' : ''}>
+      <div className="compact-row">
+        <button type="button" className="compact-toggle" aria-expanded={open.has(account.id)} onClick={() => toggle(account.id)}
+          title={open.has(account.id) ? 'Cerrar' : 'Ver y editar'}>
+          <ProviderLogo provider={account.provider}/>
+          <span className="compact-name"><strong>{account.address}</strong>
+            <small className="muted">{account.scopeName ?? 'Sin ámbito'}{account.confidentiality !== 'normal' ? ` · ${levelLabels[account.confidentiality]}` : ''} · {account.messages} correos · {when(account.lastSyncAt)}</small></span>
+          <span className={`status-badge ${!account.enabled ? 'paused' : account.status === 'ok' ? 'good' : account.status === 'pending' ? 'waiting' : 'bad'}`}>
+            {account.enabled ? statusLabels[account.status] : 'En pausa'}</span>
+          <span className="compact-chevron" aria-hidden="true">▾</span>
+        </button>
+        <button className="button compact-action" disabled={busy === account.id || !account.hasPassword} title="Leer ahora"
+          onClick={() => void act(account.id, async () => {
+            const answer = await syncMailAccount(account.id);
+            setNote(answer.result.status === 'ok' ? `Leídos ${answer.result.added} correos nuevos${answer.result.added ? ' (el resto llega en segundo plano)' : ''}.` : syncNotes[answer.result.status] ?? 'No se pudo leer.');
+            return answer;
+          }, '')}>{busy === account.id ? 'Leyendo…' : 'Leer'}</button>
       </div>
-      <small className="muted">{presets[account.provider]?.name ?? account.provider} · {account.messages} correos · última lectura {when(account.lastSyncAt)}</small>
-      {account.lastError && <small className="mail-error">{account.lastError}</small>}
+      {account.lastError && account.status !== 'ok' && <small className="mail-error">{account.lastError}</small>}
+      {open.has(account.id) && <>
       <div className="mail-account-fields">
         <label className="field">Ámbito<ScopeSelect value={account.scopeId ? String(account.scopeId) : ''} scopes={scopes} onCreated={setScopes}
           onChange={value => void act(account.id, () => changeMailAccount(account.id, { scopeId: value ? Number(value) : null }), 'Ámbito guardado.')}/></label>
@@ -101,12 +117,6 @@ export function MailSettingsCard() {
         <button className="button" disabled={(passwords[account.id] ?? '').length < 4 || busy === account.id}>Guardar</button>
       </form>}
       <div className="actions">
-        <button className="button primary" disabled={busy === account.id || !account.hasPassword}
-          onClick={() => void act(account.id, async () => {
-            const answer = await syncMailAccount(account.id);
-            setNote(answer.result.status === 'ok' ? `Leídos ${answer.result.added} correos nuevos${answer.result.added ? ' (el resto llega en segundo plano)' : ''}.` : syncNotes[answer.result.status] ?? 'No se pudo leer.');
-            return answer;
-          }, '')}>{busy === account.id ? 'Leyendo…' : 'Leer ahora'}</button>
         <button className="button" disabled={busy === account.id} onClick={() => void act(account.id, () => changeMailAccount(account.id, { enabled: !account.enabled }), account.enabled ? 'Cuenta en pausa.' : 'Cuenta reanudada.')}>{account.enabled ? 'Pausar' : 'Reanudar'}</button>
         {removing === account.id ? <span className="field-row" role="group" aria-label={`Confirmar quitar ${account.address}`}>
           <small>Se borran sus correos guardados y su contraseña del Llavero; el buzón no se toca.</small>
@@ -114,6 +124,7 @@ export function MailSettingsCard() {
           <button className="button" onClick={() => setRemoving(null)}>Cancelar</button>
         </span> : <button className="button danger" disabled={busy === account.id} onClick={() => setRemoving(account.id)}>Quitar…</button>}
       </div>
+      </>}
     </li>)}</ul> : <p className="muted">Todavía no hay cuentas conectadas.</p>}
     {adding ? <form className="mail-new" onSubmit={add} aria-label="Nueva cuenta de correo">
       <label className="field">Proveedor<ModernSelect value={form.provider} onChange={value => setForm({ ...form, provider: value as MailProvider })}

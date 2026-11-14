@@ -23,3 +23,32 @@
 .mail-steps { margin:0; padding-left:18px; font-size:12px; line-height:1.55; color:var(--c-355a50) }
 .mail-code { font-family:'JetBrains Mono',monospace; font-size:15px; letter-spacing:.08em }
 .fiscal-moves { margin:0; padding-left:18px; font-size:11px; max-height:260px; overflow:auto; overflow-wrap:anywhere }
+.mail-accounts.compact { gap:6px }
+.mail-accounts.compact > li { padding:6px 8px; gap:8px }
+.mail-accounts.compact > li.open { padding:10px 12px 12px }
+.compact-row { display:flex; align-items:center; gap:8px }
+.compact-toggle { flex:1; min-width:0; display:flex; align-items:center; gap:10px; border:0; background:none; padding:4px; text-align:left; color:inherit; border-radius:8px; cursor:pointer }
+.compact-toggle:hover { background:var(--c-f1f5ee) }
+.compact-toggle > svg { flex:none; color:var(--c-355a50) }
+.compact-name { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px }
+.compact-name strong, .compact-name small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.compact-chevron { color:var(--c-6f8379); transition:transform .15s }
+li.open .compact-chevron { transform:rotate(180deg) }
+.compact-action { padding:6px 12px }
+.status-badge { flex:none; display:inline-flex; align-items:center; gap:6px; border-radius:20px; padding:4px 10px 4px 8px; font-size:11px; font-weight:600; white-space:nowrap }
+.status-badge::before { content:""; width:8px; height:8px; border-radius:50% ; background:currentColor }
+.status-badge.good { background:var(--c-dcebdc); color:var(--c-2d7a4f) }
+.status-badge.bad { background:var(--c-f6ddd4); color:var(--c-8e3d2a) }
+.status-badge.waiting { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.status-badge.paused, .status-badge.neutral { background:var(--c-e7ece2); color:var(--c-355a50) }
+.status-badge.neutral::before { display:none }
+@media (prefers-reduced-motion: reduce) { .compact-chevron { transition:none } }
+.appearance { margin-bottom:16px }
+.appearance-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap }
+.field-label { font-size:12px; font-weight:600; color:var(--c-355a50); min-width:70px }
+.palette-list { display:flex; flex-wrap:wrap; gap:8px }
+.palette-option { display:flex; align-items:center; gap:8px; border:1px solid var(--c-dfe3d6); border-radius:10px; background:var(--c-fffffa); padding:6px 10px 6px 6px; font-size:12px; color:inherit }
+.palette-option[aria-checked="true"] { border-color:var(--c-244e42); box-shadow:0 0 0 2px var(--c-244e42) inset }
+.palette-swatch { display:flex; border-radius:6px; overflow:hidden }
+.palette-swatch i { width:12px; height:22px; display:block }
+.appearance-font { max-width:360px }
