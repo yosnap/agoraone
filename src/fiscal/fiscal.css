@@ -20,3 +20,12 @@
 .fiscal-issue:hover { filter:brightness(0.97) }
 .fiscal-issue-more { white-space:nowrap; font-weight:600 }
 .fiscal-detail-path { overflow-wrap:anywhere; color:var(--c-6f8379) }
+.fiscal-file { display:inline-flex; gap:6px; align-items:center }
+.fiscal-type { font-size:10px; padding:2px 7px }
+.icon-button { display:inline-grid; place-items:center; width:28px; height:28px; border:1px solid var(--c-c9d3c4); border-radius:8px; background:var(--c-fffffa); color:var(--c-214b44); cursor:pointer }
+.icon-button:hover { background:var(--c-f1f5ee) }
+.icon-button:focus-visible { outline:3px solid var(--c-ae7827); outline-offset:2px }
+.fiscal-progress { display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:10px; background:var(--c-f1f5ee); color:var(--c-24563a); font-size:12px; margin:0 0 10px }
+.fiscal-progress-bar { display:block; height:6px; border-radius:6px; background:var(--c-dfe3d6); overflow:hidden }
+.fiscal-progress-bar i { display:block; height:100%; background:var(--c-244e42); transition:width .4s }
+@media (prefers-reduced-motion: reduce) { .fiscal-progress-bar i { transition:none } }

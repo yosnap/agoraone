@@ -336,8 +336,18 @@ def open_in_finder(root: Path, relative: str | None, reveal: bool, runner=None) 
     target = inside(root, relative) if relative else root
     if not target.exists():
         raise FiscalError("Ese archivo ya no está en la carpeta.")
+    import sys
+
     run = runner or subprocess.run
+    if sys.platform == "darwin":
+        command = ["/usr/bin/open", *(["-R"] if reveal and relative else []), "--", str(target)]
+    elif sys.platform == "win32":  # Windows: the Explorer, with the file selected
+        command = ["explorer", f"/select,{target}"] if reveal and relative else ["explorer", str(target)]
+    else:
+        command = ["xdg-open", str(target.parent if reveal and relative else target)]
     try:
-        run(["/usr/bin/open", *(["-R"] if reveal and relative else []), "--", str(target)], check=True, timeout=10, capture_output=True)
+        done = run(command, timeout=10, capture_output=True)
+        if sys.platform != "win32" and getattr(done, "returncode", 0) not in (0, None):  # explorer returns 1 even when it works
+            raise subprocess.CalledProcessError(done.returncode, command)
     except (OSError, subprocess.SubprocessError) as error:
-        raise FiscalError("No se pudo abrir en el Finder.") from error
+        raise FiscalError("No se pudo abrir el archivo o su carpeta.") from error

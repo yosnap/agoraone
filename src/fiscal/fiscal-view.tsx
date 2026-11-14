@@ -11,6 +11,11 @@ function money(value: number | string | null | undefined, currency = 'EUR') {
 }
 const day = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
+const TYPES: Record<string, string> = { pdf: 'PDF', png: 'Imagen', jpg: 'Imagen', jpeg: 'Imagen', heic: 'Imagen', html: 'HTML', htm: 'HTML', xlsx: 'Excel', xls: 'Excel', zip: 'ZIP' };
+const fileType = (path: string) => TYPES[(path.split('.').pop() ?? '').toLowerCase()] ?? (path.split('.').pop() ?? '').toUpperCase();
+const FILE_ICON = <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" d="M6 2h8l5 5v15H6zM14 2v5h5M9 13h6M9 17h6"/></svg>;
+const FOLDER_ICON = <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" d="M3 6h6l2 2h10v11H3z"/></svg>;
+
 function currentQuarter() {
   const now = new Date();
   return { year: now.getFullYear(), quarter: Math.floor(now.getMonth() / 3) + 1 };
@@ -29,6 +34,7 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
   const [made, setMade] = useState<string | null>(null);
   const [detail, setDetail] = useState<FiscalIssue | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const asked = useRef(false);
   const request = useRef(0);
   // While invoices are still being read, the quarter refreshes itself every few seconds (no need to press anything).
@@ -69,31 +75,48 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
   const folder = folders?.find(f => f.id === folderId);
   // Each invoice opens with its app or shows in the Finder, to check it against what was read.
   const fileButtons = (path: string | undefined) => path ? <span className="fiscal-file">
-    <button type="button" className="button" title={path} onClick={() => void reveal(path, false)}>Abrir</button>
-    <button type="button" className="button" title="Mostrar en Finder" onClick={() => void reveal(path, true)}>Finder</button></span> : null;
+    <span className="chip fiscal-type">{fileType(path)}</span>
+    <button type="button" className="icon-button" title={`Abrir el archivo · ${path.split('/').pop()}`} aria-label="Abrir el archivo" onClick={() => void reveal(path, false)}>{FILE_ICON}</button>
+    <button type="button" className="icon-button" title="Mostrar en su carpeta" aria-label="Mostrar en su carpeta" onClick={() => void reveal(path, true)}>{FOLDER_ICON}</button></span> : null;
   const years = Array.from({ length: 4 }, (_, i) => currentQuarter().year - i);
   const totalIn = view?.income.reduce((sum, row) => sum + (row.base ?? 0), 0) ?? 0;
   // Spent, in euros: foreign-currency invoices count with their ECB rate (when it could be fetched).
   const euros = (row: { currency: string; total: string | number; totalEur?: number }) => row.currency === 'EUR' ? Number(row.total) : row.totalEur ?? 0;
   const totalOut = view?.expenses.reduce((sum, row) => sum + euros(row as never), 0) ?? 0;
   const totalBase = view?.income.reduce((sum, row) => sum + (row.total !== null ? Number(row.total) : 0), 0) ?? 0;
+  // One invoice at a time, so the screen can say «2 of 7» and each one leaves the list as soon as it is saved.
   const fetchFromQonto = async (numbers: string[]) => {
-    if (!folderId) return;
+    if (!folderId || !detail) return;
     setDownloading(true); setError(''); setNote('');
-    try {
-      const done = await downloadFromQonto(folderId, period.year, period.quarter, numbers);
-      setNote(`${done.saved.length} facturas descargadas de Qonto en «Facturas Salientes»${done.failed.length ? `; ${done.failed.length} no se pudieron (${done.failed[0].error})` : ''}.`);
-      setDetail(null); void load(folderId, period.year, period.quarter);
-    } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo descargar de Qonto.'); }
-    finally { setDownloading(false); }
+    let saved = 0;
+    const failed: string[] = [];
+    for (const [index, number] of numbers.entries()) {
+      setProgress({ done: index, total: numbers.length });
+      try {
+        const done = await downloadFromQonto(folderId, period.year, period.quarter, [number]);
+        if (done.saved.length) {
+          saved += 1;
+          setDetail(current => current && { ...current, items: current.items.filter(item => item.qonto !== number) });
+        } else failed.push(`${number}: ${done.failed[0]?.error ?? 'no se pudo'}`);
+      } catch (failure) { failed.push(`${number}: ${failure instanceof Error ? failure.message : 'no se pudo'}`); }
+    }
+    setProgress(null); setDownloading(false);
+    setNote(`${saved} de ${numbers.length} facturas descargadas de Qonto en «Facturas Salientes».`);
+    if (failed.length) setError(`No se pudieron descargar: ${failed.join('; ')}`);
+    void load(folderId, period.year, period.quarter, true);
   };
   if (detail) return <section className="page fiscal" aria-labelledby="fiscal-detail" ref={holder}>
     <button type="button" className="button" onClick={() => setDetail(null)}>‹ Volver a Fiscal</button>
     <div className="eyebrow">FISCAL · {folder?.name} · {period.quarter}T {period.year}</div>
     <h1 id="fiscal-detail">Detalle del aviso</h1>
-    <p className="page-lead">{detail.text}</p>
-    {detail.key === 'qonto' && <p><button type="button" className="button primary" disabled={downloading}
+    <p className="page-lead">{detail.key === 'qonto' ? `Qonto tiene ${detail.items.length} facturas emitidas este trimestre que no están en «Facturas Salientes».` : detail.text}</p>
+    {detail.key === 'qonto' && detail.items.length > 0 && <p><button type="button" className="button primary" disabled={downloading}
       onClick={() => void fetchFromQonto(detail.items.map(item => item.qonto!).filter(Boolean))}>{downloading ? 'Descargando…' : `Descargar de Qonto las ${detail.items.length}`}</button></p>}
+    {progress && <div className="fiscal-progress" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} aria-label="Descargando de Qonto">
+      <span>Descargando {progress.done + 1} de {progress.total}… (quedan {progress.total - progress.done})</span>
+      <span className="fiscal-progress-bar"><i style={{ width: `${Math.round(100 * progress.done / progress.total)}%` }}/></span></div>}
+    {note && <p className="ok-note" role="status">{note}</p>}
+    {detail.items.length === 0 && <p className="muted">No queda nada pendiente en este aviso.</p>}
     {error && <LoadError message={error}/>}
     <div className="fiscal-table"><table><thead><tr><th>Documento</th><th>Detalle</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
       <tbody>{detail.items.map((item, index) => <tr key={index}><td>{discreet ? '•••' : item.label}</td><td className="fiscal-detail-path">{item.detail}</td>
@@ -121,6 +144,11 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
           <article className="card"><span className="muted">Facturado (base)</span><strong>{discreet ? '•••' : money(totalIn)}</strong><small className="muted">{view.income.length} facturas emitidas · {discreet ? '•••' : money(totalBase)} cobrado con IVA e IRPF</small></article>
           <article className="card"><span className="muted">Gastado (total en euros, con el cambio del BCE)</span><strong>{discreet ? '•••' : money(totalOut)}</strong><small className="muted">{view.expenses.length} facturas recibidas</small></article>
         </div>
+        {view.reading > 0 && <div className="fiscal-progress" role="progressbar" aria-valuemin={0} aria-valuemax={view.readingTotal} aria-valuenow={view.readingTotal - view.reading}
+          aria-label="Leyendo facturas de la carpeta">
+          <span>Leyendo facturas de la carpeta: {view.readingTotal - view.reading} de {view.readingTotal}. Se completa solo.</span>
+          <span className="fiscal-progress-bar"><i style={{ width: `${Math.round(100 * (view.readingTotal - view.reading) / Math.max(1, view.readingTotal))}%` }}/></span>
+        </div>}
         {view.incomeProblem && <p className="fiscal-warning">{view.incomeProblem}</p>}
         {view.notes.filter(n => !view.issues.some(i => i.text === n)).map(n => <p key={n} className="fiscal-warning">{n}</p>)}
         {view.issues.map(issue => <button key={issue.key} type="button" className="fiscal-warning fiscal-issue" onClick={() => setDetail(issue)}>

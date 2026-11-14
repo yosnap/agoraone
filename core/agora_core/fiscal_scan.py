@@ -45,6 +45,7 @@ def _files(root: Path, top: str, year: int, quarter: int, unplaced: list | None 
 
 _READING: set[tuple[int, str]] = set()
 _READING_LOCK = threading.Lock()
+_STARTED: dict[int, int] = {}  # how many files the current reading of each folder started with (for the progress bar)
 
 
 def _cached(connection: sqlite3.Connection, folder_id: int, root: Path, path: Path) -> dict | None:
@@ -66,6 +67,9 @@ def read_in_background(database, folder_id: int, root: Path, paths: list[Path], 
     `ask(texts)` is given (Claude Haiku), reads their data with it, five invoices per call."""
     with _READING_LOCK:
         todo = [p for p in paths if (folder_id, str(p)) not in _READING]
+        if not any(f == folder_id for f, _ in _READING):
+            _STARTED[folder_id] = 0
+        _STARTED[folder_id] = _STARTED.get(folder_id, 0) + len(todo)
         _READING.update((folder_id, str(p)) for p in todo)
     if not todo:
         return
@@ -87,8 +91,7 @@ def read_in_background(database, folder_id: int, root: Path, paths: list[Path], 
             if ask is not None:
                 _read_with_model(database, folder_id, root, todo, ask)
         finally:  # «still reading» until the model is done too
-            with _READING_LOCK:
-                _READING.difference_update((folder_id, str(p)) for p in todo)
+            _done(folder_id, todo)
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -125,6 +128,7 @@ def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], as
                 with database() as connection:
                     fields = _cached(connection, folder_id, root, path) or {}
                     _remember(connection, folder_id, root, path, {**fields, "ai": found} if found else {**fields, "aiTried": True})
+            _done(folder_id, [path])
             continue
         if path.suffix.lower() == ".pdf" and not known.get("image"):
             try:
@@ -141,10 +145,23 @@ def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], as
             return
         with database() as connection:
             for n, (path, _) in enumerate(batch, 1):
+                _done(folder_id, [path])
                 fields = _cached(connection, folder_id, root, path) or {}
                 if not fields.get("unreadable"):
                     # «aiTried»: asked once without an answer, so it is not asked again in a loop.
                     _remember(connection, folder_id, root, path, {**fields, "ai": found[n]} if found.get(n) else {**fields, "aiTried": True})
+
+
+def _done(folder_id: int, paths) -> None:
+    with _READING_LOCK:
+        _READING.difference_update((folder_id, str(p)) for p in paths)
+
+
+def progress(folder_id: int) -> tuple[int, int]:
+    """(still reading, started with) for the folder's current reading."""
+    with _READING_LOCK:
+        left = sum(1 for f, _ in _READING if f == folder_id)
+        return left, max(left, _STARTED.get(folder_id, left))
 
 
 def reading(folder_id: int) -> int:
