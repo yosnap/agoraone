@@ -1,6 +1,24 @@
 # Estado de continuidad — 14/11/2026
 
 ## Resultado
+Versión 1.1.0-alpha.7 · Facturas leídas con Claude y Fiscal más usable.
+- **Lectura de facturas.** Claude Haiku lee el texto de cada factura de la carpeta fiscal (y las fotos y los PDF escaneados, como imagen), con las reglas locales de respaldo y una comprobación de coherencia (base + IVA − IRPF = total). Se puede desactivar en Ajustes y entonces nada sale del Mac.
+  - Medido contra los registros trimestrales del usuario (2T y 3T de 2026): 102 de 104 facturas exactas en todos los campos.
+  - La evaluación es privada, fuera del repositorio, y se repite antes de cambiar la lectura.
+- **Moneda extranjera:** se convierte a euros con el cambio del BCE de su fecha (migración 0016, columna «Total EUR» del Excel).
+- **Pantalla Fiscal:**
+  - cliente sacado del texto;
+  - cada factura se abre con iconos de archivo y carpeta (macOS, Windows y Linux) y lleva su tipo de archivo;
+  - barra de progreso de la lectura, que además se actualiza sola;
+  - cada aviso abre su detalle con la lista de documentos;
+  - las facturas emitidas que Qonto tiene y la carpeta no se descargan una a una con progreso.
+- **Verificado:** 196 pruebas del núcleo, interfaz, build y la app abierta (descarga desde Qonto probada por el usuario).
+- **Pendiente:**
+  - Revisión de código por agente de esta tanda (lectura con Claude, fotos, detalle de avisos, descarga de Qonto, progreso).
+  - Ballenoil sin nombre en su factura.
+  - Fase 5: indicaciones de clientes a la nota de su proyecto.
+  - Fases 6 a 9 del plan.
+
 Versión 1.1.0-alpha.6 · Trimestre leído de la carpeta y clientes de Central (primera parte de la fase 5).
 - **Fiscal:** el trimestre se lee de las facturas que ya están en la carpeta, ordenadas o no.
   - Facturas Salientes son los ingresos y Facturas Entrantes los gastos.
