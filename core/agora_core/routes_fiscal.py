@@ -377,8 +377,11 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         known_files = {r["sha256"] for r in connection.execute("SELECT sha256 FROM invoice WHERE folder_id = ?", (folder_id,))}
         found_income, found_expenses, pending, counts = fiscal_scan.scan(connection, folder_id, root, year, quarter, start.isoformat(),
                                                                          end.isoformat(), {e["path"] for e in filed}, known_files)
-        if pending:
-            fiscal_scan.read_in_background(database, folder_id, root, pending, invoice_reader(connection))
+        reader = invoice_reader(connection)
+        todo = pending + (counts["modelPending"] if reader else [])
+        if todo:
+            fiscal_scan.read_in_background(database, folder_id, root, todo, reader)
+        in_flight = fiscal_scan.reading(folder_id)
         expenses = filed + found_expenses
         income, problem, notes = found_income, None, []
         auth = qonto_auth(connection)
@@ -390,7 +393,7 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
                     problem = str(error)
             else:
                 problem = "No hay facturas emitidas en «Facturas Salientes» para este trimestre."
-        elif auth and not pending:
+        elif auth and not in_flight:
             try:  # the folder is the source; Qonto only warns if it knows of more issued invoices
                 in_qonto = {r["number"] for r in qonto.issued_invoices(auth, start, end)[0] if r["number"]}
                 if len(in_qonto) > len(found_income):
@@ -406,8 +409,8 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             notes.append(f"{counts['unplaced']} archivos de Facturas Entrantes o Salientes están en carpetas que no dicen año y trimestre: no entran en ningún trimestre.")
         if counts["noVat"]:
             notes.append(f"{counts['noVat']} facturas emitidas sin tipo de IVA leído: su base y su IVA quedan sin calcular; revísalas.")
-        if pending:
-            notes.insert(0, f"Leyendo {len(pending)} facturas de la carpeta por primera vez: el trimestre se completará en unos minutos (pulsa «Actualizar»).")
+        if in_flight:
+            notes.insert(0, f"Leyendo {in_flight} facturas de la carpeta: el trimestre se completa solo en unos minutos.")
         if guessed := sum(1 for r in income if r.get("guessedDate")) + sum(1 for e in found_expenses if "Fecha no leída" in e["notes"]):
             notes.append(f"{guessed} facturas sin fecha legible: se han puesto al inicio del trimestre.")
         if images := sum(1 for e in found_expenses if "imagen" in e["notes"]):
@@ -420,7 +423,7 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         if plain := sum(1 for e in expenses if not e["base"] and not e["vat"]):
             notes.append(f"{plain} facturas recibidas sin base ni IVA desglosados: revísalas antes de presentar.")
         return {"folder": folder, "root": root, "income": income, "incomeProblem": problem, "expenses": expenses, "notes": notes,
-                "reading": len(pending)}
+                "reading": in_flight}
 
     @router.get("/fiscal/folders/{folder_id}/quarter")
     async def quarter_view(folder_id: int, year: int, quarter: int):

@@ -348,7 +348,7 @@ def test_ilegibles_repetidos_y_nif_propio_con_pocas_facturas(db, tmp_path):
     assert sorted(r["taxId"] for r in income) == ["B22222222", "B33333333"], "con dos facturas, el NIF propio ya no sale como del cliente"
     scanned = [e for e in expenses if "imagen" in e["notes"]]
     assert len(expenses) == 2 and len(scanned) == 1, "un PDF sin texto pasa a leerse como imagen"
-    assert counts == {"unreadable": 0, "duplicates": 1, "unplaced": 1, "noVat": 0}
+    assert {k: v for k, v in counts.items() if k != "modelPending"} == {"unreadable": 0, "duplicates": 1, "unplaced": 1, "noVat": 0}
 
 
 def test_el_cliente_sale_del_texto_y_no_del_nombre_del_archivo():

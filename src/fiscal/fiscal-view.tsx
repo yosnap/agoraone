@@ -29,11 +29,21 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
   const [made, setMade] = useState<string | null>(null);
   const asked = useRef(false);
   const request = useRef(0);
-  const load = async (folder: number, year: number, quarter: number) => {
+  // While invoices are still being read, the quarter refreshes itself every few seconds (no need to press anything).
+  const timer = useRef<number | undefined>(undefined);
+  const live = useRef(true);
+  const holder = useRef((node: HTMLElement | null) => { live.current = node !== null; if (!node) window.clearTimeout(timer.current); }).current;
+  const load = async (folder: number, year: number, quarter: number, quiet = false) => {
     const mine = ++request.current;
-    setView(null); setError('');
-    try { const found = await getQuarter(folder, year, quarter); if (mine === request.current) setView(found); }
-    catch (failure) { if (mine === request.current) setError(failure instanceof Error ? failure.message : 'No se pudo leer el trimestre.'); }
+    window.clearTimeout(timer.current);
+    if (!quiet) setView(null);
+    setError('');
+    try {
+      const found = await getQuarter(folder, year, quarter);
+      if (mine !== request.current || !live.current) return;
+      setView(found);
+      if (found.reading > 0) timer.current = window.setTimeout(() => void load(folder, year, quarter, true), 5000);
+    } catch (failure) { if (mine === request.current) setError(failure instanceof Error ? failure.message : 'No se pudo leer el trimestre.'); }
   };
   if (!asked.current) {
     asked.current = true;
@@ -65,7 +75,7 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
   const euros = (row: { currency: string; total: string | number; totalEur?: number }) => row.currency === 'EUR' ? Number(row.total) : row.totalEur ?? 0;
   const totalOut = view?.expenses.reduce((sum, row) => sum + euros(row as never), 0) ?? 0;
   const totalBase = view?.income.reduce((sum, row) => sum + (row.total !== null ? Number(row.total) : 0), 0) ?? 0;
-  return <section className="page fiscal" aria-labelledby="fiscal-title">
+  return <section className="page fiscal" aria-labelledby="fiscal-title" ref={holder}>
     <div className="eyebrow">FISCAL{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="fiscal-title">Fiscal</h1>
     <p className="page-lead">El trimestre de cada carpeta profesional, leído de las facturas que ya tienes en ella (Facturas Salientes y Entrantes, estén ordenadas o no) y de las que archiva AgoraOne: lo que conviene revisar y el Excel para el gestor con su formato.</p>

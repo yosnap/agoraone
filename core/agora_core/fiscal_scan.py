@@ -122,10 +122,9 @@ def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], as
                     found = image(jpeg)
                 except Exception:  # noqa: BLE001
                     found = None
-                if found:
-                    with database() as connection:
-                        fields = _cached(connection, folder_id, root, path) or {}
-                        _remember(connection, folder_id, root, path, {**fields, "ai": found})
+                with database() as connection:
+                    fields = _cached(connection, folder_id, root, path) or {}
+                    _remember(connection, folder_id, root, path, {**fields, "ai": found} if found else {**fields, "aiTried": True})
             continue
         if path.suffix.lower() == ".pdf" and not known.get("image"):
             try:
@@ -142,10 +141,10 @@ def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], as
             return
         with database() as connection:
             for n, (path, _) in enumerate(batch, 1):
-                if found.get(n):
-                    fields = _cached(connection, folder_id, root, path) or {}
-                    if not fields.get("unreadable"):
-                        _remember(connection, folder_id, root, path, {**fields, "ai": found[n]})
+                fields = _cached(connection, folder_id, root, path) or {}
+                if not fields.get("unreadable"):
+                    # «aiTried»: asked once without an answer, so it is not asked again in a loop.
+                    _remember(connection, folder_id, root, path, {**fields, "ai": found[n]} if found.get(n) else {**fields, "aiTried": True})
 
 
 def reading(folder_id: int) -> int:
@@ -272,7 +271,9 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
             read[path] = fields
     own = own_tax_id(connection, folder_id)
     seen = set(known_files or ())
-    counts = {"unreadable": 0, "duplicates": 0, "unplaced": len(unplaced), "noVat": 0}
+    counts = {"unreadable": 0, "duplicates": 0, "unplaced": len(unplaced), "noVat": 0,
+              # read by the local rules but not yet by the model (the app closed mid-way, or the model was off)
+              "modelPending": [p for p, f in read.items() if not f.get("ai") and not f.get("aiTried") and not f.get("unreadable")]}
 
     def other(fields: dict) -> str | None:
         if fields.get("otherTaxId"):
