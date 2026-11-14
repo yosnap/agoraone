@@ -5,7 +5,9 @@ explicit request with the exact fields or moves they saw."""
 import json
 import sqlite3
 from contextlib import contextmanager
-from typing import Literal
+from datetime import datetime
+from typing import Annotated, Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
@@ -16,6 +18,9 @@ from . import fiscal, fiscal_folder, invoice_extract, mail
 from .db import DB_NAME, connect, now
 from .routes_mail import microsoft_login
 from .settings import Settings
+
+
+MADRID = ZoneInfo("Europe/Madrid")
 
 
 class FolderIn(BaseModel):
@@ -34,7 +39,7 @@ class Source(BaseModel):
 
 class Fields(BaseModel):
     supplier: str = Field(min_length=1, max_length=120)
-    taxId: str | None = Field(default=None, max_length=20)
+    taxId: str | None = Field(default=None, min_length=4, max_length=20)
     issuedOn: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     total: str = Field(min_length=1, max_length=20)
     base: str | None = Field(default=None, max_length=20)
@@ -47,11 +52,16 @@ class FileIn(BaseModel):
     messageId: StrictInt
     source: Source
     fields: Fields
-    doubts: list[str] = Field(default_factory=list, max_length=10)
+    doubts: list[Annotated[str, Field(max_length=300)]] = Field(default_factory=list, max_length=10)
+
+
+class Move(BaseModel):
+    from_: str = Field(alias="from", max_length=1000)
+    to: str = Field(max_length=1000)
 
 
 class ApplyIn(BaseModel):
-    moves: list[str] = Field(min_length=1, max_length=fiscal_folder.MAX_MOVES)
+    moves: list[Move] = Field(min_length=1, max_length=fiscal_folder.MAX_MOVES)
 
 
 def fiscal_router(settings: Settings, secrets) -> APIRouter:
@@ -109,20 +119,29 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
                 raise fiscal.FiscalError("Ese correo ya no está guardado.")
             details = json.loads(notice["details"])
             pdfs = [a for a in json.loads(notice["attachments"]) if a["type"] == "application/pdf" or a["name"].lower().endswith(".pdf")]
-            found, source, name = {}, None, None
+            found, source, sources, problem = {}, None, [], None
             if pdfs:
-                raw = raw_of(connection, notice)
-                name, data = invoice_extract.attachment(raw, pdfs[0]["part"])
-                found = invoice_extract.fields(invoice_extract.pdf_text(data))
-                source = {"kind": "attachment", "part": pdfs[0]["part"], "name": name}
+                try:
+                    raw = raw_of(connection, notice)
+                    sources = [{"kind": "attachment", "part": a["part"], "name": a["name"]} for a in pdfs[:5]]
+                    _, data = invoice_extract.attachment(raw, pdfs[0]["part"])
+                    found = invoice_extract.fields(invoice_extract.pdf_text(data))
+                    source = sources[0]
+                except (mail.MailError, invoice_extract.ExtractError) as error:
+                    problem = str(error)  # the links may still work
             links = invoice_extract.links(notice["body"])
             supplier = (notice["from_name"] or (notice["from_address"] or "").split("@")[-1]).strip()[:120]
-            proposal = {"supplier": supplier, "taxId": found.get("taxId"), "issuedOn": found.get("issuedOn") or (notice["sent_at"] or now())[:10],
+            # Without a date in the invoice, the day it was sent, in Spain (UTC would move 1 January to the year before).
+            sent = notice["sent_at"] or now()
+            local_day = datetime.fromisoformat(sent.replace("Z", "+00:00")).astimezone(MADRID).date().isoformat()
+            proposal = {"supplier": supplier, "taxId": found.get("taxId"), "issuedOn": found.get("issuedOn") or local_day,
                         "total": found.get("total") or fiscal.amount((details.get("amounts") or [None])[0]) or "",
                         "currency": found.get("currency") or "EUR"}
             doubts = invoice_extract.doubts(found, details) if source else ["La factura no viene adjunta: descárgala del enlace o de la web del proveedor."]
+            if problem:
+                doubts.insert(0, problem)
             destination = fiscal.destination(proposal["supplier"] or "Proveedor", proposal["issuedOn"], fiscal.amount(proposal["total"]) or "0.00")
-            return {"source": source, "links": [{"url": u, "host": u.split("/")[2]} for u in links], "proposal": proposal,
+            return {"source": source, "sources": sources, "links": [{"url": u, "host": u.split("/")[2]} for u in links], "proposal": proposal,
                     "doubts": doubts, "destination": destination}
         try:
             return await db(work)
@@ -153,6 +172,8 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             return filed
         try:
             return await db(work)
+        except fiscal.Duplicate as error:
+            return refuse(error, 409)
         except (fiscal.FiscalError, mail.MailError, invoice_extract.ExtractError) as error:
             return refuse(error)
         except FileExistsError:
@@ -180,11 +201,11 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             root = fiscal.folder(connection)
             if root is None:
                 raise fiscal.FiscalError("Elige primero la carpeta fiscal en Ajustes.")
-            result = fiscal_folder.apply(root, settings.data_dir / "fiscal-backups", body.moves)
-            # Filed invoices that moved keep pointing at their file.
-            for move in result["moved"]:
-                connection.execute("UPDATE invoice SET path = ? WHERE path = ?", (move["to"], move["from"]))
-            return result
+            # Filed invoices that move keep pointing at their file, move by move (even if a later one fails).
+            def moved(old: str, new: str) -> None:
+                connection.execute("UPDATE invoice SET path = ? WHERE path = ?", (new, old))
+            chosen = [{"from": m.from_, "to": m.to} for m in body.moves]
+            return fiscal_folder.apply(root, settings.data_dir / "fiscal-backups", chosen, on_move=moved)
         try:
             return await db(work)
         except fiscal.FiscalError as error:

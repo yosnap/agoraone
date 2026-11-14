@@ -9,7 +9,7 @@ from agora_core.db import DB_NAME, connect, migrate
 from agora_core.keystore import MemoryStore
 from agora_core.settings import load_settings
 
-PDF = b"%PDF-1.4\n% factura de prueba\n"
+PDF = b"%PDF-1.4\n% factura de prueba\n%%EOF\n"
 SECRET, OWNER = "a" * 64, "b" * 64
 
 
@@ -53,7 +53,7 @@ def test_archivar_sin_sobrescribir(db, tmp_path):
     root = root.resolve()
     fields = {"supplier": "Proveedor", "issuedOn": "2026-02-03", "total": "10,00", "taxId": "b12345678"}
     first = fiscal.file_invoice(db, root, PDF, fields, None, [])
-    second = fiscal.file_invoice(db, root, PDF + b"2", fields, None, ["No aparece el NIF del proveedor."])
+    second = fiscal.file_invoice(db, root, PDF + b"2\n%%EOF", fields, None, ["No aparece el NIF del proveedor."])
     assert first["path"] == "Facturas Entrantes/2026/1T/2026-02-03 Proveedor 10,00.pdf" and first["quarter"] == "2026-1T"
     assert second["path"].endswith("10,00 (2).pdf") and (root / first["path"]).read_bytes() == PDF
     listed = fiscal.invoices(db, "2026-1T")
@@ -65,7 +65,7 @@ def test_archivar_sin_sobrescribir(db, tmp_path):
 def test_campos_de_la_factura_y_cotejo():
     text = "ACME SL  CIF: B12345678\nFecha de factura: 13/11/2026\nBase imponible 10,33 €\nIVA 21% 2,17 €\nTOTAL 12,50 €"
     found = invoice_extract.fields(text)
-    assert found == {"taxId": "B12345678", "total": "12.50", "issuedOn": "2026-11-13", "currency": "EUR"}
+    assert found == {"taxId": "B12345678", "total": "12.50", "issuedOn": "2026-11-13", "dateAmbiguous": False, "currency": "EUR"}
     assert invoice_extract.doubts(found, {"amounts": ["12,50 €"]}) == []
     assert "no coincide" in invoice_extract.doubts(found, {"amounts": ["15,00 €"]})[0]
     english = invoice_extract.fields("Invoice date 2026-10-01\nVAT ID: IE6388047V\nAmount paid $20.00")
@@ -107,12 +107,13 @@ def test_plan_de_reordenacion_y_aplicarlo(tmp_path):
     assert result["undecided"] == ["Facturas Entrantes/3 trimestre/dudosa.pdf"]
     (root / "Facturas Entrantes/2025/3T/Apple").mkdir(parents=True)
     (root / "Facturas Entrantes/2025/3T/Apple/a.pdf").write_bytes(b"otro")  # the name is taken
-    done = fiscal_folder.apply(root, tmp_path / "copias", ["Facturas Entrantes/Julio2025/Apple/a.pdf"])
+    moves = {m["from"]: m for m in fiscal_folder.plan(root)["moves"]}
+    done = fiscal_folder.apply(root, tmp_path / "copias", [moves["Facturas Entrantes/Julio2025/Apple/a.pdf"]])
     assert done["moved"][0]["to"] == "Facturas Entrantes/2025/3T/Apple/a (2).pdf"
     assert (root / "Facturas Entrantes/2025/3T/Apple/a.pdf").read_bytes() == b"otro", "nada se sobrescribe"
     assert (tmp_path / "copias" / done["backup"] / "Facturas Entrantes/Julio2025/Apple/a.pdf").exists(), "copia previa"
     with pytest.raises(fiscal.FiscalError):
-        fiscal_folder.apply(root, tmp_path / "copias", ["Impuestos/x.pdf"])
+        fiscal_folder.apply(root, tmp_path / "copias", [{"from": "Facturas Entrantes/2026/Noviembre 2026/b.pdf", "to": "Impuestos/b.pdf"}])
 
 
 def test_rutas_fiscales(tmp_path, monkeypatch):
@@ -159,4 +160,66 @@ def _pdf(text: bytes) -> bytes:
 
 def test_texto_real_del_pdf_en_el_extractor_aislado():
     text = invoice_extract.pdf_text(_pdf(b"CIF B12345678 Fecha 13/11/2026 TOTAL 12,50 EUR"))
-    assert invoice_extract.fields(text) == {"taxId": "B12345678", "total": "12.50", "issuedOn": "2026-11-13", "currency": "EUR"}
+    assert invoice_extract.fields(text) == {"taxId": "B12345678", "total": "12.50", "issuedOn": "2026-11-13", "dateAmbiguous": False, "currency": "EUR"}
+
+
+
+def test_carpetas_que_contienen_icloud_u_ocultas_no_valen(tmp_path):
+    home = tmp_path / "home"
+    icloud = home / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
+    (icloud / "Trabajo").mkdir(parents=True)
+    (home / ".ssh").mkdir()
+    (home / "Library" / "Keychains").mkdir()
+    assert fiscal.check_folder(str(icloud / "Trabajo"), home=home)
+    for bad in (home / "Library" / "Mobile Documents", icloud, home / ".ssh", home / "Library" / "Keychains", "Trabajo"):
+        with pytest.raises(fiscal.FiscalError):
+            fiscal.check_folder(str(bad), home=home)
+
+
+def test_fechas_imposibles_ambiguas_y_total_de_iva():
+    assert invoice_extract.fields("Válida hasta 31/02/2026")["issuedOn"] is None
+    found = invoice_extract.fields("Fecha 03/11/2026\nTotal 12,10 €\nTotal IVA 2,10 €")
+    assert found["total"] == "12.10" and found["dateAmbiguous"]
+    assert any("día/mes" in d for d in invoice_extract.doubts(found, {"amounts": ["12,10"]}))
+    assert any("cotejar" in d for d in invoice_extract.doubts(found, {}))
+    assert fiscal.amount("1.234") == "1234.00"
+
+
+def test_nombres_de_carpeta_que_no_son_fechas():
+    for folders in (["Proveedores mayoristas"], ["Julio Pérez"], ["Diciembre 2023 (pagadas en enero)"], ["Hosting 2048"]):
+        year, quarter, _ = fiscal_folder._where(folders) if folders != ["Diciembre 2023 (pagadas en enero)"] else (None, None, [])
+        assert year is None or quarter is None, folders
+    with pytest.raises(fiscal_folder.Unclear):
+        fiscal_folder._where(["Diciembre 2023 (pagadas en enero)"])
+    assert fiscal_folder._where(["2024", "Amazon", "marzo"]) == (2024, 1, ["Amazon"])
+
+
+def test_trimestre_en_minusculas_no_se_mueve_y_fallo_a_medias(tmp_path, monkeypatch):
+    root = tmp_path / "fiscal"
+    for path in ("Facturas Entrantes/2024/1t/a.pdf", "Facturas Entrantes/Mayo 2025/b.pdf", "Facturas Entrantes/Junio 2025/c.pdf"):
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_bytes(b"x")
+    root = root.resolve()
+    moves = fiscal_folder.plan(root)["moves"]
+    assert [m["from"] for m in moves] == ["Facturas Entrantes/Junio 2025/c.pdf", "Facturas Entrantes/Mayo 2025/b.pdf"]
+    real_copy, calls = fiscal_folder.shutil.copy2, []
+
+    def copy_then_fail(source, target):  # the disk fills up on the second file
+        calls.append(source)
+        if len(calls) > 1:
+            raise OSError("disco lleno")
+        return real_copy(source, target)
+    monkeypatch.setattr(fiscal_folder.shutil, "copy2", copy_then_fail)
+    seen = []
+    done = fiscal_folder.apply(root, tmp_path / "copias", moves, on_move=lambda a, b: seen.append((a, b)))
+    assert [m["from"] for m in done["moved"]] == ["Facturas Entrantes/Junio 2025/c.pdf"] and done["error"]
+    assert seen == [("Facturas Entrantes/Junio 2025/c.pdf", "Facturas Entrantes/2025/2T/c.pdf")], "el registro sigue a lo movido"
+
+
+def test_la_misma_factura_no_se_archiva_dos_veces(db, tmp_path):
+    root = (tmp_path / "fiscal")
+    root.mkdir()
+    fields = {"supplier": "Proveedor", "issuedOn": "2026-02-03", "total": "10"}
+    fiscal.file_invoice(db, root.resolve(), PDF, fields, None, [])
+    with pytest.raises(fiscal.Duplicate):
+        fiscal.file_invoice(db, root.resolve(), PDF, fields, None, [])

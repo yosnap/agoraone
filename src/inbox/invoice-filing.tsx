@@ -3,12 +3,24 @@ import { fileInvoice, prepareInvoice, type InvoiceFields, type InvoicePrepared, 
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 
+/** The total as the core writes it in the name (same rule as its `amount`): «1.234,5» → «1234,50». */
+function shownTotal(value: string) {
+  let text = value.replace(/[^\d,.-]/g, '');
+  if (/^-?\d{1,3}(\.\d{3})+$/.test(text)) text = text.replace(/\./g, '');
+  else if (text.includes(',') && text.includes('.')) text = text.lastIndexOf(',') > text.lastIndexOf('.') ? text.replace(/\./g, '').replace(',', '.') : text.replace(/,/g, '');
+  else if (text.includes(',')) text = /,\d{1,2}$/.test(text) ? text.replace(/\./g, '').replace(',', '.') : text.replace(/,/g, '');
+  const number = Number(text);
+  return text && Number.isFinite(number) ? number.toFixed(2).replace('.', ',') : null;
+}
+
 /** Where the core will put it, from the fields as edited (the core decides; this is the same rule). */
 function place(fields: InvoiceFields) {
   const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(fields.issuedOn);
   if (!match) return null;
-  const supplier = fields.supplier.replace(/[/\\:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Proveedor';
-  return `Facturas Entrantes/${match[1]}/${Math.floor((Number(match[2]) - 1) / 3) + 1}T/${fields.issuedOn} ${supplier} ${fields.total.trim().replace(/\.(\d{2})$/, ",$1")}.pdf`;
+  const total = shownTotal(fields.total);
+  // eslint-disable-next-line no-control-regex
+  const supplier = fields.supplier.replace(/[\u0000-\u001f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').replace(/[/\\:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+|\.+$/g, '').slice(0, 60) || 'Proveedor';
+  return total ? `Facturas Entrantes/${match[1]}/${Math.floor((Number(match[2]) - 1) / 3) + 1}T/${fields.issuedOn} ${supplier} ${total}.pdf` : null;
 }
 
 /** Filing a payment notice's invoice: what was found (attached PDF or links), the fields read from it, what
@@ -24,10 +36,15 @@ export function InvoiceFiling({ messageId, onFiled, onReady }: {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const asked = useRef(false);
+  // What is on screen now: a «sí» files these values, never the ones first proposed.
+  const current = useRef<{ fields: InvoiceFields | null; source: string; busy: boolean }>({ fields: null, source: '', busy: false });
+  current.current = { fields, source, busy };
   const chosen = (value: string, found: InvoicePrepared | null = prepared): InvoiceSource | null =>
-    value === 'attachment' && found?.source ? { kind: 'attachment', part: found.source.part } : value.startsWith('https://') ? { kind: 'link', url: value } : null;
+    value.startsWith('part:') && found?.sources.some(item => `part:${item.part}` === value) ? { kind: 'attachment', part: Number(value.slice(5)) }
+      : value.startsWith('https://') ? { kind: 'link', url: value } : null;
   const file = async (pick: InvoiceSource | null, values: InvoiceFields | null, found: InvoicePrepared | null) => {
-    if (!pick || !values || !found) return;
+    if (!pick || !values || !found || current.current.busy) return;
+    current.current.busy = true;
     setBusy(true); setError('');
     try { onFiled((await fileInvoice(messageId, pick, values, found.doubts)).path); onReady?.(null); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo archivar.'); }
@@ -37,15 +54,17 @@ export function InvoiceFiling({ messageId, onFiled, onReady }: {
     asked.current = true;
     prepareInvoice(messageId).then(found => {
       setPrepared(found); setFields(found.proposal);
-      const first = found.source ? 'attachment' : found.links[0]?.url ?? '';
+      const first = found.source ? `part:${found.source.part}` : found.links[0]?.url ?? '';
       setSource(first);
-      onReady?.(found.source && found.doubts.length === 0 ? () => file(chosen('attachment', found), found.proposal, found) : null);
+      // A plain «sí» may file it only when it is attached and nothing needs checking; it files what is on screen.
+      onReady?.(found.source && found.doubts.length === 0
+        ? () => file(chosen(current.current.source, found), current.current.fields, found) : null);
     }).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo preparar la factura.'));
   }
   if (error && !prepared) return <LoadError message={error}/>;
   if (!prepared || !fields) return <Loading label="Buscando la factura en el correo" lines={2}/>;
   const options = [
-    ...(prepared.source ? [{ value: 'attachment', label: `Adjunto: ${prepared.source.name}` }] : []),
+    ...prepared.sources.map(item => ({ value: `part:${item.part}`, label: `Adjunto: ${item.name}` })),
     ...prepared.links.map(link => ({ value: link.url, label: `Descargar de ${link.host}` })),
   ];
   const set = (key: keyof InvoiceFields) => (event: { target: { value: string } }) => setFields({ ...fields, [key]: event.target.value });

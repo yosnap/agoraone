@@ -60,7 +60,7 @@ const card = page.locator('.inbox-card');
 await card.waitFor({ timeout: 60_000 });
 assert.ok(await page.getByRole('heading', { name: /Ejemplo/ }).count(), 'agrupada por ámbito');
 // Filing the invoice: prepared from the message, edited by the user, written only on «Archivar».
-const prepared = { source: { kind: 'attachment', part: 2, name: 'factura.pdf' }, links: [], doubts: ['No aparece el NIF del proveedor.'],
+const prepared = { source: { kind: 'attachment', part: 2, name: 'factura.pdf' }, sources: [{ kind: 'attachment', part: 2, name: 'factura.pdf' }], links: [], doubts: ['No aparece el NIF del proveedor.'],
   proposal: { supplier: 'Proveedor de ejemplo', taxId: null, issuedOn: '2026-11-13', total: '12.50', currency: 'EUR' },
   destination: 'Facturas Entrantes/2026/4T/2026-11-13 Proveedor de ejemplo 12,50.pdf' };
 const filed = [];

@@ -2,7 +2,6 @@ import { useRef, useState } from 'react';
 import { applyFolderPlan, getFiscalFolder, getFolderPlan, putFiscalFolder, type FolderPlan } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 
-const SHOWN = 30;
 
 /** The fiscal folder: the only folder AgoraOne writes invoices to, and the plan to tidy it into
  * «Facturas Entrantes|Salientes/año/NT». Moving needs the user's confirmation of the exact list. */
@@ -30,8 +29,9 @@ export function FiscalSettingsCard() {
     if (!plan) return;
     setError(''); setNote('');
     try {
-      const done = await applyFolderPlan(plan.moves.map(move => move.from));
+      const done = await applyFolderPlan(plan.moves);
       setNote(`${done.moved.length} archivos movidos. Copia previa en los datos de AgoraOne (${done.backup}).`); setPlan(null); setConfirming(false);
+      if (done.error) setError(`${done.error} Lo ya movido queda registrado; vuelve a calcular el plan para seguir.`);
     } catch (failure) { fail(failure, 'No se pudo mover.'); }
   };
   return <article className="card" aria-labelledby="fiscal-title">
@@ -47,10 +47,11 @@ export function FiscalSettingsCard() {
     {plan && <div className="mail-new" aria-label="Plan de orden">
       {plan.moves.length === 0 ? <p>Todo está ya en su sitio{plan.undecided.length ? ', salvo lo que no se puede saber' : ''}.</p> : <>
         <p>{plan.moves.length}{plan.more ? `+${plan.more}` : ''} archivos irían a «Facturas Entrantes|Salientes/año/NT», deducido de los nombres de sus carpetas:</p>
-        <ul className="fiscal-moves">{plan.moves.slice(0, SHOWN).map(move => <li key={move.from}><code>{move.from}</code> → <code>{move.to}</code></li>)}</ul>
-        {plan.moves.length > SHOWN && <p className="muted">…y {plan.moves.length - SHOWN} más.</p>}
+        <ul className="fiscal-moves" aria-label="Movimientos exactos">{plan.moves.map(move => <li key={move.from}><code>{move.from}</code> → <code>{move.to}</code></li>)}</ul>
+        {plan.more > 0 && <p className="muted">Hay {plan.more} más que se propondrán al volver a calcular.</p>}
       </>}
-      {plan.undecided.length > 0 && <p className="muted">{plan.undecided.length} archivos se quedan donde están porque su carpeta no dice el año o el trimestre.</p>}
+      {plan.undecided.length > 0 && <details><summary className="muted">{plan.undecided.length} archivos se quedan donde están: su carpeta no dice el año o el trimestre (o siguen solo en iCloud)</summary>
+        <ul className="fiscal-moves">{plan.undecided.map(path => <li key={path}><code>{path}</code></li>)}</ul></details>}
       {plan.moves.length > 0 && (confirming ? <div className="field-row" role="group" aria-label="Confirmar movimientos">
         <button type="button" className="button primary" onClick={() => void apply()}>Mover {plan.moves.length} archivos (con copia previa)</button>
         <button type="button" className="button" onClick={() => setConfirming(false)}>Cancelar</button>

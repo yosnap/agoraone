@@ -12,6 +12,9 @@ import re
 import socket
 import subprocess
 import sys
+import threading
+import time
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -22,12 +25,25 @@ from .fiscal import MAX_FILE, amount
 _URL = re.compile(r"https://[^\s<>\"')\]]{4,500}", re.I)
 _INVOICE_WORDS = re.compile(r"invoice|factura|facture|rechnung|fattura|receipt|recibo|download|descarga|pdf", re.I)
 _TAX_ID = re.compile(r"\b(?:ES)?([A-HJNP-SUVW]\d{7}[0-9A-J]|\d{8}[A-Z]|[XYZ]\d{7}[A-Z])\b|\b((?:EU|GB|IE|FR|DE|NL|LU|IT|PT)[0-9A-Z]{8,12})\b")
-_TOTAL = re.compile(r"(?:total(?:\s+a\s+pagar|\s+factura|\s+amount|\s+due|\s+paid)?|importe\s+total|amount\s+paid|gesamt(?:betrag)?)"
+_TOTAL = re.compile(r"(?:total(?!\s*(?:de\s+)?(?:iva|vat|tax|impuestos?|igic))(?:\s+a\s+pagar|\s+factura|\s+amount|\s+due|\s+paid)?|importe\s+total|amount\s+paid|gesamt(?:betrag)?)"
                     r"[^\d\n]{0,25}(\d{1,3}(?:[.,\s]\d{3})*(?:[.,]\d{2})|\d+(?:[.,]\d{2}))", re.I)
 _DATE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)|(?<!\d)(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?!\d)")
 _CURRENCY = re.compile(r"(€|EUR|USD|\$|GBP|£)")
 EXTRACT_SECONDS = 20
-SANDBOX = "(version 1)(allow default)(deny network*)(deny file-write* (subpath \"/\"))(allow file-write* (literal \"/dev/null\"))(deny process-fork)"
+# Like the library's extractor: no network, no writes, no child processes, and no reading the contents of
+# personal folders, other disks or temporary folders, except this Python and the core's own folder.
+_SANDBOX_BASE = ("(version 1)(allow default)(deny network*)(deny file-write* (subpath \"/\"))(allow file-write* (literal \"/dev/null\"))"
+                 "(deny process-fork)(deny file-read-data (subpath \"/Users\") (subpath \"/Volumes\") (subpath \"/private/var/folders\") (subpath \"/private/tmp\"))")
+_RUNNING = threading.Semaphore(2)
+
+
+def _quote(path: Path) -> str:
+    return str(path).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def sandbox_profile() -> str:
+    readable = {Path(__file__).resolve().parent, Path(sys.prefix).resolve(), Path(sys.base_prefix).resolve(), Path(sys.executable).resolve().parent}
+    return _SANDBOX_BASE + "".join(f'(allow file-read-data (subpath "{_quote(p)}"))' for p in sorted(readable))
 
 
 class ExtractError(RuntimeError):
@@ -64,17 +80,33 @@ def _public(host: str) -> bool:
     return bool(addresses) and all(ipaddress.ip_address(a.split("%")[0]).is_global for a in addresses)
 
 
-def download(url: str, http=None) -> bytes:
-    """A linked invoice, only after the user confirmed: public https host, no redirects to elsewhere, PDF only."""
+def download(url: str, http=None, deadline: float = 30) -> bytes:
+    """A linked invoice, only after the user confirmed: public https host, no redirects, PDF only, at most
+    MAX_FILE bytes and `deadline` seconds in all."""
     parsed = urlparse(url)
     if parsed.scheme != "https" or not parsed.hostname or not _public(parsed.hostname):
         raise ExtractError("Ese enlace no es una dirección https pública.")
-    get = http or (lambda u: httpx.get(u, timeout=20, follow_redirects=False, trust_env=False))
-    response = get(url)
-    if response.status_code != 200:
+    if http is not None:  # tests: a callable returning (status, bytes)
+        status, data = http(url)
+    else:
+        started, chunks, size = time.monotonic(), [], 0
+        try:
+            with httpx.stream("GET", url, timeout=20, follow_redirects=False, trust_env=False) as response:
+                status = response.status_code
+                if status == 200:
+                    if int(response.headers.get("content-length") or 0) > MAX_FILE:
+                        raise ExtractError("El archivo del enlace es demasiado grande.")
+                    for chunk in response.iter_bytes():
+                        size += len(chunk)
+                        chunks.append(chunk)
+                        if size > MAX_FILE or time.monotonic() - started > deadline:
+                            raise ExtractError("El archivo del enlace es demasiado grande o tarda demasiado.")
+        except httpx.HTTPError as error:
+            raise ExtractError("No se pudo descargar del enlace: ábrelo en el navegador.") from error
+        data = b"".join(chunks)
+    if status != 200:
         raise ExtractError("La web del proveedor no entregó el archivo: ábrela en el navegador.")
-    data = response.content[: MAX_FILE + 1]
-    if len(data) > MAX_FILE or not data.startswith(b"%PDF-"):
+    if not data.startswith(b"%PDF-"):
         raise ExtractError("El enlace no lleva a un PDF: probablemente hay que entrar en la web del proveedor.")
     return data
 
@@ -82,10 +114,13 @@ def download(url: str, http=None) -> bytes:
 def pdf_text(data: bytes, runner=subprocess.run) -> str:
     """Text of a PDF through the isolated extractor (sandboxed on macOS); empty when it cannot be read."""
     command = [sys.executable, "-I", str(Path(__file__).with_name("extract.py")), "pdf"]  # -I: no paths from the environment
-    if sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").exists():
-        command = ["/usr/bin/sandbox-exec", "-p", SANDBOX, *command]
+    if sys.platform == "darwin":
+        if not Path("/usr/bin/sandbox-exec").exists():
+            return ""  # never parse a PDF from the mail without the sandbox
+        command = ["/usr/bin/sandbox-exec", "-p", sandbox_profile(), *command]
     try:
-        done = runner(command, input=data, capture_output=True, timeout=EXTRACT_SECONDS, env={})
+        with _RUNNING:
+            done = runner(command, input=data, capture_output=True, timeout=EXTRACT_SECONDS, env={})
     except (subprocess.TimeoutExpired, OSError):
         return ""
     if done.returncode != 0:
@@ -98,12 +133,17 @@ def pdf_text(data: bytes, runner=subprocess.run) -> str:
         return ""
 
 
-def _dates(text: str) -> list[str]:
+def _dates(text: str) -> list[tuple[str, bool]]:
+    """Valid dates in the text, each with whether it is ambiguous (day and month both 12 or less)."""
     found = []
     for y, m, d, d2, m2, y2 in _DATE.findall(text):
         year, month, day = (y, m, d) if y else (y2, m2, d2)
-        if 1 <= int(month) <= 12 and 1 <= int(day) <= 31 and 2000 <= int(year) <= 2100:
-            found.append(f"{year}-{int(month):02d}-{int(day):02d}")
+        try:
+            parsed = date(int(year), int(month), int(day))
+        except ValueError:
+            continue
+        if 2000 <= parsed.year <= 2100:
+            found.append((parsed.isoformat(), not y and int(d2) <= 12 and int(m2) <= 12 and d2 != m2))
     return found
 
 
@@ -117,7 +157,8 @@ def fields(text: str) -> dict:
     return {
         "taxId": (tax[1] or tax[2]) if tax else None,
         "total": next((t for t in reversed(totals) if t), None),
-        "issuedOn": dates[0] if dates else None,
+        "issuedOn": dates[0][0] if dates else None,
+        "dateAmbiguous": bool(dates and dates[0][1]),
         "currency": {"€": "EUR", "$": "USD", "£": "GBP"}.get(symbol, symbol),
     }
 
@@ -130,10 +171,14 @@ def doubts(found: dict, notice: dict) -> list[str]:
     paid = [amount(a) for a in notice.get("amounts", []) if amount(a)]
     if not found.get("total"):
         result.append("No se encontró el total en la factura.")
+    elif not paid:
+        result.append("El aviso no trae un importe con el que cotejar el total.")
     elif paid and found["total"] not in paid:
         result.append(f"El total de la factura ({found['total']}) no coincide con el del aviso ({', '.join(paid)}).")
     if not found.get("issuedOn"):
         result.append("No se encontró la fecha de la factura.")
+    elif found.get("dateAmbiguous"):
+        result.append("La fecha puede leerse como día/mes o mes/día: compruébala.")
     if found.get("currency") and found["currency"] != "EUR":
         result.append(f"Factura en {found['currency']}: revisa el cambio a euros.")
     return result

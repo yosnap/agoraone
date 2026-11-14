@@ -172,7 +172,8 @@ export const claimAnnouncements = () => core<{ items: InboxItem[] }>('/mail/inbo
 export type InvoiceFields = { supplier: string; taxId?: string | null; issuedOn: string; total: string; currency: string; base?: string | null; vat?: string | null; notes?: string | null };
 export type InvoiceSource = { kind: 'attachment'; part: number; name?: string } | { kind: 'link'; url: string };
 export type InvoicePrepared = {
-  source: { kind: 'attachment'; part: number; name: string } | null; links: { url: string; host: string }[];
+  source: { kind: 'attachment'; part: number; name: string } | null; sources: { kind: 'attachment'; part: number; name: string }[];
+  links: { url: string; host: string }[];
   proposal: InvoiceFields; doubts: string[]; destination: string;
 };
 export type Invoice = InvoiceFields & { id: number; direction: 'received' | 'issued'; messageId: number | null; doubts: string[]; quarter: string; path: string };
@@ -184,4 +185,4 @@ export const fileInvoice = (messageId: number, source: InvoiceSource, fields: In
 export const getInvoices = (quarter?: string) => core<{ invoices: Invoice[] }>(`/fiscal/invoices${quarter ? `?quarter=${quarter}` : ''}`);
 export type FolderPlan = { moves: { from: string; to: string }[]; undecided: string[]; more: number };
 export const getFolderPlan = () => core<FolderPlan>('/fiscal/folder/plan');
-export const applyFolderPlan = (moves: string[]) => core<{ moved: { from: string; to: string }[]; backup: string }>('/fiscal/folder/apply', { moves });
+export const applyFolderPlan = (moves: { from: string; to: string }[]) => core<{ moved: { from: string; to: string }[]; backup: string; error: string | null }>('/fiscal/folder/apply', { moves });
