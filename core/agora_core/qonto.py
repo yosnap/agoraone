@@ -91,6 +91,7 @@ def _rows(item: dict, sign: int) -> list[dict]:
     withholding = item.get("withholding_tax") if isinstance(item.get("withholding_tax"), dict) else {}
     currency = item.get("currency") or (item.get("total_amount") or {}).get("currency") or "EUR"
     common = {"date": issued, "number": item.get("number") or "", "client": name or "", "currency": currency,
+              "qontoId": item.get("id"), "attachmentId": item.get("attachment_id"), "pdfUrl": item.get("invoice_url") or item.get("pdf_url"),
               "taxId": client.get("tax_identification_number") or client.get("vat_number") or "",
               "withholdingRate": _rate(withholding.get("rate")) or 0.0}
     groups: dict[float, dict] = {}
@@ -153,3 +154,23 @@ def issued_invoices(auth: str, start: date, end: date, http=None) -> tuple[list[
     if foreign := sum(1 for r in rows if r["currency"] != "EUR"):
         notes.append(f"{foreign} facturas emitidas en otra moneda: comprueba su cambio a euros.")
     return rows, notes
+
+
+def invoice_pdf(auth: str, row: dict, http=None, download=None) -> bytes:
+    """The PDF of an issued invoice: through its attachment (a signed link Qonto gives) or its own link."""
+    url = None
+    if row.get("attachmentId"):
+        data = _get(f"/attachments/{row['attachmentId']}", auth, http=http).get("attachment") or {}
+        url = data.get("url") or data.get("file_url")
+    url = url or row.get("pdfUrl")
+    if not url or not str(url).startswith("https://"):
+        raise QontoError("Qonto no da el PDF de esta factura.")
+    get = download or (lambda u: httpx.get(u, timeout=TIMEOUT, follow_redirects=True, trust_env=False))
+    try:
+        response = get(url)
+    except httpx.HTTPError as error:
+        raise QontoError("No se pudo descargar el PDF de Qonto.") from error
+    data = response.content if response.status_code == 200 else b""
+    if not data.startswith(b"%PDF-") or len(data) > 15 * 1024 * 1024:
+        raise QontoError("Lo que da Qonto no es un PDF.")
+    return data

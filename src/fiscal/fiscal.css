@@ -16,3 +16,7 @@
 .fiscal-file { display:inline-flex; gap:4px } .fiscal-file .button { padding:4px 8px; font-size:11px }
 .fiscal-eur { display:block }
 .fiscal-actions { margin:16px 0 8px }
+.fiscal-issue { display:flex; width:100%; justify-content:space-between; align-items:center; gap:12px; border:0; text-align:left; cursor:pointer; font:inherit }
+.fiscal-issue:hover { filter:brightness(0.97) }
+.fiscal-issue-more { white-space:nowrap; font-weight:600 }
+.fiscal-detail-path { overflow-wrap:anywhere; color:var(--c-6f8379) }

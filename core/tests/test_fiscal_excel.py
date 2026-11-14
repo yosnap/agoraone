@@ -161,3 +161,19 @@ def test_cambio_a_euros_del_bce(tmp_path):
     book = openpyxl.load_workbook(io.BytesIO(fiscal_excel.build(2026, 3, "T", [], rows, [])))
     assert book["Gastos"]["M4"].value == "Total EUR (cambio BCE)" and book["Gastos"]["M5"].value == 10.76 and book["Gastos"]["M6"].value == 5.0
     assert "Cambio BCE del 2026-09-12" in book["Gastos"]["L5"].value and book["Resumen"]["D18"].value.startswith("=SUMIFS(Gastos!M")
+
+
+def test_pdf_de_una_factura_de_qonto():
+    import pytest
+    calls = []
+
+    def http(url, headers, params):
+        calls.append(url)
+        return Answer(200, {"attachment": {"url": "https://s3.example/f.pdf"}})
+
+    class File:
+        status_code, content = 200, b"%PDF-1.4 factura"
+    assert qonto.invoice_pdf("org:clave", {"attachmentId": "a1"}, http=http, download=lambda u: File()) == b"%PDF-1.4 factura"
+    assert calls[0].endswith("/attachments/a1")
+    with pytest.raises(qonto.QontoError):
+        qonto.invoice_pdf("org:clave", {"pdfUrl": "http://inseguro/f.pdf"})
