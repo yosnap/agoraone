@@ -101,6 +101,11 @@ def inbox_router(settings: Settings, health) -> APIRouter:
         items, counted = await db(lambda c: (mail_inbox.inbox(c, state, limit), mail_inbox.counts(c)))
         return {"items": items, "counts": counted, "problem": health.problem}
 
+    @router.post("/mail/inbox/archive-all")
+    async def archive_all():
+        archived = await db(mail_inbox.archive_all)
+        return {"archived": archived, "counts": await db(mail_inbox.counts)}
+
     @router.put("/mail/inbox/{message_id}")
     async def decide(message_id: int, body: DecisionIn):
         if not await db(lambda c: mail_inbox.decide(c, message_id, body.state)):

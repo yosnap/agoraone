@@ -298,3 +298,19 @@ def test_el_proveedor_compatible_no_ve_la_bandeja(tmp_path):
     toolbox = Toolbox(lambda: None, None, VectorCache())
     toolbox.mail = False
     assert "no está disponible" in asyncio.run(toolbox.call("consultar_bandeja", {}))
+
+
+def test_archivar_todo_y_resumir_solo_lo_nuevo(db):
+    normal = account(db, "yo@gmail.com")
+    add(db, normal, "a@proveedor.com", "Invoice viejo", "x", days_ago=2)
+    ask, sent = asker(lambda messages: json.dumps({"correos": [{"n": i + 1, "tipo": "factura", "resumen": "R"} for i in range(len(messages))]}))
+    summarize_once(db, [FakeEngine()], ask)
+    add(db, normal, "b@proveedor.com", "Sin resumir aún", "y", days_ago=1)
+    assert mail_inbox.archive_all(db) == 1
+    assert mail_inbox.inbox(db) == [] and mail_inbox.counts(db)["done"] == 1 and mail_inbox.counts(db)["unread"] == 0
+    otra = account(db, "nueva@gmail.com")  # an account added later: its old mail is not summarised
+    add(db, otra, "c@viejo.com", "Antiguo", "z", days_ago=5)
+    nuevo = add(db, normal, "d@proveedor.com", "Recién llegado", "w", days_ago=-0.01)
+    sent.clear()
+    summarize_once(db, [FakeEngine()], ask)
+    assert [[m["id"] for m in batch] for batch in sent] == [[nuevo]]

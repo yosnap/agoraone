@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { createMailRule, decideInbox, getInbox, type InboxCounts, type InboxItem, type InboxState } from '../api/core';
+import { archiveAllInbox, createMailRule, decideInbox, getInbox, type InboxCounts, type InboxItem, type InboxState } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { actionLabels, kindLabels, proposalLabels, sender, when } from './inbox-labels';
 import { InvoiceFiling } from './invoice-filing';
@@ -21,6 +21,12 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [filing, setFiling] = useState<number | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const clearAll = async () => {
+    setNote(''); setClearing(false);
+    try { const done = await archiveAllInbox(); setNote(`${done.archived} tarjetas archivadas en «Hechos». Desde ahora solo se resume lo que llegue.`); await load(); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo archivar.'); }
+  };
   const asked = useRef(false);
   const request = useRef(0);  // only the latest read is shown (a slow answer for another tab is dropped)
   const load = async (which: InboxState = state) => {
@@ -54,8 +60,17 @@ export function InboxView({ discreet }: { discreet: boolean }) {
     <div className="card-head inbox-bar">
       <div className="segmented" role="group" aria-label="Estado">{tabs.map(tab =>
         <button key={tab.state} aria-pressed={state === tab.state} onClick={() => show(tab.state)}>{tab.label}{counts ? ` · ${counts[tab.state]}` : ''}</button>)}</div>
-      <button type="button" className="button" onClick={() => void load()}>Actualizar</button>
+      <div className="inbox-actions">
+        <button type="button" className="button" onClick={() => void load()}>Actualizar</button>
+        {state === 'pending' && (counts?.pending ?? 0) > 0 && !clearing && <button type="button" className="button" onClick={() => setClearing(true)}>Archivar todo lo que hay ahora…</button>}
+      </div>
     </div>
+    {clearing && <div className="card-head inbox-bar" role="group" aria-label="Confirmar archivar todo">
+      <p>Las {counts?.pending} tarjetas pendientes pasan a «Hechos» y, desde ahora, la Bandeja solo resume el correo que llegue (tampoco el antiguo de las cuentas que añadas). No se mueve ni se borra ningún correo.</p>
+      <div className="inbox-actions"><button type="button" className="button primary" onClick={() => void clearAll()}>Archivar {counts?.pending} tarjetas</button>
+        <button type="button" className="button" onClick={() => setClearing(false)}>Cancelar</button></div>
+    </div>}
+    {counts?.since && <p className="muted">Bandeja desde el {new Date(counts.since).toLocaleString('es-ES', { dateStyle: 'long', timeStyle: 'short' })}: lo anterior no se resume.</p>}
     {counts && counts.unread > 0 && <p className="muted" role="status">{counts.unread} correos recientes esperan su resumen; se leen en segundo plano.</p>}
     {problem && <LoadError message={problem}/>}
     {error && <LoadError message={error} onRetry={() => void load()}/>}

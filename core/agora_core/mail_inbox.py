@@ -54,8 +54,28 @@ def local_kind(subject: str | None, body: str | None) -> str:
     return next((kind for kind, pattern in _LOCAL if re.search(pattern, text)), "other")
 
 
-def _cutoff() -> str:
-    return (datetime.now(UTC) - timedelta(days=SUMMARY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+SINCE_SETTING = "mail.inboxSince"
+
+
+def since(connection: sqlite3.Connection) -> str | None:
+    """When the user cleared the Bandeja: only mail that arrived afterwards is summarised and shown."""
+    row = connection.execute("SELECT value FROM setting WHERE key = ?", (SINCE_SETTING,)).fetchone()
+    return json.loads(row["value"]) if row else None
+
+
+def _cutoff(connection: sqlite3.Connection) -> str:
+    recent = (datetime.now(UTC) - timedelta(days=SUMMARY_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return max(recent, since(connection) or "")
+
+
+def archive_all(connection: sqlite3.Connection) -> int:
+    """Clears the Bandeja: every pending card goes to «done» and, from now on, only new mail is summarised
+    (older mail of accounts added later is not shown either). No message is moved or deleted anywhere."""
+    stamp = now()
+    with transaction(connection):
+        connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                           (SINCE_SETTING, json.dumps(stamp)))
+        return connection.execute("UPDATE mail_summary SET state = 'done', decided_at = ? WHERE state = 'pending'", (stamp,)).rowcount
 
 
 def unread(connection: sqlite3.Connection, limit: int = WINDOW) -> list[sqlite3.Row]:
@@ -67,7 +87,7 @@ def unread(connection: sqlite3.Connection, limit: int = WINDOW) -> list[sqlite3.
            LEFT JOIN mail_summary s ON s.message_id = m.id
            WHERE s.message_id IS NULL AND COALESCE(m.sent_at, m.received_at) >= ?
            ORDER BY COALESCE(m.sent_at, m.received_at) DESC LIMIT ?""",
-        (_cutoff(), limit),
+        (_cutoff(connection), limit),
     ).fetchall()
 
 
@@ -211,9 +231,10 @@ def counts(connection: sqlite3.Connection) -> dict:
     found = {row["state"]: row["n"] for row in connection.execute("SELECT state, count(*) AS n FROM mail_summary GROUP BY state")}
     waiting = connection.execute(
         """SELECT count(*) FROM mail_message m LEFT JOIN mail_summary s ON s.message_id = m.id
-           WHERE s.message_id IS NULL AND COALESCE(m.sent_at, m.received_at) >= ?""", (_cutoff(),)
+           WHERE s.message_id IS NULL AND COALESCE(m.sent_at, m.received_at) >= ?""", (_cutoff(connection),)
     ).fetchone()[0]
-    return {"pending": found.get("pending", 0), "done": found.get("done", 0), "dismissed": found.get("dismissed", 0), "unread": waiting}
+    return {"pending": found.get("pending", 0), "done": found.get("done", 0), "dismissed": found.get("dismissed", 0), "unread": waiting,
+            "since": since(connection)}
 
 
 def decide(connection: sqlite3.Connection, message_id: int, state: str) -> bool:
