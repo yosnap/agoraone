@@ -1,6 +1,15 @@
 # Estado de continuidad — 14/11/2026
 
 ## Resultado
+Revisión de código de la alpha.7 aplicada (informe en plans/reports/code-review-261114-2252-fiscal-alpha7.md), sin versión nueva todavía.
+- **Lectura en segundo plano:** ningún archivo se queda en bucle. Lo que no se puede convertir o leer se da por intentado; un fallo del modelo se reintenta en las siguientes cargas y al tercero se queda con las reglas locales. Se prueba la sesión de Claude Code y después la clave de API. Lo ilegible queda en caché.
+- **Desactivar Claude** en Ajustes para la lectura en curso: no sale ningún lote más, no se graba lo que responda y el trimestre deja de usar lo que Claude ya leyó.
+- **Excel:** el IRPF y el total de Ingresos vuelven a ser fórmulas (antes eran texto y sumaban 0; fallo de la alpha.5).
+- **Euros:** las facturas emitidas en otra moneda pasan a euros con el cambio del BCE (la cifra original queda en el concepto, con aviso). El BCE no se vuelve a consultar en 10 minutos tras un fallo, gasta como mucho 5 s por carga y distingue «sin conexión» de «moneda que no publica».
+- **Qonto:** no descarga una factura emitida que ya está en la carpeta (mismo número, o misma fecha y base); descarga por partes, con límite y redirecciones solo a https.
+- **Otros:** un tipo del 1 % ya no se lee como 100 %; el modo discreto oculta los importes del detalle de los avisos; cada archivo repetido dice de qué otro es copia; Ajustes explica la clave de API y lo que sigue consultando Fiscal.
+- **No aplicado:** la duda «Claude y las reglas no coinciden en el total» (B2), porque las reglas fallan el total a menudo y avisaría en facturas buenas.
+
 Versión 1.1.0-alpha.7 · Facturas leídas con Claude y Fiscal más usable.
 - **Lectura de facturas.** Claude Haiku lee el texto de cada factura de la carpeta fiscal (y las fotos y los PDF escaneados, como imagen), con las reglas locales de respaldo y una comprobación de coherencia (base + IVA − IRPF = total). Se puede desactivar en Ajustes y entonces nada sale del Mac.
   - Medido contra los registros trimestrales del usuario (2T y 3T de 2026): 102 de 104 facturas exactas en todos los campos.

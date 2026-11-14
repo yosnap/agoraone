@@ -165,12 +165,34 @@ def invoice_pdf(auth: str, row: dict, http=None, download=None) -> bytes:
     url = url or row.get("pdfUrl")
     if not url or not str(url).startswith("https://"):
         raise QontoError("Qonto no da el PDF de esta factura.")
-    get = download or (lambda u: httpx.get(u, timeout=TIMEOUT, follow_redirects=True, trust_env=False))
     try:
-        response = get(url)
+        data = download(url) if download else _fetch(url)
     except httpx.HTTPError as error:
         raise QontoError("No se pudo descargar el PDF de Qonto.") from error
-    data = response.content if response.status_code == 200 else b""
-    if not data.startswith(b"%PDF-") or len(data) > 15 * 1024 * 1024:
+    if not data.startswith(b"%PDF-") or len(data) > MAX_PDF:
         raise QontoError("Lo que da Qonto no es un PDF.")
     return data
+
+
+MAX_PDF = 15 * 1024 * 1024
+
+
+def _fetch(url: str) -> bytes:
+    """The file, read in pieces and cut off past MAX_PDF; at most three redirects, and only to https."""
+    with httpx.Client(timeout=TIMEOUT, follow_redirects=False, trust_env=False) as client:
+        for _ in range(4):
+            with client.stream("GET", url) as response:
+                if response.is_redirect:
+                    url = str(response.url.join(response.headers.get("location", "")))
+                    if not url.startswith("https://"):
+                        return b""
+                    continue
+                if response.status_code != 200:
+                    return b""
+                data = bytearray()
+                for chunk in response.iter_bytes():
+                    data += chunk
+                    if len(data) > MAX_PDF:
+                        return b""
+                return bytes(data)
+    return b""

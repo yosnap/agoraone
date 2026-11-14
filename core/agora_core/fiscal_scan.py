@@ -134,7 +134,11 @@ def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], as
     """Adds what the model reads to what the local rules found (the model wins where it found something)."""
     texts: list[tuple[Path, str]] = []
     image = getattr(ask, "image", None)
+    # The user may turn the model off while this runs: asked again before each call and before saving its answer.
+    allowed = getattr(ask, "allowed", lambda: True)
     for path in paths:
+        if not allowed():
+            return
         with database() as connection:
             known = _cached(connection, folder_id, root, path) or {}
         if known.get("image") and image is not None:  # a photo or scanned invoice: Claude reads the image
@@ -147,6 +151,8 @@ def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], as
                 except Exception:  # noqa: BLE001
                     _model_failed(database, folder_id, root, path)
                 else:
+                    if not allowed():
+                        return
                     with database() as connection:
                         fields = _cached(connection, folder_id, root, path) or {}
                         _remember(connection, folder_id, root, path, {**fields, "ai": found} if found else {**fields, "aiTried": True})
@@ -164,12 +170,16 @@ def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], as
                 _give_up(database, folder_id, root, path)
     for i in range(0, len(texts), 5):
         batch = texts[i:i + 5]
+        if not allowed():
+            return
         try:
             found = ask([text for _, text in batch])
         except Exception:  # noqa: BLE001 - without the model, the local rules stay
             for path, _ in batch:
                 _model_failed(database, folder_id, root, path)
             continue
+        if not allowed():
+            return
         for path, _ in batch:
             _MODEL_FAILURES.pop((folder_id, str(path)), None)
         with database() as connection:
@@ -264,10 +274,10 @@ def _consistent(merged: dict, local_total) -> None:
         merged["total"] = local_total if local_total and abs(float(local_total) - parts) <= 0.02 else f"{parts:.2f}"
 
 
-def _merged(fields: dict, issued: bool) -> dict:
+def _merged(fields: dict, issued: bool, use_model: bool = True) -> dict:
     """What the model read, where it read something, over what the local rules found. The other party is the
-    receiver on an issued invoice and the issuer on a received one."""
-    ai = fields.get("ai")
+    receiver on an issued invoice and the issuer on a received one. With the model off, only the local rules."""
+    ai = fields.get("ai") if use_model else None
     if not ai:
         return fields
     merged = dict(fields)
@@ -300,7 +310,7 @@ def own_tax_id(connection: sqlite3.Connection, folder_id: int) -> str | None:
 
 
 def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, quarter: int, start: str, end: str,
-         known: set[str], known_files: set[str] | None = None) -> tuple[list[dict], list[dict], list[Path], dict]:
+         known: set[str], known_files: set[str] | None = None, use_model: bool = True) -> tuple[list[dict], list[dict], list[Path], dict]:
     """(issued rows, received rows, files still to read, counts) for that quarter. `known` are paths and
     `known_files` the sha256 of documents already in the register, which are not counted twice; the same
     file saved twice in the folder counts once. Only what was already read is used; the rest is returned to
@@ -343,7 +353,7 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
     for path, rest in issued:
         if path not in read or not fresh(path, read[path]):
             continue
-        fields = _merged(read[path], issued=True)
+        fields = _merged(read[path], issued=True, use_model=use_model)
         day, guessed = _day(fields, start, end)
         base, total = fields.get("base"), fields.get("total")
         vat_rate, irpf_rate = fields.get("vatRate"), fields.get("withholdingRate") or 0.0
@@ -363,7 +373,7 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
     for path, rest in received:
         if path not in read or not fresh(path, read[path]):
             continue
-        fields, relative = _merged(read[path], issued=False), str(path.relative_to(root))
+        fields, relative = _merged(read[path], issued=False, use_model=use_model), str(path.relative_to(root))
         day, guessed = _day(fields, start, end)
         notes = [n for n, on in (("Factura en imagen: revisa los importes", fields.get("image") and not fields.get("ai")),
                                  ("Su fecha es de otro trimestre: está en la carpeta de este", day < start or day > end),

@@ -126,8 +126,8 @@ export function FiscalSettingsCard() {
       </li>)}
     </ul>}
     {withClaude !== null && <label className="fiscal-reading">
-      <input type="checkbox" checked={withClaude} onChange={event => { const on = event.target.checked; void putFiscalReading(on).then(found => { setWithClaude(found.withClaude); setNote(on ? 'Las facturas se leerán con Claude Haiku (se vuelven a leer todas).' : 'Las facturas se leerán solo con reglas locales (se vuelven a leer todas).'); }); }}/>
-      <span>Leer las facturas con Claude Haiku: mucho más preciso que las reglas locales. El texto de cada factura va a Claude por tu sesión de Claude Code; sin marcar, nada sale del Mac.</span>
+      <input type="checkbox" checked={withClaude} onChange={event => { const on = event.target.checked; void putFiscalReading(on).then(found => { setWithClaude(found.withClaude); setNote(on ? 'Las facturas se leerán con Claude Haiku (se vuelven a leer todas).' : 'Las facturas se leerán solo con reglas locales (se vuelven a leer todas).'); }).catch(failure => fail(failure, 'No se pudo guardar el ajuste.')); }}/>
+      <span>Leer las facturas con Claude Haiku: mucho más preciso que las reglas locales. El texto de cada factura (o su imagen) va a Claude por tu sesión de Claude Code o, si no la hay, con tu clave de API de Anthropic. Sin marcar, ninguna factura sale del Mac; Fiscal sigue consultando Qonto y el cambio del BCE (solo fecha y moneda).</span>
     </label>}
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;
