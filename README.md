@@ -51,11 +51,11 @@ Los paseantes y el movimiento de la ciudad son decorativos: no representan tarea
 git clone https://github.com/yosnap/agoraone.git
 cd agoraone
 cp .env.example .env   # completa AGORA_MODEL, AGORA_BASE_URL y AGORA_API_KEY
-npm ci
-npm run dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-`npm run dev` arranca el servidor de AgoraOne (Rust, en `127.0.0.1:4317`), su núcleo Python y la interfaz con Vite. Abre el enlace privado que muestra la terminal («Abre AgoraOne con este enlace…») o ejecuta `npm run open`. Solo hace falta la primera vez en cada navegador.
+`pnpm dev` arranca el servidor de AgoraOne (Rust, en `127.0.0.1:4317`), su núcleo Python y la interfaz con Vite. Abre el enlace privado que muestra la terminal («Abre AgoraOne con este enlace…») o ejecuta `pnpm open`. Solo hace falta la primera vez en cada navegador.
 
 ### App de escritorio
 
@@ -82,9 +82,9 @@ En desarrollo activo. Lo que está conectado, lo pendiente y lo ilustrativo se d
 
 ```sh
 cargo test --manifest-path desktop/Cargo.toml   # pruebas del servidor (Rust)
-npm run test:core                                # pruebas del núcleo (Python)
-npm test                                         # pruebas de la interfaz
-npm run build                                    # tipos y compilación de la interfaz
+pnpm test:core                                # pruebas del núcleo (Python)
+pnpm test                                         # pruebas de la interfaz
+pnpm build                                    # tipos y compilación de la interfaz
 ```
 
 ## Colaborar

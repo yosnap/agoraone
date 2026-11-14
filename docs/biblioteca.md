@@ -29,9 +29,9 @@ Hermes sigue con **cero herramientas**. El backend lee el documento elegido por 
 El texto seleccionado viaja al proveedor privado configurado para Luma. Puede persistir en el estado local de Hermes bajo `.agora/hermes`; el historial visible de AgoraOne registra la pregunta, la respuesta y la referencia/revisión de la fuente. No se registra como una llamada a herramienta.
 
 ## Verificación
-`npm test`: permisos de lectura, traversal, IDs inválidos, enlaces simbólicos y duros, tamaño, binarios, solicitud de escritura, propiedad de conversación y revalidación por turno.
+`pnpm test`: permisos de lectura, traversal, IDs inválidos, enlaces simbólicos y duros, tamaño, binarios, solicitud de escritura, propiedad de conversación y revalidación por turno.
 
-Con `npm run build` y backend arrancado:
+Con `pnpm build` y backend arrancado:
 
 ```sh
 node scripts/verify-library.mjs

@@ -57,6 +57,6 @@ El usuario confirmó que los cinco perfiles son correctos: las entradas desconoc
 - No descubre gateways remotos, preferencias privadas del renderer de Desktop, memoria de plugins remotos ni bots de mensajería definidos exclusivamente mediante variables de entorno. Los canales configurados no se presentan como conexiones activas.
 
 ## Verificación y continuidad
-`npm test`, `npm run build` y `node scripts/verify-hermes-catalog.mjs`. El script abre el catálogo real, fichas y SOUL, y simula solo la respuesta de refresco dentro del navegador de prueba para verificar actualización sin modificar Hermes. Cero llamadas a modelos.
+`pnpm test`, `pnpm build` y `node scripts/verify-hermes-catalog.mjs`. El script abre el catálogo real, fichas y SOUL, y simula solo la respuesta de refresco dentro del navegador de prueba para verificar actualización sin modificar Hermes. Cero llamadas a modelos.
 
 Conversación aislada ya disponible: docs/conversaciones-perfiles.md. Quedan pendientes herramientas específicas y edición de memoria con controles explícitos. No reutilizar automáticamente las herramientas amplias del perfil original.

@@ -33,7 +33,7 @@ fi
 step() { printf '\n== %s\n' "$1"; }
 
 step "Interfaz web"
-(cd "$ROOT" && npm run build >/dev/null)
+(cd "$ROOT" && pnpm build >/dev/null)
 
 step "Python independiente $PY_VERSION ($PY_RELEASE)"
 mkdir -p "$WORK/descargas"

@@ -32,14 +32,14 @@ los tiempos de proveedor, longitud de contexto y carga local siguen variando.
 El primer turno tras reinicio/expiración paga el arranque. No hay precarga ni
 llamadas al modelo por abrir edificios. No se cambió proveedor, modelo o razonamiento.
 
-Verificación (en su día): `npm test` (23 pruebas), `npm run build`; hoy los puentes y el gestor de procesos se prueban en `desktop/server/tests/chat_bridges.rs`. Navegador con
-`node scripts/verify-chat-stream.mjs` (con `npm run dev` en marcha; solo
+Verificación (en su día): `pnpm test` (23 pruebas), `pnpm build`; hoy los puentes y el gestor de procesos se prueban en `desktop/server/tests/chat_bridges.rs`. Navegador con
+`node scripts/verify-chat-stream.mjs` (con `pnpm dev` en marcha; solo
 intercepta esa conversación y emite el streaming desde un servidor local, sin
 inferencia ni escrituras), mostrando fragmento antes del fin, reemplazo por
 resultado definitivo y persistencia al recargar.
 
 Medición reproducible con dos consultas facturables:
-`node scripts/measure-chat.mjs --live` (con `npm run dev` en marcha; mide a través de la API del servidor).
+`node scripts/measure-chat.mjs --live` (con `pnpm dev` en marcha; mide a través de la API del servidor).
 Solo imprime tiempos; no claves, rutas de proveedor ni contenidos de perfiles.
 
 Pendiente: cancelación explícita, mediciones con conversaciones largas y revisar

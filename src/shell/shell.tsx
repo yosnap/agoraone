@@ -27,7 +27,7 @@ export function Shell() {
   const [waiting, setWaiting] = useState<string | null>(null);
   useEffect(() => {
     getStatus().then(setStatus).catch(error => setStatus(error instanceof ApiError && error.status === 401
-      ? { state: 'locked', csrf: '', detail: error.message } : { state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con npm run dev.' }));
+      ? { state: 'locked', csrf: '', detail: error.message } : { state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con pnpm dev.' }));
   }, []);
   useEffect(() => writeShell({ section, discreet }), [section, discreet]);
   const go = useCallback((next: Section) => { if (next === 'office') setOfficeVisited(true); setShell(previous => ({ ...previous, section: next })); }, []);
@@ -51,7 +51,7 @@ export function Shell() {
       {status?.state === 'locked' && <section className="access-lock" role="alertdialog" aria-label="Acceso a AgoraOne">
         <h2>Falta el enlace de acceso</h2>
         <p>Para que ninguna otra app ni otro usuario de este ordenador pueda usar AgoraOne con tus credenciales, la primera vez hay que entrar con un enlace privado. Después este navegador lo recuerda.</p>
-        <p>Ábrelo desde la terminal: <code>npm run dev</code> lo muestra al arrancar («Abre AgoraOne con este enlace…»), o ejecuta <code>npm run open</code>.</p>
+        <p>Ábrelo desde la terminal: <code>pnpm dev</code> lo muestra al arrancar («Abre AgoraOne con este enlace…»), o ejecuta <code>pnpm open</code>.</p>
       </section>}
     </div>
     {reading && <NoteReader note={reading} onClose={() => setReading(null)}/>}
