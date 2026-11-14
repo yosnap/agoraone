@@ -1,6 +1,26 @@
 # Estado de continuidad — 14/11/2026
 
 ## Resultado
+Versión 1.1.0-alpha.6 · Trimestre leído de la carpeta y clientes de Central (primera parte de la fase 5).
+- **Fiscal:** el trimestre se lee de las facturas que ya están en la carpeta, ordenadas o no.
+  - Facturas Salientes son los ingresos y Facturas Entrantes los gastos.
+  - Cada PDF se lee una vez en segundo plano con el extractor aislado y queda en caché (migración 0015).
+  - Saca base, IVA, IRPF, número y el NIF de la otra parte; el propio se deduce de las facturas emitidas.
+  - Los ilegibles, repetidos o fuera de una carpeta de trimestre se avisan.
+  - Qonto solo avisa si tiene más facturas emitidas que la carpeta.
+  - El Excel se abre o se muestra en el Finder desde la app.
+- **Central:** sus clientes, proyectos, webs y servidores se leen en solo lectura con su servidor MCP (solo herramientas de lectura), cada media hora o con «Actualizar».
+  - El Resumen enseña servidores y clientes activos.
+  - La Bandeja marca el cliente de un remitente.
+  - Watson tiene `consultar_clientes`, que, igual que la Bandeja, nunca llega al proveedor compatible.
+- **Verificado:**
+  - Con la carpeta real del 3T de 2026: 10 facturas emitidas con IVA, IRPF y NIF del cliente, y 58 recibidas.
+  - Con Central real: 20 clientes, 200 proyectos, 7 servidores.
+  - 190 pruebas del núcleo, interfaz, build y revisión de código aplicada.
+- **Pendiente:**
+  - Completar correo y web de los clientes en Central, para que el correo se asocie solo.
+  - Añadir las indicaciones de un correo de cliente a la nota de su proyecto en el vault, tras confirmar.
+
 Versión 1.1.0-alpha.5 · Qonto y Excel trimestral (fase 4 de la 1.1), y Ajustes renovados.
 - **Sección Fiscal.** Por cada carpeta de tipo autónomo o empresa, y por año y trimestre, muestra lo facturado (facturas emitidas de Qonto en solo lectura, una fila por tipo de IVA, con IRPF y rectificativas en negativo) y lo gastado (las facturas archivadas), con avisos: sin NIF, otra moneda, sin IVA desglosado, facturas de Qonto ilegibles.
 - **Excel del gestor.** «Generar el Excel» escribe `Registro-NT-AAAA-<carpeta>.xlsx` en la carpeta con el formato del registro real del usuario: Resumen, Ingresos y Gastos con fórmulas, cifras del 303 e IRPF, gastos en USD aparte. Nunca sobrescribe, y el texto de terceros nunca se convierte en fórmula.
