@@ -65,6 +65,7 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'search'; query: string; found: string[] }
   | { kind: 'tool'; tool: 'read'; id: string; title: string; n: number }
   | { kind: 'tool'; tool: 'inbox'; filter: string; count: number }
+  | { kind: 'tool'; tool: 'clients'; filter: string; count: number }
   | { kind: 'done'; engine: string; model: string };
 
 /** Sends a question and follows the answer's Server-Sent Events until it ends; an `error` event throws. */
@@ -162,7 +163,7 @@ export type InboxItem = {
   suggestion: { sender: string; action: MailRuleAction; name: string } | null;
   from: { name: string | null; address: string | null }; subject: string | null; sentAt: string;
   account: { id: number; address: string }; scope: { id: number; name: string; color: string | null } | null;
-  attachments: number; announcedAt: string | null;
+  attachments: number; announcedAt: string | null; client: { name: string; projects: string[] } | null;
 };
 export type InboxCounts = { pending: number; done: number; dismissed: number; unread: number; since: string | null };
 export const getInbox = (state: InboxState = 'pending') => core<{ items: InboxItem[]; counts: InboxCounts; problem: string | null }>(`/mail/inbox?state=${state}`);
@@ -213,3 +214,9 @@ export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomePro
 export const getQuarter = (folderId: number, year: number, quarter: number) => core<QuarterView>(`/fiscal/folders/${folderId}/quarter?year=${year}&quarter=${quarter}`);
 export const makeQuarterExcel = (folderId: number, year: number, quarter: number) => core<{ path: string }>(`/fiscal/folders/${folderId}/excel`, { year, quarter });
 export const openFiscalFile = (folderId: number, path: string | null, reveal = false) => core<{ ok: true }>(`/fiscal/folders/${folderId}/open`, { path, reveal });
+export type CentralClient = { name: string; company: string | null; domains: string[];
+  projects: { name: string; status: string; phase: string | null }[]; websites: { url: string; status: string | null }[] };
+export type CentralServer = { name: string; status: string | null; provider: string | null; projects: string[] };
+export type CentralState = { configured: boolean; snapshot: { clients: CentralClient[]; servers: CentralServer[]; fetchedAt: string } | null; problem: string | null };
+export const getCentral = () => core<CentralState>('/central');
+export const refreshCentral = () => core<CentralState>('/central/refresh', {});

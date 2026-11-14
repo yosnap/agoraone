@@ -85,6 +85,8 @@ export function InboxView({ discreet }: { discreet: boolean }) {
           <div className="card-head">
             <div className="inbox-chips"><span className={`chip ${tone[item.kind] ?? ''}`}>{kindLabels[item.kind]}</span>
               {item.source === 'rule' && item.ruleName && <span className="chip">Regla: {item.ruleName}</span>}
+              {item.client && <span className="chip good" title={!discreet && item.client.projects.length ? `Proyectos activos: ${item.client.projects.join(', ')}` : undefined}>
+                {discreet ? 'Cliente de Central' : `Cliente: ${item.client.name}`}{!discreet && item.client.projects.length ? ` · ${item.client.projects.length} proyecto${item.client.projects.length > 1 ? 's' : ''}` : ''}</span>}
               {levelNotes[item.confidentiality] && <span className="chip warn">{levelNotes[item.confidentiality]}</span>}</div>
             <span className="muted">{when(item.sentAt)}</span>
           </div>

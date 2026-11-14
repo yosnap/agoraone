@@ -34,3 +34,12 @@
 .page-actions { margin:-8px 0 20px }
 /* Interface size (Ajustes › Apariencia): text areas grow, the 3D scenes keep their size. */
 .page > *, .assistant-head, .assistant-messages > *, .assistant-form, .assistant-list > * { zoom:var(--ui-zoom, 1) }
+
+/* Status badges (connected, failing, waiting…), shared by Ajustes, the summary and the inbox. */
+.status-badge { flex:none; display:inline-flex; align-items:center; gap:6px; border-radius:20px; padding:4px 10px 4px 8px; font-size:11px; font-weight:600; white-space:nowrap }
+.status-badge::before { content:""; width:8px; height:8px; border-radius:50% ; background:currentColor }
+.status-badge.good { background:var(--c-dcebdc); color:var(--c-2d7a4f) }
+.status-badge.bad { background:var(--c-f6ddd4); color:var(--c-8e3d2a) }
+.status-badge.waiting { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.status-badge.paused, .status-badge.neutral { background:var(--c-e7ece2); color:var(--c-355a50) }
+.status-badge.neutral::before { display:none }

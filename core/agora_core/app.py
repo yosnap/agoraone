@@ -31,6 +31,7 @@ from .routes_mail import mail_router, mail_worker
 from .mail_summarizer import SummaryHealth, summary_worker
 from .routes_inbox import inbox_router
 from .routes_fiscal import fiscal_router
+from .routes_central import CentralHealth, central_router, central_worker
 from .routes_summary import summary_router
 from .settings import DEFAULT_DATA, Settings
 
@@ -65,6 +66,7 @@ def create_app(
     embed_health = EmbedHealth()
     extract_health = ExtractHealth()
     summary_health = SummaryHealth()
+    central_health = CentralHealth()
     secrets = secrets or KeychainSecrets()
     expected = settings.secret.encode()
 
@@ -89,6 +91,8 @@ def create_app(
             threading.Thread(target=mail_worker, args=(settings, secrets, stop), daemon=True).start()
             # Kinds and summaries of new mail: rules first, then Claude Haiku for what may leave this Mac.
             threading.Thread(target=summary_worker, args=(settings, extract_engines, stop, summary_health), daemon=True).start()
+            # Clients and servers from Central, read-only, every half hour (user's decision, 14/11/2026).
+            threading.Thread(target=central_worker, args=(settings, stop, central_health), daemon=True).start()
         try:
             yield
         finally:
@@ -162,4 +166,5 @@ def create_app(
     app.include_router(mail_router(settings, secrets))
     app.include_router(inbox_router(settings, summary_health))
     app.include_router(fiscal_router(settings, secrets))
+    app.include_router(central_router(settings, central_health))
     return app

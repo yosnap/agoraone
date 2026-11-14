@@ -281,14 +281,14 @@ def test_lee_las_facturas_que_ya_estan_en_la_carpeta(db, tmp_path):
             yield connection
         finally:
             connection.close()
-    income, expenses, pending = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set())
+    income, expenses, pending, _ = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set())
     assert len(pending) == 4 and income == [] and expenses == [], "la primera vez solo se leen en segundo plano"
     fiscal_scan.read_in_background(database, 1, root, pending)
     for _ in range(300):
         if not fiscal_scan.reading(1):
             break
         time.sleep(0.1)
-    income, expenses, pending = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set())
+    income, expenses, pending, counts = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set())
     assert pending == [] and len(income) == 1 and len(expenses) == 3
     row = income[0]
     assert (row["base"], row["vatRate"], row["withholdingRate"], row["taxId"]) == (100.0, 0.21, 0.15, "B12345678"), "nunca el NIF propio"
@@ -296,3 +296,53 @@ def test_lee_las_facturas_que_ya_estan_en_la_carpeta(db, tmp_path):
     assert by["Apple"]["taxId"] == "B87654321" and by["Apple"]["total"] == "2.99"
     assert by["Bunny"]["currency"] == "USD" and by["Bunny"]["total"] == "20.00"
     assert "imagen" in next(e for e in expenses if e["supplier"] not in ("Apple", "Bunny"))["notes"]
+
+
+
+def test_importes_que_antes_se_leian_mal():
+    cases = {"Subtotal $1,234.56": "1234.56", "Base imponible (21%): 100,00": "100.00", "Base imponible  IVA 21%  Total\n100,00 21,00": None,
+             "Subtotal 100\n2026 algo": "100.00"}
+    for text, base in cases.items():
+        assert invoice_extract.breakdown(text)["base"] == base, text
+    assert invoice_extract.breakdown("Base imponible 100,00 IVA 21% sobre 100,00: 21,00")["vat"] == "21.00"
+    assert invoice_extract.breakdown("Fecha factura: 14/08/2026")["number"] is None
+    assert invoice_extract.fields("TOTAL 1.234 €")["total"] == "1234.00" and invoice_extract.fields("Total 3 artículos")["total"] is None
+
+
+def test_ilegibles_repetidos_y_nif_propio_con_pocas_facturas(db, tmp_path):
+    from contextlib import contextmanager
+    import time
+    from agora_core import fiscal_scan
+    root = tmp_path / "fiscal"
+    own = b"ESB11111111"
+    files = {
+        "Facturas Salientes/2026/3T/a.pdf": _pdf(b"Factura A-1 " + own + b" Cliente B22222222 Fecha 01/07/2026 Base imponible 100,00 IVA 21% 21,00"),
+        "Facturas Salientes/2026/3T/b.pdf": _pdf(b"Factura A-2 " + own + b" Cliente B33333333 Fecha 02/07/2026 Base imponible 50,00 IVA 21% 10,50"),
+        "Facturas Entrantes/2026/3T/x.pdf": _pdf(b"Proveedor B44444444 Total 10,00 EUR"),
+        "Facturas Entrantes/2026/3T/x (1).pdf": _pdf(b"Proveedor B44444444 Total 10,00 EUR"),
+        "Facturas Entrantes/2026/3T/vacio.pdf": b"%PDF-1.4 sin texto %%EOF",
+        "Facturas Entrantes/suelta.pdf": _pdf(b"sin carpeta"),
+    }
+    for path, data in files.items():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_bytes(data)
+    root = root.resolve()
+    db.execute("INSERT INTO fiscal_folder (id, name, kind, path, created_at) VALUES (1, 'A', 'autonomo', ?, 'x')", (str(root),))
+
+    @contextmanager
+    def database():
+        connection = connect(tmp_path / "data" / DB_NAME)
+        try:
+            yield connection
+        finally:
+            connection.close()
+    _, _, pending, _ = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set())
+    fiscal_scan.read_in_background(database, 1, root, pending)
+    for _ in range(300):
+        if not fiscal_scan.reading(1):
+            break
+        time.sleep(0.1)
+    income, expenses, pending, counts = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set())
+    assert pending == [], "un PDF ilegible no se queda leyéndose para siempre"
+    assert sorted(r["taxId"] for r in income) == ["B22222222", "B33333333"], "con dos facturas, el NIF propio ya no sale como del cliente"
+    assert len(expenses) == 1 and counts == {"unreadable": 1, "duplicates": 1, "unplaced": 1, "noVat": 0}

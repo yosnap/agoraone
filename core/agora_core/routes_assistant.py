@@ -71,6 +71,8 @@ def _logged(event: dict) -> tuple[str, str]:
     """A tool call as (action, detail) for the action log."""
     if event["tool"] == "search":
         return "buscar", json.dumps({"query": event["query"], "found": len(event["found"])}, ensure_ascii=False)
+    if event["tool"] == "clients":
+        return "clientes", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
     if event["tool"] == "inbox":
         return "bandeja", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
     return "leer", json.dumps({"n": event["n"]}, ensure_ascii=False)
