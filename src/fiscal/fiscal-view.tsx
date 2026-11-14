@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
-import { downloadFromQonto, getFiscalFolders, getQuarter, makeQuarterExcel, openFiscalFile, type FiscalIssue, type FiscalFolder, type QuarterView } from '../api/core';
+import { downloadFromQonto, getFiscalFolders, getQuarter, makeQuarterExcel, openFiscalFile, type FiscalIssue, type FiscalFolder, type ManualSaved, type QuarterView } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { ManualForm } from './manual-form';
 import './fiscal.css';
 
 function money(value: number | string | null | undefined, currency = 'EUR') {
@@ -35,6 +36,8 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
   const [detail, setDetail] = useState<FiscalIssue | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  // An invoice nothing could be read from, being typed by hand (only those: the rest go in exactly as read).
+  const [editing, setEditing] = useState<{ path: string; saved?: ManualSaved | null } | null>(null);
   const asked = useRef(false);
   const request = useRef(0);
   // While invoices are still being read, the quarter refreshes itself every few seconds (no need to press anything).
@@ -73,6 +76,13 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo generar el Excel.'); }
   };
   const folder = folders?.find(f => f.id === folderId);
+  const manualForm = editing && folderId ? <ManualForm key={editing.path} folderId={folderId} path={editing.path} saved={editing.saved}
+    onCancel={() => setEditing(null)} onDone={done => {
+      setDetail(current => current && { ...current, items: current.items.filter(item => item.path !== editing.path) });
+      setEditing(null); setError(''); setNote(done); void load(folderId, period.year, period.quarter, true);
+    }}/> : null;
+  const editButton = (path: string | undefined, saved: ManualSaved | null | undefined) => path && saved
+    ? <button type="button" className="button fiscal-edit" onClick={() => setEditing({ path, saved })}>Editar datos</button> : null;
   // Each invoice opens with its app or shows in the Finder, to check it against what was read.
   const fileButtons = (path: string | undefined) => path ? <span className="fiscal-file">
     <span className="chip fiscal-type">{fileType(path)}</span>
@@ -106,7 +116,7 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
     void load(folderId, period.year, period.quarter, true);
   };
   if (detail) return <section className="page fiscal" aria-labelledby="fiscal-detail" ref={holder}>
-    <button type="button" className="button" onClick={() => setDetail(null)}>‹ Volver a Fiscal</button>
+    <button type="button" className="button" onClick={() => { setDetail(null); setEditing(null); }}>‹ Volver a Fiscal</button>
     <div className="eyebrow">FISCAL · {folder?.name} · {period.quarter}T {period.year}</div>
     <h1 id="fiscal-detail">Detalle del aviso</h1>
     <p className="page-lead">{detail.key === 'qonto' ? `Qonto tiene ${detail.items.length} facturas emitidas este trimestre que no están en «Facturas Salientes».` : detail.text}</p>
@@ -118,9 +128,12 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
     {note && <p className="ok-note" role="status">{note}</p>}
     {detail.items.length === 0 && <p className="muted">No queda nada pendiente en este aviso.</p>}
     {error && <LoadError message={error}/>}
+    {manualForm}
     <div className="fiscal-table"><table><thead><tr><th>Documento</th><th>Detalle</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
       <tbody>{detail.items.map((item, index) => <tr key={index}><td>{discreet ? '•••' : item.label}</td><td className="fiscal-detail-path">{discreet && ['qonto', 'foreign', 'foreignIncome'].includes(detail.key) ? '•••' : item.detail}</td>
-        <td>{item.qonto ? <button type="button" className="button" disabled={downloading} onClick={() => void fetchFromQonto([item.qonto!])}>Descargar</button> : fileButtons(item.path ?? undefined)}</td></tr>)}</tbody></table></div>
+        <td>{item.qonto ? <button type="button" className="button" disabled={downloading} onClick={() => void fetchFromQonto([item.qonto!])}>Descargar</button>
+          : <span className="fiscal-file">{fileButtons(item.path ?? undefined)}{['unreadable', 'images'].includes(detail.key) && item.path
+            && <button type="button" className="button fiscal-edit" onClick={() => setEditing({ path: item.path! })}>Escribir los datos</button>}</span>}</td></tr>)}</tbody></table></div>
     {detail.items.length >= 500 && <p className="muted">Se muestran los 500 primeros.</p>}
   </section>;
   return <section className="page fiscal" aria-labelledby="fiscal-title" ref={holder}>
@@ -161,14 +174,15 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
             <button type="button" className="button" onClick={() => folderId && void load(folderId, period.year, period.quarter)}>Actualizar</button>
             <button type="button" className="button" onClick={() => void reveal(null, false)}>Abrir la carpeta</button></span>}</div>
         {!discreet && <>
+          {manualForm}
           <h2>Ingresos · facturas emitidas</h2>
           {view.income.length === 0 ? <p className="muted">Ninguna en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Nº</th><th>Cliente</th><th>Base</th><th>IVA</th><th>Total</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>
             <tbody>{view.income.map((row, index) => <tr key={index}><td>{day(row.date)}</td><td>{row.number}</td><td>{row.client}</td><td>{money(row.base, row.currency)}</td>
-              <td>{row.vatRate !== null ? `${Math.round((row.vatRate > 1 ? row.vatRate : row.vatRate * 100))} %` : '—'}</td><td>{money(row.total, row.currency)}</td><td>{fileButtons((row as { file?: string }).file)}</td></tr>)}</tbody></table></div>}
+              <td>{row.vatRate !== null ? `${Math.round((row.vatRate > 1 ? row.vatRate : row.vatRate * 100))} %` : '—'}</td><td>{money(row.total, row.currency)}</td><td><span className="fiscal-file">{fileButtons(row.file)}{editButton(row.file, row.manual)}</span></td></tr>)}</tbody></table></div>}
           <h2>Gastos · facturas recibidas</h2>
           {view.expenses.length === 0 ? <p className="muted">Ninguna archivada en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>NIF</th><th>Total</th><th>Dudas</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>
             <tbody>{view.expenses.map(row => <tr key={row.id}><td>{day(row.issuedOn)}</td><td>{row.supplier}</td><td>{row.taxId ?? '—'}</td><td>{money(row.total, row.currency)}{(row as { totalEur?: number }).totalEur !== undefined && <small className="muted fiscal-eur">≈ {money((row as { totalEur?: number }).totalEur)}</small>}</td>
-              <td>{row.doubts.length ? row.doubts.join(' ') : '—'}</td><td>{fileButtons((row as { file?: string }).file ?? row.path)}</td></tr>)}</tbody></table></div>}
+              <td>{row.doubts.length ? row.doubts.join(' ') : '—'}</td><td><span className="fiscal-file">{fileButtons(row.file ?? row.path)}{editButton(row.file, row.manual)}</span></td></tr>)}</tbody></table></div>}
         </>}
       </>}
     </>}

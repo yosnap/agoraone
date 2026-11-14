@@ -29,3 +29,7 @@
 .fiscal-progress-bar { display:block; height:6px; border-radius:6px; background:var(--c-dfe3d6); overflow:hidden }
 .fiscal-progress-bar i { display:block; height:100%; background:var(--c-244e42); transition:width .4s }
 @media (prefers-reduced-motion: reduce) { .fiscal-progress-bar i { transition:none } }
+.fiscal-manual { margin:12px 0 16px; gap:10px }
+.fiscal-manual h2 { margin:0 !important }
+.fiscal-manual-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px }
+.fiscal-edit { padding:4px 9px; font-size:11px; white-space:nowrap }

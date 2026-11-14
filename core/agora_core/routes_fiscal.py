@@ -17,7 +17,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import exchange, invoice_ai, fiscal, fiscal_excel, fiscal_folder, fiscal_scan, invoice_extract, mail, qonto, receipts
+from . import exchange, invoice_ai, fiscal, fiscal_excel, fiscal_folder, fiscal_manual, fiscal_scan, invoice_extract, mail, qonto, receipts
 from .db import DB_NAME, connect, now, transaction
 from .engines import AnthropicApiEngine, ClaudeCodeEngine, Turn, ask_with_image, usable
 from .routes_mail import microsoft_login
@@ -114,6 +114,25 @@ class QontoDownloadIn(BaseModel):
 
 class ReadingIn(BaseModel):
     withClaude: StrictBool
+
+
+class ManualFields(BaseModel):
+    name: Annotated[str, Field(max_length=120)] | None = None
+    taxId: Annotated[str, Field(max_length=30)] | None = None
+    number: Annotated[str, Field(max_length=40)] | None = None
+    issuedOn: Annotated[str, Field(max_length=10)]
+    base: Annotated[str, Field(max_length=20)] | None = None
+    vatRate: Annotated[str, Field(max_length=6)] | None = None
+    vat: Annotated[str, Field(max_length=20)] | None = None
+    withholdingRate: Annotated[str, Field(max_length=6)] | None = None
+    withholding: Annotated[str, Field(max_length=20)] | None = None
+    total: Annotated[str, Field(max_length=20)]
+    currency: Annotated[str, Field(max_length=3)] | None = None
+
+
+class ManualIn(BaseModel):
+    path: Annotated[str, Field(min_length=1, max_length=1000)]
+    fields: ManualFields
 
 
 class ApplyIn(BaseModel):
@@ -479,6 +498,36 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         def work(connection):
             _, root = fiscal.folder_root(connection, folder_id)
             fiscal.open_in_finder(root, body.path, body.reveal)
+            return {"ok": True}
+        try:
+            return await db(work)
+        except fiscal.FiscalError as error:
+            return refuse(error)
+
+    @router.put("/fiscal/folders/{folder_id}/manual")
+    async def save_manual(folder_id: int, body: ManualIn):
+        """The data of an invoice nothing could be read from, typed by the user. Refused for any file AgoraOne
+        did read: those go into the quarter exactly as read."""
+        def work(connection):
+            _, root = professional_root(connection, folder_id)
+            path = fiscal_manual.target(root, body.path)
+            read = fiscal_scan._cached(connection, folder_id, root, path)
+            if read is None or fiscal_scan.is_reading(folder_id, path):
+                raise fiscal.FiscalError("Esta factura aún se está leyendo: espera a que termine.")
+            if not fiscal_manual.unrecognized(read, reading_on(connection)):
+                raise fiscal.FiscalError("Esta factura se ha leído: entra en el trimestre tal como se leyó. Si algún dato no coincide, se corrige en la lectura, no a mano.")
+            fiscal_manual.save(connection, folder_id, root, path, fiscal_manual.clean(body.fields.model_dump()))
+            return {"ok": True}
+        try:
+            return await db(work)
+        except fiscal.FiscalError as error:
+            return refuse(error)
+
+    @router.delete("/fiscal/folders/{folder_id}/manual")
+    async def remove_manual(folder_id: int, path: str):
+        def work(connection):
+            professional_root(connection, folder_id)
+            fiscal_manual.remove(connection, folder_id, path)
             return {"ok": True}
         try:
             return await db(work)
