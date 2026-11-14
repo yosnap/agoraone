@@ -119,7 +119,7 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
     {detail.items.length === 0 && <p className="muted">No queda nada pendiente en este aviso.</p>}
     {error && <LoadError message={error}/>}
     <div className="fiscal-table"><table><thead><tr><th>Documento</th><th>Detalle</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
-      <tbody>{detail.items.map((item, index) => <tr key={index}><td>{discreet ? '•••' : item.label}</td><td className="fiscal-detail-path">{item.detail}</td>
+      <tbody>{detail.items.map((item, index) => <tr key={index}><td>{discreet ? '•••' : item.label}</td><td className="fiscal-detail-path">{discreet && ['qonto', 'foreign', 'foreignIncome'].includes(detail.key) ? '•••' : item.detail}</td>
         <td>{item.qonto ? <button type="button" className="button" disabled={downloading} onClick={() => void fetchFromQonto([item.qonto!])}>Descargar</button> : fileButtons(item.path ?? undefined)}</td></tr>)}</tbody></table></div>
     {detail.items.length >= 500 && <p className="muted">Se muestran los 500 primeros.</p>}
   </section>;

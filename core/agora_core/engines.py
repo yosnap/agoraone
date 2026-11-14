@@ -322,8 +322,10 @@ async def ask_with_image(engine, system: str, text: str, jpeg: bytes, model: str
         async with anthropic.AsyncAnthropic(api_key=key, max_retries=1) as client:
             answer = await client.messages.create(model=MODELS[model], max_tokens=1500, system=system, messages=[{"role": "user", "content": content}])
         return "".join(getattr(block, "text", "") for block in answer.content)
-    from claude_agent_sdk import AssistantMessage, TextBlock, query
+    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, query
 
+    if engine.workdir is not None:
+        engine.workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
     options = engine.options(Turn(system, [], model))
 
     async def messages():
@@ -332,4 +334,6 @@ async def ask_with_image(engine, system: str, text: str, jpeg: bytes, model: str
     async for message in query(prompt=messages(), options=options):
         if isinstance(message, AssistantMessage):
             parts += [block.text for block in message.content if isinstance(block, TextBlock) and block.text]
+        elif isinstance(message, ResultMessage) and message.is_error:
+            raise EngineError(f"Claude Code no pudo responder ({message.subtype}).")
     return "".join(parts)

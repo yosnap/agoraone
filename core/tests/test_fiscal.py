@@ -451,3 +451,43 @@ def test_la_lectura_nunca_se_queda_en_bucle(db, tmp_path):
     finally:
         fiscal_scan._read = original
     assert fiscal_scan._cached(db, 1, root, bad) == {"unreadable": True, "v": invoice_extract.VERSION}, "lo ilegible se queda en la caché"
+
+
+def test_desactivar_claude_para_la_lectura_en_curso(db, tmp_path):
+    """Al desmarcar «Leer con Claude» a mitad de una lectura, no sale ningún lote más ni se graba lo que respondió,
+    y el trimestre deja de usar lo que Claude ya había leído."""
+    from contextlib import contextmanager
+    from agora_core import fiscal_scan
+    root = (tmp_path / "fiscal").resolve()
+    folder = root / "Facturas Entrantes/2026/3T"
+    folder.mkdir(parents=True)
+    paths = []
+    for n in range(7):  # dos lotes de cinco
+        (folder / f"{n}.pdf").write_bytes(_pdf(b"Proveedor B44444444 Total 10,00 EUR"))
+        paths.append(folder / f"{n}.pdf")
+    db.execute("INSERT INTO fiscal_folder (id, name, kind, path, created_at) VALUES (1, 'A', 'autonomo', ?, 'x')", (str(root),))
+
+    @contextmanager
+    def database():
+        connection = connect(tmp_path / "data" / DB_NAME)
+        try:
+            yield connection
+        finally:
+            connection.close()
+    with database() as connection:
+        for path in paths:
+            fiscal_scan._read(connection, 1, root, path)
+    switch, calls = {"on": True}, []
+
+    def ask(texts):
+        calls.append(len(texts))
+        switch["on"] = False  # el usuario lo desactiva mientras Claude responde
+        return {n: {"total": "99.00", "issuer": "Inventado"} for n in range(1, len(texts) + 1)}
+    ask.allowed = lambda: switch["on"]
+    fiscal_scan._read_with_model(database, 1, root, paths, ask)
+    assert calls == [5], "tras desactivarlo no sale ningún lote más"
+    assert not any("ai" in (fiscal_scan._cached(db, 1, root, p) or {}) for p in paths), "lo que respondió no se graba"
+    with database() as connection:
+        fiscal_scan._remember(connection, 1, root, paths[0], {**fiscal_scan._cached(connection, 1, root, paths[0]), "ai": {"total": "99.00"}})
+    off = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set(), use_model=False)[1]
+    assert all(e["total"] != "99.00" for e in off), "con Claude desactivado solo cuentan las reglas locales"

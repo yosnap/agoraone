@@ -102,6 +102,22 @@ def test_rutas_de_qonto_y_del_excel(tmp_path, monkeypatch):
         made = client.post(f"/fiscal/folders/{folder['id']}/excel", json={"year": 2026, "quarter": 4}, headers=headers).json()
         assert made["path"] == "Registro-4T-2026-Actividad.xlsx" and (work / made["path"]).exists()
 
+        # Qonto's F-1 is already in the folder, saved under another name and with its number written differently:
+        # it is not downloaded a second time (its base would count twice).
+        import time
+        from tests.test_fiscal import _pdf
+        client.put("/fiscal/reading", json={"withClaude": False}, headers=headers)
+        local = work / "Facturas Salientes" / "2026" / "4T" / "Factura Cliente.pdf"
+        local.parent.mkdir(parents=True)
+        local.write_bytes(_pdf(b"Factura F 1 Cliente B12345678 Fecha 03/10/2026 Base imponible 100,00 IVA 21% 21,00 Total 106,00"))
+        for _ in range(100):
+            if not client.get(f"/fiscal/folders/{folder['id']}/quarter?year=2026&quarter=4", headers=headers).json()["reading"]:
+                break
+            time.sleep(0.05)
+        monkeypatch.setattr(qonto, "invoice_pdf", lambda auth, row, http=None: b"%PDF-1.4 otra copia")
+        got = client.post(f"/fiscal/folders/{folder['id']}/qonto-download", json={"year": 2026, "quarter": 4, "numbers": ["F-1"]}, headers=headers).json()
+        assert got["saved"] == [] and "ya está en la carpeta: Factura Cliente.pdf" in got["failed"][0]["error"]
+
 
 def test_forma_real_de_qonto_varios_tipos_irpf_y_rectificativas():
     invoice = {"status": "paid", "issue_date": "2026-11-02", "number": "F-9", "client": {"name": "C"}, "currency": "EUR",
@@ -159,6 +175,16 @@ def test_cambio_a_euros_del_bce(tmp_path):
     assert len(calls) == 1, "cada cambio se pide una vez"
     offline = [{"issuedOn": "2026-09-14", "total": "1", "currency": "GBP"}]
     assert exchange.to_eur(connection, offline, "issuedOn", http=lambda u, p: (_ for _ in ()).throw(__import__("httpx").ConnectError("x")))
+    retried = []
+    exchange.to_eur(connection, offline, "issuedOn", http=lambda u, p: retried.append(u) or Answer(200, {"rates": {"EUR": 1.1}}))
+    assert retried == [], "un fallo no se vuelve a pedir en cada carga"
+    notes = exchange.to_eur(connection, [{"issuedOn": "2026-09-14", "total": "1", "currency": "AED"}], "issuedOn", http=lambda u, p: Answer(404, {}))
+    assert notes == ["El BCE no publica el cambio de AED: conviértelas a euros a mano."], "no se confunde con estar sin conexión"
+    exchange._FAILED.clear()
+    income = [{"date": "2026-09-13", "base": 100, "total": 100, "currency": "USD", "concept": "Curso"}]
+    exchange.income_to_eur(connection, income, http=http)
+    assert (income[0]["base"], income[0]["total"], income[0]["currency"]) == (90.0, 90.0, "EUR"), "lo emitido en dólares entra en euros"
+    assert "base USD 100.00, cambio BCE del 2026-09-12" in income[0]["concept"]
     book = openpyxl.load_workbook(io.BytesIO(fiscal_excel.build(2026, 3, "T", [], rows, [])))
     assert book["Gastos"]["M4"].value == "Total EUR (cambio BCE)" and book["Gastos"]["M5"].value == 10.76 and book["Gastos"]["M6"].value == 5.0
     assert "Cambio BCE del 2026-09-12" in book["Gastos"]["L5"].value and book["Resumen"]["D18"].value.startswith("=SUMIFS(Gastos!M")
@@ -171,10 +197,7 @@ def test_pdf_de_una_factura_de_qonto():
     def http(url, headers, params):
         calls.append(url)
         return Answer(200, {"attachment": {"url": "https://s3.example/f.pdf"}})
-
-    class File:
-        status_code, content = 200, b"%PDF-1.4 factura"
-    assert qonto.invoice_pdf("org:clave", {"attachmentId": "a1"}, http=http, download=lambda u: File()) == b"%PDF-1.4 factura"
+    assert qonto.invoice_pdf("org:clave", {"attachmentId": "a1"}, http=http, download=lambda u: b"%PDF-1.4 factura") == b"%PDF-1.4 factura"
     assert calls[0].endswith("/attachments/a1")
     with pytest.raises(qonto.QontoError):
         qonto.invoice_pdf("org:clave", {"pdfUrl": "http://inseguro/f.pdf"})
