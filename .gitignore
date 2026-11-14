@@ -19,3 +19,5 @@ skills-lock.json
 /plans
 # Compiled Rust output of the desktop app.
 /desktop/target
+# Staging and downloads of the packaged app (desktop/scripts/empaquetar.sh).
+/desktop/paquete

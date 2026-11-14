@@ -59,11 +59,13 @@ pub fn start(launch: &CoreLaunch, link: &CoreLink, data: &Path) -> std::io::Resu
         CoreLaunch::Uv { folder } => ("uv".into(), vec!["run", "--frozen", "--quiet", "python", "-m", "agora_core"], folder),
         CoreLaunch::Bundled { python, folder } => (python.clone(), vec!["-m", "agora_core"], folder),
     };
-    Command::new(program)
-        .args(args)
-        .current_dir(folder)
-        .env_clear()
-        .envs(environment(&link.secret, std::process::id(), data, |name| std::env::var(name).ok()))
+    let mut command = Command::new(program);
+    command.args(args).current_dir(folder).env_clear().envs(environment(&link.secret, std::process::id(), data, |name| std::env::var(name).ok()));
+    if matches!(launch, CoreLaunch::Bundled { .. }) {
+        // The bundled core is compiled at build time and the signed app is never written to.
+        command.env("PYTHONDONTWRITEBYTECODE", "1");
+    }
+    command
         .stdin(Stdio::null())
         .kill_on_drop(true)
         .spawn()

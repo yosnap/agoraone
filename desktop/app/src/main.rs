@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use agora_server::PORT;
-use agora_server::launch::{Paths, access_url, load_dotenv, prepare};
+use agora_server::launch::{Paths, access_url, app_support, copy_first_run, load_dotenv, prepare, widen_path};
 use tauri::{RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
 
 /// The project folder in development (`AGORA_ROOT`, or the repository this app was built from); the
@@ -20,6 +20,39 @@ fn root() -> PathBuf {
         let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         std::fs::canonicalize(&repository).unwrap_or(repository)
     })
+}
+
+/// The bundle's `Resources` when this runs as the packaged app (it carries the core inside).
+fn bundle_resources() -> Option<PathBuf> {
+    let executable = std::fs::canonicalize(std::env::current_exe().ok()?).ok()?;
+    let resources = executable.parent()?.parent()?.join("Resources");
+    resources.join("core/agora_core").is_dir().then_some(resources)
+}
+
+/// Where the app's pieces are: inside its bundle with the data in Application Support when packaged
+/// (unless `AGORA_ROOT` points at a project), the repository in development.
+fn layout() -> Paths {
+    widen_path();
+    if std::env::var_os("AGORA_ROOT").is_none()
+        && let Some(resources) = bundle_resources()
+    {
+        let data = app_support().unwrap_or_else(|| alert("no se encuentra la carpeta del usuario"));
+        let project = root();
+        // The first start copies (never moves) what the user already had in the project.
+        if let Err(error) = copy_first_run(&project.join(".agora"), &data) {
+            alert(&format!("no se pudieron copiar tus datos de .agora ({error})"));
+        }
+        let settings = data.join(".env");
+        if !settings.exists() && project.join(".env").is_file() && std::fs::copy(project.join(".env"), &settings).is_ok() {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&settings, std::fs::Permissions::from_mode(0o600));
+        }
+        load_dotenv(&settings);
+        return Paths::packaged(&resources, data);
+    }
+    let project = root();
+    load_dotenv(&project.join(".env"));
+    Paths::project(&project)
 }
 
 /// A start-up failure, shown as a native alert since the app has no terminal.
@@ -41,9 +74,7 @@ fn own(url: &Url) -> bool {
 }
 
 fn main() {
-    let root = root();
-    load_dotenv(&root.join(".env"));
-    let paths = Paths::project(&root);
+    let paths = layout();
     let server = match tauri::async_runtime::block_on(prepare(&paths)) {
         Ok(server) => server,
         Err(error) => alert(&error.to_string()),

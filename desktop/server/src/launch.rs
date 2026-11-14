@@ -38,6 +38,71 @@ impl Paths {
     }
 }
 
+impl Paths {
+    /// The packaged app: everything it needs inside its `Resources`, the user's data outside the app.
+    pub fn packaged(resources: &Path, data: PathBuf) -> Self {
+        Self {
+            data,
+            web: resources.join("web"),
+            examples: resources.join("library-test"),
+            core: Some(CoreLaunch::Bundled { python: resources.join("python/bin/python3"), folder: resources.join("core") }),
+        }
+    }
+}
+
+/// Where the packaged app keeps the user's data: `~/Library/Application Support/AgoraOne`.
+pub fn app_support() -> Option<PathBuf> {
+    Some(PathBuf::from(std::env::var_os("HOME")?).join("Library/Application Support/AgoraOne"))
+}
+
+/// The first time the packaged app starts, the data the user already had in the project's `.agora` is
+/// copied (never moved or deleted) to its own folder; later starts leave both alone. Links are not followed.
+pub fn copy_first_run(from: &Path, to: &Path) -> std::io::Result<bool> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    if to.exists() || !from.is_dir() {
+        return Ok(false);
+    }
+    let staging = to.with_extension("copiando");
+    let _ = std::fs::remove_dir_all(&staging);
+    fn copy(from: &Path, to: &Path) -> std::io::Result<()> {
+        std::fs::DirBuilder::new().mode(0o700).create(to)?;
+        for entry in std::fs::read_dir(from)? {
+            let entry = entry?;
+            let kind = entry.file_type()?;
+            let target = to.join(entry.file_name());
+            if kind.is_dir() {
+                copy(&entry.path(), &target)?;
+            } else if kind.is_file() {
+                std::fs::copy(entry.path(), &target)?;
+            }
+        }
+        Ok(())
+    }
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    copy(from, &staging)?;
+    std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(0o700))?;
+    // Renamed into place only when complete, so an interrupted copy is redone, never half-used.
+    std::fs::rename(&staging, to)?;
+    Ok(true)
+}
+
+/// An app opened from Finder gets a bare PATH; the user's own program folders are added so the core finds
+/// the installed Claude Code and the profiles' MCP launchers are found as in their terminal.
+pub fn widen_path() {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let current = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin:/usr/sbin:/sbin".into());
+    let mut parts: Vec<String> = current.split(':').filter(|p| !p.is_empty()).map(str::to_string).collect();
+    for extra in [format!("{home}/.local/bin"), "/opt/homebrew/bin".into(), "/usr/local/bin".into()] {
+        if !parts.contains(&extra) && Path::new(&extra).is_dir() {
+            parts.push(extra);
+        }
+    }
+    // SAFETY: called at start-up, before any other thread reads the environment.
+    unsafe { std::env::set_var("PATH", parts.join(":")) };
+}
+
 /// `KEY=value` lines of a dotenv file, for variables not already set (like `node --env-file`). Values are
 /// never printed.
 pub fn load_dotenv(file: &Path) {
@@ -169,6 +234,32 @@ mod tests {
         assert_eq!(std::env::var("AGORA_PRUEBA_UNO").unwrap(), "valor uno");
         assert_eq!(std::env::var("AGORA_PRUEBA_DOS").unwrap(), "dos");
         assert_eq!(std::env::var("AGORA_PRUEBA_TRES").unwrap(), "previo", "no pisa lo ya definido");
+    }
+
+    #[test]
+    fn la_primera_vez_copia_agora_sin_moverla_y_despues_no_toca_nada() {
+        let dir = tempfile::tempdir().unwrap();
+        let (from, to) = (dir.path().join(".agora"), dir.path().join("Application Support/AgoraOne"));
+        std::fs::create_dir_all(from.join("library/dueño")).unwrap();
+        std::fs::write(from.join("access-token"), "token").unwrap();
+        std::fs::write(from.join("library/dueño/copia.json"), "{}").unwrap();
+        std::os::unix::fs::symlink("/etc/hosts", from.join("enlace")).unwrap();
+        assert!(copy_first_run(&from, &to).unwrap());
+        assert_eq!(std::fs::read_to_string(to.join("library/dueño/copia.json")).unwrap(), "{}");
+        assert!(from.join("access-token").exists(), "el original se queda");
+        assert!(!to.join("enlace").exists(), "los enlaces no se copian");
+        std::fs::write(from.join("access-token"), "otro").unwrap();
+        assert!(!copy_first_run(&from, &to).unwrap(), "solo la primera vez");
+        assert_eq!(std::fs::read_to_string(to.join("access-token")).unwrap(), "token");
+        let empty = dir.path().join("nueva");
+        assert!(!copy_first_run(&dir.path().join("no-existe"), &empty).unwrap());
+    }
+
+    #[test]
+    fn rutas_de_la_app_empaquetada() {
+        let paths = Paths::packaged(Path::new("/App/Contents/Resources"), PathBuf::from("/datos"));
+        assert_eq!(paths.web, Path::new("/App/Contents/Resources/web"));
+        assert!(matches!(paths.core, Some(CoreLaunch::Bundled { ref python, .. }) if python.ends_with("python/bin/python3")));
     }
 
     #[test]
