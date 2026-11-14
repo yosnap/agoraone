@@ -27,6 +27,7 @@ from .routes_assistant import KeychainSecrets, assistant_router, default_engines
 from .entity_worker import ExtractHealth, entity_worker
 from .engines import AnthropicApiEngine, ClaudeCodeEngine
 from .routes_index import EmbedHealth, embed_worker, index_router
+from .routes_mail import mail_router, mail_worker
 from .routes_summary import summary_router
 from .settings import DEFAULT_DATA, Settings
 
@@ -80,6 +81,8 @@ def create_app(
             # Entities of normal notes, read by Claude Haiku (user's decision, 13/11/2026).
             extract_engines = lambda: [ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)]  # noqa: E731
             threading.Thread(target=entity_worker, args=(settings, extract_engines, stop, extract_health), daemon=True).start()
+            # New mail of the connected accounts, read-only (user's decision, 14/11/2026).
+            threading.Thread(target=mail_worker, args=(settings, secrets, stop), daemon=True).start()
         try:
             yield
         finally:
@@ -150,4 +153,5 @@ def create_app(
     app.include_router(addons_router(settings))
     app.include_router(summary_router(settings, time.time()))
     app.include_router(assistant_router(settings, embedder, cache, secrets, engines))
+    app.include_router(mail_router(settings, secrets))
     return app
