@@ -14,10 +14,15 @@ FIELDS = ("name", "taxId", "number", "issuedOn", "base", "vatRate", "vat", "with
 
 
 def unrecognized(fields: dict | None, use_model: bool = True) -> bool:
-    """True when nothing usable could be read from the file."""
+    """True when nothing usable could be read from the file: unreadable, or a picture that, with the model on,
+    the model already tried and could not read (with it off, nothing reads pictures)."""
     if not fields:
         return False
-    return bool(fields.get("unreadable") or (fields.get("image") and not (use_model and fields.get("ai"))))
+    if fields.get("unreadable"):
+        return True
+    if not fields.get("image"):
+        return False
+    return not use_model or (bool(fields.get("aiTried")) and not fields.get("ai"))
 
 
 def clean(raw: dict) -> dict:
@@ -42,11 +47,38 @@ def clean(raw: dict) -> dict:
         if value is not None and not 0 <= float(value) <= 100:
             raise FiscalError("Los tipos van en porcentaje, de 0 a 100.")
         found[key] = round(float(value) / 100, 4) if value is not None else None
+    _complete(found)
     currency = (raw.get("currency") or "EUR").strip().upper()
     if len(currency) != 3 or not currency.isalpha():
         raise FiscalError("La moneda es un código de tres letras (EUR, USD…).")
     found["currency"] = currency
     return {key: found.get(key) for key in FIELDS}
+
+
+def _complete(found: dict) -> None:
+    """What follows from what was typed: the base from the total and the rates, a tax amount from its rate (or
+    the other way round); then base + VAT − withholding must give the total, as on any invoice."""
+    money = lambda value: f"{value:.2f}"  # noqa: E731
+    number = lambda key: float(found[key]) if found.get(key) is not None else None  # noqa: E731
+    total, vat_rate, irpf_rate = float(found["total"]), found.get("vatRate"), found.get("withholdingRate")
+    if found.get("base") is None:
+        if vat_rate is not None:
+            found["base"] = money(total / (1 + vat_rate - (irpf_rate or 0)))
+        elif found.get("vat") is not None:
+            found["base"] = money(total - number("vat") + (number("withholding") or 0))
+    base = number("base")
+    if base is None:
+        if found.get("withholding") is not None or irpf_rate:
+            raise FiscalError("Con IRPF, escribe también la base o el tipo de IVA.")
+        return  # a receipt with only its total: registered without VAT shown, base equal to the total
+    for amount_key, rate_key in (("vat", "vatRate"), ("withholding", "withholdingRate")):
+        if found.get(amount_key) is None and found.get(rate_key) is not None:
+            found[amount_key] = money(base * found[rate_key])
+        elif found.get(rate_key) is None and found.get(amount_key) is not None and base:
+            found[rate_key] = round(number(amount_key) / base, 4)
+    parts = base + (number("vat") or 0) - (number("withholding") or 0)
+    if abs(parts - total) > 0.02:
+        raise FiscalError(f"Base, IVA e IRPF suman {parts:.2f}, no el total {total:.2f}: revísalos.")
 
 
 def target(root: Path, relative: str) -> Path:

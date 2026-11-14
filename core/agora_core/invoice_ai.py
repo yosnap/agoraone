@@ -81,7 +81,8 @@ def parse(reply: str, count: int) -> dict[int, dict]:
     except json.JSONDecodeError:
         return {}
     found = {}
-    for item in data.get("docs", []) if isinstance(data, dict) else []:
+    docs = data.get("docs") if isinstance(data, dict) else None
+    for item in docs if isinstance(docs, list) else []:
         if not isinstance(item, dict) or not isinstance(item.get("n"), int) or not 1 <= item["n"] <= count:
             continue
         currency = _text(item.get("moneda"), 3)

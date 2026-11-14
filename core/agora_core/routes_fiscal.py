@@ -451,7 +451,8 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         if found_income and auth and not in_flight:
             try:  # the folder is the source; Qonto says which issued invoices are missing from it
                 in_qonto = [r for r in qonto.issued_invoices(auth, start, end)[0] if r["number"]]
-                missing_qonto = {r["number"]: r for r in in_qonto if not local_twin(r, found_income)}
+                taken: set[int] = set()
+                missing_qonto = {r["number"]: r for r in in_qonto if not local_twin(r, found_income, taken)}
                 issue("qonto", "Qonto tiene {n} facturas emitidas este trimestre que no están en «Facturas Salientes».",
                       [{"label": f"{r['number']} · {r['client']}", "detail": f"{r['date']} · {r.get('base')} {r['currency']}", "qonto": r["number"]}
                        for r in missing_qonto.values()])
@@ -470,7 +471,9 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
               rows([r for r in income if r.get("guessedDate")] + [e for e in found_expenses if "Fecha no leída" in e["notes"]], lambda r: "Fecha puesta al inicio del trimestre"))
         issue("otherQuarter", "{n} facturas con fecha de otro trimestre guardadas en la carpeta de este: cuentan aquí.",
               rows([e for e in found_expenses if "otro trimestre" in e["notes"]], lambda r: f"Fecha {r['issuedOn']}"))
-        issue("images", "{n} facturas en imagen sin leer: revisa sus importes a mano.", rows([e for e in found_expenses if "Factura en imagen" in e["notes"]], lambda r: "Imagen"))
+        issue("images", "{n} facturas en imagen sin leer: revisa sus importes a mano.",
+              rows([r for r in found_income if r.get("unreadImage")] + [e for e in found_expenses if "Factura en imagen" in e["notes"]],
+                   lambda r: "Emitida · imagen" if "client" in r else "Recibida · imagen"))
         issue("noTaxId", "{n} facturas recibidas sin NIF del proveedor.", rows([e for e in expenses if not e["taxId"]], lambda r: r.get("issuedOn", "")))
         issue("foreignIncome", "{n} facturas emitidas en otra moneda: su base pasa a euros con el cambio oficial del BCE de su fecha.",
               rows([r for r in income if r.get("foreign")], lambda r: f"Base {r['foreign']} ≈ {r['base']} EUR · cambio del {r['rate']['day']}"))
@@ -515,6 +518,8 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             if read is None or fiscal_scan.is_reading(folder_id, path):
                 raise fiscal.FiscalError("Esta factura aún se está leyendo: espera a que termine.")
             if not fiscal_manual.unrecognized(read, reading_on(connection)):
+                if read.get("image") and not read.get("ai"):
+                    raise fiscal.FiscalError("Claude aún no ha intentado leer esta imagen: espera a que la lea. Solo si no puede, se escriben sus datos a mano.")
                 raise fiscal.FiscalError("Esta factura se ha leído: entra en el trimestre tal como se leyó. Si algún dato no coincide, se corrige en la lectura, no a mano.")
             fiscal_manual.save(connection, folder_id, root, path, fiscal_manual.clean(body.fields.model_dump()))
             return {"ok": True}
@@ -534,15 +539,24 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         except fiscal.FiscalError as error:
             return refuse(error)
 
-    def local_twin(row: dict, found_income: list[dict]) -> dict | None:
-        """The issued invoice of the folder that is this Qonto one: same number (ignoring separators), or same
-        date and base when the number was not read or is written differently."""
+    def local_twin(row: dict, found_income: list[dict], taken: set[int] | None = None) -> dict | None:
+        """The issued invoice of the folder that is this Qonto one: the same number (ignoring separators), or,
+        only for a local invoice whose number could not be read, the same date and base. Each local invoice
+        stands for one Qonto invoice at most (`taken`), so two equal instalments are never one."""
+        taken = set() if taken is None else taken
         number = re.sub(r"\W", "", row["number"]).upper()
-        for local in found_income:
-            if number and re.sub(r"\W", "", str(local.get("number") or "")).upper() == number:
-                return local
+        # A Qonto invoice split by VAT rate shares its number: the same local file stands for all its rows.
+        same = next((i for i, local in enumerate(found_income)
+                     if number and re.sub(r"\W", "", str(local.get("number") or "")).upper() == number), None)
+        if same is not None:
+            taken.add(same)
+            return found_income[same]
+        for i, local in enumerate(found_income):
+            if i in taken or local.get("numberRead", True):
+                continue
             try:
                 if local.get("date") == row.get("date") and abs(float(local["base"]) - float(row["base"])) <= 0.02:
+                    taken.add(i)
                     return local
             except (TypeError, ValueError, KeyError):
                 pass
@@ -562,10 +576,11 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             saved, failed = [], []
             found_income = fiscal_scan.scan(connection, folder_id, root, body.year, body.quarter, start.isoformat(), end.isoformat(),
                                             set(), use_model=reading_on(connection))[0]
+            taken: set[int] = set()
             for row in qonto.issued_invoices(auth, start, end)[0]:
                 if row["number"] not in wanted or row["number"] in {s["number"] for s in saved}:
                     continue
-                twin = local_twin(row, found_income)
+                twin = local_twin(row, found_income, taken)
                 if twin:  # never a second copy of an invoice already in the folder: its base would count twice
                     failed.append({"number": row["number"], "error": f"Parece que ya está en la carpeta: {twin['file'].split('/')[-1]}."})
                     continue

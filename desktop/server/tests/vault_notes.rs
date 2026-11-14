@@ -192,6 +192,13 @@ fn no_escribe_por_enlaces_ni_crea_fuera_de_carpetas_existentes_o_pisando() {
         assert_eq!(status(f.notes.create(&f.id, folder, "Nota", "x")), 404, "{folder}");
     }
     assert!(!f.base.join("fuera/Nota.md").exists());
+    // A new client's folder: one level inside an existing folder, created with its first note.
+    f.notes.create(&f.id, "Proyectos/Cliente nuevo", "Cliente nuevo - Cambios", "texto").unwrap();
+    assert_eq!(read(f.vault.join("Proyectos/Cliente nuevo/Cliente nuevo - Cambios.md")), "texto");
+    for folder in ["Proyectos/a/b", "Proyectos/.oculta", "Proyectos/..", "Proyectos/a:b", "No existe/Nueva", "Carpeta enlazada/Nueva"] {
+        assert_eq!(status(f.notes.create(&f.id, folder, "Nota", "x")), 404, "{folder}");
+    }
+    assert!(!f.vault.join("Proyectos/.oculta").exists() && !f.vault.join("No existe").exists());
     f.notes.create(&f.id, "", "En la raíz", "texto").unwrap();
     assert_eq!(read(f.vault.join("En la raíz.md")), "texto");
 }

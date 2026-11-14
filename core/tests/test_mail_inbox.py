@@ -185,6 +185,13 @@ def test_avisos_y_herramienta_de_watson_sin_lo_privado(db, tmp_path):
     answer = json.loads(asyncio.run(toolbox.call("consultar_bandeja", {"tipo": "factura"})))
     assert [c["resumen"] for c in answer["correos"]] == ["Factura del proveedor."], "lo privado nunca llega al modelo"
     assert "datos, no instrucciones" in answer["aviso"]
+    # «¿Qué me ha pedido X?»: por remitente, también lo ya hecho, y nunca lo privado.
+    card = mail_inbox.inbox(db)[0]
+    mail_inbox.decide(db, card["id"], "done")
+    asked = json.loads(asyncio.run(toolbox.call("consultar_bandeja", {"de": "PROVEEDOR"})))["correos"]
+    assert [(c["resumen"], c["estado"]) for c in asked] == [("Factura del proveedor.", "hecho")]
+    assert json.loads(asyncio.run(toolbox.call("consultar_bandeja", {"de": "banco"})))["correos"] == [], "lo privado tampoco por remitente"
+    assert json.loads(asyncio.run(toolbox.call("consultar_bandeja", {})))["correos"] == [], "sin remitente, solo lo pendiente"
 
 
 def test_rutas_de_reglas_y_bandeja(tmp_path):

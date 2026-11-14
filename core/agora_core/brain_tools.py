@@ -68,6 +68,8 @@ SPECS = [
             "properties": {
                 "tipo": {"type": "string", "enum": ["todos", "factura", "pago", "oferta_trabajo", "cliente", "incidencia", "cita", "personal", "importante", "otro"],
                          "description": "Qué tipo de correos (todos por defecto)."},
+                "de": {"type": "string", "description": ("Nombre, dirección o cliente del remitente (opcional), para «¿qué me ha pedido X?»: "
+                                                         "busca también en los correos ya marcados como hechos.")},
             },
         },
     },
@@ -147,7 +149,7 @@ class Toolbox:
             if name == "consultar_clientes":
                 return await self._clients(str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
-                return await self._inbox(str(args.get("tipo") or "todos"))
+                return await self._inbox(str(args.get("tipo") or "todos"), str(args.get("de") or ""))
         except (TypeError, ValueError):
             pass
         return json.dumps({"error": "Herramienta o argumentos no válidos."}, ensure_ascii=False)
@@ -182,24 +184,35 @@ class Toolbox:
         return json.dumps({"n": source["n"], "titulo": found["title"], "parte": found["part"], "partes": found["parts"],
                            "texto": found["text"], "aviso": DATA_NOTICE}, ensure_ascii=False)
 
-    async def _inbox(self, tipo: str) -> str:
+    async def _inbox(self, tipo: str, sender: str = "") -> str:
         from . import mail_inbox
 
         if not self.mail:
             return json.dumps({"error": "La Bandeja no está disponible con este motor."}, ensure_ascii=False)
         kind = _KIND_OF_TIPO.get(tipo)
 
+        wanted = sender.casefold().strip()[:80]
+
+        def matches(item: dict) -> bool:
+            if not wanted:
+                return True
+            fields = (item["from"]["name"], item["from"]["address"], (item.get("client") or {}).get("name"))
+            return any(wanted in (value or "").casefold() for value in fields)
+
         def run():
             with self.database() as connection:
                 items = mail_inbox.inbox(connection, "pending", 200, audience=AUDIENCE)
-            return [i for i in items if kind is None or i["kind"] == kind][:INBOX_LIMIT]
+                if wanted:  # «what has X asked me?» covers what was already handled too
+                    items += mail_inbox.inbox(connection, "done", 200, audience=AUDIENCE)
+            return [i for i in items if (kind is None or i["kind"] == kind) and matches(i)][:INBOX_LIMIT]
         items = await run_in_threadpool(run)
-        self._record({"tool": "inbox", "filter": tipo, "count": len(items)})
+        self._record({"tool": "inbox", "filter": tipo, "sender": bool(wanted), "count": len(items)})
         return json.dumps({
             "correos": [{"tipo": i["kind"], "de": i["from"]["name"] or i["from"]["address"], "asunto": i["subject"],
                          "fecha": i["sentAt"], "resumen": i["summary"], "piden": i["details"].get("asks", []),
                          "importes": i["details"].get("amounts", []), "fechas": i["details"].get("dates", []),
-                         "ambito": i["scope"]["name"] if i["scope"] else None, "accion_propuesta": i["proposal"]} for i in items],
+                         "ambito": i["scope"]["name"] if i["scope"] else None, "accion_propuesta": i["proposal"],
+                         "cliente": (i.get("client") or {}).get("name"), "estado": "pendiente" if i["state"] == "pending" else "hecho"} for i in items],
             "aviso": MAIL_NOTICE,
         }, ensure_ascii=False)
 

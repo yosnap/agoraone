@@ -11,7 +11,7 @@ from decimal import ROUND_HALF_UP, Decimal
 import httpx
 
 API = "https://api.frankfurter.dev/v1"
-TIMEOUT = 10
+TIMEOUT = 4  # per request: with BUDGET, one load waits at most about BUDGET + TIMEOUT seconds
 BUDGET = 5.0  # seconds of network per load: the rest wait for the next one
 RETRY_AFTER = 600  # a failed (day, currency) is not asked again for ten minutes
 _FAILED: dict[tuple[str, str], tuple[float, "ExchangeError"]] = {}
@@ -96,12 +96,19 @@ def income_to_eur(connection: sqlite3.Connection, rows: list[dict], http=None) -
     their date); the original amount stays in the concept. Returns the same notes as `to_eur`."""
     notes = to_eur(connection, rows, "date", http=http)
     for row in rows:
+        foreign = (row.get("currency") or "EUR").upper() != "EUR"
+        if foreign and not row.get("rate") and row.get("base") is not None and row.get("total") in (None, "", "0"):
+            try:  # no total read: the base alone is converted (to_eur only looks at totals)
+                rate, rate_day = eur_rate(connection, row["date"], row["currency"], http=http)
+                row["rate"] = {"eur": rate, "day": rate_day}
+            except ExchangeError:
+                notes.append(f"Una factura emitida en {row['currency']} sin cambio a euros: su base no se ha convertido.")
         rate = row.get("rate")
         if not rate or row.get("base") is None:
             continue
         original = f"{row['currency']} {float(row['base']):.2f}"
         row["base"] = float((Decimal(str(row["base"])) * Decimal(str(rate["eur"]))).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
-        row["total"] = row["totalEur"]
+        row["total"] = row.get("totalEur")
         row["concept"] = f"{row.get('concept') or ''} (base {original}, cambio BCE del {rate['day']})".strip()
         row["currency"] = "EUR"
         row["foreign"] = original
