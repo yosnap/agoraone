@@ -76,7 +76,8 @@ function paletteCss(palette: Palette): string {
     for (const rule of Array.from(rules)) {
       if (rule instanceof CSSMediaRule) walk(rule.cssRules, body => wrap(`@media ${rule.conditionText} { ${body} }`));
       else if (rule instanceof CSSStyleRule) {
-        const declarations = Array.from(rule.style).filter(name => name.startsWith('--c-'))
+        // --c-*: the colour tokens; --deep*: the dark surfaces (side rail, code, the ask box).
+        const declarations = Array.from(rule.style).filter(name => name.startsWith('--c-') || name.startsWith('--deep'))
           .map(name => `${name}: ${shade(rule.style.getPropertyValue(name), palette)};`);
         if (declarations.length) out.push(wrap(`${rule.selectorText} { ${declarations.join(' ')} }`));
       }
@@ -96,7 +97,7 @@ export function applyAppearance(appearance: Appearance) {
   let style = document.getElementById('agora-appearance');
   if (!style) { style = document.createElement('style'); style.id = 'agora-appearance'; document.head.appendChild(style); }
   style.textContent = paletteCss(appearance.palette)
-    + (stack ? `\n:root, body, button, input, textarea, select, h1, h2, h3, h4, .page h1, .page h2 { font-family: ${stack} !important; }
+    + (stack ? `\n:root, body, button, input, textarea, select, h1, h2, h3, h4, .page h1, .page h2, .rail, .rail-item, .rail-label, .rail-brand { font-family: ${stack} !important; }
 code, pre, kbd, .mail-code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace !important; }` : '');
   try { localStorage.setItem(key, JSON.stringify(appearance)); } catch { /* not remembered this time */ }
   window.dispatchEvent(new Event('agora-appearance'));
