@@ -67,7 +67,7 @@ El servidor no acepta SOUL, memoria, herramientas, rutas, proveedor ni historial
 Límites: 6000 caracteres de pregunta y el límite de historial existente. Los documentos y notas adjuntos llegan con las líneas que parecen claves ocultas. Sin sandbox de sistema operativo: el agente actúa con los permisos del perfil, y lo que cambie algo pasa por la confirmación del usuario.
 
 ## Verificación reproducible
-`npm test` comprueba separación entre perfiles/usuarios, relectura, revocación, rechazo de inyección de herramientas/contexto y regresión de Luma. `npm run build` verifica tipos y frontend.
+`pnpm test` comprueba separación entre perfiles/usuarios, relectura, revocación, rechazo de inyección de herramientas/contexto y regresión de Luma. `pnpm build` verifica tipos y frontend.
 
 La prueba real anterior con proveedor de AgoraOne (`scripts/verify-profile-chat.ts`) se retiró en 0.13.0: la sustituye `desktop/server/tests/chat_bridges.rs`, descrita arriba.
 

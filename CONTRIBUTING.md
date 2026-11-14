@@ -11,9 +11,9 @@ Gracias por tu interés. Esta guía explica cómo proponer cambios sin romper la
 ## Entorno de desarrollo
 
 ```sh
-npm ci
+pnpm install --frozen-lockfile
 cp .env.example .env
-npm run dev
+pnpm dev
 ```
 
 Necesitas Rust estable (`cargo`, para el servidor), Node.js 22.12 o superior (para la interfaz), [uv](https://docs.astral.sh/uv/) (para el núcleo) y una instalación de Hermes. Si no quieres usar la tuya, apunta `AGORA_HERMES_HOME` y `AGORA_HERMES_PATH` a una instalación de prueba.
@@ -43,9 +43,9 @@ Antes de abrir una pull request:
 
 ```sh
 cargo test --manifest-path desktop/Cargo.toml
-npm run test:core
-npm test
-npm run build
+pnpm test:core
+pnpm test
+pnpm build
 ```
 
 - Añade pruebas en `desktop/server/tests/` para cualquier cambio de comportamiento del servidor.
