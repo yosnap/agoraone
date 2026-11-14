@@ -16,3 +16,6 @@
 .invoice-doubts { margin:0; padding:9px 11px 9px 28px; border-radius:8px; background:var(--c-f3e6c4); color:var(--c-7a5717); font-size:12px }
 .receipt-upload { flex-direction:row; align-items:center; gap:18px; flex-wrap:wrap }
 .receipt-qr { width:200px; height:200px; flex:none; background:#fff; border-radius:12px; padding:4px }
+.project-note { display:flex; flex-direction:column; gap:10px; margin:10px 0; padding:12px; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fbfaf3) }
+.project-note-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px }
+.project-note textarea { width:100%; font:inherit; font-size:12px; line-height:1.5; resize:vertical }

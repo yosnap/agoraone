@@ -3,6 +3,7 @@ import { archiveAllInbox, createMailRule, decideInbox, getInbox, type InboxCount
 import { LoadError, Loading } from '../ui/load-state';
 import { actionLabels, kindLabels, proposalLabels, sender, when } from './inbox-labels';
 import { InvoiceFiling } from './invoice-filing';
+import { ProjectNote } from './project-note';
 import { ReceiptsPanel } from './receipts-panel';
 import './inbox.css';
 
@@ -22,6 +23,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [filing, setFiling] = useState<number | null>(null);
+  const [noting, setNoting] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
   const clearAll = async () => {
     setNote(''); setClearing(false);
@@ -103,8 +105,11 @@ export function InboxView({ discreet }: { discreet: boolean }) {
           {item.proposal === 'archive_invoice' && item.state === 'pending' ? (filing === item.id
             ? <InvoiceFiling messageId={item.id} onFiled={path => { setFiling(null); setNote(`Factura archivada en ${path}.`); void load(); }}/>
             : <p className="inbox-proposal"><button type="button" className="button" onClick={() => setFiling(item.id)}>{proposalLabels.archive_invoice.label}…</button></p>)
-            : item.proposal && item.proposal !== 'archive_invoice' && <p className="inbox-proposal"><button type="button" className="button" disabled title="Pendiente">{proposalLabels[item.proposal].label}</button>
-            <span className="muted">Pendiente: {proposalLabels[item.proposal].arrives}.</span></p>}
+            : (item.proposal === 'add_to_project' || item.client) && item.state === 'pending' ? (noting === item.id
+              ? <ProjectNote item={item} onCancel={() => setNoting(null)} onDone={done => { setNoting(null); setNote(done); void load(); }}/>
+              : <p className="inbox-proposal"><button type="button" className="button" onClick={() => setNoting(item.id)}>{proposalLabels.add_to_project.label}…</button></p>)
+            : item.proposal === 'create_event' && <p className="inbox-proposal"><button type="button" className="button" disabled title="Pendiente">{proposalLabels.create_event.label}</button>
+            <span className="muted">Pendiente: {proposalLabels.create_event.arrives}.</span></p>}
           <div className="inbox-actions">
             {item.state === 'pending' ? <>
               <button type="button" className="button primary" onClick={() => void decide(item, 'done')}>Hecho</button>
