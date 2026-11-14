@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import fiscal, fiscal_excel, fiscal_folder, fiscal_scan, invoice_extract, mail, qonto, receipts
+from . import exchange, fiscal, fiscal_excel, fiscal_folder, fiscal_scan, invoice_extract, mail, qonto, receipts
 from .db import DB_NAME, connect, now, transaction
 from .routes_mail import microsoft_login
 from .settings import Settings
@@ -347,6 +347,7 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
                     notes.append(f"Qonto tiene {len(in_qonto)} facturas emitidas este trimestre y la carpeta {len(found_income)}: falta guardar alguna en «Facturas Salientes».")
             except qonto.QontoError:
                 pass
+        notes += exchange.to_eur(connection, expenses, "issuedOn")
         if counts["unreadable"]:
             notes.append(f"{counts['unreadable']} facturas de la carpeta no se pudieron leer (escaneadas sin texto, protegidas o dañadas): revísalas a mano.")
         if counts["duplicates"]:
@@ -364,9 +365,8 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         if missing := sum(1 for e in expenses if not e["taxId"]):
             notes.append(f"{missing} facturas recibidas sin NIF del proveedor.")
         if foreign := sum(1 for e in expenses if e["currency"] != "EUR"):
-            notes.append(f"{foreign} facturas recibidas en otra moneda: van aparte y no suman al IVA en euros.")
-        if others := sum(1 for e in expenses if e["currency"] not in ("EUR", "USD")):
-            notes.append(f"{others} de ellas no están en euros ni en dólares: el Excel no las suma en ningún total.")
+            notes.append(f"{foreign} facturas recibidas en otra moneda: se convierten a euros con el cambio oficial del BCE de su fecha "
+                         "(columna «Total EUR» del Excel); no suman al IVA español.")
         if plain := sum(1 for e in expenses if not e["base"] and not e["vat"]):
             notes.append(f"{plain} facturas recibidas sin base ni IVA desglosados: revísalas antes de presentar.")
         return {"folder": folder, "root": root, "income": income, "incomeProblem": problem, "expenses": expenses, "notes": notes,

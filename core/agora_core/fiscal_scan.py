@@ -131,8 +131,13 @@ def _name(path: Path, rest: list[str]) -> str:
 
 
 def _day(fields: dict, start: str, end: str) -> tuple[str, bool]:
+    """The invoice's date, or another date of it within the quarter (a receipt issued later than the
+    payment it records), or the start of the quarter, said as a guess."""
     day = fields.get("issuedOn")
-    return (day, False) if day and start <= day <= end else (start, True)
+    if day and start <= day <= end:
+        return day, False
+    inside = next((d for d in fields.get("dates", []) if start <= d <= end), None)
+    return (inside, False) if inside else (start, True)
 
 
 def own_tax_id(connection: sqlite3.Connection, folder_id: int) -> str | None:

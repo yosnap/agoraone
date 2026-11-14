@@ -28,6 +28,7 @@ _TAX_ID = re.compile(r"\b(?:ES)?([A-HJNP-SUVW]\d{7}[0-9A-J]|\d{8}[A-Z]|[XYZ]\d{7
 _TOTAL = re.compile(r"(?:total(?!\s*(?:de\s+)?(?:iva|vat|tax|impuestos?|igic))(?:\s+a\s+pagar|\s+factura|\s+amount|\s+due|\s+paid)?|importe\s+total|amount\s+paid|gesamt(?:betrag)?)"
                     r"[^\d\n]{0,25}(\d{1,3}(?:[.,\s]\d{3})*(?:[.,]\d{2})|\d+(?:[.,]\d{2}))", re.I)
 _DATE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)|(?<!\d)(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?!\d)")
+_TWO_DECIMALS = r"(?<![\d.,])(\d{1,3}(?:,\d{3})+\.\d{2}|\d{1,3}(?:[. ]\d{3})+,\d{2}|\d+[.,]\d{2})(?![\d.,]*\s?%)(?!\d)"
 _CURRENCY = re.compile(r"(€|EUR|USD|\$|GBP|£)")
 EXTRACT_SECONDS = 20
 # Like the library's extractor: no network, no writes, no child processes, and no reading the contents of
@@ -135,8 +136,8 @@ def pdf_text(data: bytes, runner=subprocess.run) -> str:
 
 _MONTHS = {"ene": 1, "jan": 1, "feb": 2, "mar": 3, "abr": 4, "apr": 4, "may": 5, "jun": 6, "jul": 7, "ago": 8, "aug": 8,
            "sep": 9, "set": 9, "oct": 10, "nov": 11, "dic": 12, "dec": 12}
-_WORD_DATE = re.compile(r"(?<!\d)(\d{1,2})(?:\s+de)?\s+([a-zA-Zé]{3,10})\.?(?:\s+de)?,?\s+(\d{4})(?!\d)|"
-                        r"\b([a-zA-Z]{3,10})\.?\s+(\d{1,2}),?\s+(\d{4})(?!\d)")
+_WORD_DATE = re.compile(r"(?<!\d)(\d{1,2})(?:st|nd|rd|th)?(?:\s+de)?\s+([a-zA-Zé]{3,10})\.?(?:\s+de)?,?\s+(\d{4})(?!\d)|"
+                        r"\b([a-zA-Z]{3,10})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})(?!\d)")
 
 
 def _dates(text: str) -> list[tuple[str, bool]]:
@@ -164,13 +165,21 @@ def _dates(text: str) -> list[tuple[str, bool]]:
 def fields(text: str) -> dict:
     """What local rules find in an invoice's text: tax id, date, total and currency (any may be missing)."""
     tax = _TAX_ID.search(text.upper())
-    totals = [amount(m) for m in _TOTAL.findall(text)]
+    totals = []
+    for match in _TOTAL.finditer(text):
+        # «Total: 8.00 70.78 EUR»: the figure next to the currency, at the end of the line, is the total.
+        line_end = text.find("\n", match.end())
+        rest = text[match.end(): line_end if line_end >= 0 else None]
+        later = [amount(a) for a in re.findall(_TWO_DECIMALS, rest)]
+        totals.append(later[-1] if later else amount(match[1]))
     if not any(totals):
-        # Labels and amounts in separate columns, or a receipt without a «Total» line: the amount written most
-        # often with its currency (a total repeats), the largest on a tie; never the company's share capital.
+        # Labels and amounts in separate columns, or a receipt without a «Total» line: among the amounts written
+        # with their currency (and two decimals: «1.579 €/l» is a price per litre), the one written most often,
+        # the largest on a tie; never the company's share capital.
         lines = [line for line in text.splitlines() if not re.search(r"capital\s+social|share\s+capital|registro\s+mercantil|registro\s+comercial", line, re.I)]
-        marked = [amount(a or b) for line in lines for a, b in _MONEY_NEAR.findall(line)]
-        marked = [m for m in marked if m]
+        found = [a or b for line in lines for a, b in _MONEY_NEAR.findall(line)]
+        two = [amount(m) for m in found if re.search(r"[.,]\d{2}$", m)]
+        marked = [m for m in (two or [amount(m) for m in found]) if m]
         if marked:
             counts = {m: marked.count(m) for m in marked}
             totals = [max(counts, key=lambda m: (counts[m], float(m)))]
@@ -181,6 +190,7 @@ def fields(text: str) -> dict:
         "taxId": (tax[1] or tax[2]) if tax else None,
         "total": next((t for t in reversed(totals) if t), None),
         "issuedOn": dates[0][0] if dates else None,
+        "dates": sorted({d for d, _ in dates})[:12],
         "dateAmbiguous": bool(dates and dates[0][1]),
         "currency": {"€": "EUR", "$": "USD", "£": "GBP"}.get(symbol, symbol),
     }
@@ -224,7 +234,7 @@ _IRPF = re.compile(r"(?:IRPF|retenci[oó]n)[^\d\n%]{0,12}-?\s?(\d{1,2}(?:[.,]\d{
 _NUMBER = re.compile(r"(?:factura|invoice|n[º°o]\.?\s*de\s*factura)\s*(?:n[º°o.]*|number|num\.?|#)?\s*[:\-]?\s*(?!\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})([A-Z]{0,4}[\-/]?\d[\w\-/]{0,20})", re.I)
 
 
-VERSION = 5  # bump when the reading rules change: files read with older rules are read again
+VERSION = 6  # bump when the reading rules change: files read with older rules are read again
 
 
 _LEGAL = re.compile(r"\b(limited|ltd|llc|inc|gmbh|s\.?\s?l\.?u?|s\.?\s?a\.?u?|b\.?v\.?|sas|sarl|ag|plc|oy|ab|d\.o\.o\.|corp(oration)?)\b\.?", re.I)

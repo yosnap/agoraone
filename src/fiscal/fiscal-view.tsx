@@ -61,7 +61,10 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
     <button type="button" className="button" title="Mostrar en Finder" onClick={() => void reveal(path, true)}>Finder</button></span> : null;
   const years = Array.from({ length: 4 }, (_, i) => currentQuarter().year - i);
   const totalIn = view?.income.reduce((sum, row) => sum + (row.base ?? 0), 0) ?? 0;
-  const totalOut = view?.expenses.filter(e => e.currency === 'EUR').reduce((sum, row) => sum + Number(row.total), 0) ?? 0;
+  // Spent, in euros: foreign-currency invoices count with their ECB rate (when it could be fetched).
+  const euros = (row: { currency: string; total: string | number; totalEur?: number }) => row.currency === 'EUR' ? Number(row.total) : row.totalEur ?? 0;
+  const totalOut = view?.expenses.reduce((sum, row) => sum + euros(row as never), 0) ?? 0;
+  const totalBase = view?.income.reduce((sum, row) => sum + (row.total !== null ? Number(row.total) : 0), 0) ?? 0;
   return <section className="page fiscal" aria-labelledby="fiscal-title">
     <div className="eyebrow">FISCAL{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="fiscal-title">Fiscal</h1>
@@ -80,8 +83,8 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
         <button type="button" className="button" onClick={() => void reveal(made, true)}>Mostrar en Finder</button></div>}
       {folderId && !view && !error ? <Loading label="Leyendo el trimestre" lines={4}/> : view && <>
         <div className="fiscal-totals">
-          <article className="card"><span className="muted">Facturado (base)</span><strong>{discreet ? '•••' : money(totalIn)}</strong><small className="muted">{view.income.length} facturas emitidas</small></article>
-          <article className="card"><span className="muted">Gastado (total en euros)</span><strong>{discreet ? '•••' : money(totalOut)}</strong><small className="muted">{view.expenses.length} facturas recibidas</small></article>
+          <article className="card"><span className="muted">Facturado (base)</span><strong>{discreet ? '•••' : money(totalIn)}</strong><small className="muted">{view.income.length} facturas emitidas · {discreet ? '•••' : money(totalBase)} cobrado con IVA e IRPF</small></article>
+          <article className="card"><span className="muted">Gastado (total en euros, con el cambio del BCE)</span><strong>{discreet ? '•••' : money(totalOut)}</strong><small className="muted">{view.expenses.length} facturas recibidas</small></article>
         </div>
         {view.incomeProblem && <p className="fiscal-warning">{view.incomeProblem}</p>}
         {view.notes.map(n => <p key={n} className="fiscal-warning">{n}</p>)}
@@ -99,7 +102,7 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
               <td>{row.vatRate !== null ? `${Math.round((row.vatRate > 1 ? row.vatRate : row.vatRate * 100))} %` : '—'}</td><td>{money(row.total, row.currency)}</td><td>{fileButtons((row as { file?: string }).file)}</td></tr>)}</tbody></table></div>}
           <h2>Gastos · facturas recibidas</h2>
           {view.expenses.length === 0 ? <p className="muted">Ninguna archivada en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>NIF</th><th>Total</th><th>Dudas</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>
-            <tbody>{view.expenses.map(row => <tr key={row.id}><td>{day(row.issuedOn)}</td><td>{row.supplier}</td><td>{row.taxId ?? '—'}</td><td>{money(row.total, row.currency)}</td>
+            <tbody>{view.expenses.map(row => <tr key={row.id}><td>{day(row.issuedOn)}</td><td>{row.supplier}</td><td>{row.taxId ?? '—'}</td><td>{money(row.total, row.currency)}{(row as { totalEur?: number }).totalEur !== undefined && <small className="muted fiscal-eur">≈ {money((row as { totalEur?: number }).totalEur)}</small>}</td>
               <td>{row.doubts.length ? row.doubts.join(' ') : '—'}</td><td>{fileButtons((row as { file?: string }).file ?? row.path)}</td></tr>)}</tbody></table></div>}
         </>}
       </>}

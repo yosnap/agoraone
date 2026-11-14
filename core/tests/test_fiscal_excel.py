@@ -139,3 +139,25 @@ def test_texto_de_terceros_nunca_es_formula():
     assert book["Gastos"]["D5"].data_type == "s" and book["Gastos"]["D5"].value.startswith("=HYPERLINK")
     assert book["Gastos"]["L5"].value == "@SUM(A1)" and book["Ingresos"]["D5"].data_type == "s"
     assert book["Resumen"]["A2"].data_type == "s"
+
+
+def test_cambio_a_euros_del_bce(tmp_path):
+    from agora_core import exchange
+    from agora_core.db import connect, migrate
+    connection = connect(tmp_path / "a.db")
+    migrate(connection)
+    calls = []
+
+    def http(url, params):
+        calls.append(url)
+        return Answer(200, {"date": "2026-09-12", "rates": {"EUR": 0.9}})
+    rows = [{"issuedOn": "2026-09-13", "total": "11.95", "currency": "USD"}, {"issuedOn": "2026-09-13", "total": "5.00", "currency": "EUR"}]
+    assert exchange.to_eur(connection, rows, "issuedOn", http=http) == []
+    assert rows[0]["totalEur"] == 10.76 and rows[0]["rate"] == {"eur": 0.9, "day": "2026-09-12"} and "totalEur" not in rows[1]
+    exchange.to_eur(connection, [{"issuedOn": "2026-09-13", "total": "1", "currency": "USD"}], "issuedOn", http=http)
+    assert len(calls) == 1, "cada cambio se pide una vez"
+    offline = [{"issuedOn": "2026-09-14", "total": "1", "currency": "GBP"}]
+    assert exchange.to_eur(connection, offline, "issuedOn", http=lambda u, p: (_ for _ in ()).throw(__import__("httpx").ConnectError("x")))
+    book = openpyxl.load_workbook(io.BytesIO(fiscal_excel.build(2026, 3, "T", [], rows, [])))
+    assert book["Gastos"]["M4"].value == "Total EUR (cambio BCE)" and book["Gastos"]["M5"].value == 10.76 and book["Gastos"]["M6"].value == 5.0
+    assert "Cambio BCE del 2026-09-12" in book["Gastos"]["L5"].value and book["Resumen"]["D18"].value.startswith("=SUMIFS(Gastos!M")

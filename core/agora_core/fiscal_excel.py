@@ -102,12 +102,14 @@ def build(year: int, quarter: int, holder: str, income: list[dict], expenses: li
     # Gastos
     _title(gastos, f"REGISTRO DE FACTURAS RECIBIDAS — {span}", holder)
     _header(gastos, 4, ["Mes", "Fecha", "Nº factura / recibo", "Proveedor", "NIF proveedor", "Concepto", "Base imponible", "% IVA",
-                        "Cuota IVA", "Total", "Moneda", "Notas"])
+                        "Cuota IVA", "Total", "Moneda", "Notas", "Total EUR (cambio BCE)"])
     for row in expenses:
         base, vat = _number(row.get("base")), _number(row.get("vat"))
         rate = round(vat / base, 2) if base and vat is not None else None
         gastos.append(_clean([_month(row["issuedOn"]), _dmy(row["issuedOn"]), row.get("number") or "", row.get("supplier"), row.get("taxId") or "—",
-                       row.get("concept") or "", base, rate, vat, _number(row.get("total")), row.get("currency") or "EUR", row.get("notes") or ""]))
+                       row.get("concept") or "", base, rate, vat, _number(row.get("total")), row.get("currency") or "EUR",
+                       " ".join(filter(None, [row.get("notes") or "", f"Cambio BCE del {row['rate']['day']}: {row['rate']['eur']:.4f}" if row.get("rate") else ""])),
+                       _number(row.get("totalEur")) if row.get("currency", "EUR") != "EUR" else _number(row.get("total"))]))
         _literal(gastos, gastos.max_row)
     last_out = max(first, first + len(expenses) - 1)
     for offset, currency in enumerate(("EUR", "USD"), 1):
@@ -145,6 +147,8 @@ def build(year: int, quarter: int, holder: str, income: list[dict], expenses: li
     summary["A17"] = "Gastos en USD (aparte)"
     for column, source in zip("BCD", "GIJ"):
         summary[f"{column}17"] = f'=SUMIFS(Gastos!{source}${first}:{source}${last_out},Gastos!$K${first}:$K${last_out},"USD")'
+    summary["A18"] = "Gastos en otras monedas, en euros (cambio BCE)"
+    summary["D18"] = f'=SUMIFS(Gastos!M${first}:M${last_out},Gastos!$K${first}:$K${last_out},"<>EUR")'
     summary["A19"] = "CIFRAS CLAVE DEL TRIMESTRE"
     summary["A19"].font = Font(bold=True)
     for r, (label, formula) in enumerate([
@@ -158,7 +162,7 @@ def build(year: int, quarter: int, holder: str, income: list[dict], expenses: li
         summary[f"A{26 + n}"].data_type = "s"
 
     # Formats, as in the user's own register
-    for sheet, money_columns in ((summary, "BCDE"), (ingresos, "GIKL"), (gastos, "GIJ")):
+    for sheet, money_columns in ((summary, "BCDE"), (ingresos, "GIKL"), (gastos, "GIJM")):
         for row in sheet.iter_rows(min_row=5):
             for cell in row:
                 if cell.column_letter in money_columns:
@@ -170,7 +174,7 @@ def build(year: int, quarter: int, holder: str, income: list[dict], expenses: li
     for column in "BCDE":
         summary.column_dimensions[column].width = 16
     for sheet in (ingresos, gastos):
-        for column, width in zip("ABCDEFGHIJKL", (11, 11, 21, 32, 13, 48, 13, 7, 11, 11, 8, 50)):
+        for column, width in zip("ABCDEFGHIJKLM", (11, 11, 21, 32, 13, 48, 13, 7, 11, 11, 8, 50, 14)):
             sheet.column_dimensions[column].width = width
     out = io.BytesIO()
     book.save(out)
