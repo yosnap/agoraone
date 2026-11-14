@@ -359,3 +359,43 @@ def _read_inbox(connection: sqlite3.Connection, account: sqlite3.Row, client, ba
             connection.execute("ROLLBACK")
             raise
     return added
+
+
+def fetch_raw(connection: sqlite3.Connection, message_id: int, password: str | None, opener=open_imap, login=None) -> bytes:
+    """The whole stored message again from its server, read-only (EXAMINE and BODY.PEEK), for an attachment
+    the user asked for. Raises MailError with a plain reason when it is no longer there."""
+    row = connection.execute(
+        "SELECT m.uid, m.uidvalidity, m.folder, a.* FROM mail_message m JOIN mail_account a ON a.id = m.account_id WHERE m.id = ?",
+        (message_id,),
+    ).fetchone()
+    if row is None:
+        raise MailError("Ese correo ya no está guardado.")
+    if not password:
+        raise MailError("Falta la contraseña o la conexión de esa cuenta.")
+    try:
+        client = opener(row["imap_host"], row["imap_port"])
+    except (OSError, socket.timeout, ssl.SSLError) as error:
+        raise MailError(f"No se pudo conectar con {row['imap_host']}.") from error
+    try:
+        if row["auth"] == "microsoft":
+            if login is None:
+                raise MailError("Falta el identificador de la aplicación de Microsoft en Ajustes.")
+            login(client, row, password)
+        else:
+            client.login(row["username"], password)
+        typ, _ = client.select(row["folder"], readonly=True)
+        validity = client.response("UIDVALIDITY")[1]
+        if typ != "OK" or not validity or int(validity[0]) != row["uidvalidity"]:
+            raise MailError("El buzón cambió desde que se leyó este correo.")
+        typ, data = client.uid("FETCH", str(row["uid"]), f"(UID BODY.PEEK[]<0.{MAX_MESSAGE}>)")
+        raw = next((literal for meta, literal in _fetched(data) if literal is not None), None) if typ == "OK" else None
+        if raw is None:
+            raise MailError("El correo ya no está en el servidor.")
+        return raw
+    except (imaplib.IMAP4.error, LoginError, OSError) as error:
+        raise MailError("El servidor no entregó el correo; inténtalo más tarde.") from error
+    finally:
+        try:
+            client.logout()
+        except Exception:
+            pass
