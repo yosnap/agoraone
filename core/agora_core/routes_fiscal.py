@@ -4,6 +4,7 @@ explicit request with the exact fields or moves they saw."""
 
 import asyncio
 import json
+import re
 import sqlite3
 from contextlib import aclosing
 from contextlib import contextmanager
@@ -103,6 +104,12 @@ class QuarterIn(BaseModel):
 class OpenIn(BaseModel):
     path: str | None = Field(default=None, max_length=1000)
     reveal: StrictBool = False
+
+
+class QontoDownloadIn(BaseModel):
+    year: StrictInt = Field(ge=2000, le=2100)
+    quarter: StrictInt = Field(ge=1, le=4)
+    numbers: list[Annotated[str, Field(max_length=60)]] = Field(min_length=1, max_length=200)
 
 
 class ReadingIn(BaseModel):
@@ -393,37 +400,49 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
                     problem = str(error)
             else:
                 problem = "No hay facturas emitidas en «Facturas Salientes» para este trimestre."
-        elif auth and not in_flight:
-            try:  # the folder is the source; Qonto only warns if it knows of more issued invoices
-                in_qonto = {r["number"] for r in qonto.issued_invoices(auth, start, end)[0] if r["number"]}
-                if len(in_qonto) > len(found_income):
-                    notes.append(f"Qonto tiene {len(in_qonto)} facturas emitidas este trimestre y la carpeta {len(found_income)}: falta guardar alguna en «Facturas Salientes».")
+        issues: list[dict] = []
+
+        def issue(key: str, text: str, items: list[dict]) -> None:
+            if items:
+                issues.append({"key": key, "text": text.format(n=len(items)), "items": items[:500]})
+
+        def files(paths: list[str]) -> list[dict]:
+            return [{"label": p.split("/")[-1], "detail": "/".join(p.split("/")[:-1]), "path": p} for p in paths]
+
+        def rows(found: list[dict], why) -> list[dict]:
+            return [{"label": f"{r.get('supplier') or r.get('client') or ''} · {r.get('total') or '—'} {r.get('currency') or ''}".strip(" ·"),
+                     "detail": why(r), "path": r.get("file") or r.get("path")} for r in found]
+        if found_income and auth and not in_flight:
+            try:  # the folder is the source; Qonto says which issued invoices are missing from it
+                numbers = {re.sub(r"\W", "", str(r.get("number") or "")).upper() for r in found_income}
+                in_qonto = [r for r in qonto.issued_invoices(auth, start, end)[0] if r["number"]]
+                missing_qonto = {r["number"]: r for r in in_qonto if re.sub(r"\W", "", r["number"]).upper() not in numbers}
+                issue("qonto", "Qonto tiene {n} facturas emitidas este trimestre que no están en «Facturas Salientes».",
+                      [{"label": f"{r['number']} · {r['client']}", "detail": f"{r['date']} · {r.get('base')} {r['currency']}", "qonto": r["number"]}
+                       for r in missing_qonto.values()])
             except qonto.QontoError:
                 pass
         notes += exchange.to_eur(connection, expenses, "issuedOn")
-        if counts["unreadable"]:
-            notes.append(f"{counts['unreadable']} facturas de la carpeta no se pudieron leer (escaneadas sin texto, protegidas o dañadas): revísalas a mano.")
-        if counts["duplicates"]:
-            notes.append(f"{counts['duplicates']} archivos repetidos se han contado una sola vez.")
-        if counts["unplaced"]:
-            notes.append(f"{counts['unplaced']} archivos de Facturas Entrantes o Salientes están en carpetas que no dicen año y trimestre: no entran en ningún trimestre.")
-        if counts["noVat"]:
-            notes.append(f"{counts['noVat']} facturas emitidas sin tipo de IVA leído: su base y su IVA quedan sin calcular; revísalas.")
+        issue("unreadable", "{n} facturas de la carpeta no se pudieron leer (protegidas o dañadas): revísalas a mano.", files(counts["unreadable"]))
+        issue("duplicates", "{n} archivos repetidos se han contado una sola vez.", files(counts["duplicates"]))
+        issue("unplaced", "{n} archivos de Facturas Entrantes o Salientes están en carpetas que no dicen año y trimestre: no entran en ningún trimestre.",
+              files(counts["unplaced"]))
+        issue("noVat", "{n} facturas emitidas sin tipo de IVA leído: revisa su base y su IVA.", files(counts["noVat"]))
         if in_flight:
             notes.insert(0, f"Leyendo {in_flight} facturas de la carpeta: el trimestre se completa solo en unos minutos.")
-        if guessed := sum(1 for r in income if r.get("guessedDate")) + sum(1 for e in found_expenses if "Fecha no leída" in e["notes"]):
-            notes.append(f"{guessed} facturas sin fecha legible: se han puesto al inicio del trimestre.")
-        if images := sum(1 for e in found_expenses if "imagen" in e["notes"]):
-            notes.append(f"{images} facturas en imagen: sus importes hay que revisarlos a mano.")
-        if missing := sum(1 for e in expenses if not e["taxId"]):
-            notes.append(f"{missing} facturas recibidas sin NIF del proveedor.")
-        if foreign := sum(1 for e in expenses if e["currency"] != "EUR"):
-            notes.append(f"{foreign} facturas recibidas en otra moneda: se convierten a euros con el cambio oficial del BCE de su fecha "
-                         "(columna «Total EUR» del Excel); no suman al IVA español.")
-        if plain := sum(1 for e in expenses if not e["base"] and not e["vat"]):
-            notes.append(f"{plain} facturas recibidas sin base ni IVA desglosados: revísalas antes de presentar.")
+        issue("dates", "{n} facturas sin fecha legible: se han puesto al inicio del trimestre.",
+              rows([r for r in income if r.get("guessedDate")] + [e for e in found_expenses if "Fecha no leída" in e["notes"]], lambda r: "Fecha puesta al inicio del trimestre"))
+        issue("otherQuarter", "{n} facturas con fecha de otro trimestre guardadas en la carpeta de este: cuentan aquí.",
+              rows([e for e in found_expenses if "otro trimestre" in e["notes"]], lambda r: f"Fecha {r['issuedOn']}"))
+        issue("images", "{n} facturas en imagen sin leer: revisa sus importes a mano.", rows([e for e in found_expenses if "Factura en imagen" in e["notes"]], lambda r: "Imagen"))
+        issue("noTaxId", "{n} facturas recibidas sin NIF del proveedor.", rows([e for e in expenses if not e["taxId"]], lambda r: r.get("issuedOn", "")))
+        issue("foreign", "{n} facturas recibidas en otra moneda: se convierten a euros con el cambio oficial del BCE de su fecha (columna «Total EUR» del Excel); no suman al IVA español.",
+              rows([e for e in expenses if e["currency"] != "EUR"], lambda r: f"≈ {r.get('totalEur', '—')} EUR · cambio del {(r.get('rate') or {}).get('day', '—')}"))
+        issue("plain", "{n} facturas recibidas sin base ni IVA desglosados: revísalas antes de presentar.",
+              rows([e for e in expenses if not e["base"] and not e["vat"]], lambda r: r.get("issuedOn", "")))
+        notes += [i["text"] for i in issues]
         return {"folder": folder, "root": root, "income": income, "incomeProblem": problem, "expenses": expenses, "notes": notes,
-                "reading": in_flight}
+                "issues": issues, "reading": in_flight, "qontoMissing": [i["qonto"] for x in issues if x["key"] == "qonto" for i in x["items"]]}
 
     @router.get("/fiscal/folders/{folder_id}/quarter")
     async def quarter_view(folder_id: int, year: int, quarter: int):
@@ -445,6 +464,38 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         try:
             return await db(work)
         except fiscal.FiscalError as error:
+            return refuse(error)
+
+    @router.post("/fiscal/folders/{folder_id}/qonto-download", status_code=201)
+    async def qonto_download(folder_id: int, body: QontoDownloadIn):
+        """Saves in «Facturas Salientes/año/NT/» the PDF of the issued invoices Qonto has and the folder lacks
+        (only those the user asked for, never over another file)."""
+        def work(connection):
+            folder, root = professional_root(connection, folder_id)
+            auth = qonto_auth(connection)
+            if not auth:
+                raise fiscal.FiscalError("Qonto no está conectado (Ajustes › Qonto).")
+            start, end = fiscal_excel.quarter_range(body.year, body.quarter)
+            wanted = set(body.numbers)
+            saved, failed = [], []
+            for row in qonto.issued_invoices(auth, start, end)[0]:
+                if row["number"] not in wanted or row["number"] in {s["number"] for s in saved}:
+                    continue
+                try:
+                    data = qonto.invoice_pdf(auth, row)
+                except qonto.QontoError as error:
+                    failed.append({"number": row["number"], "error": str(error)})
+                    continue
+                safe = re.sub(r"[^\w\-]+", "-", row["number"]).strip("-") or "factura"
+                target = fiscal._free(fiscal.inside(root, f"{fiscal.ISSUED}/{body.year}/{body.quarter}T/{safe}.pdf"))
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with open(target, "xb") as handle:
+                    handle.write(data)
+                saved.append({"number": row["number"], "path": str(target.relative_to(root))})
+            return {"saved": saved, "failed": failed}
+        try:
+            return await db(work)
+        except (fiscal.FiscalError, qonto.QontoError) as error:
             return refuse(error)
 
     @router.post("/fiscal/folders/{folder_id}/excel", status_code=201)

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { getFiscalFolders, getQuarter, makeQuarterExcel, openFiscalFile, type FiscalFolder, type QuarterView } from '../api/core';
+import { downloadFromQonto, getFiscalFolders, getQuarter, makeQuarterExcel, openFiscalFile, type FiscalIssue, type FiscalFolder, type QuarterView } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import './fiscal.css';
@@ -27,6 +27,8 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [made, setMade] = useState<string | null>(null);
+  const [detail, setDetail] = useState<FiscalIssue | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const asked = useRef(false);
   const request = useRef(0);
   // While invoices are still being read, the quarter refreshes itself every few seconds (no need to press anything).
@@ -75,6 +77,29 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
   const euros = (row: { currency: string; total: string | number; totalEur?: number }) => row.currency === 'EUR' ? Number(row.total) : row.totalEur ?? 0;
   const totalOut = view?.expenses.reduce((sum, row) => sum + euros(row as never), 0) ?? 0;
   const totalBase = view?.income.reduce((sum, row) => sum + (row.total !== null ? Number(row.total) : 0), 0) ?? 0;
+  const fetchFromQonto = async (numbers: string[]) => {
+    if (!folderId) return;
+    setDownloading(true); setError(''); setNote('');
+    try {
+      const done = await downloadFromQonto(folderId, period.year, period.quarter, numbers);
+      setNote(`${done.saved.length} facturas descargadas de Qonto en «Facturas Salientes»${done.failed.length ? `; ${done.failed.length} no se pudieron (${done.failed[0].error})` : ''}.`);
+      setDetail(null); void load(folderId, period.year, period.quarter);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo descargar de Qonto.'); }
+    finally { setDownloading(false); }
+  };
+  if (detail) return <section className="page fiscal" aria-labelledby="fiscal-detail" ref={holder}>
+    <button type="button" className="button" onClick={() => setDetail(null)}>‹ Volver a Fiscal</button>
+    <div className="eyebrow">FISCAL · {folder?.name} · {period.quarter}T {period.year}</div>
+    <h1 id="fiscal-detail">Detalle del aviso</h1>
+    <p className="page-lead">{detail.text}</p>
+    {detail.key === 'qonto' && <p><button type="button" className="button primary" disabled={downloading}
+      onClick={() => void fetchFromQonto(detail.items.map(item => item.qonto!).filter(Boolean))}>{downloading ? 'Descargando…' : `Descargar de Qonto las ${detail.items.length}`}</button></p>}
+    {error && <LoadError message={error}/>}
+    <div className="fiscal-table"><table><thead><tr><th>Documento</th><th>Detalle</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
+      <tbody>{detail.items.map((item, index) => <tr key={index}><td>{discreet ? '•••' : item.label}</td><td className="fiscal-detail-path">{item.detail}</td>
+        <td>{item.qonto ? <button type="button" className="button" disabled={downloading} onClick={() => void fetchFromQonto([item.qonto!])}>Descargar</button> : fileButtons(item.path ?? undefined)}</td></tr>)}</tbody></table></div>
+    {detail.items.length >= 500 && <p className="muted">Se muestran los 500 primeros.</p>}
+  </section>;
   return <section className="page fiscal" aria-labelledby="fiscal-title" ref={holder}>
     <div className="eyebrow">FISCAL{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="fiscal-title">Fiscal</h1>
@@ -97,7 +122,9 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
           <article className="card"><span className="muted">Gastado (total en euros, con el cambio del BCE)</span><strong>{discreet ? '•••' : money(totalOut)}</strong><small className="muted">{view.expenses.length} facturas recibidas</small></article>
         </div>
         {view.incomeProblem && <p className="fiscal-warning">{view.incomeProblem}</p>}
-        {view.notes.map(n => <p key={n} className="fiscal-warning">{n}</p>)}
+        {view.notes.filter(n => !view.issues.some(i => i.text === n)).map(n => <p key={n} className="fiscal-warning">{n}</p>)}
+        {view.issues.map(issue => <button key={issue.key} type="button" className="fiscal-warning fiscal-issue" onClick={() => setDetail(issue)}>
+          <span>{issue.text}</span><span className="fiscal-issue-more">Ver el detalle ›</span></button>)}
         <div className="fiscal-actions">{confirming ? <span className="field-row" role="group" aria-label="Confirmar Excel">
           <span>Se guardará en «{folder?.name}» como <code>Registro-{period.quarter}T-{period.year}-….xlsx</code> (si existe, con un número; nunca se sobrescribe).</span>
           <button type="button" className="button primary" onClick={() => void excel()}>Generar</button>

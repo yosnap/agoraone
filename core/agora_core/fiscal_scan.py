@@ -271,7 +271,8 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
             read[path] = fields
     own = own_tax_id(connection, folder_id)
     seen = set(known_files or ())
-    counts = {"unreadable": 0, "duplicates": 0, "unplaced": len(unplaced), "noVat": 0,
+    rel = lambda p: str(p.relative_to(root))  # noqa: E731
+    counts = {"unreadable": [], "duplicates": [], "unplaced": [rel(p) for p in unplaced], "noVat": [],
               # read by the local rules but not yet by the model (the app closed mid-way, or the model was off)
               "modelPending": [p for p, f in read.items() if not f.get("ai") and not f.get("aiTried") and not f.get("unreadable")]}
 
@@ -280,20 +281,20 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
             return fields["otherTaxId"]
         return next((t for t in fields.get("taxIds", []) if t and t != own), None)
 
-    def fresh(fields: dict) -> bool:
+    def fresh(path: Path, fields: dict) -> bool:
         digest = fields.get("sha256")
         if digest and digest in seen:
-            counts["duplicates"] += 1
+            counts["duplicates"].append(rel(path))
             return False
         if digest:
             seen.add(digest)
         if fields.get("unreadable"):
-            counts["unreadable"] += 1
+            counts["unreadable"].append(rel(path))
             return False
         return True
     income, expenses = [], []
     for path, rest in issued:
-        if path not in read or not fresh(read[path]):
+        if path not in read or not fresh(path, read[path]):
             continue
         fields = _merged(read[path], issued=True)
         day, guessed = _day(fields, start, end)
@@ -302,7 +303,7 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
         if base is None and total is not None and vat_rate is not None:  # total = base + VAT − withholding
             base = str(round(float(total) / (1 + vat_rate - irpf_rate), 2))
         if vat_rate is None:
-            counts["noVat"] += 1
+            counts["noVat"].append(rel(path))
         client_tax = other(fields)
         # The customer is named after the holder's block; never the holder (the file name often carries the holder's name).
         client = fields.get("otherName") or ((fields.get("after") or {}).get(own) if own else None)
@@ -313,7 +314,7 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
                        "vatRate": vat_rate or 0.0, "withholdingRate": irpf_rate, "total": total, "currency": fields.get("currency") or "EUR",
                        "guessedDate": guessed, "file": str(path.relative_to(root))})
     for path, rest in received:
-        if path not in read or not fresh(read[path]):
+        if path not in read or not fresh(path, read[path]):
             continue
         fields, relative = _merged(read[path], issued=False), str(path.relative_to(root))
         day, guessed = _day(fields, start, end)

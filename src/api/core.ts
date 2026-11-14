@@ -210,7 +210,10 @@ export const putQonto = (changes: { login?: string | null; secret?: string | nul
 export const checkQonto = () => core<{ name: string | null; accounts: number }>('/fiscal/qonto/check', {});
 export type IncomeRow = { date: string; number: string; client: string; taxId: string; concept: string; base: number | null; vatRate: number | null;
   withholdingRate: number | null; withholding: number | null; total: number | null; currency: string };
-export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomeProblem: string | null; expenses: Invoice[]; notes: string[]; reading: number };
+export type FiscalIssue = { key: string; text: string; items: { label: string; detail: string; path?: string | null; qonto?: string }[] };
+export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomeProblem: string | null; expenses: Invoice[]; notes: string[]; issues: FiscalIssue[]; reading: number };
+export const downloadFromQonto = (folderId: number, year: number, quarter: number, numbers: string[]) =>
+  core<{ saved: { number: string; path: string }[]; failed: { number: string; error: string }[] }>(`/fiscal/folders/${folderId}/qonto-download`, { year, quarter, numbers });
 export const getQuarter = (folderId: number, year: number, quarter: number) => core<QuarterView>(`/fiscal/folders/${folderId}/quarter?year=${year}&quarter=${quarter}`);
 export const makeQuarterExcel = (folderId: number, year: number, quarter: number) => core<{ path: string }>(`/fiscal/folders/${folderId}/excel`, { year, quarter });
 export const openFiscalFile = (folderId: number, path: string | null, reveal = false) => core<{ ok: true }>(`/fiscal/folders/${folderId}/open`, { path, reveal });
