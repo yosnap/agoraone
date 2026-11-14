@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
+use std::time::Duration;
 
 use axum::Json;
 use axum::body::Bytes;
@@ -13,6 +14,7 @@ use axum::response::{IntoResponse, Response};
 use regex::Regex;
 use serde::Serialize;
 use serde_json::Value;
+use tokio::sync::Semaphore;
 
 use super::{NOTE_UNAVAILABLE, NoteEdit, NoteMove};
 use crate::AppState;
@@ -23,6 +25,9 @@ use crate::security::{Failure, error};
 
 static REVISION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-f0-9]{64}$").unwrap());
 const WRITE_LIMIT: usize = 384 * 1024;
+const WRITE_TIME: Duration = Duration::from_secs(30);
+/// One write at a time; the others wait here, without holding a thread, until their time limit.
+static WRITING: LazyLock<Arc<Semaphore>> = LazyLock::new(|| Arc::new(Semaphore::new(1)));
 
 async fn read<T: Serialize + Send + 'static>(run: impl FnOnce() -> Result<T, Failure> + Send + 'static, message: &str) -> Response {
     match background(move || Ok(run()?)).await {
@@ -31,11 +36,23 @@ async fn read<T: Serialize + Send + 'static>(run: impl FnOnce() -> Result<T, Fai
     }
 }
 
+/// Writes a note with a time limit. A write already under way cannot be stopped and may still finish,
+/// so the answer asks to reload rather than saying it failed; it keeps its turn until it really ends.
 async fn write<T: Serialize + Send + 'static>(run: impl FnOnce() -> Result<T, Failure> + Send + 'static, created: StatusCode) -> Response {
-    match tokio::task::spawn_blocking(run).await {
-        Ok(Ok(value)) => (created, Json(value)).into_response(),
-        Ok(Err(failure)) => failure.into_response(),
-        Err(_) => error(StatusCode::INTERNAL_SERVER_ERROR, "No se pudo guardar la nota."),
+    let attempt = tokio::time::timeout(WRITE_TIME, async {
+        let turn = WRITING.clone().acquire_owned().await.ok()?;
+        tokio::task::spawn_blocking(move || {
+            let _turn = turn;
+            run()
+        })
+        .await
+        .ok()
+    });
+    match attempt.await {
+        Ok(Some(Ok(value))) => (created, Json(value)).into_response(),
+        Ok(Some(Err(failure))) => failure.into_response(),
+        Ok(None) => error(StatusCode::INTERNAL_SERVER_ERROR, "No se pudo guardar la nota."),
+        Err(_) => error(StatusCode::GATEWAY_TIMEOUT, "El disco tarda demasiado en responder. Recarga la nota para comprobar si se guardó."),
     }
 }
 

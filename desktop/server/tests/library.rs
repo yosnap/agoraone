@@ -209,19 +209,27 @@ async fn extrae_pdf_y_docx_reales_y_rechaza_los_danados() {
 }
 
 #[tokio::test]
-async fn el_extractor_no_puede_escribir_archivos_ni_usar_la_red() {
+async fn el_extractor_no_puede_escribir_archivos_ni_usar_la_red_ni_leer_archivos_ajenos() {
     if !Path::new("/usr/bin/sandbox-exec").exists() {
         return eprintln!("sin sandbox-exec: se omite");
     }
     let (_dir, base) = temp();
     let python = Path::new("/usr/bin/python3");
     let target = base.join("escrito.txt");
-    let write = sandboxed(python).arg("-c").arg(format!("open({:?}, 'w').write('x')", target.display().to_string())).output().await.unwrap();
+    let write = sandboxed(python, &[]).arg("-c").arg(format!("open({:?}, 'w').write('x')", target.display().to_string())).output().await.unwrap();
     assert!(!write.status.success() && !target.exists(), "no escribe archivos");
-    let net = sandboxed(python).arg("-c").arg("import socket; socket.create_connection(('127.0.0.1', 9), timeout=2)").output().await.unwrap();
+    let net = sandboxed(python, &[]).arg("-c").arg("import socket; socket.create_connection(('127.0.0.1', 9), timeout=2)").output().await.unwrap();
     assert!(String::from_utf8_lossy(&net.stderr).contains("PermissionError") || String::from_utf8_lossy(&net.stderr).contains("Operation not permitted"), "sin red");
-    let read = sandboxed(python).arg("-c").arg("print('ok')").output().await.unwrap();
-    assert_eq!(String::from_utf8_lossy(&read.stdout).trim(), "ok", "lo demás funciona");
+    // A private file (here in a temporary folder, like the user's home) cannot be read; the folder it is
+    // given can.
+    let (_private_dir, private) = temp();
+    fs::write(private.join("secreto.txt"), "clave").unwrap();
+    fs::write(base.join("propio.txt"), "ok").unwrap();
+    let read = |path: PathBuf| format!("print(open({:?}).read())", path.display().to_string());
+    let denied = sandboxed(python, &[&base]).arg("-c").arg(read(private.join("secreto.txt"))).output().await.unwrap();
+    assert!(!denied.status.success() && !String::from_utf8_lossy(&denied.stdout).contains("clave"), "no lee archivos ajenos");
+    let allowed = sandboxed(python, &[&base]).arg("-c").arg(read(base.join("propio.txt"))).output().await.unwrap();
+    assert_eq!(String::from_utf8_lossy(&allowed.stdout).trim(), "ok", "lee lo que se le da");
 }
 
 const TOKEN: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
