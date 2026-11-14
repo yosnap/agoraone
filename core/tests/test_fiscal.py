@@ -47,19 +47,31 @@ def test_importes_y_destino():
     assert fiscal.destination("PayPal / Europe", "2026-11-13", "12.50") == "Facturas Entrantes/2026/4T/2026-11-13 PayPal Europe 12,50.pdf"
 
 
+def folder_in(db, root, kind="autonomo", name="Autónomo"):
+    folder_id = db.execute("INSERT INTO fiscal_folder (name, kind, path, created_at) VALUES (?, ?, ?, 'x')", (name, kind, str(root))).lastrowid
+    return {"id": folder_id, "kind": kind}
+
+
 def test_archivar_sin_sobrescribir(db, tmp_path):
     root = (tmp_path / "fiscal")
     root.mkdir()
     root = root.resolve()
     fields = {"supplier": "Proveedor", "issuedOn": "2026-02-03", "total": "10,00", "taxId": "b12345678"}
-    first = fiscal.file_invoice(db, root, PDF, fields, None, [])
-    second = fiscal.file_invoice(db, root, PDF + b"2\n%%EOF", fields, None, ["No aparece el NIF del proveedor."])
+    folder = folder_in(db, root)
+    first = fiscal.file_invoice(db, folder, root, PDF, fields, None, [])
+    second = fiscal.file_invoice(db, folder, root, PDF + b"2\n%%EOF", fields, None, ["No aparece el NIF del proveedor."])
     assert first["path"] == "Facturas Entrantes/2026/1T/2026-02-03 Proveedor 10,00.pdf" and first["quarter"] == "2026-1T"
     assert second["path"].endswith("10,00 (2).pdf") and (root / first["path"]).read_bytes() == PDF
     listed = fiscal.invoices(db, "2026-1T")
     assert {i["taxId"] for i in listed} == {"B12345678"} and listed[0]["doubts"] == ["No aparece el NIF del proveedor."]
     with pytest.raises(fiscal.FiscalError):
-        fiscal.file_invoice(db, root, b"<html>no</html>", fields, None, [])
+        fiscal.file_invoice(db, folder, root, b"<html>no</html>", fields, None, [])
+    personal = folder_in(db, (tmp_path / "personal"), "personal", "Personal")
+    (tmp_path / "personal").mkdir()
+    with pytest.raises(fiscal.FiscalError):
+        fiscal.file_invoice(db, personal, (tmp_path / "personal").resolve(), b"\xff\xd8\xff foto", fields, None, [])
+    photo = fiscal.file_invoice(db, personal, (tmp_path / "personal").resolve(), b"\xff\xd8\xff foto", fields, None, [], "compras")
+    assert photo["path"] == "Compras/2026/2026-02-03 Proveedor 10,00.jpg"
 
 
 def test_campos_de_la_factura_y_cotejo():
@@ -126,8 +138,12 @@ def test_rutas_fiscales(tmp_path, monkeypatch):
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
         headers = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
         assert client.post("/fiscal/invoices/prepare", json={"messageId": 1}, headers=headers).status_code == 422
-        assert client.put("/fiscal/folder", json={"folder": str(home)}, headers=headers).status_code == 422
-        assert client.put("/fiscal/folder", json={"folder": str(work)}, headers=headers).json()["folder"] == str(work.resolve())
+        assert client.post("/fiscal/folders", json={"name": "Casa", "kind": "personal", "path": str(home)}, headers=headers).status_code == 422
+        added = client.post("/fiscal/folders", json={"name": "Autónomo", "kind": "autonomo", "path": str(work)}, headers=headers).json()["folders"]
+        assert added[0]["path"] == str(work.resolve())
+        (work / "Dentro").mkdir()
+        assert client.post("/fiscal/folders", json={"name": "Otra", "kind": "empresa", "path": str(work / "Dentro")}, headers=headers).status_code == 422
+        folder_id = added[0]["id"]
         connection = connect(tmp_path / "data" / DB_NAME)
         account = mail.create_account(connection, {"address": "yo@gmail.com", "provider": "gmail"})
         message = connection.execute(
@@ -139,9 +155,10 @@ def test_rutas_fiscales(tmp_path, monkeypatch):
         assert prepared["source"] is None and prepared["links"] == [{"url": "https://paypal.example/invoice/1", "host": "paypal.example"}]
         assert prepared["destination"].startswith("Facturas Entrantes/2026/4T/2026-11-13 PayPal")
         fields = {"supplier": "PayPal", "issuedOn": "2026-11-13", "total": "12,50"}
-        other = client.post("/fiscal/invoices", json={"messageId": message, "source": {"kind": "link", "url": "https://malo.example/x.pdf"}, "fields": fields}, headers=headers)
+        assert prepared["folderId"] == folder_id, "la única carpeta profesional se propone sola"
+        other = client.post("/fiscal/invoices", json={"messageId": message, "folderId": folder_id, "source": {"kind": "link", "url": "https://malo.example/x.pdf"}, "fields": fields}, headers=headers)
         assert other.status_code == 422 and "no está en el correo" in other.json()["error"]
-        assert client.get("/fiscal/folder/plan", headers=headers).json() == {"moves": [], "undecided": [], "more": 0}
+        assert client.get(f"/fiscal/folders/{folder_id}/plan", headers=headers).json() == {"moves": [], "undecided": [], "more": 0}
 
 
 def _pdf(text: bytes) -> bytes:
@@ -220,6 +237,7 @@ def test_la_misma_factura_no_se_archiva_dos_veces(db, tmp_path):
     root = (tmp_path / "fiscal")
     root.mkdir()
     fields = {"supplier": "Proveedor", "issuedOn": "2026-02-03", "total": "10"}
-    fiscal.file_invoice(db, root.resolve(), PDF, fields, None, [])
+    folder = folder_in(db, root.resolve())
+    fiscal.file_invoice(db, folder, root.resolve(), PDF, fields, None, [])
     with pytest.raises(fiscal.Duplicate):
-        fiscal.file_invoice(db, root.resolve(), PDF, fields, None, [])
+        fiscal.file_invoice(db, folder, root.resolve(), PDF, fields, None, [])

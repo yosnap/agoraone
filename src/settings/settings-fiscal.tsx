@@ -1,62 +1,113 @@
 import { useRef, useState } from 'react';
-import { applyFolderPlan, getFiscalFolder, getFolderPlan, putFiscalFolder, type FolderPlan } from '../api/core';
+import {
+  addFiscalFolder, applyFolderPlan, changeFiscalFolder, chooseFiscalFolder, getFiscalFolders, getFolderPlan, getScopes, removeFiscalFolder,
+  type FiscalFolder, type FolderKind, type FolderPlan, type Scope,
+} from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
+import { ModernSelect } from '../ui/modern-select';
 
+export const kindLabels: Record<FolderKind, string> = { autonomo: 'Autónomo', empresa: 'Empresa', personal: 'Personal' };
+const kinds = (Object.keys(kindLabels) as FolderKind[]).map(value => ({ value, label: kindLabels[value] }));
+const structure: Record<FolderKind, string> = {
+  autonomo: 'Facturas Entrantes|Salientes/año/trimestre', empresa: 'Facturas Entrantes|Salientes/año/trimestre', personal: 'Gastos|Compras/año',
+};
 
-/** The fiscal folder: the only folder AgoraOne writes invoices to, and the plan to tidy it into
- * «Facturas Entrantes|Salientes/año/NT». Moving needs the user's confirmation of the exact list. */
+/** The fiscal folders: where invoices and receipts are filed, each with a name, a kind and the scope whose
+ * mail it receives. Chosen with the macOS folder picker; AgoraOne never touches anything outside them. */
 export function FiscalSettingsCard() {
-  const [folder, setFolder] = useState<string | null | undefined>(undefined);
-  const [draft, setDraft] = useState('');
-  const [plan, setPlan] = useState<FolderPlan | null>(null);
-  const [planning, setPlanning] = useState(false);
+  const [folders, setFolders] = useState<FiscalFolder[] | null>(null);
+  const [scopes, setScopes] = useState<Scope[]>([]);
+  const [draft, setDraft] = useState<{ path: string; name: string; kind: FolderKind; scopeId: string } | null>(null);
+  const [plan, setPlan] = useState<{ folder: number; plan: FolderPlan } | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [removing, setRemoving] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const asked = useRef(false);
-  if (!asked.current) { asked.current = true; getFiscalFolder().then(data => setFolder(data.folder)).catch(() => setFolder(null)); }
+  if (!asked.current) {
+    asked.current = true;
+    Promise.all([getFiscalFolders(), getScopes()]).then(([found, known]) => { setFolders(found.folders); setScopes(known.scopes); })
+      .catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer las carpetas.'));
+  }
   const fail = (failure: unknown, fallback: string) => setError(failure instanceof Error ? failure.message : fallback);
-  const save = async (value: string | null) => {
-    setError(''); setNote(''); setPlan(null);
-    try { setFolder((await putFiscalFolder(value)).folder); setDraft(''); setNote(value ? 'Carpeta guardada.' : 'Carpeta olvidada (no se ha tocado nada en ella).'); }
-    catch (failure) { fail(failure, 'No se pudo guardar.'); }
+  const act = async (work: () => Promise<{ folders: FiscalFolder[] }>, done: string) => {
+    setError(''); setNote('');
+    try { setFolders((await work()).folders); setNote(done); return true; } catch (failure) { fail(failure, 'No se pudo completar.'); return false; }
   };
-  const calculate = async () => {
-    setError(''); setNote(''); setPlanning(true); setConfirming(false);
-    try { setPlan(await getFolderPlan()); } catch (failure) { fail(failure, 'No se pudo calcular el plan.'); } finally { setPlanning(false); }
+  const pick = async () => {
+    setError(''); setNote(''); setBusy(true);
+    try {
+      const { path } = await chooseFiscalFolder();
+      if (path) {
+        const name = path.split('/').filter(Boolean).pop() ?? '';
+        const scope = scopes.find(s => s.name.toLowerCase() === name.toLowerCase());
+        setDraft({ path, name, kind: 'autonomo', scopeId: scope ? String(scope.id) : '' });
+      }
+    } catch (failure) { fail(failure, 'No se pudo abrir el selector.'); } finally { setBusy(false); }
+  };
+  const save = () => draft && void act(() => addFiscalFolder({ path: draft.path, name: draft.name.trim(), kind: draft.kind, scopeId: draft.scopeId ? Number(draft.scopeId) : null }),
+    `Carpeta «${draft.name.trim()}» añadida.`).then(ok => { if (ok) setDraft(null); });
+  const calculate = async (folder: number) => {
+    setError(''); setNote(''); setBusy(true); setConfirming(false);
+    try { setPlan({ folder, plan: await getFolderPlan(folder) }); } catch (failure) { fail(failure, 'No se pudo calcular el plan.'); } finally { setBusy(false); }
   };
   const apply = async () => {
     if (!plan) return;
     setError(''); setNote('');
     try {
-      const done = await applyFolderPlan(plan.moves);
+      const done = await applyFolderPlan(plan.folder, plan.plan.moves);
       setNote(`${done.moved.length} archivos movidos. Copia previa en los datos de AgoraOne (${done.backup}).`); setPlan(null); setConfirming(false);
       if (done.error) setError(`${done.error} Lo ya movido queda registrado; vuelve a calcular el plan para seguir.`);
     } catch (failure) { fail(failure, 'No se pudo mover.'); }
   };
+  const scopeOptions = [{ value: '', label: 'Ninguno' }, ...scopes.map(s => ({ value: String(s.id), label: s.name }))];
   return <article className="card" aria-labelledby="fiscal-title">
-    <h2 id="fiscal-title">Carpeta fiscal</h2>
-    <p>La subcarpeta de tu actividad donde se archivan las facturas, por trimestre. AgoraOne no toca nada fuera de ella (ni tu carpeta personal ni la raíz de iCloud Drive) y nunca sobrescribe ni borra.</p>
-    {folder === undefined ? <Loading label="Leyendo la carpeta"/> : folder ? <>
-      <p className="muted">Carpeta: <code>{folder}</code> <button type="button" className="button" onClick={() => void save(null)}>Olvidar</button></p>
-      <div className="field-row"><button type="button" className="button" disabled={planning} onClick={() => void calculate()}>{planning ? 'Calculando…' : 'Proponer cómo ordenarla'}</button></div>
-    </> : <form className="field-row" onSubmit={event => { event.preventDefault(); void save(draft.trim()); }}>
-      <label className="field">Ruta de la carpeta<input value={draft} onChange={event => setDraft(event.target.value)} placeholder="~/Library/Mobile Documents/com~apple~CloudDocs/Trabajo/…" spellCheck={false} autoComplete="off"/></label>
-      <button className="button primary" disabled={!draft.trim()}>Guardar</button>
-    </form>}
-    {plan && <div className="mail-new" aria-label="Plan de orden">
-      {plan.moves.length === 0 ? <p>Todo está ya en su sitio{plan.undecided.length ? ', salvo lo que no se puede saber' : ''}.</p> : <>
-        <p>{plan.moves.length}{plan.more ? `+${plan.more}` : ''} archivos irían a «Facturas Entrantes|Salientes/año/NT», deducido de los nombres de sus carpetas:</p>
-        <ul className="fiscal-moves" aria-label="Movimientos exactos">{plan.moves.map(move => <li key={move.from}><code>{move.from}</code> → <code>{move.to}</code></li>)}</ul>
-        {plan.more > 0 && <p className="muted">Hay {plan.more} más que se propondrán al volver a calcular.</p>}
-      </>}
-      {plan.undecided.length > 0 && <details><summary className="muted">{plan.undecided.length} archivos se quedan donde están: su carpeta no dice el año o el trimestre (o siguen solo en iCloud)</summary>
-        <ul className="fiscal-moves">{plan.undecided.map(path => <li key={path}><code>{path}</code></li>)}</ul></details>}
-      {plan.moves.length > 0 && (confirming ? <div className="field-row" role="group" aria-label="Confirmar movimientos">
-        <button type="button" className="button primary" onClick={() => void apply()}>Mover {plan.moves.length} archivos (con copia previa)</button>
-        <button type="button" className="button" onClick={() => setConfirming(false)}>Cancelar</button>
-      </div> : <button type="button" className="button" onClick={() => setConfirming(true)}>Aplicar este plan…</button>)}
+    <div className="card-head"><h2 id="fiscal-title">Carpetas fiscales</h2>
+      {!draft && <button type="button" className="button" disabled={busy} onClick={() => void pick()}>Añadir carpeta…</button>}</div>
+    <p>Donde se archivan facturas y recibos. Cada una recibe lo de las cuentas de su ámbito; una regla del correo con ámbito manda sobre la cuenta, y al archivar puedes cambiarla. AgoraOne no toca nada fuera de ellas y nunca sobrescribe ni borra.</p>
+    {draft && <div className="mail-new" aria-label="Nueva carpeta fiscal">
+      <p className="muted"><code>{draft.path}</code></p>
+      <div className="mail-account-fields">
+        <label className="field">Nombre<input value={draft.name} maxLength={80} onChange={event => setDraft({ ...draft, name: event.target.value })}/></label>
+        <label className="field">Tipo<ModernSelect value={draft.kind} options={kinds} onChange={value => setDraft({ ...draft, kind: value as FolderKind })}/></label>
+        <label className="field">Ámbito<ModernSelect value={draft.scopeId} options={scopeOptions} onChange={value => setDraft({ ...draft, scopeId: value })}/></label>
+      </div>
+      <p className="muted">Estructura: {structure[draft.kind]}.</p>
+      <div className="field-row"><button type="button" className="button primary" disabled={!draft.name.trim()} onClick={save}>Guardar carpeta</button>
+        <button type="button" className="button" onClick={() => setDraft(null)}>Cancelar</button></div>
     </div>}
+    {folders === null && !error ? <Loading label="Leyendo las carpetas"/> : <ul className="mail-accounts">
+      {folders?.length === 0 && !draft && <li className="muted">Aún no hay carpetas. Pulsa «Añadir carpeta…» y elige, por ejemplo, la de tu actividad de autónomo.</li>}
+      {folders?.map(folder => <li key={folder.id}>
+        <div className="mail-account-head"><strong>{folder.name}</strong><span className="chip">{kindLabels[folder.kind]}</span></div>
+        <span className="muted"><code>{folder.path}</code></span>
+        <div className="mail-account-fields">
+          <label className="field">Ámbito<ModernSelect value={folder.scopeId ? String(folder.scopeId) : ''} options={scopeOptions}
+            onChange={value => void act(() => changeFiscalFolder(folder.id, { scopeId: value ? Number(value) : null }), 'Ámbito guardado.')}/></label>
+        </div>
+        <div className="field-row">
+          {folder.kind !== 'personal' && <button type="button" className="button" disabled={busy} onClick={() => void calculate(folder.id)}>Proponer cómo ordenarla</button>}
+          {removing === folder.id ? <span className="field-row" role="group" aria-label={`Confirmar olvidar ${folder.name}`}>
+            <button type="button" className="button danger" onClick={() => void act(() => removeFiscalFolder(folder.id), 'Carpeta olvidada (no se ha tocado nada en ella).').then(() => setRemoving(null))}>Olvidar de verdad</button>
+            <button type="button" className="button" onClick={() => setRemoving(null)}>Cancelar</button></span>
+            : <button type="button" className="button danger" onClick={() => setRemoving(folder.id)}>Olvidar…</button>}
+        </div>
+        {plan?.folder === folder.id && <div className="mail-new" aria-label="Plan de orden">
+          {plan.plan.moves.length === 0 ? <p>Todo está ya en su sitio{plan.plan.undecided.length ? ', salvo lo que no se puede saber' : ''}.</p> : <>
+            <p>{plan.plan.moves.length} archivos irían a «Facturas Entrantes|Salientes/año/NT», deducido de los nombres de sus carpetas:</p>
+            <ul className="fiscal-moves" aria-label="Movimientos exactos">{plan.plan.moves.map(move => <li key={move.from}><code>{move.from}</code> → <code>{move.to}</code></li>)}</ul>
+            {plan.plan.more > 0 && <p className="muted">Hay {plan.plan.more} más que se propondrán al volver a calcular.</p>}
+          </>}
+          {plan.plan.undecided.length > 0 && <details><summary className="muted">{plan.plan.undecided.length} archivos se quedan donde están: su carpeta no dice el año o el trimestre (o siguen solo en iCloud)</summary>
+            <ul className="fiscal-moves">{plan.plan.undecided.map(path => <li key={path}><code>{path}</code></li>)}</ul></details>}
+          {plan.plan.moves.length > 0 && (confirming ? <div className="field-row" role="group" aria-label="Confirmar movimientos">
+            <button type="button" className="button primary" onClick={() => void apply()}>Mover {plan.plan.moves.length} archivos (con copia previa)</button>
+            <button type="button" className="button" onClick={() => setConfirming(false)}>Cancelar</button>
+          </div> : <button type="button" className="button" onClick={() => setConfirming(true)}>Aplicar este plan…</button>)}
+        </div>}
+      </li>)}
+    </ul>}
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;
 }

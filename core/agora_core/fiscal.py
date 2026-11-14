@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import unicodedata
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -17,7 +18,6 @@ from pathlib import Path
 
 from .db import now
 
-FOLDER_SETTING = "fiscal.folder"
 RECEIVED, ISSUED = "Facturas Entrantes", "Facturas Salientes"
 ICLOUD = Path("Library") / "Mobile Documents" / "com~apple~CloudDocs"  # relative to the home folder
 MAX_FILE = 15 * 1024 * 1024
@@ -54,24 +54,114 @@ def check_folder(value: str, home: Path | None = None) -> Path:
     return folder
 
 
-def folder(connection: sqlite3.Connection) -> Path | None:
-    row = connection.execute("SELECT value FROM setting WHERE key = ?", (FOLDER_SETTING,)).fetchone()
+KINDS = ("autonomo", "empresa", "personal")
+CATEGORIES = ("gastos", "compras")
+
+
+def _folder_row(row: sqlite3.Row) -> dict:
+    return {"id": row["id"], "name": row["name"], "kind": row["kind"], "path": row["path"], "scopeId": row["scope_id"]}
+
+
+def folders(connection: sqlite3.Connection) -> list[dict]:
+    return [_folder_row(r) for r in connection.execute("SELECT * FROM fiscal_folder ORDER BY id")]
+
+
+def folder_root(connection: sqlite3.Connection, folder_id: int) -> tuple[dict, Path]:
+    """A registered folder and its checked path (it may have been moved or deleted since)."""
+    row = connection.execute("SELECT * FROM fiscal_folder WHERE id = ?", (folder_id,)).fetchone()
     if row is None:
-        return None
+        raise FiscalError("Esa carpeta fiscal no existe.")
+    return _folder_row(row), check_folder(row["path"])
+
+
+def add_folder(connection: sqlite3.Connection, name: str, kind: str, path: str, scope_id: int | None) -> int:
+    if kind not in KINDS:
+        raise FiscalError("Tipo de carpeta desconocido.")
+    chosen = check_folder(path)
+    name = re.sub(r"\s+", " ", name or "").strip()
+    if not 1 <= len(name) <= 80:
+        raise FiscalError("Ponle un nombre a la carpeta.")
+    for other in connection.execute("SELECT name, path FROM fiscal_folder"):
+        known = Path(other["path"])
+        if other["name"].casefold() == name.casefold():
+            raise FiscalError("Ya hay una carpeta fiscal con ese nombre.")
+        if known == chosen or known in chosen.parents or chosen in known.parents:
+            raise FiscalError(f"Esa carpeta coincide con «{other['name']}» o está dentro de ella.")
+    if scope_id is not None and not connection.execute("SELECT 1 FROM scope WHERE id = ?", (scope_id,)).fetchone():
+        raise FiscalError("Ese ámbito no existe.")
+    return connection.execute("INSERT INTO fiscal_folder (name, kind, path, scope_id, created_at) VALUES (?, ?, ?, ?, ?)",
+                              (name, kind, str(chosen), scope_id, now())).lastrowid
+
+
+def change_folder(connection: sqlite3.Connection, folder_id: int, changes: dict) -> bool:
+    values = {}
+    if "name" in changes:
+        name = re.sub(r"\s+", " ", changes["name"] or "").strip()
+        if not 1 <= len(name) <= 80:
+            raise FiscalError("Ponle un nombre a la carpeta.")
+        values["name"] = name
+    if "kind" in changes:
+        if changes["kind"] not in KINDS:
+            raise FiscalError("Tipo de carpeta desconocido.")
+        values["kind"] = changes["kind"]
+    if "scopeId" in changes:
+        values["scope_id"] = changes["scopeId"]
+    if not values:
+        return bool(connection.execute("SELECT 1 FROM fiscal_folder WHERE id = ?", (folder_id,)).fetchone())
     try:
-        return check_folder(json.loads(row["value"]))
-    except FiscalError:
-        return None
+        return connection.execute(f"UPDATE fiscal_folder SET {', '.join(f'{k} = ?' for k in values)} WHERE id = ?",
+                                  [*values.values(), folder_id]).rowcount > 0
+    except sqlite3.IntegrityError as error:
+        raise FiscalError("Ya hay una carpeta fiscal con ese nombre o ese ámbito no existe.") from error
 
 
-def save_folder(connection: sqlite3.Connection, value: str | None) -> Path | None:
-    if value is None:
-        connection.execute("DELETE FROM setting WHERE key = ?", (FOLDER_SETTING,))
+def remove_folder(connection: sqlite3.Connection, folder_id: int) -> bool:
+    """Forgets the folder in AgoraOne; nothing in it is touched."""
+    return connection.execute("DELETE FROM fiscal_folder WHERE id = ?", (folder_id,)).rowcount > 0
+
+
+def suggested_folder(connection: sqlite3.Connection, message_id: int | None) -> int | None:
+    """The folder for a message: the one of its rule's scope, else of its account's scope. Only a message
+    with no scope at all falls back to the only professional folder; a scope without a folder gets none, so
+    nothing personal is ever proposed for a professional folder (or the other way round)."""
+    scopes: list[int] = []
+    if message_id is not None:
+        row = connection.execute(
+            """SELECT r.scope_id AS rule_scope, a.scope_id AS account_scope FROM mail_message m JOIN mail_account a ON a.id = m.account_id
+               LEFT JOIN mail_summary s ON s.message_id = m.id LEFT JOIN mail_rule r ON r.id = s.rule_id WHERE m.id = ?""",
+            (message_id,)).fetchone()
+        if row:
+            scopes = [s for s in (row["rule_scope"], row["account_scope"]) if s is not None]
+    for scope in scopes:
+        found = connection.execute("SELECT id FROM fiscal_folder WHERE scope_id = ? ORDER BY id LIMIT 1", (scope,)).fetchone()
+        if found:
+            return found["id"]
+    if scopes:
         return None
-    chosen = check_folder(value)
-    connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-                       (FOLDER_SETTING, json.dumps(str(chosen))))
-    return chosen
+    ids = [r["id"] for r in connection.execute("SELECT id FROM fiscal_folder WHERE kind != 'personal'")]
+    return ids[0] if len(ids) == 1 else None
+
+
+_CHOOSING = threading.Lock()
+
+
+def choose_with_finder(runner=None) -> str | None:
+    """Opens the macOS folder chooser and returns the chosen path (None if cancelled)."""
+    import subprocess
+
+    run = runner or subprocess.run
+    script = 'POSIX path of (choose folder with prompt "Elige la carpeta fiscal")'
+    if not _CHOOSING.acquire(blocking=False):
+        raise FiscalError("Ya hay un selector de carpetas abierto.")
+    try:
+        # Below the server's wait for the core, so a slow choice never comes back as «core unavailable».
+        done = run(["/usr/bin/osascript", "-e", script], capture_output=True, text=True, timeout=110)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    finally:
+        _CHOOSING.release()
+    path = (done.stdout or "").strip()
+    return path.rstrip("/") or None if done.returncode == 0 else None
 
 
 def inside(root: Path, relative: str) -> Path:
@@ -112,11 +202,14 @@ def _safe_name(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip(" .")[:60] or "Proveedor"
 
 
-def destination(supplier: str, issued_on: str, total: str, direction: str = "received") -> str:
-    """Where a new invoice goes, relative to the fiscal folder."""
+def destination(supplier: str, issued_on: str, total: str, kind: str = "autonomo", category: str | None = None, suffix: str = ".pdf") -> str:
+    """Where a new document goes, relative to its folder: by quarter in professional folders, by year (and
+    gastos or compras) in personal ones."""
     year, quarter = quarter_of(issued_on)
-    shown = total.replace(".", ",")
-    return f"{RECEIVED if direction == 'received' else ISSUED}/{year}/{quarter}T/{issued_on} {_safe_name(supplier)} {shown}.pdf"
+    name = f"{issued_on} {_safe_name(supplier)} {total.replace('.', ',')}{suffix}"
+    if kind == "personal":
+        return f"{'Compras' if category == 'compras' else 'Gastos'}/{year}/{name}"
+    return f"{RECEIVED}/{year}/{quarter}T/{name}"
 
 
 def _free(path: Path, taken: set[str] | None = None, root: Path | None = None) -> Path:
@@ -142,11 +235,34 @@ class Duplicate(FiscalError):
     pass
 
 
-def file_invoice(connection: sqlite3.Connection, root: Path, data: bytes, fields: dict, message_id: int | None, doubts: list[str]) -> dict:
-    """Writes the PDF in its quarter (never over another file) and records the invoice, once per message and
-    once per file."""
-    if not data.startswith(b"%PDF-") or b"%%EOF" not in data[-2048:] or len(data) > MAX_FILE:
-        raise FiscalError("El archivo no es un PDF completo o es demasiado grande.")
+SUFFIXES = {"application/pdf": ".pdf", "image/jpeg": ".jpg", "image/png": ".png", "image/heic": ".heic"}
+
+
+def media_type(data: bytes) -> str | None:
+    """What a file really is, from its first bytes (never from its name)."""
+    if data.startswith(b"%PDF-"):
+        return "application/pdf" if b"%%EOF" in data[-2048:] else None
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data[4:12] in (b"ftypheic", b"ftypheix", b"ftypmif1", b"ftyphevc"):
+        return "image/heic"
+    return None
+
+
+def file_invoice(connection: sqlite3.Connection, folder: dict, root: Path, data: bytes, fields: dict, message_id: int | None,
+                 doubts: list[str], category: str | None = None, receipt_id: int | None = None) -> dict:
+    """Writes the document in its folder (never over another file) and records it, once per message and once
+    per file."""
+    kind = media_type(data)
+    if kind is None or len(data) > MAX_FILE:
+        raise FiscalError("El archivo no es un PDF completo ni una foto, o es demasiado grande.")
+    if folder["kind"] == "personal":
+        if category not in CATEGORIES:
+            raise FiscalError("Elige si es un gasto o una compra.")
+    else:
+        category = None
     total = amount(fields.get("total"))
     issued_on = fields.get("issuedOn") or ""
     supplier = (fields.get("supplier") or "").strip()
@@ -161,8 +277,8 @@ def file_invoice(connection: sqlite3.Connection, root: Path, data: bytes, fields
                                (digest, message_id)).fetchone()
     if clash:
         raise Duplicate(f"Esta factura ya está archivada en {clash['path']}.")
-    taken = {row["path"] for row in connection.execute("SELECT path FROM invoice")}
-    target = _free(inside(root, destination(supplier, issued_on, total)), taken, root)
+    taken = {row["path"] for row in connection.execute("SELECT path FROM invoice WHERE folder_id = ?", (folder["id"],))}
+    target = _free(inside(root, destination(supplier, issued_on, total, folder["kind"], category, SUFFIXES[kind])), taken, root)
     relative = str(target.relative_to(root))
     created = False
     try:
@@ -181,10 +297,10 @@ def file_invoice(connection: sqlite3.Connection, root: Path, data: bytes, fields
     currency = (fields.get("currency") or "EUR").upper()[:3]
     try:
         cursor = connection.execute(
-            """INSERT INTO invoice (direction, message_id, supplier, tax_id, issued_on, base, vat, total, currency, notes, doubts,
-                                    quarter, path, sha256, filed_at)
-               VALUES ('received', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (message_id, supplier[:120], tax_id, issued_on, amount(fields.get("base")), amount(fields.get("vat")), total, currency,
+            """INSERT INTO invoice (folder_id, category, receipt_id, direction, message_id, supplier, tax_id, issued_on, base, vat, total,
+                                    currency, notes, doubts, quarter, path, sha256, filed_at)
+               VALUES (?, ?, ?, 'received', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (folder["id"], category, receipt_id, message_id, supplier[:120], tax_id, issued_on, amount(fields.get("base")), amount(fields.get("vat")), total, currency,
              (fields.get("notes") or None), json.dumps([d[:300] for d in doubts][:10], ensure_ascii=False), f"{year}-{quarter}T", relative,
              digest, now()),
         )
@@ -194,11 +310,17 @@ def file_invoice(connection: sqlite3.Connection, root: Path, data: bytes, fields
     return {"id": cursor.lastrowid, "path": relative, "quarter": f"{year}-{quarter}T"}
 
 
-def invoices(connection: sqlite3.Connection, quarter: str | None = None) -> list[dict]:
+def invoices(connection: sqlite3.Connection, quarter: str | None = None, folder_id: int | None = None) -> list[dict]:
+    where, args = [], []
+    if quarter:
+        where.append("quarter = ?")
+        args.append(quarter)
+    if folder_id is not None:
+        where.append("folder_id = ?")
+        args.append(folder_id)
     rows = connection.execute(
-        "SELECT * FROM invoice" + (" WHERE quarter = ?" if quarter else "") + " ORDER BY issued_on DESC, id DESC",
-        (quarter,) if quarter else (),
+        "SELECT * FROM invoice" + (f" WHERE {' AND '.join(where)}" if where else "") + " ORDER BY issued_on DESC, id DESC", args,
     ).fetchall()
-    return [{"id": r["id"], "direction": r["direction"], "messageId": r["message_id"], "supplier": r["supplier"], "taxId": r["tax_id"],
+    return [{"id": r["id"], "folderId": r["folder_id"], "category": r["category"], "direction": r["direction"], "messageId": r["message_id"], "supplier": r["supplier"], "taxId": r["tax_id"],
              "issuedOn": r["issued_on"], "base": r["base"], "vat": r["vat"], "total": r["total"], "currency": r["currency"],
              "notes": r["notes"], "doubts": json.loads(r["doubts"]), "quarter": r["quarter"], "path": r["path"]} for r in rows]
