@@ -77,7 +77,7 @@ def test_archivar_sin_sobrescribir(db, tmp_path):
 def test_campos_de_la_factura_y_cotejo():
     text = "ACME SL  CIF: B12345678\nFecha de factura: 13/11/2026\nBase imponible 10,33 €\nIVA 21% 2,17 €\nTOTAL 12,50 €"
     found = invoice_extract.fields(text)
-    assert found == {"taxId": "B12345678", "total": "12.50", "issuedOn": "2026-11-13", "dateAmbiguous": False, "currency": "EUR"}
+    assert found == {"taxId": "B12345678", "total": "12.50", "issuedOn": "2026-11-13", "dates": ["2026-11-13"], "dateAmbiguous": False, "currency": "EUR"}
     assert invoice_extract.doubts(found, {"amounts": ["12,50 €"]}) == []
     assert "no coincide" in invoice_extract.doubts(found, {"amounts": ["15,00 €"]})[0]
     english = invoice_extract.fields("Invoice date 2026-10-01\nVAT ID: IE6388047V\nAmount paid $20.00")
@@ -177,7 +177,7 @@ def _pdf(text: bytes) -> bytes:
 
 def test_texto_real_del_pdf_en_el_extractor_aislado():
     text = invoice_extract.pdf_text(_pdf(b"CIF B12345678 Fecha 13/11/2026 TOTAL 12,50 EUR"))
-    assert invoice_extract.fields(text) == {"taxId": "B12345678", "total": "12.50", "issuedOn": "2026-11-13", "dateAmbiguous": False, "currency": "EUR"}
+    assert invoice_extract.fields(text) == {"taxId": "B12345678", "total": "12.50", "issuedOn": "2026-11-13", "dates": ["2026-11-13"], "dateAmbiguous": False, "currency": "EUR"}
 
 
 
