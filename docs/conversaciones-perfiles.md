@@ -4,7 +4,7 @@ Seleccionar un perfil y abrir **Conversar con <nombre>**. Abrir la ficha o la pe
 
 ## El mismo bot que en Telegram, con permiso para cada acción (0.13.0)
 Decisión del usuario (18/10/2026): el chat de un perfil usa su propio agente, como su bot de Telegram, y cada acción que cambie algo se confirma en AgoraOne.
-- **Agente real del perfil** (`server/hermes_agent_bridge.py`, un proceso por conversación):
+- **Agente real del perfil** (`desktop/server/python/hermes_agent_bridge.py`, un proceso por conversación):
   - Se construye como lo hace la API de Hermes: configuración del gateway, modelo y proveedor del perfil, los toolsets `telegram` del perfil, sus MCP, su memoria y su SOUL.
   - Todo ocurre dentro de `_profile_runtime_scope`, así el home, las credenciales y la política de terminal son los del perfil y no pasan a otro.
   - AgoraOne no le pasa credenciales propias: gasta del proveedor del perfil, igual que Telegram.
@@ -38,7 +38,7 @@ Decisión del usuario (18/10/2026): el chat de un perfil usa su propio agente, c
   - Si un turno falla o se detiene después de usar herramientas, el error dice cuáles se usaron, para no repetirlas a ciegas.
 - **Procesos**: el puente vive mientras la conversación se usa (5 minutos de inactividad); al cerrarse apaga sus MCP y, si no termina, se cierra su grupo de procesos. Los puentes de perfil tienen su propio cupo de cuatro, aparte del de Luma.
 - **Verificación**:
-  - `server/hermes-agent-bridge.test.ts` usa la instalación real de Hermes con un perfil ficticio y un modelo falso local. Comprueba:
+  - `desktop/server/tests/chat_bridges.rs` usa la instalación real de Hermes con un perfil ficticio y un modelo falso local. Comprueba:
     - que la lectura se hace sin preguntar;
     - que una escritura denegada no ocurre y una permitida sí;
     - que no se persiste ningún permiso;
@@ -69,7 +69,7 @@ Límites: 6000 caracteres de pregunta y el límite de historial existente. Los d
 ## Verificación reproducible
 `npm test` comprueba separación entre perfiles/usuarios, relectura, revocación, rechazo de inyección de herramientas/contexto y regresión de Luma. `npm run build` verifica tipos y frontend.
 
-La prueba real anterior con proveedor de AgoraOne (`scripts/verify-profile-chat.ts`) se retiró en 0.13.0: la sustituye `server/hermes-agent-bridge.test.ts`, descrita arriba.
+La prueba real anterior con proveedor de AgoraOne (`scripts/verify-profile-chat.ts`) se retiró en 0.13.0: la sustituye `desktop/server/tests/chat_bridges.rs`, descrita arriba.
 
 ## Pendiente
 Compartir la sesión con Telegram o Desktop (hoy cada conversación de AgoraOne es una sesión propia) y ejecución en otras versiones de Hermes. No quitar el bloqueo de commit de los puentes sin comprobar el contrato de esa versión.
