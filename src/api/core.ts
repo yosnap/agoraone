@@ -137,7 +137,7 @@ export const changeMailAccount = (id: number, changes: Partial<MailAccountIn & {
   core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, changes, 'PUT');
 export const deleteMailAccount = (id: number) => core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, undefined, 'DELETE');
 export const syncMailAccount = (id: number) => core<{ result: { status: string; added: number }; accounts: MailAccount[] }>(`/mail/accounts/${id}/sync`, {});
-export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
+export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error' | 'cancelled'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
 export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail/microsoft');
 export const putMicrosoftClient = (clientId: string | null) => core<{ clientId: string | null }>('/mail/microsoft', { clientId }, 'PUT');
 export const startMicrosoftSignIn = (id: number) => core<MicrosoftSignIn>(`/mail/accounts/${id}/microsoft`, {});

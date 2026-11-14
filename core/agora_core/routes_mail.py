@@ -1,5 +1,6 @@
 """HTTP routes of mail accounts and scopes, and the background reading of new mail every few minutes."""
 
+import imaplib
 import re
 import sqlite3
 import sys
@@ -81,7 +82,13 @@ def microsoft_login(connection, secrets):
             token = mail_oauth.access_token(FLOWS, account_id, client, refresh, lambda new: secrets.put(mail.secret_account(account_id), new))
         except mail_oauth.OAuthError as error:
             raise mail.LoginError(str(error)) from error
-        imap.authenticate("XOAUTH2", lambda _: mail_oauth.xoauth2(account["username"], token))
+        try:
+            imap.authenticate("XOAUTH2", lambda _: mail_oauth.xoauth2(account["username"], token))
+        except imaplib.IMAP4.error as error:
+            with FLOWS.lock:
+                FLOWS.tokens.pop(account_id, None)  # the next round asks Microsoft for a fresh one
+            raise mail.LoginError("Outlook rechazó el acceso: comprueba que IMAP está activo en el buzón y que entraste en Microsoft "
+                                  "con esta misma dirección.") from error
     return login
 
 
@@ -198,7 +205,7 @@ def mail_router(settings: Settings, secrets) -> APIRouter:
     def describe(pending: mail_oauth.Pending | None) -> dict:
         if pending is None:
             return {"state": "none"}
-        return {"state": pending.state, "message": pending.message, "userCode": pending.user_code,
+        return {"state": pending.current_state(), "message": pending.message, "userCode": pending.user_code,
                 "verificationUri": pending.verification_uri, "expiresAt": int(pending.expires_at)}
 
     @router.post("/mail/accounts/{account_id}/microsoft")
@@ -208,12 +215,16 @@ def mail_router(settings: Settings, secrets) -> APIRouter:
             return JSONResponse({"error": "Esa cuenta no es de Microsoft."}, status_code=404)
         client = await db(mail_oauth.client_id)
         if not client:
-            return JSONResponse({"error": "Falta el identificador de la aplicación de Microsoft (arriba, en esta misma tarjeta)."}, status_code=422)
+            return JSONResponse({"error": "Falta el identificador de la aplicación de Microsoft en Ajustes › Cuentas de correo."}, status_code=422)
 
-        def saved(refresh: str) -> None:  # runs in the waiting thread once the user accepts
-            secrets.put(mail.secret_account(account_id), refresh)
+        def saved(refresh: str) -> bool:  # runs in the waiting thread once the user accepts
             with database() as c:
+                current = c.execute("SELECT auth FROM mail_account WHERE id = ?", (account_id,)).fetchone()
+                if current is None or current["auth"] != "microsoft":
+                    return False  # deleted meanwhile (its id may now be another account's): nothing is stored
+                secrets.put(mail.secret_account(account_id), refresh)
                 c.execute("UPDATE mail_account SET status = 'pending', last_error = NULL WHERE id = ?", (account_id,))
+            return True
         try:
             pending = await run_in_threadpool(mail_oauth.start, FLOWS, account_id, client, saved)
         except mail_oauth.OAuthError as error:

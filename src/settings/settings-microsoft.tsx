@@ -8,16 +8,18 @@ export function MicrosoftClientField() {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [editing, setEditing] = useState(false);
   const asked = useRef(false);
   if (!asked.current) { asked.current = true; getMicrosoftClient().then(data => setClientId(data.clientId)).catch(() => setClientId(null)); }
   const save = async (value: string | null) => {
     setError(''); setNote('');
-    try { setClientId((await putMicrosoftClient(value)).clientId); setDraft(''); setNote(value ? 'Identificador guardado.' : 'Identificador borrado.'); }
+    try { setClientId((await putMicrosoftClient(value)).clientId); setDraft(''); setEditing(false); setNote(value ? 'Identificador guardado.' : 'Identificador borrado.'); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
   };
   return <div className="mail-microsoft">
     <strong>Aplicación de Microsoft</strong>
-    {clientId ? <p className="muted">Registrada: <code>{clientId}</code> <button type="button" className="button" onClick={() => void save(null)}>Cambiar</button></p> : <>
+    {clientId && !editing ? <p className="muted">Registrada: <code>{clientId}</code> <button type="button" className="button" onClick={() => setEditing(true)}>Cambiar…</button></p> : <>
+      {clientId && <p className="muted">Si cambias el identificador, tendrás que volver a conectar todas las cuentas de Microsoft. <button type="button" className="button" onClick={() => { setEditing(false); setDraft(''); }}>Cancelar</button></p>}
       <p className="muted">Microsoft solo deja leer el correo a aplicaciones registradas. Se hace una vez y es gratis:</p>
       <ol className="mail-steps">
         <li>Entra en <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noreferrer">Microsoft Entra › Registros de aplicaciones</a> con tu cuenta de Microsoft y pulsa «Nuevo registro».</li>
@@ -39,25 +41,42 @@ export function MicrosoftClientField() {
 export function MicrosoftConnect({ accountId, connected, onDone }: { accountId: number; connected: boolean; onDone: () => void }) {
   const [signIn, setSignIn] = useState<MicrosoftSignIn | null>(null);
   const [error, setError] = useState('');
-  const follow = () => {
-    window.setTimeout(() => {
+  // Polling stops when the card leaves the screen, when the code expires or after a few failed reads.
+  const live = useRef(true);
+  const timer = useRef<number | undefined>(undefined);
+  const asked = useRef(false);
+  // A stable callback ref (a new function each render would detach and stop the polling on every render).
+  const holder = useRef((node: HTMLDivElement | null) => {
+    live.current = node !== null;
+    if (!node) window.clearTimeout(timer.current);
+  }).current;
+  const follow = (failures = 0) => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      if (!live.current) return;
       getMicrosoftSignIn(accountId).then(state => {
+        if (!live.current) return;
         setSignIn(state);
-        if (state.state === 'waiting') follow(); else if (state.state === 'done') onDone();
-      }).catch(() => follow());
+        if (state.state === 'waiting' && Date.now() / 1000 < (state.expiresAt ?? 0)) follow(); else if (state.state === 'done') onDone();
+      }).catch(() => { if (failures < 4) follow(failures + 1); else setError('No se pudo comprobar la conexión con Microsoft.'); });
     }, 3000);
   };
+  // A sign-in already in progress (the page was reloaded meanwhile) shows its code again.
+  if (!asked.current) {
+    asked.current = true;
+    getMicrosoftSignIn(accountId).then(state => { if (live.current && state.state === 'waiting') { setSignIn(state); follow(); } }).catch(() => undefined);
+  }
   const start = async () => {
     setError('');
     try { const state = await startMicrosoftSignIn(accountId); setSignIn(state); follow(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo empezar.'); }
   };
   const waiting = signIn?.state === 'waiting';
-  return <div className="mail-microsoft-connect">
+  return <div className="mail-microsoft-connect" ref={holder}>
     {waiting ? <p role="status">Abre <a href={signIn.verificationUri} target="_blank" rel="noreferrer">{signIn.verificationUri}</a>, escribe el código <strong className="mail-code">{signIn.userCode}</strong> y acepta los permisos. Esta pantalla se actualiza sola.</p>
       : <button type="button" className="button primary" onClick={() => void start()}>{connected ? 'Volver a conectar con Microsoft' : 'Conectar con Microsoft'}</button>}
     {signIn?.state === 'done' && <span className="ok-note" role="status">Cuenta conectada. Pulsa «Leer ahora».</span>}
-    {signIn && ['declined', 'expired', 'error'].includes(signIn.state) && <LoadError message={signIn.message ?? 'No se completó la conexión.'}/>}
+    {signIn && ['declined', 'expired', 'error', 'cancelled'].includes(signIn.state) && <LoadError message={signIn.message ?? 'No se completó la conexión.'}/>}
     {error && <LoadError message={error}/>}
   </div>;
 }

@@ -235,7 +235,7 @@ def test_microsoft_codigo_tokens_y_xoauth2(db):
     from agora_core import mail_oauth
     flows, http, saved = mail_oauth.Flows(), FakeMicrosoft(), []
     client = "00000000-0000-4000-8000-000000000001"
-    pending = mail_oauth.start(flows, 1, client, saved.append, http=http, sleep=lambda _: None)
+    pending = mail_oauth.start(flows, 1, client, lambda token: saved.append(token) or True, http=http, sleep=lambda _: None)
     assert (pending.user_code, pending.verification_uri) == ("ABCD-1234", "https://microsoft.com/devicelogin")
     for _ in range(200):
         if pending.state != "waiting":
@@ -270,6 +270,54 @@ def test_microsoft_codigo_tokens_y_xoauth2(db):
     assert mail.sync_account(db, account, "revocada", lambda h, p: FakeImap({}), login=revoked)["status"] == "auth"
     assert "vuelve a conectar" in db.execute("SELECT last_error FROM mail_account").fetchone()[0]
     assert mail.sync_account(db, account, "renovacion-1", lambda h, p: FakeImap({}))["status"] == "auth", "sin identificador de aplicación"
+
+
+def _settle(pending):
+    import time
+    for _ in range(300):
+        if pending.state != "waiting":
+            return
+        time.sleep(0.01)
+
+
+def test_microsoft_cancelado_no_guarda_nada():
+    from agora_core import mail_oauth
+    client = "00000000-0000-4000-8000-000000000001"
+    flows, saved = mail_oauth.Flows(), []
+    gate = __import__("threading").Event()
+    pending = mail_oauth.start(flows, 3, client, lambda token: saved.append(token) or True, http=FakeMicrosoft(), sleep=lambda _: gate.wait(2))
+    mail_oauth.forget(flows, 3)  # the account was deleted while the user was still at Microsoft's page
+    gate.set()
+    _settle(pending)
+    assert pending.state == "cancelled" and saved == [] and 3 not in flows.tokens
+    # The account is no longer a Microsoft one when the user accepts: nothing is stored either.
+    flows = mail_oauth.Flows()
+    pending = mail_oauth.start(flows, 4, client, lambda token: False, http=FakeMicrosoft(), sleep=lambda _: None)
+    _settle(pending)
+    assert pending.state == "cancelled" and 4 not in flows.tokens
+
+
+def test_microsoft_red_caida_y_fallo_inesperado():
+    import httpx
+    from agora_core import mail_oauth
+    client = "00000000-0000-4000-8000-000000000001"
+    inner, blips = FakeMicrosoft(), []
+
+    def flaky(url, data):
+        if url.endswith("/token") and len(blips) < 2:
+            blips.append(url)
+            raise httpx.ConnectError("sin red")
+        return inner(url, data)
+    flows, saved = mail_oauth.Flows(), []
+    pending = mail_oauth.start(flows, 1, client, lambda token: saved.append(token) or True, http=flaky, sleep=lambda _: None)
+    _settle(pending)
+    assert pending.state == "done" and len(saved) == 1, "un corte de red no tira el inicio de sesión"
+
+    def broken(token):
+        raise RuntimeError("Llavero bloqueado")
+    pending = mail_oauth.start(mail_oauth.Flows(), 2, client, broken, http=FakeMicrosoft(), sleep=lambda _: None)
+    _settle(pending)
+    assert pending.state == "error" and "Llavero" not in (pending.message or "")
 
 
 def test_identificador_de_aplicacion_valido(db):

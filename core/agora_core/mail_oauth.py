@@ -7,6 +7,7 @@ log in to IMAP with XOAUTH2. The client id is the user's own app registration (p
 
 import json
 import re
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -22,6 +23,10 @@ TIMEOUT = 20
 
 class OAuthError(RuntimeError):
     pass
+
+
+class TransportError(OAuthError):
+    """Microsoft could not be reached (network down, timeout): worth trying again."""
 
 
 def valid_client_id(value: str) -> bool:
@@ -47,7 +52,7 @@ def _post(http, path: str, data: dict) -> dict:
     try:
         response = http(f"{AUTHORITY}/{path}", data)
     except httpx.HTTPError as error:
-        raise OAuthError("No se pudo hablar con Microsoft; revisa la conexión.") from error
+        raise TransportError("No se pudo hablar con Microsoft; revisa la conexión.") from error
     try:
         return response.json()
     except ValueError as error:
@@ -64,8 +69,11 @@ class Pending:
     user_code: str
     verification_uri: str
     expires_at: float
-    state: str = "waiting"  # waiting · done · declined · expired · error
+    state: str = "waiting"  # waiting · done · declined · expired · error · cancelled
     message: str | None = None
+
+    def current_state(self) -> str:
+        return "expired" if self.state == "waiting" and time.time() > self.expires_at else self.state
 
 
 @dataclass
@@ -78,42 +86,62 @@ class Flows:
 
 def start(flows: Flows, account_id: int, client: str, save_refresh, http=default_http, sleep=time.sleep) -> Pending:
     """Asks Microsoft for a code and waits for the user in the background. `save_refresh(token)` stores the
-    refresh token in the Keychain when the user accepts."""
+    refresh token in the Keychain when the user accepts, and returns False when the account is no longer a
+    Microsoft one (nothing is stored then). A new sign-in for the same account replaces the previous one."""
     answer = _post(http, "devicecode", {"client_id": client, "scope": SCOPES})
     if "user_code" not in answer:
         raise OAuthError(_explain(answer))
     pending = Pending(answer["user_code"], answer.get("verification_uri", "https://microsoft.com/devicelogin"),
                       time.time() + int(answer.get("expires_in", 900)))
     with flows.lock:
+        previous = flows.pending.get(account_id)
+        if previous is not None and previous.state == "waiting":
+            previous.state = "cancelled"
         flows.pending[account_id] = pending
     interval = max(1, int(answer.get("interval", 5)))
 
+    def current() -> bool:  # still the sign-in of this account (not cancelled, deleted or replaced)?
+        with flows.lock:
+            return flows.pending.get(account_id) is pending and pending.state == "waiting"
+
+    def end(state: str, message: str | None = None) -> None:
+        with flows.lock:
+            pending.message, pending.state = message, state
+
     def wait():
         nonlocal interval
-        while time.time() < pending.expires_at:
-            sleep(interval)
-            try:
-                token = _post(http, "token", {"grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                                              "client_id": client, "device_code": answer["device_code"]})
-            except OAuthError as error:
-                pending.state, pending.message = "error", str(error)
+        try:
+            while time.time() < pending.expires_at:
+                sleep(interval)
+                if not current():
+                    return
+                try:
+                    token = _post(http, "token", {"grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                                                  "client_id": client, "device_code": answer["device_code"]})
+                except TransportError:
+                    continue  # a network blip: the user may still be typing the code
+                if "refresh_token" in token and "access_token" in token:
+                    with flows.lock:  # checked and stored together, so a cancelled sign-in never saves anything
+                        if flows.pending.get(account_id) is not pending or pending.state != "waiting":
+                            return
+                        if not save_refresh(token["refresh_token"]):
+                            pending.message, pending.state = "Esa cuenta ya no es de Microsoft o se quitó.", "cancelled"
+                            return
+                        flows.tokens[account_id] = (token["access_token"], time.time() + int(token.get("expires_in", 3600)) - 120)
+                        pending.state = "done"
+                    return
+                error = token.get("error")
+                if error == "authorization_pending":
+                    continue
+                if error == "slow_down":
+                    interval += 5
+                    continue
+                end({"authorization_declined": "declined", "expired_token": "expired"}.get(error, "error"), _explain(token))
                 return
-            if "refresh_token" in token:
-                save_refresh(token["refresh_token"])
-                with flows.lock:
-                    flows.tokens[account_id] = (token["access_token"], time.time() + int(token.get("expires_in", 3600)) - 120)
-                pending.state = "done"
-                return
-            error = token.get("error")
-            if error == "authorization_pending":
-                continue
-            if error == "slow_down":
-                interval += 5
-                continue
-            pending.state = {"authorization_declined": "declined", "expired_token": "expired"}.get(error, "error")
-            pending.message = _explain(token)
-            return
-        pending.state = "expired"
+            end("expired", _explain({"error": "expired_token"}))
+        except Exception as error:  # noqa: BLE001 - a dead thread must never leave the sign-in waiting forever
+            print(f"AgoraOne núcleo: inicio de sesión de Microsoft interrumpido ({type(error).__name__})", file=sys.stderr)
+            end("error", "No se pudo terminar el inicio de sesión de Microsoft; vuelve a intentarlo.")
 
     threading.Thread(target=wait, daemon=True).start()
     return pending
@@ -136,8 +164,11 @@ def access_token(flows: Flows, account_id: int, client: str, refresh: str, save_
 
 
 def forget(flows: Flows, account_id: int) -> None:
+    """Cancels a sign-in in progress (its thread stops without saving) and drops the token in memory."""
     with flows.lock:
-        flows.pending.pop(account_id, None)
+        pending = flows.pending.pop(account_id, None)
+        if pending is not None and pending.state == "waiting":
+            pending.state = "cancelled"
         flows.tokens.pop(account_id, None)
 
 
