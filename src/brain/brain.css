@@ -24,7 +24,7 @@
 .brain-legend li { display:flex; align-items:center; gap:5px }
 .brain-legend span { width:9px; height:9px; border-radius:50% }
 .brain-legend small { color:var(--c-8a9a91) }
-.graph-label { display:block; pointer-events:none; white-space:nowrap; transform:translateY(-18px); background:var(--c-173d3ce6); color:var(--c-fff9e7); font:500 11px 'DM Sans',sans-serif; padding:4px 8px; border-radius:6px }
+.graph-label { display:block; pointer-events:none; white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis; transform:translateY(-18px); background:var(--c-173d3ce6); color:var(--c-fff9e7); font:500 11px 'DM Sans',sans-serif; padding:4px 8px; border-radius:6px }
 
 @media (max-width:850px) {
   .brain { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(300px,48%) minmax(0,1fr) }
@@ -38,5 +38,6 @@
 .brain-thinking li.done { opacity:.85 }
 .brain-thinking li.now { opacity:1; background:var(--signal-amber); color:var(--signal-amber-ink) }
 .brain-thinking > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100% }
+.graph-label.best { font-weight:700; font-size:12px; box-shadow:0 0 0 3px var(--signal-amber-glow) }
 .graph-label.reading { background:var(--signal-amber); color:var(--signal-amber-ink); box-shadow:0 0 0 3px var(--signal-amber-glow) }
 @media (max-width:850px) { .brain-thinking { right:16px; bottom:auto; top:calc(48% - 70px) } }
