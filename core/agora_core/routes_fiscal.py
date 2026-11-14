@@ -2,8 +2,10 @@
 read-only, and its PDF); filing, downloading a link and tidying the folder happen only on the user's
 explicit request with the exact fields or moves they saw."""
 
+import asyncio
 import json
 import sqlite3
+from contextlib import aclosing
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Annotated, Literal
@@ -14,8 +16,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import exchange, fiscal, fiscal_excel, fiscal_folder, fiscal_scan, invoice_extract, mail, qonto, receipts
+from . import exchange, invoice_ai, fiscal, fiscal_excel, fiscal_folder, fiscal_scan, invoice_extract, mail, qonto, receipts
 from .db import DB_NAME, connect, now, transaction
+from .engines import AnthropicApiEngine, ClaudeCodeEngine, Turn, usable
 from .routes_mail import microsoft_login
 from .settings import Settings
 
@@ -100,6 +103,10 @@ class QuarterIn(BaseModel):
 class OpenIn(BaseModel):
     path: str | None = Field(default=None, max_length=1000)
     reveal: StrictBool = False
+
+
+class ReadingIn(BaseModel):
+    withClaude: StrictBool
 
 
 class ApplyIn(BaseModel):
@@ -319,6 +326,44 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         except qonto.QontoError as error:
             return refuse(error, 502)
 
+    def invoice_reader(connection):
+        """Claude Haiku reads the invoices (user's choice in Ajustes, on by default), through the user's Claude
+        Code session or else the Anthropic API; None means local rules only."""
+        row = connection.execute("SELECT value FROM setting WHERE key = 'fiscal.readWithClaude'").fetchone()
+        if row and json.loads(row["value"]) is False:
+            return None
+        engines = [e for e in usable([ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)])
+                   if e.name in ("claude-code", "anthropic-api")]
+        if not engines:
+            return None
+
+        def ask(texts: list[str]) -> dict:
+            async def run():
+                parts = []
+                turn = Turn(invoice_ai.SYSTEM, [{"role": "user", "content": invoice_ai.prompt(texts)}], "haiku")
+                async with aclosing(engines[0].stream(turn)) as stream:
+                    async for text in stream:
+                        if text:
+                            parts.append(text)
+                return "".join(parts)
+            return invoice_ai.parse(asyncio.run(run()), len(texts))
+        return ask
+
+    @router.get("/fiscal/reading")
+    async def reading_setting():
+        row = await db(lambda c: c.execute("SELECT value FROM setting WHERE key = 'fiscal.readWithClaude'").fetchone())
+        return {"withClaude": True if row is None else bool(json.loads(row["value"]))}
+
+    @router.put("/fiscal/reading")
+    async def save_reading(body: ReadingIn):
+        def work(connection):
+            connection.execute("INSERT INTO setting (key, value) VALUES ('fiscal.readWithClaude', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                               (json.dumps(body.withClaude),))
+            # Read everything again with the new choice.
+            connection.execute("DELETE FROM fiscal_file")
+        await db(work)
+        return {"withClaude": body.withClaude}
+
     def quarter_data(connection, folder_id: int, year: int, quarter: int) -> dict:
         folder, root = professional_root(connection, folder_id)
         start, end = fiscal_excel.quarter_range(year, quarter)
@@ -328,7 +373,7 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         found_income, found_expenses, pending, counts = fiscal_scan.scan(connection, folder_id, root, year, quarter, start.isoformat(),
                                                                          end.isoformat(), {e["path"] for e in filed}, known_files)
         if pending:
-            fiscal_scan.read_in_background(database, folder_id, root, pending)
+            fiscal_scan.read_in_background(database, folder_id, root, pending, invoice_reader(connection))
         expenses = filed + found_expenses
         income, problem, notes = found_income, None, []
         auth = qonto_auth(connection)

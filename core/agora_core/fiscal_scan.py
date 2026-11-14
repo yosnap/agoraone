@@ -61,8 +61,9 @@ def _cached(connection: sqlite3.Connection, folder_id: int, root: Path, path: Pa
     return fields if fields.get("v") == invoice_extract.VERSION or fields.get("image") or fields.get("tooBig") else None
 
 
-def read_in_background(database, folder_id: int, root: Path, paths: list[Path]) -> None:
-    """Reads the PDFs not read yet, four at a time, without holding up the request that found them."""
+def read_in_background(database, folder_id: int, root: Path, paths: list[Path], ask=None) -> None:
+    """Reads the PDFs not read yet, four at a time, without holding up the request that found them; then, if
+    `ask(texts)` is given (Claude Haiku), reads their data with it, five invoices per call."""
     with _READING_LOCK:
         todo = [p for p in paths if (folder_id, str(p)) not in _READING]
         _READING.update((folder_id, str(p)) for p in todo)
@@ -78,14 +79,42 @@ def read_in_background(database, folder_id: int, root: Path, paths: list[Path]) 
                     _remember(connection, folder_id, root, path, {"unreadable": True})
         except Exception:  # noqa: BLE001
             pass
-        finally:
-            with _READING_LOCK:
-                _READING.discard((folder_id, str(path)))
 
     def run() -> None:
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            list(pool.map(one, todo))
+        try:
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                list(pool.map(one, todo))
+            if ask is not None:
+                _read_with_model(database, folder_id, root, todo, ask)
+        finally:  # «still reading» until the model is done too
+            with _READING_LOCK:
+                _READING.difference_update((folder_id, str(p)) for p in todo)
     threading.Thread(target=run, daemon=True).start()
+
+
+def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], ask) -> None:
+    """Adds what the model reads to what the local rules found (the model wins where it found something)."""
+    texts: list[tuple[Path, str]] = []
+    for path in paths:
+        if path.suffix.lower() == ".pdf":
+            try:
+                text = invoice_extract.pdf_text(path.read_bytes())
+            except OSError:
+                continue
+            if text.strip():
+                texts.append((path, text))
+    for i in range(0, len(texts), 5):
+        batch = texts[i:i + 5]
+        try:
+            found = ask([text for _, text in batch])
+        except Exception:  # noqa: BLE001 - without the model, the local rules stay
+            return
+        with database() as connection:
+            for n, (path, _) in enumerate(batch, 1):
+                if found.get(n):
+                    fields = _cached(connection, folder_id, root, path) or {}
+                    if not fields.get("unreadable"):
+                        _remember(connection, folder_id, root, path, {**fields, "ai": found[n]})
 
 
 def reading(folder_id: int) -> int:
@@ -140,6 +169,23 @@ def _day(fields: dict, start: str, end: str) -> tuple[str, bool]:
     return (inside, False) if inside else (start, True)
 
 
+def _merged(fields: dict, issued: bool) -> dict:
+    """What the model read, where it read something, over what the local rules found. The other party is the
+    receiver on an issued invoice and the issuer on a received one."""
+    ai = fields.get("ai")
+    if not ai:
+        return fields
+    merged = dict(fields)
+    for key in ("number", "issuedOn", "base", "vatRate", "vat", "withholdingRate", "withholding", "total", "currency"):
+        if ai.get(key) is not None:
+            merged[key] = ai[key]
+    name, tax_id = (ai.get("receiver"), ai.get("receiverTaxId")) if issued else (ai.get("issuer"), ai.get("issuerTaxId"))
+    if tax_id:
+        merged["taxIds"] = [tax_id]
+    merged["otherName"], merged["otherTaxId"] = name, tax_id
+    return merged
+
+
 def own_tax_id(connection: sqlite3.Connection, folder_id: int) -> str | None:
     """The holder's tax id: on an issued invoice the issuer is always the holder, so it is the one most of the
     folder's issued invoices (of every quarter) carry."""
@@ -176,6 +222,8 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
     counts = {"unreadable": 0, "duplicates": 0, "unplaced": len(unplaced), "noVat": 0}
 
     def other(fields: dict) -> str | None:
+        if fields.get("otherTaxId"):
+            return fields["otherTaxId"]
         return next((t for t in fields.get("taxIds", []) if t and t != own), None)
 
     def fresh(fields: dict) -> bool:
@@ -193,7 +241,7 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
     for path, rest in issued:
         if path not in read or not fresh(read[path]):
             continue
-        fields = read[path]
+        fields = _merged(read[path], issued=True)
         day, guessed = _day(fields, start, end)
         base, total = fields.get("base"), fields.get("total")
         vat_rate, irpf_rate = fields.get("vatRate"), fields.get("withholdingRate") or 0.0
@@ -203,7 +251,7 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
             counts["noVat"] += 1
         client_tax = other(fields)
         # The customer is named after the holder's block; never the holder (the file name often carries the holder's name).
-        client = (fields.get("after") or {}).get(own) if own else None
+        client = fields.get("otherName") or ((fields.get("after") or {}).get(own) if own else None)
         if not client and client_tax:
             client = (fields.get("after") or {}).get(client_tax)
         income.append({"date": day, "number": fields.get("number") or path.stem[:30], "client": client or _name(path, rest), "taxId": client_tax or "",
@@ -213,18 +261,22 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
     for path, rest in received:
         if path not in read or not fresh(read[path]):
             continue
-        fields, relative = read[path], str(path.relative_to(root))
+        fields, relative = _merged(read[path], issued=False), str(path.relative_to(root))
         day, guessed = _day(fields, start, end)
         notes = [n for n, on in (("Factura en imagen: revisa los importes", fields.get("image")),
                                  ("Fecha no leída: puesta al inicio del trimestre", guessed),
-                                 ("Sin IVA desglosado", not fields.get("image") and fields.get("vat") is None)) if on]
+                                 ("Sin IVA desglosado", not fields.get("image") and fields.get("vat") is None),
+                                 ("Leída solo con reglas locales: compruébala", not fields.get("ai") and not fields.get("image"))) if on]
         supplier_tax = other(fields)
         base, vat, total = fields.get("base"), fields.get("vat"), fields.get("total")
-        if base is None and total and fields.get("vatRate") is not None:  # amounts in a column apart from their labels
+        if base is None and total and fields.get("vatRate") is not None and not fields.get("ai"):  # amounts in a column apart from their labels
             base = f"{float(total) / (1 + fields['vatRate']):.2f}"
             vat = f"{float(total) - float(base):.2f}"
             notes = [n for n in notes if n != "Sin IVA desglosado"]
-        supplier = rest[-1] if rest else (fields.get("before") or {}).get(supplier_tax) or _name(path, rest)
+        elif base is None and vat is None and total and fields.get("ai"):
+            # A receipt without VAT shown (as the user's register records it): base = total, VAT 0, said in the notes.
+            base, vat = total, "0.00"
+        supplier = fields.get("otherName") or (rest[-1] if rest else None) or (fields.get("before") or {}).get(supplier_tax) or _name(path, rest)
         expenses.append({"id": f"archivo:{relative}", "doubts": notes, "issuedOn": day, "supplier": supplier, "taxId": supplier_tax,
                          "number": fields.get("number") or "", "concept": relative, "base": base, "vat": vat,
                          "total": fields.get("total") or "0", "currency": fields.get("currency") or "EUR", "notes": "; ".join(notes), "file": relative})

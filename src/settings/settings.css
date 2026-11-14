@@ -45,3 +45,4 @@ li.open .compact-chevron { transform:rotate(180deg) }
 .palette-swatch { display:flex; border-radius:6px; overflow:hidden }
 .palette-swatch i { width:12px; height:22px; display:block }
 .appearance-font { max-width:360px }
+.fiscal-reading { display:flex; gap:10px; align-items:flex-start; font-size:12px; line-height:1.5; color:var(--c-4c6b62) } .fiscal-reading input { margin-top:3px }

@@ -220,3 +220,5 @@ export type CentralServer = { name: string; status: string | null; provider: str
 export type CentralState = { configured: boolean; snapshot: { clients: CentralClient[]; servers: CentralServer[]; fetchedAt: string } | null; problem: string | null };
 export const getCentral = () => core<CentralState>('/central');
 export const refreshCentral = () => core<CentralState>('/central/refresh', {});
+export const getFiscalReading = () => core<{ withClaude: boolean }>('/fiscal/reading');
+export const putFiscalReading = (withClaude: boolean) => core<{ withClaude: boolean }>('/fiscal/reading', { withClaude }, 'PUT');
