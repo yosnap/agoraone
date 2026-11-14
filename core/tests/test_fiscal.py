@@ -253,3 +253,46 @@ def test_abrir_en_el_finder_solo_dentro_de_la_carpeta(tmp_path):
     for bad in ("../fuera.xlsx", "no-existe.xlsx"):
         with pytest.raises(fiscal.FiscalError):
             fiscal.open_in_finder(root, bad, False, runner=lambda args, **k: calls.append(args))
+
+
+def test_lee_las_facturas_que_ya_estan_en_la_carpeta(db, tmp_path):
+    from contextlib import contextmanager
+    import time
+    from agora_core import fiscal_scan
+    root = tmp_path / "fiscal"
+    own = b"ESX1234567E"
+    files = {
+        "Facturas Salientes/2026/3 Trimestre/F-1.pdf": _pdf(b"Factura F-2026-041 NIF " + own + b" Cliente B12345678 Fecha 03/07/2026 Total sin IVA 100,00 Importe total del IVA 21,00 IRPF 15% 15,00"),
+        "Facturas Entrantes/Julio 2026/Apple/recibo.pdf": _pdf(b"Apple B87654321 cliente " + own + b" Fecha 09/07/2026 Total 2,99 EUR"),
+        "Facturas Entrantes/Agosto 2026/Bunny/x.pdf": _pdf(b"Bunny " + own + b" Date 2026-08-08 Amount paid $20.00"),
+        "Facturas Entrantes/Agosto 2026/foto.jpg": b"\xff\xd8\xff foto",
+        "Facturas Entrantes/2025/3T/viejo.pdf": _pdf(b"de otro trimestre"),
+    }
+    for path, data in files.items():
+        (root / path).parent.mkdir(parents=True, exist_ok=True)
+        (root / path).write_bytes(data)
+    root = root.resolve()
+    db.execute("INSERT INTO fiscal_folder (id, name, kind, path, created_at) VALUES (1, 'A', 'autonomo', ?, 'x')", (str(root),))
+
+    @contextmanager
+    def database():
+        connection = connect(tmp_path / "data" / DB_NAME)
+        try:
+            yield connection
+        finally:
+            connection.close()
+    income, expenses, pending = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set())
+    assert len(pending) == 4 and income == [] and expenses == [], "la primera vez solo se leen en segundo plano"
+    fiscal_scan.read_in_background(database, 1, root, pending)
+    for _ in range(300):
+        if not fiscal_scan.reading(1):
+            break
+        time.sleep(0.1)
+    income, expenses, pending = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set())
+    assert pending == [] and len(income) == 1 and len(expenses) == 3
+    row = income[0]
+    assert (row["base"], row["vatRate"], row["withholdingRate"], row["taxId"]) == (100.0, 0.21, 0.15, "B12345678"), "nunca el NIF propio"
+    by = {e["supplier"]: e for e in expenses}
+    assert by["Apple"]["taxId"] == "B87654321" and by["Apple"]["total"] == "2.99"
+    assert by["Bunny"]["currency"] == "USD" and by["Bunny"]["total"] == "20.00"
+    assert "imagen" in next(e for e in expenses if e["supplier"] not in ("Apple", "Bunny"))["notes"]

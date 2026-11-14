@@ -34,7 +34,7 @@ EXTRACT_SECONDS = 20
 # personal folders, other disks or temporary folders, except this Python and the core's own folder.
 _SANDBOX_BASE = ("(version 1)(allow default)(deny network*)(deny file-write* (subpath \"/\"))(allow file-write* (literal \"/dev/null\"))"
                  "(deny process-fork)(deny file-read-data (subpath \"/Users\") (subpath \"/Volumes\") (subpath \"/private/var/folders\") (subpath \"/private/tmp\"))")
-_RUNNING = threading.Semaphore(2)
+_RUNNING = threading.Semaphore(4)
 
 
 def _quote(path: Path) -> str:
@@ -151,6 +151,10 @@ def fields(text: str) -> dict:
     """What local rules find in an invoice's text: tax id, date, total and currency (any may be missing)."""
     tax = _TAX_ID.search(text.upper())
     totals = [amount(m) for m in _TOTAL.findall(text)]
+    if not any(totals):  # receipts without a «Total» line: the largest amount written with its currency
+        marked = [amount(a or b) for a, b in _MONEY_NEAR.findall(text)]
+        marked = [m for m in marked if m]
+        totals = [max(marked, key=float)] if marked else []
     currency = _CURRENCY.search(text)
     dates = _dates(text)
     symbol = currency[1] if currency else "€"
@@ -182,3 +186,33 @@ def doubts(found: dict, notice: dict) -> list[str]:
     if found.get("currency") and found["currency"] != "EUR":
         result.append(f"Factura en {found['currency']}: revisa el cambio a euros.")
     return result
+
+
+_NUM = r"(\d{1,3}(?:[.\s]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
+_BASE = re.compile(r"(?:base\s+imponible|subtotal|importe\s+neto|total\s+sin\s+iva|net\s+amount)[^\d\n]{0,25}" + _NUM, re.I)
+_VAT_AMOUNT = re.compile(r"(?:importe\s+(?:total\s+)?del?\s+IVA|cuota\s+(?:de\s+)?IVA|total\s+(?:del\s+)?IVA|IVA\s+total|total\s+VAT|VAT\s+amount|total\s+tax)[^\d\n]{0,20}" + _NUM, re.I)
+_MONEY_NEAR = re.compile(r"(?:[€$£]|EUR|USD|GBP)\s?" + _NUM + r"|" + _NUM + r"\s?(?:[€$£]|EUR|USD|GBP)")
+_VAT = re.compile(r"(?:IVA|VAT|TVA|MwSt)[^\d\n%]{0,12}(\d{1,2}(?:[.,]\d{1,2})?)\s?%[^\d\n]{0,20}" + _NUM, re.I)
+_IRPF = re.compile(r"(?:IRPF|retenci[oó]n)[^\d\n%]{0,12}-?\s?(\d{1,2}(?:[.,]\d{1,2})?)\s?%[^\d\n]{0,20}-?\s?" + _NUM, re.I)
+_NUMBER = re.compile(r"(?:factura|invoice|n[º°o]\.?\s*de\s*factura)\s*(?:n[º°o.]*|number|num\.?|#)?\s*[:\-]?\s*([A-Z]{0,4}[\-/]?\d[\w\-/]{1,20})", re.I)
+
+
+def breakdown(text: str) -> dict:
+    """Base, VAT and withholding of an invoice's text, by local rules (any may be missing)."""
+    base = _BASE.search(text)
+    vat = _VAT.search(text)
+    vat_amount = _VAT_AMOUNT.search(text)
+    irpf = _IRPF.search(text)
+    number = _NUMBER.search(text)
+    rate = lambda found: round(float(found[1].replace(",", ".")) / 100, 4) if found else None  # noqa: E731
+    vat_value = amount(vat[2]) if vat else amount(vat_amount[1]) if vat_amount else None
+    vat_rate = rate(vat)
+    if vat_rate is None and vat_value is not None and base and amount(base[1]) and float(amount(base[1])) > 0:
+        vat_rate = round(float(vat_value) / float(amount(base[1])), 2)
+    tax_ids = []
+    for found in _TAX_ID.finditer(text.upper()):
+        tax_id = found[1] or found[2]
+        if tax_id not in tax_ids:
+            tax_ids.append(tax_id)
+    return {"taxIds": tax_ids[:4], "base": amount(base[1]) if base else None, "vatRate": vat_rate, "vat": vat_value,
+            "withholdingRate": rate(irpf), "withholding": amount(irpf[2]) if irpf else None, "number": number[1] if number else None}
