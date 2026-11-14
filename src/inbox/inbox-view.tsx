@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { createMailRule, decideInbox, getInbox, type InboxCounts, type InboxItem, type InboxState } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { actionLabels, kindLabels, proposalLabels, sender, when } from './inbox-labels';
+import { InvoiceFiling } from './invoice-filing';
 import './inbox.css';
 
 const tabs: { state: InboxState; label: string }[] = [
@@ -19,6 +20,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [filing, setFiling] = useState<number | null>(null);
   const asked = useRef(false);
   const request = useRef(0);  // only the latest read is shown (a slow answer for another tab is dropped)
   const load = async (which: InboxState = state) => {
@@ -79,7 +81,10 @@ export function InboxView({ discreet }: { discreet: boolean }) {
               {item.details.dates?.length ? <li>Fechas: {item.details.dates.join(', ')}</li> : null}
             </ul> : null}
           </>}
-          {item.proposal && <p className="inbox-proposal"><button type="button" className="button" disabled title="Pendiente">{proposalLabels[item.proposal].label}</button>
+          {item.proposal === 'archive_invoice' && item.state === 'pending' ? (filing === item.id
+            ? <InvoiceFiling messageId={item.id} onFiled={path => { setFiling(null); setNote(`Factura archivada en ${path}.`); void load(); }}/>
+            : <p className="inbox-proposal"><button type="button" className="button" onClick={() => setFiling(item.id)}>{proposalLabels.archive_invoice.label}…</button></p>)
+            : item.proposal && item.proposal !== 'archive_invoice' && <p className="inbox-proposal"><button type="button" className="button" disabled title="Pendiente">{proposalLabels[item.proposal].label}</button>
             <span className="muted">Pendiente: {proposalLabels[item.proposal].arrives}.</span></p>}
           <div className="inbox-actions">
             {item.state === 'pending' ? <>

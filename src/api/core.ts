@@ -169,3 +169,19 @@ export const getInbox = (state: InboxState = 'pending') => core<{ items: InboxIt
 export const decideInbox = (id: number, state: InboxState) => core<{ ok: true }>(`/mail/inbox/${id}`, { state }, 'PUT');
 /** The cards the assistant announces now; the core hands each one out only once. */
 export const claimAnnouncements = () => core<{ items: InboxItem[] }>('/mail/inbox/announce', {});
+export type InvoiceFields = { supplier: string; taxId?: string | null; issuedOn: string; total: string; currency: string; base?: string | null; vat?: string | null; notes?: string | null };
+export type InvoiceSource = { kind: 'attachment'; part: number; name?: string } | { kind: 'link'; url: string };
+export type InvoicePrepared = {
+  source: { kind: 'attachment'; part: number; name: string } | null; links: { url: string; host: string }[];
+  proposal: InvoiceFields; doubts: string[]; destination: string;
+};
+export type Invoice = InvoiceFields & { id: number; direction: 'received' | 'issued'; messageId: number | null; doubts: string[]; quarter: string; path: string };
+export const getFiscalFolder = () => core<{ folder: string | null }>('/fiscal/folder');
+export const putFiscalFolder = (folder: string | null) => core<{ folder: string | null }>('/fiscal/folder', { folder }, 'PUT');
+export const prepareInvoice = (messageId: number) => core<InvoicePrepared>('/fiscal/invoices/prepare', { messageId });
+export const fileInvoice = (messageId: number, source: InvoiceSource, fields: InvoiceFields, doubts: string[]) =>
+  core<{ id: number; path: string; quarter: string }>('/fiscal/invoices', { messageId, source, fields, doubts });
+export const getInvoices = (quarter?: string) => core<{ invoices: Invoice[] }>(`/fiscal/invoices${quarter ? `?quarter=${quarter}` : ''}`);
+export type FolderPlan = { moves: { from: string; to: string }[]; undecided: string[]; more: number };
+export const getFolderPlan = () => core<FolderPlan>('/fiscal/folder/plan');
+export const applyFolderPlan = (moves: string[]) => core<{ moved: { from: string; to: string }[]; backup: string }>('/fiscal/folder/apply', { moves });
