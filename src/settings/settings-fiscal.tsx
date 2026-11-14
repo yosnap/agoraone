@@ -5,6 +5,7 @@ import {
 } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { FolderLogo } from './provider-logos';
 
 export const kindLabels: Record<FolderKind, string> = { autonomo: 'Autónomo', empresa: 'Empresa', personal: 'Personal' };
 const kinds = (Object.keys(kindLabels) as FolderKind[]).map(value => ({ value, label: kindLabels[value] }));
@@ -21,6 +22,8 @@ export function FiscalSettingsCard() {
   const [plan, setPlan] = useState<{ folder: number; plan: FolderPlan } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [removing, setRemoving] = useState<number | null>(null);
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  const toggle = (id: number) => setOpen(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
@@ -77,10 +80,19 @@ export function FiscalSettingsCard() {
       <div className="field-row"><button type="button" className="button primary" disabled={!draft.name.trim()} onClick={save}>Guardar carpeta</button>
         <button type="button" className="button" onClick={() => setDraft(null)}>Cancelar</button></div>
     </div>}
-    {folders === null && !error ? <Loading label="Leyendo las carpetas"/> : <ul className="mail-accounts">
+    {folders === null && !error ? <Loading label="Leyendo las carpetas"/> : <ul className="mail-accounts compact">
       {folders?.length === 0 && !draft && <li className="muted">Aún no hay carpetas. Pulsa «Añadir carpeta…» y elige, por ejemplo, la de tu actividad de autónomo.</li>}
-      {folders?.map(folder => <li key={folder.id}>
-        <div className="mail-account-head"><strong>{folder.name}</strong><span className="chip">{kindLabels[folder.kind]}</span></div>
+      {folders?.map(folder => <li key={folder.id} className={open.has(folder.id) ? 'open' : ''}>
+        <div className="compact-row">
+          <button type="button" className="compact-toggle" aria-expanded={open.has(folder.id)} onClick={() => toggle(folder.id)} title={open.has(folder.id) ? 'Cerrar' : 'Ver y editar'}>
+            <FolderLogo kind={folder.kind}/>
+            <span className="compact-name"><strong>{folder.name}</strong>
+              <small className="muted">{scopes.find(s => s.id === folder.scopeId)?.name ?? 'Sin ámbito'} · {folder.path.split('/').slice(-2).join('/')}</small></span>
+            <span className="status-badge neutral">{kindLabels[folder.kind]}</span>
+            <span className="compact-chevron" aria-hidden="true">▾</span>
+          </button>
+        </div>
+        {open.has(folder.id) && <>
         <span className="muted"><code>{folder.path}</code></span>
         <div className="mail-account-fields">
           <label className="field">Ámbito<ModernSelect value={folder.scopeId ? String(folder.scopeId) : ''} options={scopeOptions}
@@ -93,6 +105,7 @@ export function FiscalSettingsCard() {
             <button type="button" className="button" onClick={() => setRemoving(null)}>Cancelar</button></span>
             : <button type="button" className="button danger" onClick={() => setRemoving(folder.id)}>Olvidar…</button>}
         </div>
+        </>}
         {plan?.folder === folder.id && <div className="mail-new" aria-label="Plan de orden">
           {plan.plan.moves.length === 0 ? <p>Todo está ya en su sitio{plan.plan.undecided.length ? ', salvo lo que no se puede saber' : ''}.</p> : <>
             <p>{plan.plan.moves.length} archivos irían a «Facturas Entrantes|Salientes/año/NT», deducido de los nombres de sus carpetas:</p>
