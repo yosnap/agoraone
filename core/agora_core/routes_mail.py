@@ -13,8 +13,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import mail, mail_oauth
-from .db import DB_NAME, connect, now
+from . import mail, mail_oauth, mail_rules
+from .db import DB_NAME, connect, now, transaction
 from .settings import Settings
 
 SYNC_SECONDS = 300
@@ -169,6 +169,12 @@ def mail_router(settings: Settings, secrets) -> APIRouter:
             await db(lambda c: mail.update_account(c, account_id, changes))
         except mail.MailError as error:
             return JSONResponse({"error": str(error)}, status_code=422)
+        if "confidentiality" in changes:
+            # A stricter account takes its messages' summaries out of reach at once (Watson, the Bandeja).
+            def relevel(c):
+                with transaction(c):
+                    mail_rules.reapply(c)
+            await db(relevel)
         if password_given:
             await run_in_threadpool(secrets.put, mail.secret_account(account_id), password)
             await db(lambda c: c.execute("UPDATE mail_account SET status = 'pending', last_error = NULL WHERE id = ?", (account_id,)))

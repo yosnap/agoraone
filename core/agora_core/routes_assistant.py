@@ -67,6 +67,15 @@ class SettingsIn(BaseModel):
     compatible: dict[str, str | None] | None = None
 
 
+def _logged(event: dict) -> tuple[str, str]:
+    """A tool call as (action, detail) for the action log."""
+    if event["tool"] == "search":
+        return "buscar", json.dumps({"query": event["query"], "found": len(event["found"])}, ensure_ascii=False)
+    if event["tool"] == "inbox":
+        return "bandeja", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
+    return "leer", json.dumps({"n": event["n"]}, ensure_ascii=False)
+
+
 def _event(kind: str, data) -> str:
     return f"event: {kind}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -217,9 +226,7 @@ def assistant_router(
                 # What Watson searched and read, in the action log (the summary ranks its searches).
                 connection.executemany(
                     "INSERT INTO action_log (occurred_at, actor, action, outcome, detail) VALUES (?, 'watson', ?, 'done', ?)",
-                    [(stamp, "buscar" if e["tool"] == "search" else "leer", json.dumps(
-                        {"query": e["query"], "found": len(e["found"])} if e["tool"] == "search" else {"n": e["n"]},
-                        ensure_ascii=False)) for e in done or []],
+                    [(stamp, *_logged(e)) for e in done or []],
                 )
                 title = body.message[:60] if conversation["title"] == "Conversación nueva" else conversation["title"]
                 connection.execute("UPDATE conversation SET updated_at = ?, title = ? WHERE id = ?", (stamp, title, conversation_id))

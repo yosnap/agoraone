@@ -131,6 +131,6 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
       <ol>{steps.map(([id, label]) => <li key={id} className={stepState(thinking.stage, id)}>{label}</li>)}</ol>
       <span>{thinking.label}</span>
     </div>}
-    <AssistantView embedded onRead={onRead} onSources={onFocus} onThinking={setThinking}/>
+    <AssistantView embedded onRead={onRead} onSources={onFocus} onThinking={setThinking} discreet={discreet}/>
   </section>;
 }

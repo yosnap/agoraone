@@ -28,6 +28,8 @@ from .entity_worker import ExtractHealth, entity_worker
 from .engines import AnthropicApiEngine, ClaudeCodeEngine
 from .routes_index import EmbedHealth, embed_worker, index_router
 from .routes_mail import mail_router, mail_worker
+from .mail_summarizer import SummaryHealth, summary_worker
+from .routes_inbox import inbox_router
 from .routes_summary import summary_router
 from .settings import DEFAULT_DATA, Settings
 
@@ -61,6 +63,7 @@ def create_app(
     cache = VectorCache()
     embed_health = EmbedHealth()
     extract_health = ExtractHealth()
+    summary_health = SummaryHealth()
     secrets = secrets or KeychainSecrets()
     expected = settings.secret.encode()
 
@@ -83,6 +86,8 @@ def create_app(
             threading.Thread(target=entity_worker, args=(settings, extract_engines, stop, extract_health), daemon=True).start()
             # New mail of the connected accounts, read-only (user's decision, 14/11/2026).
             threading.Thread(target=mail_worker, args=(settings, secrets, stop), daemon=True).start()
+            # Kinds and summaries of new mail: rules first, then Claude Haiku for what may leave this Mac.
+            threading.Thread(target=summary_worker, args=(settings, extract_engines, stop, summary_health), daemon=True).start()
         try:
             yield
         finally:
@@ -154,4 +159,5 @@ def create_app(
     app.include_router(summary_router(settings, time.time()))
     app.include_router(assistant_router(settings, embedder, cache, secrets, engines))
     app.include_router(mail_router(settings, secrets))
+    app.include_router(inbox_router(settings, summary_health))
     return app
