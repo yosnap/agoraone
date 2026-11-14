@@ -176,7 +176,7 @@ async fn rutas_internas_doble_barra_cuerpo_grande_y_nucleo_ausente_u_otro() {
     let (url, seen) = fake_core(401).await;
     let (app, state) = app(Some(CoreLink { url, secret: "s".repeat(64) }));
     let with = |path: &str| get(path).header(header::COOKIE, access()).header("x-agora-csrf", &state.csrf).body(Body::empty()).unwrap();
-    for path in ["/api/core/internal/index/state", "/api/core/%69nternal/x", "/api/core//internal", "/api/core/INTERNAL/x"] {
+    for path in ["/api/core/internal/index/state", "/api/core/%69nternal/x", "/api/core//internal", "/api/core/INTERNAL/x", "/api/core/%2e%2e/internal/index/notes", "/api/core/a/%2E%2E/internal/x", "/api/core/a/../internal/x"] {
         assert!(matches!(call(&app, with(path)).await.0, StatusCode::NOT_FOUND | StatusCode::BAD_REQUEST), "{path}");
     }
     assert!(seen.lock().unwrap().is_empty(), "nada llegó al núcleo");

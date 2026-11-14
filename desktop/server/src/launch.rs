@@ -199,7 +199,21 @@ impl Server {
     /// conversation bridges so nothing is left running.
     pub async fn serve(mut self, shutdown: impl Future<Output = ()> + Send + 'static) -> anyhow::Result<()> {
         let sync = self.state.brain_sync().map(|sync| sync.start());
-        let served = axum::serve(self.listener, router(self.state.clone())).with_graceful_shutdown(shutdown).await;
+        let asked = std::sync::Arc::new(tokio::sync::Notify::new());
+        let signal = asked.clone();
+        let graceful = axum::serve(self.listener, router(self.state.clone())).with_graceful_shutdown(async move {
+            shutdown.await;
+            signal.notify_one();
+        });
+        // Open streams (a turn's NDJSON, the assistant's events) may hold connections: they get a few seconds,
+        // then the core and the bridges are stopped anyway.
+        let served = tokio::select! {
+            result = graceful => result,
+            _ = async {
+                asked.notified().await;
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            } => Ok(()),
+        };
         if let Some(sync) = sync {
             sync.abort();
         }

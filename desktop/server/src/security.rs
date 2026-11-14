@@ -70,6 +70,11 @@ pub async fn guard(State(state): State<Arc<AppState>>, mut request: Request, nex
         None => {
             let fresh = request.extensions().get::<FreshUser>().cloned();
             let mut response = next.run(request).await;
+            // A body over the global limit is refused by the framework in plain text: answer in JSON like any error.
+            let json = response.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).is_some_and(|v| v.starts_with("application/json"));
+            if response.status() == StatusCode::PAYLOAD_TOO_LARGE && !json {
+                response = error(StatusCode::PAYLOAD_TOO_LARGE, "El archivo o la solicitud supera el tamaño permitido.");
+            }
             // A browser seen for the first time gets its identity cookie (30 days).
             if let Some(FreshUser(token)) = fresh {
                 let value = format!("{USER_COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={}", 30 * 86_400);

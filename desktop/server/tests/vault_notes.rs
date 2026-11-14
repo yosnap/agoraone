@@ -221,6 +221,30 @@ fn conserva_archivo_finales_de_linea_bom_y_permisos() {
     assert_eq!(read(f.vault.join("Control.md")), "texto\u{c}página");
 }
 
+#[test]
+fn dos_guardados_a_la_vez_no_se_pisan() {
+    let f = std::sync::Arc::new(fixture());
+    let backups = f.base.join("copias");
+    let note = by_title(&f, "Inicio");
+    let revision = f.notes.read(&f.id, &note.id, false).unwrap().revision;
+    let start = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let saves: Vec<_> = ["primera versión", "segunda versión"]
+        .into_iter()
+        .map(|text| {
+            let (f, start, backups, id, revision) = (f.clone(), start.clone(), backups.clone(), note.id.clone(), revision.clone());
+            std::thread::spawn(move || {
+                start.wait();
+                f.notes.save(&f.id, &id, edit(text, &revision), &backups).map(|_| text).map_err(|e| e.status.as_u16())
+            })
+        })
+        .collect();
+    let results: Vec<_> = saves.into_iter().map(|s| s.join().unwrap()).collect();
+    let saved: Vec<_> = results.iter().filter_map(|r| r.as_ref().ok()).collect();
+    assert_eq!(saved.len(), 1, "solo uno se guarda: {results:?}");
+    assert!(results.iter().any(|r| r == &Err(409)), "el otro recibe conflicto");
+    assert_eq!(read(f.vault.join("Inicio.md")), *saved[0]);
+}
+
 fn target(folder: &str, title: &str, revision: &str) -> NoteMove {
     NoteMove { folder: folder.into(), title: title.into(), revision: revision.into() }
 }

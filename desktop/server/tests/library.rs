@@ -275,7 +275,8 @@ async fn rutas_de_la_biblioteca_propietario_csrf_limites_y_ejemplos_protegidos()
     let (status, refused) = call(&state, "POST", "/api/library/imports", OWNER, true, Some(long.to_string())).await;
     assert_eq!((status, refused), (StatusCode::BAD_REQUEST, json!({ "error": "Texto no válido. Usa UTF-8 y un máximo de 24 KiB." })));
     let huge = json!({ "name": "privado.md", "base64": "A".repeat(8 * 1024 * 1024) });
-    assert_eq!(call(&state, "POST", "/api/library/imports", OWNER, true, Some(huge.to_string())).await.0, StatusCode::PAYLOAD_TOO_LARGE);
+    let (status, refused) = call(&state, "POST", "/api/library/imports", OWNER, true, Some(huge.to_string())).await;
+    assert_eq!((status, refused), (StatusCode::PAYLOAD_TOO_LARGE, json!({ "error": "El archivo o la solicitud supera el tamaño permitido." })), "también en JSON");
     let (status, imported) = call(&state, "POST", "/api/library/imports", OWNER, true, Some(body.to_string())).await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(imported["title"], "privado.md");

@@ -133,6 +133,7 @@ impl VaultNotes {
     /// must still be the revision the user opened. The previous version is copied to the backups folder
     /// first. Line endings and a leading BOM are kept as they were.
     pub fn save(&self, vault_id: &str, note_id: &str, edit: NoteEdit, backups: &Path) -> Result<Saved, Failure> {
+        let _writing = self.writing.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let index = self.index(vault_id, true)?;
         let entry = index
             .notes
@@ -177,6 +178,7 @@ impl VaultNotes {
 
     /// Creates a new note in a folder that already holds notes (or the vault's top level); never overwrites.
     pub fn create(&self, vault_id: &str, folder: &str, title: &str, content: &str) -> Result<Created, Failure> {
+        let _writing = self.writing.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let index = self.index(vault_id, true)?;
         let name = note_name(title)?;
         check(content)?;
@@ -206,6 +208,7 @@ impl VaultNotes {
     /// file (a hard link to the new name, then the old name is removed), so Obsidian keeps its creation date,
     /// and an existing note is never overwritten. Links to it from other notes are not rewritten.
     pub fn move_note(&self, vault_id: &str, note_id: &str, target: NoteMove, backups: &Path) -> Result<Created, Failure> {
+        let _writing = self.writing.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let index = self.index(vault_id, true)?;
         let entry = index
             .notes

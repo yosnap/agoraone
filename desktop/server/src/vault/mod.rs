@@ -130,11 +130,13 @@ pub struct VaultNotes {
     registry: Option<PathBuf>,
     indexes: Mutex<HashMap<String, Arc<Index>>>,
     note_vaults: Mutex<HashMap<String, String>>,
+    /// Saves, creations and moves run one at a time, so a revision check always sees the latest write.
+    writing: Mutex<()>,
 }
 
 impl VaultNotes {
     pub fn new(registry: Option<PathBuf>) -> Self {
-        Self { registry, indexes: Mutex::default(), note_vaults: Mutex::default() }
+        Self { registry, indexes: Mutex::default(), note_vaults: Mutex::default(), writing: Mutex::default() }
     }
 
     /// The registered vaults that exist; same validation as the catalog: absolute, unique paths only.

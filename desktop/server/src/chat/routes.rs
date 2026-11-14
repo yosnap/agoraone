@@ -129,16 +129,17 @@ pub async fn send(State(state): State<Arc<AppState>>, Extension(Owner(owner)): E
     let (Some(message), Ok(document_id), true) = (message, document_id, map.keys().all(|k| k == "message" || k == "documentId")) else {
         return error(StatusCode::BAD_REQUEST, "Escribe entre 1 y 6000 caracteres.");
     };
-    {
-        let busy = state.busy.lock().unwrap();
-        if busy.len() >= 2 || busy.contains(&data.id) {
-            return error(StatusCode::CONFLICT, "Hay una respuesta en curso. Espera antes de continuar.");
-        }
-    }
     if data.messages.iter().map(|m| utf16_len(&m.content)).sum::<usize>() > 60_000 {
         return error(StatusCode::CONFLICT, "Esta conversación llegó a su límite. Abre una nueva.");
     }
-    state.busy.lock().unwrap().insert(data.id.clone());
+    {
+        // Checked and taken under one lock, so two sends at once cannot both start a turn.
+        let mut busy = state.busy.lock().unwrap();
+        if busy.len() >= 2 || busy.contains(&data.id) {
+            return error(StatusCode::CONFLICT, "Hay una respuesta en curso. Espera antes de continuar.");
+        }
+        busy.insert(data.id.clone());
+    }
     let guard = Busy { state: state.clone(), id: data.id.clone() };
     let streaming = headers.get(header::ACCEPT).is_some_and(|a| a == "application/x-ndjson");
 

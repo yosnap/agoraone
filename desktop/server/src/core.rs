@@ -118,16 +118,22 @@ pub async fn proxy(State(state): State<Arc<AppState>>, request: Request) -> Resp
     if path.starts_with("//") {
         return error(StatusCode::BAD_REQUEST, "Ruta no válida.");
     }
-    let Some(decoded) = decode(&path) else { return error(StatusCode::BAD_REQUEST, "Ruta no válida.") };
-    // /internal/* is for the server's own calls (e.g. writing the index): never from the browser.
-    let trimmed = decoded.trim_start_matches('/').to_ascii_lowercase();
+    if decode(&path).is_none() {
+        return error(StatusCode::BAD_REQUEST, "Ruta no válida.");
+    }
+    let query = request.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
+    // The address is normalised (dot segments, encoded dots) exactly as it will be sent, and that is what is
+    // checked: /internal/* is for the server's own calls (writing the index), never from the browser.
+    let Ok(target) = reqwest::Url::parse(&format!("{}{}{}", link.url, if path.is_empty() { "/" } else { &path }, query)) else {
+        return error(StatusCode::BAD_REQUEST, "Ruta no válida.");
+    };
+    let Some(sent) = decode(target.path()) else { return error(StatusCode::BAD_REQUEST, "Ruta no válida.") };
+    let trimmed = sent.trim_start_matches('/').to_ascii_lowercase();
     if trimmed == "internal" || trimmed.starts_with("internal/") {
         return error(StatusCode::NOT_FOUND, "No disponible.");
     }
     let owner = request.extensions().get::<Owner>().map(|owner| owner.0.clone()).unwrap_or_default();
-    let query = request.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
-    let target = format!("{}{}{}", link.url, if path.is_empty() { "/" } else { &path }, query);
-    let mut outgoing = state.http.request(reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap(), &target)
+    let mut outgoing = state.http.request(reqwest::Method::from_bytes(method.as_str().as_bytes()).unwrap(), target)
         .header("x-agora-core-secret", &link.secret)
         .header("x-agora-owner", owner);
     for name in FORWARDED_REQUEST {

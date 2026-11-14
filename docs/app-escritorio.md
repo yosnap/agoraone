@@ -10,7 +10,7 @@ AgoraOne se usa como app de macOS autocontenida hecha con Tauri. Decisiones del 
 
 ## Datos
 - La app guarda todo en `~/Library/Application Support/AgoraOne` (0700): token de acceso (0600), conversaciones, copias de la biblioteca, base y copias del núcleo, copias previas de perfiles y del vault. Sus ajustes de proveedor para Luma van en `.env` dentro de esa carpeta (0600).
-- La primera vez que arranca copia lo que hubiera en `.agora` del proyecto y su `.env`. Nunca los mueve ni los borra. La copia se hace en una carpeta temporal y solo se coloca al terminar, así que una copia interrumpida se rehace entera. No sigue enlaces simbólicos.
+- Para traer los datos de un proyecto (`.agora` y su `.env`), se abre la app la primera vez con `AGORA_MIGRAR_DESDE` apuntando a la carpeta del proyecto, por ejemplo `AGORA_MIGRAR_DESDE=~/ruta/al/proyecto open -a AgoraOne`. Solo se acepta una carpeta real del propio usuario; la app no lleva ninguna ruta fija dentro (las compilaciones de la versión final no conservan la ruta del Mac donde se compilaron). La copia nunca mueve ni borra el original, se hace en una carpeta temporal y solo se coloca al terminar (una copia interrumpida se rehace entera) y no sigue enlaces simbólicos. Si Application Support/AgoraOne ya existe, no se copia nada.
 - En desarrollo (`npm run dev`, o la app con `AGORA_ROOT` apuntando al proyecto) se sigue usando `.agora`.
 
 ## Procesos

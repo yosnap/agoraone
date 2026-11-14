@@ -13,13 +13,32 @@ use agora_server::PORT;
 use agora_server::launch::{Paths, access_url, app_support, copy_first_run, load_dotenv, prepare, widen_path};
 use tauri::{RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
 
-/// The project folder in development (`AGORA_ROOT`, or the repository this app was built from); the
-/// packaged app will carry its own layout.
+/// The project folder when not packaged: `AGORA_ROOT`, or (development builds only) the repository this app
+/// was built from. Release builds never carry the build machine's path.
 fn root() -> PathBuf {
-    std::env::var_os("AGORA_ROOT").map(PathBuf::from).unwrap_or_else(|| {
+    if let Some(root) = std::env::var_os("AGORA_ROOT") {
+        return PathBuf::from(root);
+    }
+    #[cfg(debug_assertions)]
+    {
         let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         std::fs::canonicalize(&repository).unwrap_or(repository)
-    })
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        std::env::current_dir().unwrap_or_default()
+    }
+}
+
+/// A project folder the user named to bring their data from (`AGORA_MIGRAR_DESDE`): a real folder of this
+/// user, never a link, another user's folder or a fixed path baked into the app.
+fn migration_source() -> Option<PathBuf> {
+    use std::os::unix::fs::MetadataExt;
+    let folder = PathBuf::from(std::env::var_os("AGORA_MIGRAR_DESDE")?);
+    let meta = std::fs::symlink_metadata(&folder).ok()?;
+    // SAFETY: getuid has no preconditions.
+    let mine = meta.uid() == unsafe { libc::getuid() };
+    (meta.is_dir() && mine).then_some(folder)
 }
 
 /// The bundle's `Resources` when this runs as the packaged app (it carries the core inside).
@@ -37,15 +56,18 @@ fn layout() -> Paths {
         && let Some(resources) = bundle_resources()
     {
         let data = app_support().unwrap_or_else(|| alert("no se encuentra la carpeta del usuario"));
-        let project = root();
-        // The first start copies (never moves) what the user already had in the project.
-        if let Err(error) = copy_first_run(&project.join(".agora"), &data) {
-            alert(&format!("no se pudieron copiar tus datos de .agora ({error})"));
-        }
         let settings = data.join(".env");
-        if !settings.exists() && project.join(".env").is_file() && std::fs::copy(project.join(".env"), &settings).is_ok() {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&settings, std::fs::Permissions::from_mode(0o600));
+        // Only from a project the user named: the first start copies (never moves) what they had there.
+        if let Some(project) = migration_source() {
+            if let Err(error) = copy_first_run(&project.join(".agora"), &data) {
+                alert(&format!("no se pudieron copiar tus datos de .agora ({error})"));
+            }
+            let source = project.join(".env");
+            let plain = std::fs::symlink_metadata(&source).is_ok_and(|m| m.is_file());
+            if !settings.exists() && plain && std::fs::copy(&source, &settings).is_ok() {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&settings, std::fs::Permissions::from_mode(0o600));
+            }
         }
         load_dotenv(&settings);
         return Paths::packaged(&resources, data);

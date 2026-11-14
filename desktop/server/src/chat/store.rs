@@ -106,7 +106,7 @@ impl Conversations {
     pub fn save(&self, data: &Conversation) -> std::io::Result<()> {
         DirBuilder::new().recursive(true).mode(0o700).create(&self.directory)?;
         let file = self.directory.join(format!("{}.json", data.id));
-        let temporary = self.directory.join(format!("{}.json.tmp", data.id));
+        let temporary = self.directory.join(format!("{}.json.{}.tmp", data.id, uuid_v4()));
         let mut handle = OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&temporary)?;
         handle.write_all(serde_json::to_string(data)?.as_bytes())?;
         drop(handle);
