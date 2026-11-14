@@ -209,9 +209,9 @@ export const getQonto = () => core<{ login: string | null; hasKey: boolean }>('/
 export const putQonto = (changes: { login?: string | null; secret?: string | null }) => core<{ login: string | null; hasKey: boolean }>('/fiscal/qonto', changes, 'PUT');
 export const checkQonto = () => core<{ name: string | null; accounts: number }>('/fiscal/qonto/check', {});
 export type IncomeRow = { date: string; number: string; client: string; taxId: string; concept: string; base: number | null; vatRate: number | null;
-  withholdingRate: number | null; withholding: number | null; total: number | null; currency: string };
+  withholdingRate: number | null; withholding: number | null; total: number | null; currency: string; file?: string; manual?: ManualSaved | null };
 export type FiscalIssue = { key: string; text: string; items: { label: string; detail: string; path?: string | null; qonto?: string }[] };
-export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomeProblem: string | null; expenses: Invoice[]; notes: string[]; issues: FiscalIssue[]; reading: number; readingTotal: number };
+export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomeProblem: string | null; expenses: (Invoice & { file?: string; manual?: ManualSaved | null })[]; notes: string[]; issues: FiscalIssue[]; reading: number; readingTotal: number };
 export const downloadFromQonto = (folderId: number, year: number, quarter: number, numbers: string[]) =>
   core<{ saved: { number: string; path: string }[]; failed: { number: string; error: string }[] }>(`/fiscal/folders/${folderId}/qonto-download`, { year, quarter, numbers });
 export const getQuarter = (folderId: number, year: number, quarter: number) => core<QuarterView>(`/fiscal/folders/${folderId}/quarter?year=${year}&quarter=${quarter}`);
@@ -223,5 +223,13 @@ export type CentralServer = { name: string; status: string | null; provider: str
 export type CentralState = { configured: boolean; snapshot: { clients: CentralClient[]; servers: CentralServer[]; fetchedAt: string } | null; problem: string | null };
 export const getCentral = () => core<CentralState>('/central');
 export const refreshCentral = () => core<CentralState>('/central/refresh', {});
+/** Data typed by hand, only for an invoice of the folder that could not be read in any way (rates in percent). */
+export type ManualFields = { name?: string; taxId?: string; number?: string; issuedOn: string; base?: string; vatRate?: string; vat?: string;
+  withholdingRate?: string; withholding?: string; total: string; currency?: string };
+/** What was saved: rates as fractions (0.21). */
+export type ManualSaved = { name: string | null; taxId: string | null; number: string | null; issuedOn: string; base: string | null; vatRate: number | null;
+  vat: string | null; withholdingRate: number | null; withholding: string | null; total: string; currency: string };
+export const saveManual = (folderId: number, path: string, fields: ManualFields) => core<{ ok: true }>(`/fiscal/folders/${folderId}/manual`, { path, fields }, 'PUT');
+export const removeManual = (folderId: number, path: string) => core<{ ok: true }>(`/fiscal/folders/${folderId}/manual?path=${encodeURIComponent(path)}`, undefined, 'DELETE');
 export const getFiscalReading = () => core<{ withClaude: boolean }>('/fiscal/reading');
 export const putFiscalReading = (withClaude: boolean) => core<{ withClaude: boolean }>('/fiscal/reading', { withClaude }, 'PUT');

@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import fiscal_folder, invoice_extract
+from . import fiscal_manual
 from .fiscal import ISSUED, MAX_FILE, RECEIVED
 
 DOCS = {".pdf", ".png", ".jpg", ".jpeg", ".heic"}
@@ -203,6 +204,11 @@ def progress(folder_id: int) -> tuple[int, int]:
         return left, max(left, _STARTED.get(folder_id, left))
 
 
+def is_reading(folder_id: int, path: Path) -> bool:
+    with _READING_LOCK:
+        return (folder_id, str(path)) in _READING
+
+
 def reading(folder_id: int) -> int:
     with _READING_LOCK:
         return sum(1 for f, _ in _READING if f == folder_id)
@@ -277,7 +283,7 @@ def _consistent(merged: dict, local_total) -> None:
 def _merged(fields: dict, issued: bool, use_model: bool = True) -> dict:
     """What the model read, where it read something, over what the local rules found. The other party is the
     receiver on an issued invoice and the issuer on a received one. With the model off, only the local rules."""
-    ai = fields.get("ai") if use_model else None
+    ai = fields.get("ai") if use_model or fields.get("manual") else None  # typed by hand: always what the user wrote
     if not ai:
         return fields
     merged = dict(fields)
@@ -290,7 +296,8 @@ def _merged(fields: dict, issued: bool, use_model: bool = True) -> dict:
     merged["otherName"], merged["otherTaxId"] = name, tax_id
     if merged.get("base") is None and merged.get("total") and float(merged.get("vat") or 0) == 0:
         merged["base"], merged["vat"] = merged["total"], "0.00"  # a receipt without VAT, as the user's register records it
-    _consistent(merged, fields.get("total"))
+    if not fields.get("manual"):
+        _consistent(merged, fields.get("total"))
     return merged
 
 
@@ -325,6 +332,13 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
             pending.append(path)
         else:
             read[path] = fields
+    # Only a file nothing could be read from takes the data typed by hand; anything readable stays as read.
+    typed = fiscal_manual.load(connection, folder_id, root)
+    issued_paths = {p for p, _ in issued}
+    for path, fields in list(read.items()):
+        hand = typed.get(str(path.relative_to(root)))
+        if hand and fiscal_manual.unrecognized(fields, use_model):
+            read[path] = fiscal_manual.as_read(fields, hand, path in issued_paths)
     own = own_tax_id(connection, folder_id)
     seen: dict[str, str | None] = dict.fromkeys(known_files or ())  # sha256 → first copy seen (None: already filed)
     rel = lambda p: str(p.relative_to(root))  # noqa: E731
@@ -369,7 +383,7 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
         income.append({"date": day, "number": fields.get("number") or path.stem[:30], "client": client or _name(path, rest), "taxId": client_tax or "",
                        "concept": str(path.relative_to(root)), "base": float(base) if base is not None else None,
                        "vatRate": vat_rate or 0.0, "withholdingRate": irpf_rate, "total": total, "currency": fields.get("currency") or "EUR",
-                       "guessedDate": guessed, "file": str(path.relative_to(root))})
+                       "guessedDate": guessed, "file": str(path.relative_to(root)), "manual": fields.get("manual")})
     for path, rest in received:
         if path not in read or not fresh(path, read[path]):
             continue
@@ -380,7 +394,8 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
                                  ("Fecha no leída: puesta al inicio del trimestre", guessed),
                                  ("Sin IVA desglosado", fields.get("vat") is None and (fields.get("ai") or not fields.get("image"))),
                                  ("Leída solo con reglas locales: compruébala", not fields.get("ai") and not fields.get("image")),
-                                 ("Leída de una imagen por Claude: compruébala", fields.get("image") and fields.get("ai"))) if on]
+                                 ("Leída de una imagen por Claude: compruébala", fields.get("image") and fields.get("ai") and not fields.get("manual")),
+                                 ("Datos escritos a mano", fields.get("manual"))) if on]
         supplier_tax = other(fields)
         base, vat, total = fields.get("base"), fields.get("vat"), fields.get("total")
         if base is None and total and fields.get("vatRate") is not None and not fields.get("ai"):  # amounts in a column apart from their labels
@@ -397,5 +412,6 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
                     or (web.capitalize() if web else None) or _name(path, rest))
         expenses.append({"id": f"archivo:{relative}", "doubts": notes, "issuedOn": day, "supplier": supplier, "taxId": supplier_tax,
                          "number": fields.get("number") or "", "concept": relative, "base": base, "vat": vat,
-                         "total": fields.get("total") or "0", "currency": fields.get("currency") or "EUR", "notes": "; ".join(notes), "file": relative})
+                         "total": fields.get("total") or "0", "currency": fields.get("currency") or "EUR", "notes": "; ".join(notes), "file": relative,
+                         "manual": fields.get("manual")})
     return income, expenses, pending, counts
