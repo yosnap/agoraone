@@ -113,7 +113,7 @@ def download(url: str, http=None, deadline: float = 30) -> bytes:
 
 def pdf_text(data: bytes, runner=subprocess.run) -> str:
     """Text of a PDF through the isolated extractor (sandboxed on macOS); empty when it cannot be read."""
-    command = [sys.executable, "-I", str(Path(__file__).with_name("extract.py")), "pdf"]  # -I: no paths from the environment
+    command = [sys.executable, "-I", str(Path(__file__).with_name("extract.py")), "invoice"]  # -I: no paths from the environment
     if sys.platform == "darwin":
         if not Path("/usr/bin/sandbox-exec").exists():
             return ""  # never parse a PDF from the mail without the sandbox
@@ -133,6 +133,12 @@ def pdf_text(data: bytes, runner=subprocess.run) -> str:
         return ""
 
 
+_MONTHS = {"ene": 1, "jan": 1, "feb": 2, "mar": 3, "abr": 4, "apr": 4, "may": 5, "jun": 6, "jul": 7, "ago": 8, "aug": 8,
+           "sep": 9, "set": 9, "oct": 10, "nov": 11, "dic": 12, "dec": 12}
+_WORD_DATE = re.compile(r"(?<!\d)(\d{1,2})(?:\s+de)?\s+([a-zA-Zé]{3,10})\.?(?:\s+de)?,?\s+(\d{4})(?!\d)|"
+                        r"\b([a-zA-Z]{3,10})\.?\s+(\d{1,2}),?\s+(\d{4})(?!\d)")
+
+
 def _dates(text: str) -> list[tuple[str, bool]]:
     """Valid dates in the text, each with whether it is ambiguous (day and month both 12 or less)."""
     found = []
@@ -144,17 +150,30 @@ def _dates(text: str) -> list[tuple[str, bool]]:
             continue
         if 2000 <= parsed.year <= 2100:
             found.append((parsed.isoformat(), not y and int(d2) <= 12 and int(m2) <= 12 and d2 != m2))
-    return found
+    for d, month, y, month2, d2, y2 in _WORD_DATE.findall(text):  # «7 abr 2026», «7 de abril de 2026», «Apr 7, 2026»
+        number = _MONTHS.get((month or month2)[:3].casefold())
+        try:
+            parsed = date(int(y or y2), number, int(d or d2)) if number else None
+        except ValueError:
+            parsed = None
+        if parsed and 2000 <= parsed.year <= 2100:
+            found.append((parsed.isoformat(), False))
+    return sorted(found, key=lambda item: text.find(item[0]) if item[0] in text else 0)
 
 
 def fields(text: str) -> dict:
     """What local rules find in an invoice's text: tax id, date, total and currency (any may be missing)."""
     tax = _TAX_ID.search(text.upper())
     totals = [amount(m) for m in _TOTAL.findall(text)]
-    if not any(totals):  # receipts without a «Total» line: the largest amount written with its currency
-        marked = [amount(a or b) for a, b in _MONEY_NEAR.findall(text)]
+    if not any(totals):
+        # Labels and amounts in separate columns, or a receipt without a «Total» line: the amount written most
+        # often with its currency (a total repeats), the largest on a tie; never the company's share capital.
+        lines = [line for line in text.splitlines() if not re.search(r"capital\s+social|share\s+capital|registro\s+mercantil|registro\s+comercial", line, re.I)]
+        marked = [amount(a or b) for line in lines for a, b in _MONEY_NEAR.findall(line)]
         marked = [m for m in marked if m]
-        totals = [max(marked, key=float)] if marked else []
+        if marked:
+            counts = {m: marked.count(m) for m in marked}
+            totals = [max(counts, key=lambda m: (counts[m], float(m)))]
     currency = _CURRENCY.search(text)
     dates = _dates(text)
     symbol = currency[1] if currency else "€"
@@ -199,16 +218,20 @@ _TOTAL = re.compile(r"(?:total(?!\s*(?:de\s+)?(?:iva|vat|tax|impuestos?|igic))(?
 _BASE = re.compile(r"(?:base\s+imponible|subtotal|importe\s+neto|total\s+sin\s+iva|net\s+amount)" + _GAP + r"{0,25}" + _NUM, re.I)
 _VAT_AMOUNT = re.compile(r"(?:importe\s+(?:total\s+)?del?\s+IVA|cuota\s+(?:de\s+)?IVA|total\s+(?:del\s+)?IVA|IVA\s+total|total\s+VAT|VAT\s+amount|total\s+tax)[^\d\n]{0,20}" + _NUM, re.I)
 _MONEY_NEAR = re.compile(r"(?:[€$£]|EUR|USD|GBP)\s?" + _NUM + r"|" + _NUM + r"\s?(?:[€$£]|EUR|USD|GBP)")
-_VAT = re.compile(r"(?:IVA|VAT|TVA|MwSt)[^\d\n%]{0,12}(\d{1,2}(?:[.,]\d{1,2})?)\s?%[^\d\n]{0,20}" + _NUM, re.I)
+_VAT_RATE = re.compile(r"(?:I\.?V\.?A\.?|VAT|TVA|MwSt)[^\d\n%]{0,8}\(?(\d{1,2}(?:[.,]\d{1,2})?)\s?%", re.I)
+_VAT = re.compile(r"(?:I\.?V\.?A\.?|VAT|TVA|MwSt)[^\d\n%]{0,12}(\d{1,2}(?:[.,]\d{1,2})?)\s?%[^\d\n]{0,20}" + _NUM, re.I)
 _IRPF = re.compile(r"(?:IRPF|retenci[oó]n)[^\d\n%]{0,12}-?\s?(\d{1,2}(?:[.,]\d{1,2})?)\s?%[^\d\n]{0,20}-?\s?" + _NUM, re.I)
 _NUMBER = re.compile(r"(?:factura|invoice|n[º°o]\.?\s*de\s*factura)\s*(?:n[º°o.]*|number|num\.?|#)?\s*[:\-]?\s*(?!\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})([A-Z]{0,4}[\-/]?\d[\w\-/]{0,20})", re.I)
 
 
-VERSION = 3  # bump when the reading rules change: files read with older rules are read again
+VERSION = 5  # bump when the reading rules change: files read with older rules are read again
+
+
+_LEGAL = re.compile(r"\b(limited|ltd|llc|inc|gmbh|s\.?\s?l\.?u?|s\.?\s?a\.?u?|b\.?v\.?|sas|sarl|ag|plc|oy|ab|d\.o\.o\.|corp(oration)?)\b\.?", re.I)
 
 
 def _looks_like_name(line: str) -> bool:
-    if not 3 <= len(line) <= 80 or "@" in line or re.search(r"https?:|www\.|n[uú]mero de iva|\bnif\b|\bcif\b|\d{4,}|descripci|precio|cantidad|\bcant\.|importe|total|\biva\b", line, re.I):
+    if not 3 <= len(line) <= 80 or "@" in line or re.search(r"https?:|www\.|n[uú]mero de iva|\bnif\b|\bcif\b|\d{4,}|descripci|precio|cantidad|^\s*(?:facturar a|bill to|cliente|datos del cliente)\s*:?\s*$|\bcant\.|importe|total|\biva\b", line, re.I):
         return False
     return sum(c.isdigit() for c in line) <= 2 and any(c.isalpha() for c in line)
 
@@ -222,7 +245,7 @@ def breakdown(text: str) -> dict:
     number = _NUMBER.search(text)
     rate = lambda found: round(float(found[1].replace(",", ".")) / 100, 4) if found else None  # noqa: E731
     vat_value = amount(vat[2]) if vat else amount(vat_amount[1]) if vat_amount else None
-    vat_rate = rate(vat)
+    vat_rate = rate(vat) if vat else rate(_VAT_RATE.search(text))
     base_value = amount(base[1]) if base else None
     if base_value and vat_rate is not None:
         expected = round(float(base_value) * vat_rate, 2)
@@ -230,7 +253,7 @@ def breakdown(text: str) -> dict:
             vat_value = f"{expected:.2f}"  # «IVA 21 % sobre 100,00: 21,00» names the base too: trust base × rate
     if vat_rate is None and vat_value is not None and base and amount(base[1]) and float(amount(base[1])) > 0:
         vat_rate = round(float(vat_value) / float(amount(base[1])), 2)
-    tax_ids, after = [], {}
+    tax_ids, after, before = [], {}, {}
     lines = [line.strip() for line in text.splitlines()]
     for index, line in enumerate(lines):
         for found in _TAX_ID.finditer(line.upper()):
@@ -239,5 +262,9 @@ def breakdown(text: str) -> dict:
                 tax_ids.append(tax_id)
                 # The party's name usually follows its tax id (the customer block comes after the issuer's).
                 after[tax_id] = next((n for n in lines[index + 1: index + 4] if _looks_like_name(n)), None)
-    return {"v": VERSION, "taxIds": tax_ids[:4], "after": {t: after.get(t) for t in tax_ids[:4]}, "base": amount(base[1]) if base else None, "vatRate": vat_rate, "vat": vat_value,
+                # A company's own block usually ends with its tax id: its name is the first line of that block.
+                block = [n for n in lines[max(0, index - 6): index] if _looks_like_name(n)]
+                legal = next((n for n in block if _LEGAL.search(n)), None)
+                before[tax_id] = legal or (block[0] if block else None)
+    return {"v": VERSION, "taxIds": tax_ids[:4], "after": {t: after.get(t) for t in tax_ids[:4]}, "before": {t: before.get(t) for t in tax_ids[:4]}, "base": amount(base[1]) if base else None, "vatRate": vat_rate, "vat": vat_value,
             "withholdingRate": rate(irpf), "withholding": amount(irpf[2]) if irpf else None, "number": number[1] if number else None}

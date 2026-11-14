@@ -357,3 +357,14 @@ def test_el_cliente_sale_del_texto_y_no_del_nombre_del_archivo():
     assert found["after"]["X6543591E"] == "EMPRESA CLIENTE SL"
     assert (found["base"], found["vatRate"], found["vat"], found["withholdingRate"]) == ("1083.00", 0.21, "227.43", 0.15)
     assert invoice_extract.breakdown("Servicios de DESARROLLO web")["taxIds"] == []
+
+
+def test_factura_con_importes_en_columna_aparte():
+    text = ("Factura\nNúmero de factura: 6756060099259851-7\n....7 abr 2026\nDetalles\n21,99 €\nGoogle One\nTotal en EUR\n18,17 €\n3,82 €\n21,99 €\n"
+            "Subtotal en EUR\nI.V.A. (21%)\nTotal en EUR\nGoogle Commerce Limited\nGordon House\nBarrow Street\nDublin 4\nIreland\n"
+            "Número de IVA: IE9825613N\nFacturar a\nCliente Persona\nNúmero de IVA: ES X6543591E\nCapital social de GCL: 1.000.000 EUR\n")
+    found = invoice_extract.fields(text)
+    parts = invoice_extract.breakdown(text)
+    assert found["total"] == "21.99", "nunca el capital social"
+    assert found["issuedOn"] == "2026-04-07" and parts["vatRate"] == 0.21
+    assert parts["before"]["IE9825613N"] == "Google Commerce Limited"

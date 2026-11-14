@@ -213,7 +213,14 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
         notes = [n for n, on in (("Factura en imagen: revisa los importes", fields.get("image")),
                                  ("Fecha no leída: puesta al inicio del trimestre", guessed),
                                  ("Sin IVA desglosado", not fields.get("image") and fields.get("vat") is None)) if on]
-        expenses.append({"id": f"archivo:{relative}", "doubts": notes, "issuedOn": day, "supplier": _name(path, rest), "taxId": other(fields),
-                         "number": fields.get("number") or "", "concept": relative, "base": fields.get("base"), "vat": fields.get("vat"),
+        supplier_tax = other(fields)
+        base, vat, total = fields.get("base"), fields.get("vat"), fields.get("total")
+        if base is None and total and fields.get("vatRate") is not None:  # amounts in a column apart from their labels
+            base = f"{float(total) / (1 + fields['vatRate']):.2f}"
+            vat = f"{float(total) - float(base):.2f}"
+            notes = [n for n in notes if n != "Sin IVA desglosado"]
+        supplier = rest[-1] if rest else (fields.get("before") or {}).get(supplier_tax) or _name(path, rest)
+        expenses.append({"id": f"archivo:{relative}", "doubts": notes, "issuedOn": day, "supplier": supplier, "taxId": supplier_tax,
+                         "number": fields.get("number") or "", "concept": relative, "base": base, "vat": vat,
                          "total": fields.get("total") or "0", "currency": fields.get("currency") or "EUR", "notes": "; ".join(notes), "file": relative})
     return income, expenses, pending, counts
