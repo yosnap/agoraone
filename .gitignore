@@ -6,9 +6,18 @@ dist/
 .agora/
 __pycache__/
 *.pyc
+core/.venv/
+.pytest_cache/
 test-results/
 .DS_Store
 brag-output/
 .agents/
 .claude/
 skills-lock.json
+
+# Plans live in their own private repository (../agoraone-plans), linked here as plans/.
+/plans
+# Compiled Rust output of the desktop app.
+/desktop/target
+# Staging and downloads of the packaged app (desktop/scripts/empaquetar.sh).
+/desktop/paquete

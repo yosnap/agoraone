@@ -10,7 +10,7 @@ Cada mensaje enviado relee el documento en backend; la revisión registrada junt
 ## Recursos y permisos
 La biblioteca también permite importar copias privadas TXT/Markdown desde **Añadir documento**. Estas copias están separadas por propietario; ver docs/importacion.md. Las restricciones del catálogo cerrado descritas a continuación corresponden a los ejemplos compartidos.
 
-Recurso lógico `library-test`, compartido por las identidades locales del navegador únicamente para estos ejemplos. Catálogo cerrado en `server/library.ts`:
+Recurso lógico `library-test`, compartido por las identidades locales del navegador únicamente para estos ejemplos. Catálogo cerrado en `desktop/server/src/library/mod.rs`:
 
 | ID | Archivo dentro de resources/library-test |
 | --- | --- |

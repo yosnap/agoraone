@@ -7,13 +7,14 @@ export type Command = { id: string; label: string; group: string; keywords?: str
 export const paletteShortcut = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K';
 
 /** ⌘K / Ctrl+K: every place and action of the app, filtered as you type and run with Enter. */
-export function CommandPalette({ commands, open, onOpen }: { commands: Command[]; open: boolean; onOpen: Dispatch<SetStateAction<boolean>> }) {
+export function CommandPalette({ commands, open, onOpen, enabled = true }: { commands: Command[]; open: boolean; onOpen: Dispatch<SetStateAction<boolean>>; enabled?: boolean }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   // Closes made here; their «close» events arrive later and must not be mistaken for an Esc.
   const ownCloses = useRef(0);
   useEffect(() => {
+    if (!enabled) return;
     const toggle = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== 'k') return;
       // Toggled from the latest state, even if the last change has not re-rendered yet.
@@ -21,7 +22,7 @@ export function CommandPalette({ commands, open, onOpen }: { commands: Command[]
     };
     window.addEventListener('keydown', toggle);
     return () => window.removeEventListener('keydown', toggle);
-  }, [onOpen]);
+  }, [onOpen, enabled]);
   // A native modal dialog traps the focus and makes the rest inert. Opened as soon as the DOM updates,
   // so the first keys typed after ⌘K already reach the field.
   useLayoutEffect(() => {

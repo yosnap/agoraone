@@ -133,7 +133,7 @@ export function VaultPanel({ vaultId, listing, error, onRetry, inside: inRoom, o
   </>;
   return <div className="library-panel vault-panel">
     {!inRoom && <button className="enter-library" onClick={onEnter}>Entrar en el vault →</button>}
-    <p className="notice">Tus notas de Obsidian, en tu equipo. Puedes leerlas, editarlas y crear notas nuevas; cada guardado se confirma y guarda antes una copia. Una nota solo se envía al modelo si eliges consultarla y envías un mensaje. No se leen carpetas ocultas, adjuntos ni enlaces a otras carpetas.</p>
+    <p className="notice">Tus notas de Obsidian, en tu equipo. Puedes leerlas, editarlas, moverlas, renombrarlas y crear notas nuevas; cada cambio se confirma y guarda antes una copia. Una nota solo se envía al modelo si eliges consultarla y envías un mensaje. No se leen carpetas ocultas, adjuntos ni enlaces a otras carpetas.</p>
     {error && <LoadError message={error} onRetry={onRetry}/>}
     {!listing && !error && <Loading label="Leyendo el vault…" lines={5}/>}
     {listing && <section className="library-reader" aria-label={`Notas de ${listing.vault.name}`}>

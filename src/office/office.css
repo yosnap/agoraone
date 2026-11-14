@@ -1,0 +1,24 @@
+/* The office's staff, along the bottom of the 3D city, and the walking controls. */
+.agents-board { position:absolute; left:315px; right:20px; bottom:56px; z-index:6; display:flex; gap:10px; overflow-x:auto; padding:4px 2px 6px; scroll-snap-type:x proximity }
+.agent-card { flex:0 0 228px; scroll-snap-align:start; display:flex; flex-direction:column; gap:8px; padding:11px 12px; border-radius:14px; background:var(--c-f5f4e9e8); backdrop-filter:blur(12px); border:1px solid var(--c-ffffff70); box-shadow:0 8px 24px var(--c-21473522) }
+.agent-card header { display:flex; gap:9px; align-items:center; min-width:0 }
+.agent-card header > div { display:flex; flex-direction:column; min-width:0 }
+.agent-card strong { font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.agent-card small { font-size:10px; color:var(--c-5f7a71); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.agent-avatar { flex:none; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; color:var(--c-ffffff); font:700 13px Manrope,sans-serif; box-shadow:0 0 0 3px var(--c-ffffff70) }
+.agent-avatar.watson { background:var(--deep); color:var(--deep-figure) }
+.agent-actions { display:flex; gap:5px }
+.agent-actions button { flex:1; border:1px solid var(--c-cbd6c9); background:var(--c-fffffa); color:var(--c-214b44); border-radius:8px; padding:5px 4px; font-size:10px }
+.agent-card.state-approval { border-color:var(--signal-amber); box-shadow:0 0 0 2px var(--signal-amber-glow) }
+.agent-card.state-approval small, .agent-card.state-answering small, .agent-card.state-tool small, .agent-card.state-job small, .agent-card.state-live small { color:var(--c-996a25); font-weight:600 }
+.agent-card.state-connected .agent-avatar { box-shadow:0 0 0 3px var(--signal-live) }
+.world-caption { display:none }
+
+.walk-hud { position:absolute; left:50%; bottom:206px; transform:translateX(-50%); z-index:7; display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none }
+.walk-keys { list-style:none; margin:0; padding:7px 12px; display:flex; flex-wrap:wrap; justify-content:center; gap:4px 12px; border-radius:12px; background:var(--deep); color:var(--deep-text); font:500 11px 'DM Sans',sans-serif; max-width:min(760px,90vw) }
+.walk-keys kbd, .walk-use kbd { display:inline-block; min-width:18px; padding:1px 5px; margin-right:3px; border-radius:5px; border:1px solid var(--deep-edge); background:var(--c-ffffff14); font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace; text-align:center }
+.walk-use { pointer-events:auto; border:0; border-radius:20px; padding:9px 16px; background:var(--signal-amber); color:var(--signal-amber-ink); font:600 12px 'DM Sans',sans-serif; box-shadow:0 6px 20px var(--c-21473533) }
+.world-status { display:block; margin-top:3px; font-weight:700; color:var(--signal-amber-ink); background:var(--signal-amber); border-radius:12px; padding:2px 8px; font-size:9px }
+
+@media (max-width:850px) { .agents-board { display:none } .walk-hud { bottom:70px } .walk-keys { display:none } }
+main:has(.city-minimap) .agents-board { right:230px }

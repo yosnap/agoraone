@@ -22,11 +22,11 @@ Revisión de solo lectura de la instalación local (Hermes 0.21.4, commit 28aceb
 ## Implementado
 El usuario aprobó los cinco puntos, con nombres de tareas programadas visibles y sin títulos de conversaciones.
 
-- **Backend**: `GET /api/hermes/activity` (protegido por la cabecera CSRF como el resto de `/api/hermes`). Lector en `server/hermes-activity.ts`; tipos en `shared/hermes-activity.ts`. Abre SQLite con `withHermesDatabase` (`server/hermes-database.ts`) y JSON con `readHermesFile` (sin enlaces simbólicos ni duros, dentro de `~/.hermes`). Los perfiles salen del catálogo; el cliente no envía rutas.
+- **Backend**: `GET /api/hermes/activity` (protegido por la cabecera CSRF como el resto de `/api/hermes`). Lector en `desktop/server/src/hermes/activity.rs`; tipos en `shared/hermes-activity.ts`. Abre SQLite con `withHermesDatabase` (`desktop/server/src/hermes/database.rs`) y JSON con `readHermesFile` (sin enlaces simbólicos ni duros, dentro de `~/.hermes`). Los perfiles salen del catálogo; el cliente no envía rutas.
 - **Gateway**: «en marcha» solo si el PID existe, el estado es `running`/`degraded` y el registro más reciente (estado o latido) tiene menos de 120 s, el mismo umbral que usa Hermes. Si no, «detenido», «sin datos recientes» o «sin estado registrado», y las conexiones pasan a «sin datos recientes».
 - **Campos leídos**: sesiones, solo `source`, `started_at` y `last_activity_at`; tareas programadas, nombre, habilitación, estado, horario, último resultado y fechas (las instrucciones, `prompt`, solo al pulsar «Editar», con las líneas con aspecto de clave ocultas; nunca `deliver` ni `origin`); kanban, título y estado de las tareas asignadas al perfil (nunca `body`). Los textos pasan por `redact`.
 - **Interfaz**: barra inferior con el estado del gateway y el recuento global de agentes; bajo el nombre de cada edificio, sus conexiones y, si hubo actividad hace menos de dos minutos, la etiqueta «Actividad registrada» y un anillo dorado en la parcela; sección «Actividad real» en la ficha del perfil; dos paneles en la pared del fondo de su espacio (tareas programadas y kanban). Sondeo cada 15 s, en pausa con la pestaña oculta; si una lectura falla se retiran los datos en lugar de mostrar los antiguos como actuales.
-- **Verificación**: `server/hermes-activity.test.ts` (canarios de contenido, estado antiguo, proceso inexistente, enlaces simbólicos, fuentes ausentes) y `scripts/verify-activity.mjs` (escritorio y móvil, sin peticiones mutadoras).
+- **Verificación**: `desktop/server/tests/hermes_activity.rs` (canarios de contenido, estado antiguo, proceso inexistente, enlaces simbólicos, fuentes ausentes) y `scripts/verify-activity.mjs` (escritorio y móvil, sin peticiones mutadoras).
 
 ## Uso real de herramientas
 Hermes guarda cada llamada a una herramienta como un mensaje con `role = 'tool'`, el nombre de la herramienta y su hora. Las de MCP se llaman `mcp__<servidor>__<herramienta>`, con los caracteres no alfanuméricos del nombre del servidor sustituidos por `_` (`mcpServerKey`). La columna `sessions.tool_names` no sirve: es la lista de herramientas disponibles en la sesión, no las usadas.
@@ -50,7 +50,7 @@ Botón «◷ Registro» junto a los modos de vista: panel con lo que Hermes regi
 - **MCP**: llamadas agrupadas por servidor y hora, contadas sin duplicados de compactación, en la misma pasada que el uso de herramientas. Aparecen en cuanto Hermes las escribe en `state.db`: el resultado se reutiliza solo mientras la base y su WAL no cambian, como máximo 10 minutos.
 - **Conexiones**: última actualización de estado de cada plataforma del gateway, salvo cuando el estado es «sin datos recientes».
 
-Lectura en `server/hermes-activity-log.ts` y `server/hermes-activity.ts`; panel en `src/ui/activity-log.tsx`.
+Lectura en `desktop/server/src/hermes/activity_log.rs` y `desktop/server/src/hermes/activity.rs`; panel en `src/ui/activity-log.tsx`.
 
 ## Criterios de representación
 1. **Conexiones del gateway por perfil**: indicador en el edificio y en la ficha (conectado, reintentando, requiere atención o sin datos). Si el estado es antiguo o el PID no existe, se muestra «sin datos recientes», nunca «conectado».
@@ -75,10 +75,10 @@ Decisión del usuario (18/10/2026): en la sección «Actividad real» de la fich
   - **+ Nueva tarjeta para este perfil** la crea asignada a él. Si el despachador de kanban de Hermes está activo, el perfil trabaja en ella por su cuenta, y el formulario lo avisa.
   - Se usa el tablero `default` (`kanban.db` en la raíz de Hermes), el mismo que lee AgoraOne.
 - **Cómo**:
-  - `server/hermes_manage.py` usa las funciones de Hermes: la herramienta `cronjob`, la misma que usa el bot, sobre el almacén del propio perfil (`use_cron_store`), y la API de `hermes_cli.kanban_db`. Así se aplican sus validaciones y sus bloqueos.
+  - `desktop/server/python/hermes_manage.py` usa las funciones de Hermes: la herramienta `cronjob`, la misma que usa el bot, sobre el almacén del propio perfil (`use_cron_store`), y la API de `hermes_cli.kanban_db`. Así se aplican sus validaciones y sus bloqueos.
   - Solo admite ids que pertenezcan a ese perfil (tarea en su almacén, tarjeta con `assignee` igual al perfil).
   - Los errores de Hermes, que vienen en inglés, se muestran en castellano.
   - Las rutas `/api/hermes/profiles/:id/jobs[/:jobId]` y `/cards[/:cardId]` van detrás de la cabecera CSRF y usan cuerpos estrictos. El cliente no elige ni el destino ni el perfil asignado.
 - **Verificación**:
-  - `server/hermes-manage.test.ts`: Hermes real con perfiles ficticios. Comprueba crear, editar conservando la línea oculta y rechazar el conflicto; pausar, reanudar y eliminar; que «Ejecutar ahora» solo marca la tarea, sin sesión ni ejecución; que la tarea de una sola vez no se reprograma; el rechazo de otro perfil; comentar, bloquear, desbloquear y completar tarjetas; y el error en castellano.
+  - `desktop/server/tests/hermes_manage.rs`: Hermes real con perfiles ficticios. Comprueba crear, editar conservando la línea oculta y rechazar el conflicto; pausar, reanudar y eliminar; que «Ejecutar ahora» solo marca la tarea, sin sesión ni ejecución; que la tarea de una sola vez no se reprograma; el rechazo de otro perfil; comentar, bloquear, desbloquear y completar tarjetas; y el error en castellano.
   - `scripts/verify-profile-tasks.mjs`: navegador con los datos interceptados, sin tocar Hermes.

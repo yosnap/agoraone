@@ -38,7 +38,8 @@ Los paseantes y el movimiento de la ciudad son decorativos: no representan tarea
 
 ## Qué necesitas
 
-- macOS o Linux con **Node.js 22.12 o superior**.
+- Para usar la app: un **Mac con Apple Silicon** (macOS 13 o superior). La app es autocontenida: lleva su servidor, su Python y la interfaz.
+- Para desarrollar: **Rust** estable (con `cargo`), **Node.js 22.12 o superior** para la interfaz y [**uv**](https://docs.astral.sh/uv/) para el núcleo Python.
 - **Hermes** instalado en `~/.hermes`. Si está en otra ruta, indícala con `AGORA_HERMES_HOME` y `AGORA_HERMES_PATH`.
 - Para conversar con Luma, un **proveedor de inferencia compatible con OpenAI** (modelo, URL y clave). Los perfiles usan su propia configuración de Hermes.
 - Opcional: **Obsidian**, para ver tus vaults. Se detectan solos.
@@ -54,7 +55,11 @@ npm ci
 npm run dev
 ```
 
-Abre el enlace privado que muestra la terminal («Abre AgoraOne con este enlace…») o ejecuta `npm run open`. Solo hace falta la primera vez en cada navegador.
+`npm run dev` arranca el servidor de AgoraOne (Rust, en `127.0.0.1:4317`), su núcleo Python y la interfaz con Vite. Abre el enlace privado que muestra la terminal («Abre AgoraOne con este enlace…») o ejecuta `npm run open`. Solo hace falta la primera vez en cada navegador.
+
+### App de escritorio
+
+`desktop/scripts/empaquetar.sh` construye `AgoraOne.app`, firmada y, si se le da un perfil de notarización, notarizada. La app entra sin enlace, guarda tus datos en `~/Library/Application Support/AgoraOne` y usa el Claude Code que tengas instalado. Detalles en [docs/app-escritorio.md](docs/app-escritorio.md).
 
 Más detalle en [docs/arranque.md](docs/arranque.md). La arquitectura está en [docs/arquitectura.md](docs/arquitectura.md).
 
@@ -76,8 +81,10 @@ En desarrollo activo. Lo que está conectado, lo pendiente y lo ilustrativo se d
 ## Pruebas
 
 ```sh
-npm test        # pruebas del servidor
-npm run build   # tipos y compilación de la interfaz
+cargo test --manifest-path desktop/Cargo.toml   # pruebas del servidor (Rust)
+npm run test:core                                # pruebas del núcleo (Python)
+npm test                                         # pruebas de la interfaz
+npm run build                                    # tipos y compilación de la interfaz
 ```
 
 ## Colaborar

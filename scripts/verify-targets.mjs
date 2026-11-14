@@ -18,8 +18,9 @@ export function target(name) {
 }
 export const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-/** AgoraOne's address with the private access link (the token in .agora/access-token, never printed). */
-export function appUrl(port = 5173) {
+/** AgoraOne's address with the private access link (the token in .agora/access-token, never printed),
+ * opening a section: the city («oficina») by default, where the older checks start. */
+export function appUrl(port = 5173, section = 'oficina') {
   const token = readFileSync('.agora/access-token', 'utf8').trim();
-  return `http://127.0.0.1:${port}/#acceso=${token}`;
+  return `http://127.0.0.1:${port}/?seccion=${section}#acceso=${token}`;
 }
