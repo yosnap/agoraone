@@ -64,6 +64,7 @@ export type AssistantEvent =
   | { kind: 'delta'; text: string }
   | { kind: 'tool'; tool: 'search'; query: string; found: string[] }
   | { kind: 'tool'; tool: 'read'; id: string; title: string; n: number }
+  | { kind: 'tool'; tool: 'inbox'; filter: string; count: number }
   | { kind: 'done'; engine: string; model: string };
 
 /** Sends a question and follows the answer's Server-Sent Events until it ends; an `error` event throws. */
