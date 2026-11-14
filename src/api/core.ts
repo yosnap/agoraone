@@ -114,3 +114,26 @@ export type CoreSummary = {
   costguard: { available: false } | ({ available: true } & Record<'24h' | '7d' | '30d', { projects: TokenProject[]; agents: AgentUsage[] }>);
 };
 export const getCoreSummary = (discreet: boolean) => core<CoreSummary>(`/summary?discreet=${+discreet}`);
+
+export type Scope = { id: number; slug: string; name: string; color: string | null; fiscal: boolean };
+export const getScopes = () => core<{ scopes: Scope[] }>('/scopes');
+export const createScope = (name: string, fiscal = false) => core<{ scopes: Scope[] }>('/scopes', { name, fiscal });
+export type MailProvider = 'gmail' | 'icloud' | 'namecheap' | 'hostinger' | 'other';
+export type MailPreset = { name: string; imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; hint: string };
+export type MailAccount = {
+  id: number; address: string; label: string | null; provider: MailProvider; username: string; imapHost: string; imapPort: number;
+  smtpHost: string | null; smtpPort: number | null; scopeId: number | null; scopeName: string | null; confidentiality: Level;
+  maxAgeDays: number; enabled: boolean; status: 'pending' | 'ok' | 'auth' | 'unreachable' | 'error'; lastError: string | null;
+  lastSyncAt: string | null; messages: number; hasPassword: boolean;
+};
+export type MailAccountIn = {
+  address: string; provider: MailProvider; username?: string; imapHost?: string; imapPort?: number; smtpHost?: string; smtpPort?: number;
+  scopeId?: number | null; confidentiality: Level; maxAgeDays: number; password?: string;
+};
+export const getMailPresets = () => core<{ presets: Record<MailProvider, MailPreset> }>('/mail/presets');
+export const getMailAccounts = () => core<{ accounts: MailAccount[] }>('/mail/accounts');
+export const createMailAccount = (account: MailAccountIn) => core<{ accounts: MailAccount[] }>('/mail/accounts', account);
+export const changeMailAccount = (id: number, changes: Partial<MailAccountIn & { enabled: boolean; password: string | null }>) =>
+  core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, changes, 'PUT');
+export const deleteMailAccount = (id: number) => core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, undefined, 'DELETE');
+export const syncMailAccount = (id: number) => core<{ result: { status: string; added: number }; accounts: MailAccount[] }>(`/mail/accounts/${id}/sync`, {});
