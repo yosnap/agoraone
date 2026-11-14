@@ -167,5 +167,5 @@ export type InboxItem = {
 export type InboxCounts = { pending: number; done: number; dismissed: number; unread: number };
 export const getInbox = (state: InboxState = 'pending') => core<{ items: InboxItem[]; counts: InboxCounts; problem: string | null }>(`/mail/inbox?state=${state}`);
 export const decideInbox = (id: number, state: InboxState) => core<{ ok: true }>(`/mail/inbox/${id}`, { state }, 'PUT');
-export const getAnnouncements = () => core<{ items: InboxItem[] }>('/mail/inbox/announce');
-export const markAnnounced = (ids: number[]) => core<{ ok: true }>('/mail/inbox/announced', { ids });
+/** The cards the assistant announces now; the core hands each one out only once. */
+export const claimAnnouncements = () => core<{ items: InboxItem[] }>('/mail/inbox/announce', {});

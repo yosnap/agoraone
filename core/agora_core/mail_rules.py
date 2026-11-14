@@ -37,6 +37,8 @@ def _clean(data: dict) -> dict:
             value = value.lower().lstrip("@")
             if not _SENDER.fullmatch(value):
                 raise RuleError("El remitente debe ser una dirección (ana@cliente.com) o un dominio (cliente.com).")
+        if key == "words" and value is not None and not word_list(value):
+            raise RuleError("Escribe al menos una palabra (separadas por comas).")
         if key == "action" and value not in ACTIONS:
             raise RuleError("Acción desconocida.")
         if key == "confidentiality" and value is not None and value not in LEVELS:
@@ -101,6 +103,10 @@ def list_rules(connection: sqlite3.Connection) -> list[dict]:
              "enabled": bool(r["enabled"])} for r in connection.execute("SELECT * FROM mail_rule ORDER BY id")]
 
 
+def word_list(words: str) -> list[str]:
+    return [w.strip().casefold() for w in words.split(",") if w.strip()]
+
+
 def _sender_matches(rule_sender: str, address: str | None) -> bool:
     if not address:
         return False
@@ -121,8 +127,7 @@ def matches(rule: sqlite3.Row | dict, message: sqlite3.Row | dict) -> bool:
         return False
     if rule["words"]:
         text = subject + "\n" + (message["body"] or "").casefold()
-        words = [w.strip().casefold() for w in rule["words"].split(",") if w.strip()]
-        if not any(w in text for w in words):
+        if not any(re.search(rf"(?<!\w){re.escape(w)}(?!\w)", text) for w in word_list(rule["words"])):
             return False
     return True
 
@@ -136,30 +141,34 @@ def first_match(rules: list, message) -> sqlite3.Row | None:
 
 
 def reapply(connection: sqlite3.Connection) -> None:
-    """Applies the current rules again to what has not been decided yet (pending or quiet messages), without
-    calling any model: a new rule takes effect on the Bandeja at once. Decided messages are left alone."""
+    """Applies the current rules and account levels again, without calling any model. Every message gets its
+    effective confidentiality now, and loses its summary and details as soon as it is no longer `normal`.
+    Undecided messages (pending or quiet) also get the kind and state of the rule that matches now; decided
+    ones keep the user's decision. Runs after any change of rules or accounts."""
+    from .mail_inbox import local_kind
+
     rules = enabled_rules(connection)
     rows = connection.execute(
-        """SELECT s.message_id, s.kind, s.source, s.rule_id, s.state, s.summary, m.account_id, m.from_address, m.subject,
+        """SELECT s.message_id, s.kind, s.source, s.rule_id, s.state, m.account_id, m.from_address, m.subject,
                   m.body, a.confidentiality AS account_level
-           FROM mail_summary s JOIN mail_message m ON m.id = s.message_id JOIN mail_account a ON a.id = m.account_id
-           WHERE s.state IN ('pending', 'quiet')"""
+           FROM mail_summary s JOIN mail_message m ON m.id = s.message_id JOIN mail_account a ON a.id = m.account_id"""
     ).fetchall()
     for row in rows:
         rule = first_match(rules, row)
-        if rule is None:
-            if row["source"] != "rule":
-                continue
-            # The rule that decided it is gone or no longer matches: the message waits again with no kind.
-            connection.execute(
-                "UPDATE mail_summary SET source = 'local', rule_id = NULL, kind = 'other', state = 'pending', confidentiality = ? WHERE message_id = ?",
-                (row["account_level"], row["message_id"]),
-            )
-            continue
-        kind = KIND_OF_ACTION.get(rule["action"], row["kind"])
-        state = "quiet" if rule["action"] == "ignore" else "pending"
-        level = stricter(row["account_level"], rule["confidentiality"])
+        level = stricter(row["account_level"], rule["confidentiality"] if rule else None)
+        kind, source, rule_id, state = row["kind"], row["source"], row["rule_id"], row["state"]
+        if state in ("pending", "quiet"):
+            if rule is not None:
+                kind, source, rule_id = KIND_OF_ACTION.get(rule["action"], kind), "rule", rule["id"]
+                state = "quiet" if rule["action"] == "ignore" else "pending"
+            elif source == "rule":
+                # The rule that decided it is gone or no longer matches: local keywords decide again.
+                kind, source, rule_id = local_kind(row["subject"], row["body"]), "local", None
+                state = "quiet" if kind == "advertising" else "pending"
         connection.execute(
-            "UPDATE mail_summary SET kind = ?, source = 'rule', rule_id = ?, state = ?, confidentiality = ?, summary = CASE WHEN ? = 'normal' THEN summary ELSE NULL END WHERE message_id = ?",
-            (kind, rule["id"], state, level, level, row["message_id"]),
+            """UPDATE mail_summary SET kind = ?, source = ?, rule_id = ?, state = ?, confidentiality = ?,
+                      summary = CASE WHEN ? = 'normal' THEN summary END,
+                      details = CASE WHEN ? = 'normal' THEN details ELSE '{}' END
+               WHERE message_id = ?""",
+            (kind, source, rule_id, state, level, level, level, row["message_id"]),
         )

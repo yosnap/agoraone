@@ -47,10 +47,6 @@ class DecisionIn(BaseModel):
     state: Literal["pending", "done", "dismissed"]
 
 
-class AnnouncedIn(BaseModel):
-    ids: list[StrictInt] = Field(max_length=50)
-
-
 def inbox_router(settings: Settings, health) -> APIRouter:
     router = APIRouter()
 
@@ -111,13 +107,9 @@ def inbox_router(settings: Settings, health) -> APIRouter:
             return JSONResponse({"error": "Esa tarjeta no existe."}, status_code=404)
         return {"ok": True}
 
-    @router.get("/mail/inbox/announce")
+    @router.post("/mail/inbox/announce")
     async def announce():
-        return {"items": await db(mail_inbox.to_announce)}
-
-    @router.post("/mail/inbox/announced")
-    async def announced(body: AnnouncedIn):
-        await db(lambda c: mail_inbox.mark_announced(c, body.ids))
-        return {"ok": True}
+        """What the assistant announces now; each card is handed out once."""
+        return {"items": await db(mail_inbox.claim_announcements)}
 
     return router

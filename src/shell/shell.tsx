@@ -42,7 +42,7 @@ export function Shell() {
       {ready && section !== 'office' && <main className="shell-page"><Suspense fallback={<div className="page"><Loading label="Cargando la sección"/></div>}>
         {section === 'brain' ? <BrainView discreet={discreet} focus={focus} onFocus={setFocus} onRead={setReading} onSummary={() => go('summary')}/>
           : section === 'summary' ? <SummaryView discreet={discreet} onRead={setReading}/>
-          : section === 'assistant' ? <AssistantView onRead={setReading} onShowOnGraph={showOnGraph}/>
+          : section === 'assistant' ? <AssistantView onRead={setReading} onShowOnGraph={showOnGraph} discreet={discreet}/>
           : section === 'connectors' ? <ConnectorsView/>
           : section === 'settings' ? <SettingsView/>
           : section === 'inbox' ? <InboxView discreet={discreet}/>

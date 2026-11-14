@@ -126,8 +126,8 @@ def test_un_correo_con_instrucciones_no_dispara_nada(db):
     otro = add(db, normal, "bueno@cliente.com", "Hola", "Necesito el presupuesto el lunes")
 
     def reply(messages):
-        prompt = mail_inbox.prompt(messages)
-        assert prompt.count("</correo>") == len(messages), "el texto del correo no puede cerrar su marca"
+        prompt = mail_inbox.prompt(messages, nonce="abcd")
+        assert prompt.count("</correo-abcd>") == len(messages) + 1 and "</correo>" not in prompt, "el texto del correo no puede cerrar su marca"
         # A model fooled by the message: wrong number, invented fields and a «decision».
         return json.dumps({"correos": [{"n": 9, "tipo": "pago"}, {"n": 1, "tipo": "publicidad", "estado": "done", "regla": {"sender": "banco.es"}},
                                        {"n": 2, "tipo": "cliente", "resumen": "Pide el presupuesto el lunes."}]})
@@ -135,7 +135,7 @@ def test_un_correo_con_instrucciones_no_dispara_nada(db):
     summarize_once(db, [FakeEngine()], ask)
     assert db.execute("SELECT count(*) FROM mail_rule").fetchone()[0] == 0
     states = dict(db.execute("SELECT message_id, state FROM mail_summary").fetchall())
-    assert states == {trampa: "quiet", otro: "pending"}, "nada pasa a hecho ni se envía; la publicidad solo se silencia"
+    assert states == {trampa: "pending", otro: "pending"}, "nada pasa a hecho ni se silencia porque lo diga el modelo"
     assert all(i["state"] == "pending" for i in mail_inbox.inbox(db))
 
 
@@ -171,10 +171,8 @@ def test_avisos_y_herramienta_de_watson_sin_lo_privado(db, tmp_path):
     add(db, privada, "b@banco.es", "Factura", "y")
     ask, _ = asker(lambda messages: json.dumps({"correos": [{"n": 1, "tipo": "factura", "resumen": "Factura del proveedor."}]}))
     summarize_once(db, [FakeEngine()], ask)
-    pending = mail_inbox.to_announce(db)
-    assert len(pending) == 2
-    mail_inbox.mark_announced(db, [pending[0]["id"]])
-    assert len(mail_inbox.to_announce(db)) == 1
+    assert len(mail_inbox.claim_announcements(db)) == 2
+    assert mail_inbox.claim_announcements(db) == [], "cada aviso se entrega una sola vez"
 
     class Database:
         def __enter__(self):
@@ -203,5 +201,100 @@ def test_rutas_de_reglas_y_bandeja(tmp_path):
         assert inbox["items"] == [] and inbox["counts"]["pending"] == 0
         assert client.put("/mail/inbox/5", json={"state": "done"}, headers=headers).status_code == 404
         assert client.put("/mail/inbox/5", json={"state": "quiet"}, headers=headers).status_code == 422
-        assert client.get("/mail/inbox/announce", headers=headers).json() == {"items": []}
+        assert client.post("/mail/inbox/announce", headers=headers).json() == {"items": []}
         assert client.delete(f"/mail/rules/{rule}", headers=headers).json() == {"rules": []}
+
+
+def test_cuenta_que_pasa_a_privada_deja_de_llegar_a_watson(db):
+    normal = account(db, "yo@gmail.com")
+    add(db, normal, "a@proveedor.com", "Invoice", "x")
+    ask, _ = asker(lambda messages: json.dumps({"correos": [{"n": 1, "tipo": "factura", "resumen": "Resumen secreto", "importes": ["99 €"]}]}))
+    summarize_once(db, [FakeEngine()], ask)
+    assert mail_inbox.inbox(db, audience="external")[0]["summary"] == "Resumen secreto"
+    db.execute("UPDATE mail_account SET confidentiality = 'private'")  # even before the levels are applied again
+    assert mail_inbox.inbox(db, audience="external") == []
+    card = mail_inbox.inbox(db)[0]
+    assert (card["confidentiality"], card["summary"], card["details"]) == ("private", None, {})
+    mail_rules.reapply(db)
+    assert tuple(db.execute("SELECT summary, details FROM mail_summary").fetchone()) == (None, "{}"), "el resumen se borra"
+
+
+def test_regla_creada_mientras_el_modelo_lee(db):
+    normal = account(db, "yo@gmail.com")
+    add(db, normal, "ana@cliente.com", "Hola", "presupuesto")
+
+    def reply(messages):  # the user saves a rule while the model is still reading
+        mail_rules.create_rule(db, {"name": "Cliente", "action": "client", "sender": "cliente.com", "confidentiality": "private"})
+        return json.dumps({"correos": [{"n": 1, "tipo": "cliente", "resumen": "Pide presupuesto."}]})
+    ask, _ = asker(reply)
+    summarize_once(db, [FakeEngine()], ask)
+    row = db.execute("SELECT kind, source, confidentiality, summary FROM mail_summary").fetchone()
+    assert tuple(row) == ("client", "rule", "private", None)
+
+
+def test_sin_motor_o_con_fallos_nada_se_queda_atascado(db):
+    normal, solo_mac = account(db, "yo@gmail.com"), account(db, "mac@gmail.com", "local_only")
+    for n in range(8):
+        add(db, normal, f"p{n}@proveedor.com", f"Invoice {n}", "x", days_ago=1)
+    local = add(db, solo_mac, "b@banco.es", "Factura", "y", days_ago=5)
+
+    class Broken(FakeEngine):
+        pass
+
+    async def fail(engine, messages):
+        raise RuntimeError("sin sesión")
+    attempts = {}
+    with pytest.raises(Exception):
+        summarize_once(db, [Broken()], fail, attempts=attempts)
+    assert db.execute("SELECT 1 FROM mail_summary WHERE message_id = ?", (local,)).fetchone(), "lo local no espera al modelo"
+    for _ in range(2):
+        with pytest.raises(Exception):
+            summarize_once(db, [Broken()], fail, attempts=attempts)
+    summarize_once(db, [Broken()], fail, attempts=attempts)  # third failure: those six are classified locally
+    assert db.execute("SELECT count(*) FROM mail_summary").fetchone()[0] == 7
+
+    class Off(FakeEngine):
+        def available(self):
+            return False
+    summarize_once(db, [Off()], fail)
+    assert db.execute("SELECT count(*) FROM mail_summary WHERE summary IS NULL").fetchone()[0] == 9, "sin motor, todo se clasifica en local"
+
+
+def test_otro_motor_si_el_primero_falla_y_limite_por_hora(db):
+    from agora_core.mail_summarizer import Budget
+    normal = account(db, "yo@gmail.com")
+    add(db, normal, "a@proveedor.com", "Invoice", "x")
+
+    class Api(FakeEngine):
+        name = "anthropic-api"
+    used = []
+
+    async def ask(engine, messages):
+        used.append(engine.name)
+        if engine.name == "claude-code":
+            raise RuntimeError("sin sesión")
+        return json.dumps({"correos": [{"n": 1, "tipo": "factura", "resumen": "Por la API."}]})
+    clock = [0.0]
+    budget = Budget(clock=lambda: clock[0])
+    budget.calls = [0.0] * Budget.MAX_CALLS
+    assert summarize_once(db, [FakeEngine(), Api()], ask, budget=budget) == 0 and used == [], "límite alcanzado: espera"
+    clock[0] = 3601
+    summarize_once(db, [FakeEngine(), Api()], ask, budget=budget)
+    assert used == ["claude-code", "anthropic-api"]
+    assert db.execute("SELECT summary FROM mail_summary").fetchone()[0] == "Por la API."
+
+
+def test_palabras_completas_y_listas_vacias(db):
+    rule = {"sender": None, "account_id": None, "subject": None, "words": "pago"}
+    assert not mail_rules.matches(rule, {"from_address": "a@b.com", "account_id": 1, "subject": "Apagón", "body": ""})
+    assert mail_rules.matches(rule, {"from_address": "a@b.com", "account_id": 1, "subject": "Tu pago", "body": ""})
+    with pytest.raises(mail_rules.RuleError):
+        mail_rules.create_rule(db, {"name": "Vacía", "action": "invoice", "words": ", ,"})
+
+
+def test_el_proveedor_compatible_no_ve_la_bandeja(tmp_path):
+    from agora_core.engines import _specs
+    assert "consultar_bandeja" not in [s["name"] for s in _specs(mail=False)]
+    toolbox = Toolbox(lambda: None, None, VectorCache())
+    toolbox.mail = False
+    assert "no está disponible" in asyncio.run(toolbox.call("consultar_bandeja", {}))

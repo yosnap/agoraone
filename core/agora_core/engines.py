@@ -186,8 +186,10 @@ class CompatibleEngine:
         if not resolves_public(self.base_url):
             raise EngineError("La dirección del proveedor apunta a este Mac o a una red privada.")
         toolbox = turn.toolbox
+        if toolbox is not None:
+            toolbox.mail = False
         tools = [{"type": "function", "function": {"name": s["name"], "description": s["description"], "parameters": s["schema"]}}
-                 for s in _specs()] if toolbox else []
+                 for s in _specs(mail=False)] if toolbox else []
         messages = [{"role": "system", "content": turn.system}, *turn.messages]
         try:
             async with httpx.AsyncClient(timeout=120, follow_redirects=False, trust_env=False) as client:
@@ -229,9 +231,11 @@ class CompatibleEngine:
             raise EngineError(f"El proveedor no responde ({type(error).__name__}).") from error
 
 
-def _specs() -> list[dict]:
+def _specs(mail: bool = True) -> list[dict]:
     from .brain_tools import SPECS
 
+    if not mail:  # normal mail is read by Claude only (plan of 1.1, 14/11/2026), never by the compatible provider
+        return [spec for spec in SPECS if spec["name"] != "consultar_bandeja"]
     return SPECS
 
 

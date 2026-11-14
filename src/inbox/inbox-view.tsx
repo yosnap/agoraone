@@ -20,9 +20,11 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const asked = useRef(false);
+  const request = useRef(0);  // only the latest read is shown (a slow answer for another tab is dropped)
   const load = async (which: InboxState = state) => {
     setError('');
-    try { const data = await getInbox(which); setItems(data.items); setCounts(data.counts); setProblem(data.problem); }
+    const mine = ++request.current;
+    try { const data = await getInbox(which); if (mine !== request.current) return; setItems(data.items); setCounts(data.counts); setProblem(data.problem); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo leer la Bandeja.'); }
   };
   if (!asked.current) { asked.current = true; void load(); }
@@ -37,7 +39,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
     setNote('');
     try {
       await createMailRule({ ...item.suggestion, accountId: null, subject: null, words: null, scopeId: item.scope?.id ?? null, confidentiality: null, enabled: true });
-      setNote(`Regla «${item.suggestion.name}» creada. Puedes cambiarla en Ajustes › Reglas del correo.`); await load();
+      setNote(`Regla «${item.suggestion.name}» creada. Si una regla anterior también coincide, manda la anterior; puedes cambiarlas en Ajustes › Reglas del correo.`); await load();
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo crear la regla.'); }
   };
   const groups = new Map<string, InboxItem[]>();
@@ -72,7 +74,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
             <p className="inbox-subject">{item.subject || '(sin asunto)'}{item.attachments > 0 ? ` · ${item.attachments} adjunto${item.attachments > 1 ? 's' : ''}` : ''}</p>
             {item.summary && <p>{item.summary}</p>}
             {(item.details.asks?.length || item.details.amounts?.length || item.details.dates?.length) ? <ul className="inbox-details">
-              {item.details.asks?.map(ask => <li key={ask}>Piden: {ask}</li>)}
+              {item.details.asks?.map((ask, index) => <li key={index}>Piden: {ask}</li>)}
               {item.details.amounts?.length ? <li>Importes: {item.details.amounts.join(', ')}</li> : null}
               {item.details.dates?.length ? <li>Fechas: {item.details.dates.join(', ')}</li> : null}
             </ul> : null}

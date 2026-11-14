@@ -103,6 +103,7 @@ class Toolbox:
                  embedder: Embedder | None, cache: VectorCache, max_calls: int = MAX_CALLS):
         self.database, self.embedder, self.cache, self.max_calls = database, embedder, cache, max_calls
         self.calls = 0
+        self.mail = True  # whether this answer's engine may read the Bandeja (not the compatible provider)
         self.sources: list[dict] = []
         self.events: list[dict] = []
         self.history: list[dict] = []  # every event of this answer, for the action log
@@ -176,6 +177,8 @@ class Toolbox:
     async def _inbox(self, tipo: str) -> str:
         from . import mail_inbox
 
+        if not self.mail:
+            return json.dumps({"error": "La Bandeja no está disponible con este motor."}, ensure_ascii=False)
         kind = _KIND_OF_TIPO.get(tipo)
 
         def run():

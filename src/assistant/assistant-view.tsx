@@ -20,10 +20,10 @@ const lastSources = (messages: AssistantMessage[]) => [...messages].reverse().fi
 
 /** Watson (or the chosen character): conversations kept in the brain, answers streamed with their real stages,
  * the engine and model that answered, and the notes cited, which open as books or light up on the graph. */
-export function AssistantView({ question = null, onQuestionTaken, onRead, onShowOnGraph, embedded = false, onSources, onThinking }: {
+export function AssistantView({ question = null, onQuestionTaken, onRead, onShowOnGraph, embedded = false, onSources, onThinking, discreet = false }: {
   question?: string | null; onQuestionTaken?: () => void; onRead: (note: NoteRef) => void; onShowOnGraph?: (ids: string[]) => void;
   /** Beside the graph: conversations fold into a menu and cited notes light up on their own. */
-  embedded?: boolean; onSources?: (ids: string[]) => void; onThinking?: (thinking: Thinking) => void;
+  embedded?: boolean; onSources?: (ids: string[]) => void; onThinking?: (thinking: Thinking) => void; discreet?: boolean;
 }) {
   const [listOpen, setListOpen] = useState(!embedded);
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
@@ -97,7 +97,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   useEffect(() => { const list = end.current?.parentElement; if (list) list.scrollTop = list.scrollHeight; }, [messages, live?.text, live?.stage, live?.steps.length]);
   const submit = (event?: FormEvent) => {
     event?.preventDefault(); const text = draft.trim(); if (!text || live) return; setDraft('');
-    if (!announced.answer(text)) void send(text, current);  // a plain «sí» / «no» answers the open announcement, without a model
+    if (!announced.answer(text, messages.length > 0 || current !== null)) void send(text, current);  // a plain «sí» / «no» answers the open announcement, without a model
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
@@ -126,7 +126,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
           {!engine ? 'Comprobando motor…' : engine.active ? `${engineName(engine.active)} · ${modelName(engine.model)}` : 'Sin motor disponible'}</span>
       </header>
       <div className="assistant-messages" aria-live="polite">
-        <Announcements name={persona?.name ?? 'Watson'} items={announced.items} note={announced.note} decide={announced.decide}/>
+        <Announcements name={persona?.name ?? 'Watson'} items={announced.items} note={announced.note} decide={announced.decide} discreet={discreet}/>
         {loading ? <Loading label="Abriendo la conversación"/> : !messages.length && !live ? <div className="assistant-empty">
           <h2>¿Qué quieres saber de tu cerebro?</h2>
           <p>{name} busca en tus notas normales, responde con el motor de Claude y cita lo que ha usado. También te avisa de lo que espera en la Bandeja. Solo lee: no envía, crea ni cambia nada.</p>
