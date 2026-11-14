@@ -43,3 +43,12 @@ li.open .compact-chevron { transform:rotate(180deg) }
 .status-badge.paused, .status-badge.neutral { background:var(--c-e7ece2); color:var(--c-355a50) }
 .status-badge.neutral::before { display:none }
 @media (prefers-reduced-motion: reduce) { .compact-chevron { transition:none } }
+.appearance { margin-bottom:16px }
+.appearance-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap }
+.field-label { font-size:12px; font-weight:600; color:var(--c-355a50); min-width:70px }
+.palette-list { display:flex; flex-wrap:wrap; gap:8px }
+.palette-option { display:flex; align-items:center; gap:8px; border:1px solid var(--c-dfe3d6); border-radius:10px; background:var(--c-fffffa); padding:6px 10px 6px 6px; font-size:12px; color:inherit }
+.palette-option[aria-checked="true"] { border-color:var(--c-244e42); box-shadow:0 0 0 2px var(--c-244e42) inset }
+.palette-swatch { display:flex; border-radius:6px; overflow:hidden }
+.palette-swatch i { width:12px; height:22px; display:block }
+.appearance-font { max-width:360px }
