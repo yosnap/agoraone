@@ -7,7 +7,7 @@ export const sections: Section[] = ['brain', 'summary', 'assistant', 'office', '
 const key = 'agora-shell';
 
 // A link may name the section to open (?seccion=oficina), e.g. the browser checks, which start in the city.
-const linked: Record<string, Section> = { cerebro: 'brain', resumen: 'summary', asistente: 'assistant', oficina: 'office', conectores: 'connectors', ajustes: 'settings', bandeja: 'inbox' };
+const linked: Record<string, Section> = { cerebro: 'brain', resumen: 'summary', asistente: 'assistant', oficina: 'office', conectores: 'connectors', ajustes: 'settings', bandeja: 'inbox', fiscal: 'fiscal' };
 
 export function readShell(): { section: Section; discreet: boolean } {
   const fromLink = linked[new URLSearchParams(window.location.search).get('seccion') ?? ''];

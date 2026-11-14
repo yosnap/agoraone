@@ -1,0 +1,14 @@
+.fiscal { max-width:1100px }
+.fiscal-bar { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; margin-bottom:16px }
+.fiscal-bar .field { min-width:180px }
+.fiscal-totals { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-bottom:12px }
+.fiscal-totals .card { gap:4px }
+.fiscal-totals strong { font:600 24px Manrope,sans-serif; color:var(--c-173d3c) }
+.fiscal-warning { font-size:12px; padding:9px 11px; border-radius:8px; background:var(--c-f3e6c4); color:var(--c-7a5717); margin:0 0 8px }
+.fiscal-actions { margin:12px 0 20px }
+.fiscal h2 { margin-top:18px }
+.fiscal-table { overflow-x:auto; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fbfaf3) }
+.fiscal-table table { width:100%; border-collapse:collapse; font-size:12px }
+.fiscal-table th, .fiscal-table td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--c-dfe3d6); vertical-align:top }
+.fiscal-table th { font-weight:600; color:var(--c-355a50) }
+.fiscal-table tr:last-child td { border-bottom:0 }
