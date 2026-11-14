@@ -133,7 +133,7 @@ def test_si_el_servidor_renumera_se_vuelve_a_leer(db):
 
 
 def test_fallos_de_clave_y_de_red_quedan_en_la_cuenta_sin_la_contrasena(db):
-    account = mail.create_account(db, {"address": "yo@example.com", "provider": "hostinger"})
+    account = mail.create_account(db, {"address": "yo@example.com", "provider": "other", "imapHost": "imap.hostinger.com"})
     assert mail.sync_account(db, account, None)["status"] == "auth"
     assert mail.sync_account(db, account, "mala", lambda h, p: FakeImap({}))["status"] == "auth"
     error = db.execute("SELECT last_error FROM mail_account").fetchone()[0]
@@ -154,9 +154,9 @@ def test_validacion_de_cuentas(db):
         mail.create_account(db, {"address": "yo@example.com", "provider": "other", "imapHost": "https://mail.example.com"})
     with pytest.raises(mail.MailError):
         mail.create_account(db, {"address": "yo@example.com", "provider": "gmail", "scopeId": 99})
-    mail.create_account(db, {"address": "yo@example.com", "provider": "namecheap"})
+    mail.create_account(db, {"address": "yo@example.com", "provider": "other", "imapHost": "mail.privateemail.com"})
     with pytest.raises(mail.MailError, match="ya está conectada"):
-        mail.create_account(db, {"address": "YO@example.com", "provider": "namecheap"})
+        mail.create_account(db, {"address": "YO@example.com", "provider": "other", "imapHost": "mail.privateemail.com"})
 
 
 def test_un_correo_malformado_no_atasca_la_cuenta(db):
@@ -179,7 +179,7 @@ def test_sin_tamano_se_pide_con_limite_y_un_fetch_rechazado_no_se_pierde(db):
 
 
 def test_contrasena_con_letras_no_ascii_y_errores_inesperados(db):
-    account = mail.create_account(db, {"address": "yo@example.com", "provider": "hostinger"})
+    account = mail.create_account(db, {"address": "yo@example.com", "provider": "other", "imapHost": "imap.hostinger.com"})
     assert mail.sync_account(db, account, "contraseña", lambda h, p: FakeImap({}))["status"] == "auth"
     assert "letras" in db.execute("SELECT last_error FROM mail_account").fetchone()[0]
 

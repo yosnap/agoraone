@@ -19,8 +19,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await form.waitFor();
   assert.equal(await form.getByLabel('Servidor IMAP').count(), 0, 'Gmail no pide servidor');
   await form.locator('.modern-select button').first().click();
-  await page.getByRole('option', { name: 'Otro servidor' }).click();
+  await page.getByRole('option', { name: /Otro servidor/ }).click();
   await form.getByLabel('Servidor IMAP').waitFor();
+  // Inside a <label> a pick must not reopen the list (the click would be forwarded to the trigger).
+  assert.equal(await page.getByRole('listbox').count(), 0, 'el desplegable se cierra al elegir');
+  assert.equal(await page.getByRole('option').count(), 0);
   assert.equal(await page.locator('.page select').count(), 0, 'ningún select nativo');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'sin desplazamiento horizontal');
   if (shots) await card.screenshot({ path: `${shots}/mail-settings-${viewport.width}.png` });

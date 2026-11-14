@@ -118,7 +118,7 @@ export const getCoreSummary = (discreet: boolean) => core<CoreSummary>(`/summary
 export type Scope = { id: number; slug: string; name: string; color: string | null; fiscal: boolean };
 export const getScopes = () => core<{ scopes: Scope[] }>('/scopes');
 export const createScope = (name: string, fiscal = false) => core<{ scopes: Scope[] }>('/scopes', { name, fiscal });
-export type MailProvider = 'gmail' | 'icloud' | 'namecheap' | 'hostinger' | 'other';
+export type MailProvider = 'gmail' | 'icloud' | 'other';
 export type MailPreset = { name: string; imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; hint: string };
 export type MailAccount = {
   id: number; address: string; label: string | null; provider: MailProvider; username: string; imapHost: string; imapPort: number;

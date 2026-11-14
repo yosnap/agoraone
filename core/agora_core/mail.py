@@ -37,17 +37,16 @@ class Preset:
     hint: str
 
 
-# Known providers; any other server is entered by hand ("other").
+# Providers with their own setup; any other server is entered by hand ("other"). Microsoft accounts need
+# OAuth (Microsoft no longer accepts app passwords for IMAP), so they are not offered yet.
 PRESETS = {
     "gmail": Preset("Gmail / Google Workspace", ("imap.gmail.com", 993), ("smtp.gmail.com", 465),
                     "Necesita la verificación en dos pasos y una contraseña de aplicación (myaccount.google.com/apppasswords)."),
     "icloud": Preset("iCloud", ("imap.mail.me.com", 993), ("smtp.mail.me.com", 587),
                      "Usuario: tu dirección de iCloud. Contraseña de aplicación desde account.apple.com."),
-    "namecheap": Preset("Namecheap Private Email", ("mail.privateemail.com", 993), ("mail.privateemail.com", 465),
-                        "Usuario: la dirección completa y su contraseña del buzón."),
-    "hostinger": Preset("Hostinger", ("imap.hostinger.com", 993), ("smtp.hostinger.com", 465),
-                        "Usuario: la dirección completa y su contraseña del buzón."),
-    "other": Preset("Otro servidor", ("", 993), ("", 465), "Los datos de IMAP y SMTP que te dé tu proveedor (IMAP con SSL)."),
+    # Namecheap, Hostinger and any hosting with its own domain are plain IMAP/SMTP: their servers go here.
+    "other": Preset("Otro servidor (IMAP)", ("", 993), ("", 465),
+                    "Los servidores IMAP y SMTP de tu proveedor (en Namecheap, mail.privateemail.com; en Hostinger, imap/smtp.hostinger.com). Usuario: la dirección completa."),
 }
 
 

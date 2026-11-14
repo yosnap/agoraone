@@ -18,7 +18,7 @@ from .settings import Settings
 
 SYNC_SECONDS = 300
 Level = Literal["normal", "local_only", "private"]
-Provider = Literal["gmail", "icloud", "namecheap", "hostinger", "other"]
+Provider = Literal["gmail", "icloud", "other"]
 
 
 class AccountIn(BaseModel):
