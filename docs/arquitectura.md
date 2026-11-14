@@ -62,7 +62,14 @@ Todo vive en el núcleo Python; el servidor de Rust solo hace de proxy (`/api/co
 - **Bandeja** (`routes_inbox.py`, `src/inbox/`). Tarjetas por ámbito que el usuario marca como hechas o descarta. Propone acciones (archivar factura, añadir al proyecto, crear evento) que llegan en fases posteriores y hasta entonces se muestran como pendientes. Ningún correo cambia un estado ni crea una regla: la regla en un clic se construye con el remitente real, nunca con lo que escribe el modelo.
 - **Watson**. Consulta la Bandeja con la herramienta de solo lectura `consultar_bandeja`, que solo ve lo de nivel normal. Al abrir el chat anuncia lo pendiente una vez (`src/assistant/assistant-announce.tsx`); un «sí» o un «no» a un único aviso se decide en la interfaz, sin pasar por un modelo.
 
-Verificación: `core/tests/test_mail.py`, `core/tests/test_mail_inbox.py` (incluida la inyección de instrucciones), `scripts/verify-mail-settings.mjs` y `scripts/verify-inbox.mjs`.
+- **Facturas** (desde 1.1.0-alpha.3: `fiscal.py`, `invoice_extract.py`, `fiscal_folder.py`, `routes_fiscal.py`, migración 0011):
+  - **Carpeta fiscal.** Se elige en Ajustes y se guarda en `setting` (`fiscal.folder`). Nunca puede ser la carpeta personal ni la raíz de iCloud Drive, y toda ruta se resuelve y se comprueba dentro de ella.
+  - **Preparar.** La tarjeta de un aviso de pago vuelve a leer el correo en solo lectura. Lee el PDF adjunto con el extractor aislado (`sandbox-exec`, sin red ni escrituras) y reglas locales (NIF, fecha, total) y lo coteja con el aviso: lo que no cuadra son dudas. Si la factura solo viene enlazada, propone el enlace; se descarga al archivar, únicamente desde https público, sin redirecciones y si es PDF.
+  - **Archivar.** La factura va a `Facturas Entrantes/año/NT/fecha proveedor total.pdf` sin sobrescribir nada y queda en el registro `invoice`.
+  - **Reordenar.** Se proponen movimientos deducidos de los nombres de carpeta (lo dudoso no se toca) y se aplican con la lista exacta confirmada, con copia previa en los datos de AgoraOne.
+  - **Watson.** En su aviso, un «sí» archiva solo una factura adjunta y sin dudas.
+
+Verificación: `core/tests/test_mail.py`, `core/tests/test_mail_inbox.py` (incluida la inyección de instrucciones), `core/tests/test_fiscal.py`, `scripts/verify-mail-settings.mjs` y `scripts/verify-inbox.mjs`.
 
 ## Identidades
 Personaje Luma → agente lógico `luma` → contexto `library-lobby`. Perfil Hermes y bot: `null`; no se mapean a los del usuario. Cada conversación recibe UUID propio y otro ID de sesión Hermes generado en backend. El historial que llega al modelo procede del almacenamiento del servidor, nunca del cliente.

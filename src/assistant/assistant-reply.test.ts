@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { replyState } from './assistant-announce';
+import { replyState } from './assistant-reply';
 
 test('solo un «sí» o un «no» claros responden al aviso; lo demás es una pregunta para Watson', () => {
   for (const yes of ['sí', 'Si', 'vale', 'hecho.', 'márcala']) assert.equal(replyState(yes), 'done', yes);

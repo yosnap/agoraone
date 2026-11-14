@@ -32,6 +32,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   assert.equal(await page.getByRole('listbox').count(), 0, 'el desplegable se cierra al elegir');
   assert.equal(await page.locator('.page select').count(), 0, 'ningún select nativo');
   if (shots) await rules.screenshot({ path: `${shots}/mail-rules-${viewport.width}.png` });
+  const fiscalCard = page.locator('article', { has: page.getByRole('heading', { name: 'Carpeta fiscal' }) });
+  await fiscalCard.waitFor();
+  console.log(`${viewport.width}px · carpeta fiscal ${await fiscalCard.locator('code').count() ? 'elegida' : 'sin elegir'}`);
   await rules.getByRole('button', { name: 'Cancelar' }).click();
   assert.deepEqual(writes, [], 'no se escribió nada');
   assert.deepEqual(errors, [], 'sin errores JS');
@@ -47,6 +50,7 @@ const sample = { id: 1, kind: 'invoice', source: 'model', ruleId: null, ruleName
   attachments: 1, announcedAt: null };
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [], decided = [];
+await page.route('**/api/core/fiscal/invoices/prepare', route => route.fulfill({ status: 422, json: { error: 'Elige primero la carpeta fiscal en Ajustes.' } }));
 page.on('pageerror', e => errors.push(e.message));
 await page.route('**/api/core/mail/inbox?state=pending', route => route.fulfill({ json: { items: [sample], counts: { pending: 1, done: 0, dismissed: 0, unread: 0 }, problem: null } }));
 await page.route('**/api/core/mail/inbox/announce', route => route.fulfill({ json: { items: [sample] } }));
@@ -55,8 +59,22 @@ await page.goto(appUrl(5173, 'bandeja'));
 const card = page.locator('.inbox-card');
 await card.waitFor({ timeout: 60_000 });
 assert.ok(await page.getByRole('heading', { name: /Ejemplo/ }).count(), 'agrupada por ámbito');
-assert.ok(await card.getByRole('button', { name: 'Descargar y archivar la factura' }).isDisabled(), 'la acción que aún no existe no se puede pulsar');
-assert.ok(await card.getByText('Pendiente: llega con las facturas de proveedores.').count());
+// Filing the invoice: prepared from the message, edited by the user, written only on «Archivar».
+const prepared = { source: { kind: 'attachment', part: 2, name: 'factura.pdf' }, sources: [{ kind: 'attachment', part: 2, name: 'factura.pdf' }], links: [], doubts: ['No aparece el NIF del proveedor.'],
+  proposal: { supplier: 'Proveedor de ejemplo', taxId: null, issuedOn: '2026-11-13', total: '12.50', currency: 'EUR' },
+  destination: 'Facturas Entrantes/2026/4T/2026-11-13 Proveedor de ejemplo 12,50.pdf' };
+const filed = [];
+await page.route('**/api/core/fiscal/invoices/prepare', route => route.fulfill({ json: prepared }));
+await page.route('**/api/core/fiscal/invoices', route => { filed.push(route.request().postDataJSON()); return route.fulfill({ status: 201, json: { id: 1, path: prepared.destination, quarter: '2026-4T' } }); });
+await card.getByRole('button', { name: 'Descargar y archivar la factura…' }).click();
+await card.getByText('No aparece el NIF del proveedor.').waitFor();
+assert.equal(filed.length, 0, 'preparar no archiva');
+await card.getByLabel('Proveedor').fill('Proveedor Uno');
+assert.ok(await card.getByText('Facturas Entrantes/2026/4T/2026-11-13 Proveedor Uno 12,50.pdf').count(), 'el destino sigue a los datos');
+await card.getByRole('button', { name: 'Archivar la factura' }).click();
+await page.getByText(/Factura archivada en/).waitFor();
+assert.equal(filed[0].fields.supplier, 'Proveedor Uno');
+assert.deepEqual(filed[0].source, { kind: 'attachment', part: 2 });
 await page.goto(appUrl(5173, 'asistente'));
 const notice = page.locator('.announcement');
 await notice.waitFor({ timeout: 60_000 });

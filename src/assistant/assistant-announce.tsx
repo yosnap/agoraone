@@ -1,12 +1,8 @@
 import { useRef, useState } from 'react';
 import { claimAnnouncements, decideInbox, type InboxItem } from '../api/core';
 import { announcement, proposalLabels } from '../inbox/inbox-labels';
-
-const YES = /^\s*(s[ií]|vale|ok|de acuerdo|hecho|hecha|hazlo|m[aá]rcala|m[aá]rcalo)[\s.!]*$/i;
-const NO = /^\s*(no|desc[aá]rtala|desc[aá]rtalo|descartar|ignora(la|lo)?)[\s.!]*$/i;
-
-/** A plain answer to an announcement: «sí» marks it done, «no» dismisses it, anything else is a question. */
-export const replyState = (text: string) => (YES.test(text) ? 'done' : NO.test(text) ? 'dismissed' : null);
+import { InvoiceFiling } from '../inbox/invoice-filing';
+import { replyState } from './assistant-reply';
 
 /** What the Bandeja has waiting, announced by the assistant when the chat opens. Each announcement is shown
  * once; the user answers with the buttons or with a plain «sí» / «no» when only one is open. The answer
@@ -15,6 +11,8 @@ export function useAnnouncements() {
   const [items, setItems] = useState<InboxItem[]>([]);
   const [note, setNote] = useState('');
   const asked = useRef(false);
+  // Invoices ready to file with a plain «sí» (attached PDF, nothing that does not match).
+  const filers = useRef(new Map<number, () => Promise<void>>());
   if (!asked.current) {
     asked.current = true;
     claimAnnouncements().then(data => setItems(data.items)).catch(() => undefined);
@@ -33,20 +31,36 @@ export function useAnnouncements() {
     if (items.length !== 1 || chatStarted) return false;
     const state = replyState(text);
     if (!state) return false;
-    void decide(items[0], state);
+    const item = items[0];
+    if (state === 'done' && item.proposal === 'archive_invoice') {
+      const file = filers.current.get(item.id);
+      if (file) void file();
+      else setNote('Antes de archivarla revisa los datos de la factura: hay dudas o hay que descargarla. Usa el botón «Archivar la factura».');
+      return true;
+    }
+    void decide(item, state);
     return true;
   };
-  return { items, note, decide, answer };
+  const ready = (id: number, file: (() => Promise<void>) | null) => { if (file) filers.current.set(id, file); else filers.current.delete(id); };
+  const filed = (item: InboxItem, path: string) => {
+    filers.current.delete(item.id);
+    setItems(current => current.filter(other => other.id !== item.id));
+    setNote(`Factura archivada en ${path}.`);
+  };
+  return { items, note, decide, answer, ready, filed };
 }
 
-export function Announcements({ name, items, note, decide, discreet = false }: { name: string; discreet?: boolean } & Pick<ReturnType<typeof useAnnouncements>, 'items' | 'note' | 'decide'>) {
+export function Announcements({ name, items, note, decide, ready, filed, discreet = false }: { name: string; discreet?: boolean }
+  & Pick<ReturnType<typeof useAnnouncements>, 'items' | 'note' | 'decide' | 'ready' | 'filed'>) {
   if (!items.length && !note) return null;
   return <>
     {items.map(item => <article key={item.id} className="assistant-message assistant announcement" aria-label="Aviso de la Bandeja">
       <strong>{name}</strong>
       <p>{discreet ? 'Tienes un correo pendiente en la Bandeja (detalles ocultos en modo discreto).' : announcement(item)}</p>
       {item.summary && !discreet && <p className="muted">{item.summary}</p>}
-      {item.proposal && <p className="muted">Eso aún no puedo hacerlo yo ({proposalLabels[item.proposal].arrives}). ¿Lo marco como hecho o lo descarto?</p>}
+      {item.proposal === 'archive_invoice' && !discreet
+        ? <InvoiceFiling messageId={item.id} onReady={file => ready(item.id, file)} onFiled={path => filed(item, path)}/>
+        : item.proposal && item.proposal !== 'archive_invoice' && <p className="muted">Eso aún no puedo hacerlo yo ({proposalLabels[item.proposal].arrives}). ¿Lo marco como hecho o lo descarto?</p>}
       <div className="actions">
         <button type="button" className="button primary" onClick={() => void decide(item, 'done')}>Marcar como hecho</button>
         <button type="button" className="button" onClick={() => void decide(item, 'dismissed')}>Descartar</button>
