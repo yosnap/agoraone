@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from . import fiscal, fiscal_excel, fiscal_folder, invoice_extract, mail, qonto, receipts
 from .db import DB_NAME, connect, now, transaction
@@ -95,6 +95,11 @@ class QontoIn(BaseModel):
 class QuarterIn(BaseModel):
     year: StrictInt = Field(ge=2000, le=2100)
     quarter: StrictInt = Field(ge=1, le=4)
+
+
+class OpenIn(BaseModel):
+    path: str | None = Field(default=None, max_length=1000)
+    reveal: StrictBool = False
 
 
 class ApplyIn(BaseModel):
@@ -347,6 +352,17 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             return refuse(error)
         data.pop("root")
         return data
+
+    @router.post("/fiscal/folders/{folder_id}/open")
+    async def open_in_finder(folder_id: int, body: OpenIn):
+        def work(connection):
+            _, root = fiscal.folder_root(connection, folder_id)
+            fiscal.open_in_finder(root, body.path, body.reveal)
+            return {"ok": True}
+        try:
+            return await db(work)
+        except fiscal.FiscalError as error:
+            return refuse(error)
 
     @router.post("/fiscal/folders/{folder_id}/excel", status_code=201)
     async def make_excel(folder_id: int, body: QuarterIn):

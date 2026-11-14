@@ -326,3 +326,18 @@ def invoices(connection: sqlite3.Connection, quarter: str | None = None, folder_
     return [{"id": r["id"], "folderId": r["folder_id"], "category": r["category"], "direction": r["direction"], "messageId": r["message_id"], "supplier": r["supplier"], "taxId": r["tax_id"],
              "issuedOn": r["issued_on"], "base": r["base"], "vat": r["vat"], "total": r["total"], "currency": r["currency"],
              "notes": r["notes"], "doubts": json.loads(r["doubts"]), "quarter": r["quarter"], "path": r["path"]} for r in rows]
+
+
+def open_in_finder(root: Path, relative: str | None, reveal: bool, runner=None) -> None:
+    """Opens a file of the fiscal folder with its app (Excel, Numbers…), shows it selected in the Finder, or
+    opens the folder itself. Only paths inside the folder, passed as an argument (never through a shell)."""
+    import subprocess
+
+    target = inside(root, relative) if relative else root
+    if not target.exists():
+        raise FiscalError("Ese archivo ya no está en la carpeta.")
+    run = runner or subprocess.run
+    try:
+        run(["/usr/bin/open", *(["-R"] if reveal and relative else []), "--", str(target)], check=True, timeout=10, capture_output=True)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise FiscalError("No se pudo abrir en el Finder.") from error

@@ -241,3 +241,15 @@ def test_la_misma_factura_no_se_archiva_dos_veces(db, tmp_path):
     fiscal.file_invoice(db, folder, root.resolve(), PDF, fields, None, [])
     with pytest.raises(fiscal.Duplicate):
         fiscal.file_invoice(db, folder, root.resolve(), PDF, fields, None, [])
+
+
+def test_abrir_en_el_finder_solo_dentro_de_la_carpeta(tmp_path):
+    root = tmp_path.resolve()
+    (root / "Registro.xlsx").write_bytes(b"x")
+    calls = []
+    fiscal.open_in_finder(root, "Registro.xlsx", True, runner=lambda args, **k: calls.append(args))
+    fiscal.open_in_finder(root, None, False, runner=lambda args, **k: calls.append(args))
+    assert calls == [["/usr/bin/open", "-R", "--", str(root / "Registro.xlsx")], ["/usr/bin/open", "--", str(root)]]
+    for bad in ("../fuera.xlsx", "no-existe.xlsx"):
+        with pytest.raises(fiscal.FiscalError):
+            fiscal.open_in_finder(root, bad, False, runner=lambda args, **k: calls.append(args))
