@@ -10,7 +10,7 @@ import type { ProfileSkill, ProfileSkillDetail } from '../../shared/hermes-skill
 let csrf = '';
 /** An error answered by the backend, with its HTTP status (409 means the data changed meanwhile). */
 export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
-async function request<T>(path: string, body?: unknown, method = body ? 'POST' : 'GET'): Promise<T> {
+export async function request<T>(path: string, body?: unknown, method = body ? 'POST' : 'GET'): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,
     headers: { ...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}), ...(csrf ? { 'X-Agora-CSRF': csrf } : {}) },
@@ -45,7 +45,9 @@ export const readVaultNote = (vaultId: string, noteId: string, reveal = false) =
 /** Writes a real Obsidian note; `revision` is the version the user opened (sha-256 of its bytes). */
 export const saveVaultNote = (vaultId: string, noteId: string, edit: { content: string; revision: string; revealed?: boolean }) =>
   request<{ id: string; revision: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes/${encodeURIComponent(noteId)}`, edit, 'PUT');
-export const createVaultNote = (vaultId: string, folder: string, title: string, content: string) =>
+export const moveVaultNote = (vaultId: string, noteId: string, target: { folder: string; title: string; revision: string }) =>
+  request<{ id: string; folder: string; title: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes/${encodeURIComponent(noteId)}/move`, target);
+export const createVaultNote =(vaultId: string, folder: string, title: string, content: string) =>
   request<{ id: string; folder: string; title: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes`, { folder, title, content });
 /** A profile's scheduled tasks and kanban cards, managed with Hermes' own functions (user's decision, 18/10/2026). */
 export type JobDetail = { id: string; name: string; schedule: string; once: boolean; prompt: string; revision: string; hidden: number };
@@ -121,3 +123,11 @@ export async function importDocument(file: File) {
   const base64 = btoa(raw);
   return request<LibraryDocument>('/library/imports', { name: file.name, base64 });
 }
+export const csrfToken = () => csrf;
+export type HermesSummary = {
+  readAt: string; days: number; messagesCounted: number;
+  profiles: { profile: string; tokens: number; costUsd: number; sessions: number; lastActivityAt: string | null }[];
+  projects: { project: string; tokens: number; costUsd: number; sessions: number }[];
+  words: { word: string; count: number }[];
+};
+export const getHermesSummary = () => request<HermesSummary>('/hermes/summary');

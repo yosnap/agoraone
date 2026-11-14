@@ -37,13 +37,9 @@ El backend valida propietario, formato y archivo autorizado antes de ambas opera
 - Hermes conserva cero herramientas. La instantánea autorizada es contexto de lectura, no una capacidad para explorar el disco.
 
 ## Extracción local
-`server/document-extraction.ts` valida la carga y limita a dos extracciones simultáneas. `server/extract-document.mjs` procesa bytes por stdin en un proceso separado, sin variables heredadas ni credenciales: 15 segundos y heap V8 de 128 MiB. Esto limita recursos, pero no es un sandbox de sistema operativo ni un límite total de memoria nativa.
+`desktop/server/src/library/extract.rs` valida la carga y limita a dos extracciones simultáneas. `core/agora_core/extract.py` procesa bytes por stdin en un proceso separado con el Python del núcleo, sin variables heredadas ni credenciales: 15 segundos y 100 000 bytes de salida. En macOS corre bajo `sandbox-exec`: sin red, sin escribir archivos, sin procesos hijos y sin leer el contenido de carpetas personales, otros discos ni carpetas temporales (solo su Python y la carpeta del núcleo). No es un límite total de memoria nativa.
 
-PDF.js recibe bytes, sin URL, con evaluación desactivada. Mammoth usa `extractRawText({buffer})`, sin conversión HTML ni acceso externo habilitado. DOCX pasa antes por validación ZIP con yauzl: hasta 1000 entradas, 16 MiB descomprimidos declarados y reales, sin entradas cifradas o duplicadas. No se ejecutan macros, scripts o enlaces del documento. Los binarios no se guardan en disco.
-
-Referencias de las APIs: [PDF.js](https://github.com/mozilla/pdf.js) y [Mammoth](https://github.com/mwilliamson/mammoth.js#extracting-raw-text).
-
-Auditoría del 17/10/2026: `npm audit` informa tres avisos moderados de una misma cadena `mammoth → argparse → sprintf-js` (DoS por precisión de formato). En la versión instalada, argparse solo se importa desde `bin/mammoth`, CLI que esta aplicación no usa; la extracción importa `lib/index.js`. No hay versión corregida de sprintf-js publicada en el registro consultado. Se registra para seguimiento; no se fuerza el downgrade incompatible sugerido por npm.
+pypdf recibe los bytes en memoria y rechaza los PDF cifrados o de más de 100 páginas. Para DOCX se valida antes el ZIP: hasta 1000 entradas, 16 MiB descomprimidos declarados y reales, sin entradas cifradas ni nombres repetidos; después se lee `word/document.xml` con el analizador de python-docx, que nunca resuelve entidades. No se ejecutan macros, scripts ni enlaces del documento, no hay OCR y los binarios no se guardan en disco (`core/agora_core/extract.py`).
 
 ## Pruebas
 `npm test` cubre importación, persistencia, permisos 0600/0700, propietarios, validación, cuota, CSRF y rechazo de lectura/chat ajenos. Las pruebas de API usan almacenamiento temporal.

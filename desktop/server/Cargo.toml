@@ -1,0 +1,37 @@
+[package]
+name = "agora-server"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "agoraone"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+axum = "0.8"
+base64 = "0.23.1"
+bytes = "1"
+chrono = "0.4.45"
+fancy-regex = "0.20.2"
+futures-util = "0.3"
+hex = "0.4"
+libc = "0.2.191"
+rand = "0.9"
+regex = "1.13.1"
+reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_norway = "0.9.42"
+sha2 = "0.10"
+subtle = "2"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["fs"] }
+unicode-normalization = "0.1.26"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+zip = { version = "9.5.1", default-features = false, features = ["deflate"] }

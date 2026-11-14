@@ -6,6 +6,7 @@ import { cityExtent, type Place } from '../data/city';
 import type { Obstacle } from './profile-decor';
 import { cityGrid } from './city-layout';
 import { playerPose } from './player-pose';
+import { play } from '../sound/sound';
 
 // Arrow keys move and turn as in a game; WASD keeps strafing. Their default (scrolling) is suppressed while walking.
 const walkKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
@@ -31,10 +32,14 @@ export function Navigation({ places, firstPerson, blocked, inside = false, room 
     keys.current.clear();
     if (document.pointerLockElement) document.exitPointerLock();
   }, [camera, firstPerson, inside, room, extent, spawnX]);
+  // While walking, the keys move you wherever the focus is (a button, the page), except while typing in a
+  // field or with a dialog open: before, a click on any panel silently stopped the arrows from working.
+  const walking = useRef(false);
+  const stride = useRef(0);
+  walking.current = firstPerson && !blocked;
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (!walkKeys.has(e.code) || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (document.pointerLockElement !== gl.domElement && document.activeElement !== gl.domElement) return;
+      if (!walkKeys.has(e.code) || e.metaKey || e.ctrlKey || e.altKey || !walking.current || !canWalk(gl.domElement)) return;
       keys.current.add(e.code); e.preventDefault();
     };
     const up = (e: KeyboardEvent) => keys.current.delete(e.code);
@@ -68,7 +73,7 @@ export function Navigation({ places, firstPerson, blocked, inside = false, room 
       camera.getWorldDirection(direction.current);
       playerPose.x = camera.position.x; playerPose.z = camera.position.z; playerPose.heading = Math.atan2(direction.current.x, -direction.current.z);
     }
-    if (!firstPerson || blocked || (document.pointerLockElement !== gl.domElement && document.activeElement !== gl.domElement)) return;
+    if (!firstPerson || blocked || !canWalk(gl.domElement)) return;
     const has = (code: string) => Number(keys.current.has(code));
     const forward = Math.sign(has('KeyW') + has('ArrowUp') - has('KeyS') - has('ArrowDown'));
     const sideways = has('KeyD') - has('KeyA');
@@ -84,8 +89,22 @@ export function Navigation({ places, firstPerson, blocked, inside = false, room 
     const collides = inside
       ? obstacles.some(p => Math.abs(next.x - p.x) < p.halfX && Math.abs(next.z - p.z) < p.halfZ)
       : places.some(p => Math.abs(next.x - p.position[0]) < 2.8 && Math.abs(next.z - p.position[2]) < 2.2);
-    if (!collides) camera.position.copy(next);
+    if (!collides) {
+      // A step sound every metre and a half actually walked.
+      stride.current += camera.position.distanceTo(next);
+      if (stride.current > 1.5) { stride.current = 0; play('step'); }
+      camera.position.copy(next);
+    }
   });
   return firstPerson ? null
     : <OrbitControls makeDefault target={[0, 0, 0]} minDistance={14} maxDistance={extent * 5} maxPolarAngle={Math.PI / 2.3}/>;
+}
+
+/** Whether walking keys may move the camera now: the scene has the pointer or the focus, or the focus is on
+ * something that is not a text field, a list being browsed or a dialog. */
+export function canWalk(canvas: HTMLElement) {
+  if (document.pointerLockElement === canvas || document.activeElement === canvas) return true;
+  if (document.querySelector('dialog[open]')) return false;
+  const focused = document.activeElement;
+  return !(focused instanceof HTMLElement && focused.closest('input, textarea, select, [contenteditable="true"], [role="listbox"], [role="option"]'));
 }

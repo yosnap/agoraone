@@ -4,6 +4,7 @@ import { ago } from '../data/activity-format';
 import { ConsultWith, type ConsultTarget } from './consult-with';
 import { HiddenLines } from './hidden-lines';
 import { VaultNoteEditor } from './vault-note-editor';
+import { VaultNoteMove } from './vault-note-move';
 import { headingsOf, Markdown } from './markdown';
 import { noteFinder } from './vault-links';
 import './vault-book.css';
@@ -22,6 +23,9 @@ export function VaultBook({ vaultId, vaultName, noteId, notes, onOpen, onClose, 
   const [editing, setEditing] = useState(startEditing);
   const [saved, setSaved] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
+  // The id a note got after being moved or renamed: its book then says so.
+  const [movedTo, setMovedTo] = useState<string | null>(null);
   const latest = useRef(0);
   const page = useRef<HTMLDivElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
@@ -80,21 +84,28 @@ export function VaultBook({ vaultId, vaultName, noteId, notes, onOpen, onClose, 
             onClick={() => page.current?.querySelector(`#${CSS.escape(item.anchor)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{item.text}</button>)}
         </nav>}
         {note && <HiddenLines count={note.hidden} revealed={note.revealed} disabled={editing} onToggle={() => load(note.id, !note.revealed)}/>}
-        {note && meta?.readable && !editing && <button type="button" className="book-edit" onClick={() => { setEditing(true); setSaved(false); }}>Editar nota</button>}
+        {note && meta?.readable && !editing && !moving && <div className="book-actions">
+          <button type="button" className="book-edit" onClick={() => { setEditing(true); setSaved(false); setMovedTo(null); }}>Editar nota</button>
+          <button type="button" className="book-edit" onClick={() => { setMoving(true); setSaved(false); setMovedTo(null); }}>Mover o renombrar</button>
+        </div>}
         {saved && !editing && <p role="status" className="book-saved">Guardada en tu vault. La versión anterior quedó en la copia de seguridad de AgoraOne.</p>}
+        {movedTo === noteId && !moving && <p role="status" className="book-saved">Movida o renombrada en tu vault. Antes se guardó una copia en AgoraOne.</p>}
         {note && meta && <ConsultWith what="esta nota" targets={targets} onConsult={target => onConsult({ id: note.id, title: `${vaultName} · ${meta.folder ? `${meta.folder}/` : ''}${meta.title}`, revision: note.revision }, target)}/>}
         {note && note.bytes > 24 * 1024 && <small>La consulta envía los primeros 24 KiB de la nota.</small>}
         <div className="book-turn">
-          <button disabled={editing || at <= 0} onClick={() => onOpen(shelf[at - 1].id)} aria-label="Nota anterior de la carpeta">← Anterior</button>
+          <button disabled={editing || moving || at <= 0} onClick={() => onOpen(shelf[at - 1].id)} aria-label="Nota anterior de la carpeta">← Anterior</button>
           <span>{at + 1} / {shelf.length}</span>
-          <button disabled={editing || at < 0 || at >= shelf.length - 1} onClick={() => onOpen(shelf[at + 1].id)} aria-label="Nota siguiente de la carpeta">Siguiente →</button>
+          <button disabled={editing || moving || at < 0 || at >= shelf.length - 1} onClick={() => onOpen(shelf[at + 1].id)} aria-label="Nota siguiente de la carpeta">Siguiente →</button>
         </div>
       </aside>
       <div className="book-page book-right" ref={page} tabIndex={-1}>
         <button autoFocus className="book-close" aria-label="Cerrar libro" disabled={editing} title={editing ? 'Guarda o cancela la edición para cerrar' : undefined} onClick={onClose}>×</button>
         {failure && <p className="error" role="alert">{failure}</p>}
         {!note && !failure && <p role="status">Abriendo el libro…</p>}
-        {editing && note ? <VaultNoteEditor key={`${note.id}:${note.revision}:${note.revealed}:${draft !== null}`} vaultId={vaultId} note={{ ...note, title: meta?.title ?? 'nota' }} draft={draft} notes={titles}
+        {moving && note && meta ? <VaultNoteMove vaultId={vaultId} vaultName={vaultName} note={{ id: note.id, title: meta.title, folder: meta.folder, revision: note.revision }} notes={notes}
+          onCancel={() => setMoving(false)} onReload={() => { setMoving(false); void load(note.id, note.revealed); }}
+          onMoved={id => { setMoving(false); setMovedTo(id); onChanged(); onOpen(id); }}/>
+          : editing && note ? <VaultNoteEditor key={`${note.id}:${note.revision}:${note.revealed}:${draft !== null}`} vaultId={vaultId} note={{ ...note, title: meta?.title ?? 'nota' }} draft={draft} notes={titles}
           onCancel={() => { setEditing(false); setDraft(null); }}
           onReload={keep => { setDraft(keep); if (keep === null) setEditing(false); void load(note.id, note.revealed); }}
           onSaved={() => { setEditing(false); setDraft(null); setSaved(true); void load(note.id, note.revealed); onChanged(); }}/> : body}

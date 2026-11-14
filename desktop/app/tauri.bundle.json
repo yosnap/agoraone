@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "resources": {
+      "../paquete/contenido/python/": "python/",
+      "../paquete/contenido/core/": "core/",
+      "../paquete/contenido/web/": "web/",
+      "../paquete/contenido/library-test/": "library-test/"
+    },
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "hardenedRuntime": true
+    }
+  }
+}

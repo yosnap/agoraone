@@ -19,7 +19,7 @@ Usuario confirma arranque mediante Hermes Desktop y proveedor privado OpenAI com
 En la inspección inicial no había listener TCP en 8642. Esto no prueba que Desktop no use otro transporte/puerto. No se investigaron ni reutilizaron sesiones de Desktop.
 
 ## Adaptador elegido
-Express ejecuta el Python instalado de Hermes, con script propio `server/hermes_bridge.py`, por stdin/stdout JSON. Un proceso por turno. Importa y ejecuta el agente real; no llama directamente al SDK OpenAI en lugar de Hermes.
+Express ejecuta el Python instalado de Hermes, con script propio `desktop/server/python/hermes_bridge.py`, por stdin/stdout JSON. Un proceso por turno. Importa y ejecuta el agente real; no llama directamente al SDK OpenAI en lugar de Hermes.
 
 - Solo recibe modelo, URL y credencial seleccionados del backend.
 - Entorno hijo construido desde lista explícita; `HOME` y `HERMES_HOME` apuntan a `.agora/hermes`.
@@ -32,7 +32,7 @@ Express ejecuta el Python instalado de Hermes, con script propio `server/hermes_
 - No se propagan logs ni excepciones crudas al navegador.
 
 ## Credenciales
-`server/configure-provider.py <proveedor> <modelo>` importa únicamente URL, nombre de modelo y clave de inferencia a `.env` del proyecto con permisos 0600. No copia perfiles, memoria ni conversaciones. No sobrescribe `.env` existente. Credenciales excluidas del control de versiones y del frontend. Si rota la clave, actualizar exclusivamente esa configuración local.
+`scripts/configure-provider.py <proveedor> <modelo>` importa únicamente URL, nombre de modelo y clave de inferencia a `.env` del proyecto con permisos 0600. No copia perfiles, memoria ni conversaciones. No sobrescribe `.env` existente. Credenciales excluidas del control de versiones y del frontend. Si rota la clave, actualizar exclusivamente esa configuración local.
 
 ## Limitaciones
 API Python interna fijada a este commit; no se afirma estabilidad entre versiones. No streaming, bots, perfiles Desktop, herramientas ni WebXR. La biblioteca de prueba añade contexto documental validado por el backend, conservando cero herramientas en Hermes (docs/biblioteca.md). Conversaciones aisladas por identidad local de navegador, agente lógico, contexto e ID; no es autenticación multiusuario de producción. Ante un timeout no reintentar automáticamente: el proveedor podría haber procesado la petición.

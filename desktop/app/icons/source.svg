@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Provisional icon: an agora's arcade under a sky dot, in the interface's colours. -->
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b4a4f"/><stop offset="1" stop-color="#102c30"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#sky)"/>
+  <circle cx="512" cy="300" r="70" fill="#f2c879"/>
+  <g fill="none" stroke="#f4ead2" stroke-width="44" stroke-linecap="round">
+    <path d="M240 760 V560 a90 90 0 0 1 180 0 V760"/>
+    <path d="M422 760 V520 a90 90 0 0 1 180 0 V760"/>
+    <path d="M604 760 V560 a90 90 0 0 1 180 0 V760"/>
+    <path d="M200 790 H824"/>
+  </g>
+</svg>
