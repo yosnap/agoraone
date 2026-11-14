@@ -3,6 +3,7 @@ import { archiveAllInbox, createMailRule, decideInbox, getInbox, type InboxCount
 import { LoadError, Loading } from '../ui/load-state';
 import { actionLabels, kindLabels, proposalLabels, sender, when } from './inbox-labels';
 import { InvoiceFiling } from './invoice-filing';
+import { ReceiptsPanel } from './receipts-panel';
 import './inbox.css';
 
 const tabs: { state: InboxState; label: string }[] = [
@@ -75,6 +76,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
     {problem && <LoadError message={problem}/>}
     {error && <LoadError message={error} onRetry={() => void load()}/>}
     {note && <p className="ok-note" role="status">{note}</p>}
+    {state === 'pending' && <ReceiptsPanel onNote={setNote}/>}
     {items === null ? <Loading label="Leyendo la Bandeja" lines={4}/>
       : items.length === 0 ? <p className="muted">{state === 'pending' ? 'No hay nada pendiente. Si acabas de conectar una cuenta, los resúmenes llegan en unos minutos.' : 'Nada por aquí.'}</p>
       : [...groups].map(([scope, cards]) => <div key={scope} className="inbox-group">

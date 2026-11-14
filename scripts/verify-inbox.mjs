@@ -32,9 +32,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   assert.equal(await page.getByRole('listbox').count(), 0, 'el desplegable se cierra al elegir');
   assert.equal(await page.locator('.page select').count(), 0, 'ningún select nativo');
   if (shots) await rules.screenshot({ path: `${shots}/mail-rules-${viewport.width}.png` });
-  const fiscalCard = page.locator('article', { has: page.getByRole('heading', { name: 'Carpeta fiscal' }) });
+  const fiscalCard = page.locator('article', { has: page.getByRole('heading', { name: 'Carpetas fiscales' }) });
   await fiscalCard.waitFor();
-  console.log(`${viewport.width}px · carpeta fiscal ${await fiscalCard.locator('code').count() ? 'elegida' : 'sin elegir'}`);
+  console.log(`${viewport.width}px · carpetas fiscales: ${await fiscalCard.locator('.mail-accounts > li code').count()}`);
   await rules.getByRole('button', { name: 'Cancelar' }).click();
   assert.deepEqual(writes, [], 'no se escribió nada');
   assert.deepEqual(errors, [], 'sin errores JS');
@@ -60,7 +60,7 @@ const card = page.locator('.inbox-card');
 await card.waitFor({ timeout: 60_000 });
 assert.ok(await page.getByRole('heading', { name: /Ejemplo/ }).count(), 'agrupada por ámbito');
 // Filing the invoice: prepared from the message, edited by the user, written only on «Archivar».
-const prepared = { source: { kind: 'attachment', part: 2, name: 'factura.pdf' }, sources: [{ kind: 'attachment', part: 2, name: 'factura.pdf' }], links: [], doubts: ['No aparece el NIF del proveedor.'],
+const prepared = { folders: [{ id: 1, name: 'Autónomo', kind: 'autonomo', path: '/x', scopeId: null }], folderId: 1, source: { kind: 'attachment', part: 2, name: 'factura.pdf' }, sources: [{ kind: 'attachment', part: 2, name: 'factura.pdf' }], links: [], doubts: ['No aparece el NIF del proveedor.'],
   proposal: { supplier: 'Proveedor de ejemplo', taxId: null, issuedOn: '2026-11-13', total: '12.50', currency: 'EUR' },
   destination: 'Facturas Entrantes/2026/4T/2026-11-13 Proveedor de ejemplo 12,50.pdf' };
 const filed = [];

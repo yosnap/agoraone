@@ -173,17 +173,34 @@ export const claimAnnouncements = () => core<{ items: InboxItem[] }>('/mail/inbo
 export type InvoiceFields = { supplier: string; taxId?: string | null; issuedOn: string; total: string; currency: string; base?: string | null; vat?: string | null; notes?: string | null };
 export type InvoiceSource = { kind: 'attachment'; part: number; name?: string } | { kind: 'link'; url: string };
 export type InvoicePrepared = {
+  folders: FiscalFolder[]; folderId: number | null;
   source: { kind: 'attachment'; part: number; name: string } | null; sources: { kind: 'attachment'; part: number; name: string }[];
   links: { url: string; host: string }[];
   proposal: InvoiceFields; doubts: string[]; destination: string;
 };
 export type Invoice = InvoiceFields & { id: number; direction: 'received' | 'issued'; messageId: number | null; doubts: string[]; quarter: string; path: string };
-export const getFiscalFolder = () => core<{ folder: string | null }>('/fiscal/folder');
-export const putFiscalFolder = (folder: string | null) => core<{ folder: string | null }>('/fiscal/folder', { folder }, 'PUT');
+export type FolderKind = 'autonomo' | 'empresa' | 'personal';
+export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null };
+export const getFiscalFolders = () => core<{ folders: FiscalFolder[] }>('/fiscal/folders');
+export const chooseFiscalFolder = () => core<{ path: string | null }>('/fiscal/folders/choose', {});
+export const addFiscalFolder = (folder: Omit<FiscalFolder, 'id'>) => core<{ folders: FiscalFolder[] }>('/fiscal/folders', folder);
+export const changeFiscalFolder = (id: number, changes: Partial<Omit<FiscalFolder, 'id' | 'path'>>) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, changes, 'PUT');
+export const removeFiscalFolder = (id: number) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, undefined, 'DELETE');
 export const prepareInvoice = (messageId: number) => core<InvoicePrepared>('/fiscal/invoices/prepare', { messageId });
-export const fileInvoice = (messageId: number, source: InvoiceSource, fields: InvoiceFields, doubts: string[]) =>
-  core<{ id: number; path: string; quarter: string }>('/fiscal/invoices', { messageId, source, fields, doubts });
+export type Category = 'gastos' | 'compras';
+export const fileInvoice = (messageId: number, folderId: number, category: Category | null, source: InvoiceSource, fields: InvoiceFields, doubts: string[]) =>
+  core<{ id: number; path: string; quarter: string }>('/fiscal/invoices', { messageId, folderId, category, source, fields, doubts });
 export const getInvoices = (quarter?: string) => core<{ invoices: Invoice[] }>(`/fiscal/invoices${quarter ? `?quarter=${quarter}` : ''}`);
 export type FolderPlan = { moves: { from: string; to: string }[]; undecided: string[]; more: number };
-export const getFolderPlan = () => core<FolderPlan>('/fiscal/folder/plan');
-export const applyFolderPlan = (moves: { from: string; to: string }[]) => core<{ moved: { from: string; to: string }[]; backup: string; error: string | null }>('/fiscal/folder/apply', { moves });
+export const getFolderPlan = (id: number) => core<FolderPlan>(`/fiscal/folders/${id}/plan`);
+export const applyFolderPlan = (id: number, moves: { from: string; to: string }[]) =>
+  core<{ moved: { from: string; to: string }[]; backup: string; error: string | null }>(`/fiscal/folders/${id}/apply`, { moves });
+export type UploadState = { open: boolean; url?: string; qr?: string; expiresAt?: number; received?: number | null };
+export type Receipt = { id: number; name: string | null; mediaType: string; bytes: number; fields: Partial<InvoiceFields>; uploadedAt: string };
+export const openUpload = () => core<UploadState>('/fiscal/receipts/upload', {});
+export const getUpload = () => core<UploadState>('/fiscal/receipts/upload');
+export const closeUpload = () => core<UploadState>('/fiscal/receipts/upload', undefined, 'DELETE');
+export const getReceipts = () => core<{ receipts: Receipt[] }>('/fiscal/receipts');
+export const dismissReceipt = (id: number) => core<{ receipts: Receipt[] }>(`/fiscal/receipts/${id}`, { state: 'dismissed' }, 'PUT');
+export const fileReceipt = (id: number, folderId: number, category: Category | null, fields: InvoiceFields) =>
+  core<{ id: number; path: string }>(`/fiscal/receipts/${id}/file`, { folderId, category, fields });
