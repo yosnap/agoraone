@@ -72,6 +72,12 @@ SPECS = [
         },
     },
 ]
+SPECS.append({
+    "name": "consultar_clientes",
+    "description": ("Lista los clientes del usuario (de Central) con sus proyectos activos y webs, y los servidores con su "
+                    "estado (green, amber, red o grey). Úsala cuando pregunte por sus clientes, proyectos o servidores. Solo lectura."),
+    "schema": {"type": "object", "properties": {"cliente": {"type": "string", "description": "Nombre o parte del nombre (opcional)."}}},
+})
 _KIND_OF_TIPO = {"factura": "invoice", "pago": "payment", "oferta_trabajo": "job", "cliente": "client", "incidencia": "incident",
                  "cita": "appointment", "personal": "personal", "importante": "important", "otro": "other"}
 
@@ -138,6 +144,8 @@ class Toolbox:
                 return await self._search(str(args.get("consulta", ""))[:500], args.get("limite", 6))
             if name == "leer_nota":
                 return await self._read(args.get("n"), args.get("parte", 1))
+            if name == "consultar_clientes":
+                return await self._clients(str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
                 return await self._inbox(str(args.get("tipo") or "todos"))
         except (TypeError, ValueError):
@@ -193,4 +201,21 @@ class Toolbox:
                          "importes": i["details"].get("amounts", []), "fechas": i["details"].get("dates", []),
                          "ambito": i["scope"]["name"] if i["scope"] else None, "accion_propuesta": i["proposal"]} for i in items],
             "aviso": MAIL_NOTICE,
+        }, ensure_ascii=False)
+
+    async def _clients(self, query: str) -> str:
+        from . import central
+
+        def run():
+            with self.database() as connection:
+                return central.snapshot(connection)
+        data = await run_in_threadpool(run) or {"clients": [], "servers": []}
+        query = query.casefold().strip()
+        clients = [c for c in data["clients"] if not query or query in c["name"].casefold() or query in (c.get("company") or "").casefold()]
+        self._record({"tool": "clients", "filter": query, "count": len(clients)})
+        return json.dumps({
+            "clientes": [{"nombre": c["name"], "empresa": c.get("company"), "dominios": c["domains"], "webs": [w["url"] for w in c["websites"]],
+                          "proyectos_activos": [p["name"] for p in c["projects"] if p.get("status") in ("ACTIVE", "MAINTENANCE")]} for c in clients[:30]],
+            "servidores": [{"nombre": s["name"], "estado": s["status"], "proveedor": s.get("provider")} for s in data["servers"]],
+            "leido": data.get("fetchedAt"),
         }, ensure_ascii=False)

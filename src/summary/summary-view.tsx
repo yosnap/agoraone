@@ -1,3 +1,4 @@
+import { CentralCard } from './central-card';
 import { useEffect, useState } from 'react';
 import { ago } from '../data/activity-format';
 import { engineName, modelName } from '../assistant/assistant-labels';
@@ -128,6 +129,7 @@ export function SummaryView({ discreet, onRead }: { discreet: boolean; onRead: (
           : <Words words={hermes?.words ?? []} empty="Sin mensajes tuyos en Hermes en 30 días."/>}
         <small className="muted">{words === 'hermes' ? `Tus mensajes de los últimos ${hermes?.days ?? 30} días (${hermes?.messagesCounted ?? 0}), contados en este Mac; solo se guardan los recuentos.` : words === 'notes' && discreet ? 'Modo discreto: solo notas normales.' : 'Sin palabras vacías ni cadenas con pinta de clave.'}</small>
       </article>
+      <CentralCard discreet={discreet}/>
     </div>
   </section>;
 }
