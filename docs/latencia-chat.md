@@ -33,9 +33,10 @@ El primer turno tras reinicio/expiración paga el arranque. No hay precarga ni
 llamadas al modelo por abrir edificios. No se cambió proveedor, modelo o razonamiento.
 
 Verificación: `npm test` (23 pruebas), `npm run build`; navegador con
-`node --env-file-if-exists=.env --import tsx scripts/verify-chat-stream.ts`
-(4317 libre, servidor temporal, sin inferencia), mostrando fragmento antes del
-fin, reemplazo por resultado definitivo y persistencia al recargar.
+`node scripts/verify-chat-stream.mjs` (con `npm run dev` en marcha; solo
+intercepta esa conversación y emite el streaming desde un servidor local, sin
+inferencia ni escrituras), mostrando fragmento antes del fin, reemplazo por
+resultado definitivo y persistencia al recargar.
 
 Medición reproducible con dos consultas facturables:
 `node --env-file=.env --import tsx scripts/measure-chat.ts --live`.

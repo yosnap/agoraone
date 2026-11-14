@@ -83,3 +83,35 @@ pub async fn mcp_tools(State(state): State<Arc<AppState>>, Path((id, server)): P
     let value = background(move || Ok(serde_json::to_value(state.hermes.mcp_tools(&id, &server)?)?)).await;
     answer(value, StatusCode::NOT_FOUND, "Servidor MCP no disponible en este perfil.")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ported from server/background-reads.test.ts: reads run off the request's thread, and the queue is bounded.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn las_lecturas_van_en_otro_hilo_con_la_cola_limitada() {
+        let caller = std::thread::current().id();
+        let other = background(move || Ok(std::thread::current().id() != caller)).await;
+        assert_eq!(other, Some(true), "la lectura se hace en otro hilo");
+        let gate = Arc::new(std::sync::Barrier::new(9));
+        let held: Vec<_> = (0..8)
+            .map(|_| {
+                let gate = gate.clone();
+                tokio::spawn(background(move || {
+                    gate.wait();
+                    Ok(())
+                }))
+            })
+            .collect();
+        // Give the eight reads time to take their places before asking for a ninth.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert_eq!(background(|| Ok(())).await, None, "con ocho esperando, la novena se rechaza");
+        gate.wait();
+        for read in held {
+            assert_eq!(read.await.unwrap(), Some(()));
+        }
+        assert_eq!(background(|| Ok(1)).await, Some(1), "la cola vuelve a admitir lecturas");
+        assert_eq!(background(|| -> anyhow::Result<()> { anyhow::bail!("falla") }).await, None, "un fallo no deja nada colgado");
+    }
+}

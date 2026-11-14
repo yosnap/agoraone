@@ -59,6 +59,8 @@ pub struct AppState {
     pub proof: String,
     pub csrf: String,
     pub core: Option<CoreLink>,
+    /// How long the core proxy waits for an answer to start (a stream may then last longer).
+    pub core_wait: std::time::Duration,
     pub http: reqwest::Client,
     pub hermes: HermesDiscovery,
     pub vault: Arc<vault::VaultNotes>,
@@ -88,6 +90,7 @@ impl AppState {
             proof: proof(token),
             csrf: access::random_hex(),
             core,
+            core_wait: std::time::Duration::from_secs(120),
             http,
             hermes,
             vault,
@@ -181,6 +184,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/core", any(core::proxy))
         .route("/api/core/{*rest}", any(core::proxy))
         .route("/api/{*rest}", any(not_found))
+        // A method an API route does not take answers like an unknown route (as before), not an empty 405.
+        .method_not_allowed_fallback(not_found)
         .fallback_service(web)
         .layer(middleware::from_fn_with_state(state.clone(), security::guard))
         .with_state(state)

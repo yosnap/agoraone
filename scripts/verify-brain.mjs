@@ -40,7 +40,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await rail.getByRole('button', { name: 'Discreto' }).click();
   assert.equal(await rail.getByRole('button', { name: 'Discreto' }).getAttribute('aria-pressed'), 'true');
   await page.waitForFunction(count => document.querySelector('.brain .eyebrow')?.textContent?.includes('DISCRETO'), before);
-  await page.waitForTimeout(1500);
+  // The new graph is parsed when it has arrived, which takes longer as the vault grows: wait for it, not a fixed time.
+  for (let waited = 0; graphs.length <= before && waited < 15_000; waited += 100) await page.waitForTimeout(100);
   const discreet = graphs.at(-1);
   assert.ok(graphs.length > before && discreet.nodes.filter(node => node.type === 'note').every(node => node.confidentiality === 'normal'), 'en modo discreto solo hay notas normales');
   await rail.getByRole('button', { name: 'Discreto' }).click();

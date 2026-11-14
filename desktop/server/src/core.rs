@@ -140,7 +140,7 @@ pub async fn proxy(State(state): State<Arc<AppState>>, request: Request) -> Resp
         }
     }
     // The limit covers waiting for the answer to start; a stream may then last as long as the browser keeps it.
-    let answer = match tokio::time::timeout(Duration::from_secs(120), outgoing.send()).await {
+    let answer = match tokio::time::timeout(state.core_wait, outgoing.send()).await {
         Ok(Ok(answer)) => answer,
         _ => return unavailable(),
     };
