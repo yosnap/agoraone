@@ -105,9 +105,10 @@ export function InboxView({ discreet }: { discreet: boolean }) {
           {item.proposal === 'archive_invoice' && item.state === 'pending' ? (filing === item.id
             ? <InvoiceFiling messageId={item.id} onFiled={path => { setFiling(null); setNote(`Factura archivada en ${path}.`); void load(); }}/>
             : <p className="inbox-proposal"><button type="button" className="button" onClick={() => setFiling(item.id)}>{proposalLabels.archive_invoice.label}…</button></p>)
-            : (item.proposal === 'add_to_project' || item.client) && item.state === 'pending' ? (noting === item.id
+            : (item.proposal === 'add_to_project' || item.client) && item.state === 'pending' ? (noting === item.id && !discreet
               ? <ProjectNote item={item} onCancel={() => setNoting(null)} onDone={done => { setNoting(null); setNote(done); void load(); }}/>
-              : <p className="inbox-proposal"><button type="button" className="button" onClick={() => setNoting(item.id)}>{proposalLabels.add_to_project.label}…</button></p>)
+              : <p className="inbox-proposal"><button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para ver y escribir la nota' : undefined}
+                onClick={() => setNoting(item.id)}>{proposalLabels.add_to_project.label}…</button></p>)
             : item.proposal === 'create_event' && <p className="inbox-proposal"><button type="button" className="button" disabled title="Pendiente">{proposalLabels.create_event.label}</button>
             <span className="muted">Pendiente: {proposalLabels.create_event.arrives}.</span></p>}
           <div className="inbox-actions">

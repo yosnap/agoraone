@@ -3,7 +3,7 @@ import { createVaultNote, getHermesCatalog, listVaultNotes } from '../api/client
 import { decideInbox, type InboxItem } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
-import { clientFolder, noteContent, noteTitle, projectsBase } from './project-note-text';
+import { clientFolder, noteContent, noteTitle, projectsBase, withLevel } from './project-note-text';
 
 type Vault = { id: string; name: string; folders: string[] };
 const NO_PROJECT = '';
@@ -19,7 +19,9 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
   const [folder, setFolder] = useState('');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [touched, setTouched] = useState({ title: false, content: false });
+  const [touched, setTouched] = useState({ title: false, content: false, folder: false });
+  // The note already exists (only marking the card failed): trying again must not create it twice.
+  const [made, setMade] = useState<{ folder: string; title: string } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const asked = useRef(false);
@@ -30,7 +32,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
   const suggest = (found: Vault | undefined, name: string, chosen: string, keep = touched) => {
     if (!found) return;
     const where = projectsBase(found.folders);
-    const target = where && name.trim() ? clientFolder(found.folders, where, name.trim()).folder : where ?? '';
+    const target = keep.folder ? folder : where && name.trim() ? clientFolder(found.folders, where, name.trim()).folder : where ?? '';
     setFolder(target);
     if (!keep.title) setTitle(noteTitle(target || name || 'Cliente', item.subject, item.sentAt));
     if (!keep.content) setContent(noteContent({ ...item, asks: item.details.asks }, chosen || null));
@@ -60,9 +62,10 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
     if (!vault) return;
     setBusy(true); setError('');
     try {
-      const made = await createVaultNote(vault.id, folder, title.trim(), content);
+      const note = made ?? await createVaultNote(vault.id, folder, title.trim(), withLevel(content, item.confidentiality));
+      setMade(note);
       await decideInbox(item.id, 'done');
-      onDone(`Nota creada en ${made.folder}: «${made.title}». La tarjeta pasa a «Hechos».`);
+      onDone(`Nota creada en ${note.folder}: «${note.title}». La tarjeta pasa a «Hechos».`);
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo crear la nota.'); }
     finally { setBusy(false); }
   };
@@ -78,14 +81,17 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
         options={[...item.client.projects.map(p => ({ value: p, label: p })), { value: NO_PROJECT, label: 'Sin proyecto concreto' }]}
         onChange={value => { setProject(value); if (!touched.content) setContent(noteContent({ ...item, asks: item.details.asks }, value || null)); }}/></label>}
       <label className="field">Carpeta<ModernSelect value={folder} options={folderOptions}
-        onChange={value => { setFolder(value); if (!touched.title) setTitle(noteTitle(value, item.subject, item.sentAt)); }}/></label>
+        onChange={value => { setFolder(value); setTouched({ ...touched, folder: true }); if (!touched.title) setTitle(noteTitle(value, item.subject, item.sentAt)); }}/></label>
     </div>
     <label className="field">Título<input value={title} maxLength={200} required onChange={event => { setTitle(event.target.value); setTouched({ ...touched, title: true }); }}/></label>
     <label className="field">Texto de la nota<textarea value={content} rows={12} onChange={event => { setContent(event.target.value); setTouched({ ...touched, content: true }); }}/></label>
+    {item.confidentiality !== 'normal' && <p className="muted">El correo es {item.confidentiality === 'private' ? 'privado' : 'solo de este Mac'}: la nota se guarda marcada igual
+      («confidencialidad: {item.confidentiality === 'private' ? 'privado' : 'solo-local'}»), y Watson ni ningún modelo remoto la leerán.</p>}
+    {made && <p className="muted">La nota ya está creada; falta marcar la tarjeta como hecha.</p>}
     <p className="muted">Se crea una nota nueva, «{title.trim() || '…'}.md», en «{folder || '…'}»{vault && folder && !vault.folders.some(f => f === folder || f.startsWith(`${folder}/`)) ? ', que se crea con ella' : ''}. No se cambia ninguna nota que ya exista.</p>
     {error && <LoadError message={error}/>}
     <div className="inbox-actions">
-      <button type="submit" className="button primary" disabled={busy || !vault || !folder || !title.trim()}>{busy ? 'Creando…' : 'Crear la nota'}</button>
+      <button type="submit" className="button primary" disabled={busy || !vault || !folder || !title.trim()}>{busy ? 'Creando…' : made ? 'Marcar como hecha' : 'Crear la nota'}</button>
       <button type="button" className="button" disabled={busy} onClick={onCancel}>Cancelar</button>
     </div>
   </form>;

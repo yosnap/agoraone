@@ -64,3 +64,27 @@ def test_lo_escrito_a_mano_se_comprueba():
                 {"issuedOn": "2026-08-01", "total": "10", "vatRate": "121"}, {"issuedOn": "2026-08-01", "total": "10", "currency": "EURO"}):
         with pytest.raises(fiscal.FiscalError):
             fiscal_manual.clean(bad)
+
+
+def test_solo_fotos_que_claude_ya_no_puede_leer():
+    from agora_core.fiscal_manual import unrecognized
+    assert unrecognized({"unreadable": True})
+    assert not unrecognized({"image": True}), "con Claude activado y sin intentar, aún no"
+    assert unrecognized({"image": True, "aiTried": True}), "Claude lo intentó y no pudo"
+    assert not unrecognized({"image": True, "ai": {"total": "1"}}), "lo que Claude leyó entra tal cual"
+    assert unrecognized({"image": True}, use_model=False), "con Claude desactivado, nada lee las fotos"
+    assert not unrecognized({"total": "10.00"}), "un PDF leído nunca"
+
+
+def test_lo_escrito_se_completa_y_debe_sumar_el_total():
+    import pytest
+    from agora_core import fiscal
+    from agora_core.fiscal_manual import clean
+    only_total = clean({"issuedOn": "2026-08-01", "total": "121", "vatRate": "21"})
+    assert (only_total["base"], only_total["vat"]) == ("100.00", "21.00"), "la base sale del total y el tipo"
+    irpf = clean({"issuedOn": "2026-08-01", "total": "106", "base": "100", "vatRate": "21", "withholding": "15"})
+    assert (irpf["vat"], irpf["withholdingRate"]) == ("21.00", 0.15), "la cuota y el tipo salen el uno del otro"
+    with pytest.raises(fiscal.FiscalError, match="no el total"):
+        clean({"issuedOn": "2026-08-01", "total": "200", "base": "100", "vat": "21"})
+    with pytest.raises(fiscal.FiscalError, match="IRPF"):
+        clean({"issuedOn": "2026-08-01", "total": "85", "withholding": "15"})

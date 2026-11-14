@@ -201,3 +201,33 @@ def test_pdf_de_una_factura_de_qonto():
     assert calls[0].endswith("/attachments/a1")
     with pytest.raises(qonto.QontoError):
         qonto.invoice_pdf("org:clave", {"pdfUrl": "http://inseguro/f.pdf"})
+
+
+def test_dos_cuotas_iguales_de_qonto_no_cuentan_como_una(tmp_path, monkeypatch):
+    import time
+    from tests.test_fiscal import _pdf
+    home = tmp_path / "home"
+    work = home / "Trabajo" / "Actividad"
+    issued = work / "Facturas Salientes" / "2026" / "4T"
+    issued.mkdir(parents=True)
+    # One instalment saved in the folder, its number not readable; Qonto has two equal ones to different clients.
+    issued.joinpath("cuota.pdf").write_bytes(_pdf(b"Cliente B12345678 Fecha 31/10/2026 Base imponible 500,00 IVA 21% 105,00 Total 605,00"))
+    monkeypatch.setattr(Path, "home", lambda: home)
+    rows = [{**INCOME[0], "number": n, "date": "2026-10-31", "base": 500.0, "client": c} for n, c in (("C-1", "Uno"), ("C-2", "Dos"))]
+    monkeypatch.setattr(qonto, "issued_invoices", lambda auth, start, end, http=None: (rows, []))
+    secrets = MemorySecrets()
+    settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
+    with TestClient(create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=secrets), base_url=f"http://{settings.authority}") as client:
+        headers = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
+        secrets.values[qonto.SECRET_ACCOUNT] = "k" * 32
+        assert client.put("/fiscal/qonto", json={"login": "mi-org"}, headers=headers).json()["hasKey"]
+        client.put("/fiscal/reading", json={"withClaude": False}, headers=headers)
+        folder = client.post("/fiscal/folders", json={"name": "Actividad", "kind": "autonomo", "path": str(work)}, headers=headers).json()["folders"][0]
+        for _ in range(100):
+            view = client.get(f"/fiscal/folders/{folder['id']}/quarter?year=2026&quarter=4", headers=headers).json()
+            if not view["reading"]:
+                break
+            time.sleep(0.05)
+        assert [r["numberRead"] for r in view["income"]] == [False]
+        missing = next(i for i in view["issues"] if i["key"] == "qonto")["items"]
+        assert len(missing) == 1, "la carpeta tiene una de las dos cuotas: sigue faltando la otra"

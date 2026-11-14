@@ -380,10 +380,13 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
         client = fields.get("otherName") or ((fields.get("after") or {}).get(own) if own else None)
         if not client and client_tax:
             client = (fields.get("after") or {}).get(client_tax)
-        income.append({"date": day, "number": fields.get("number") or path.stem[:30], "client": client or _name(path, rest), "taxId": client_tax or "",
-                       "concept": str(path.relative_to(root)), "base": float(base) if base is not None else None,
+        income.append({"date": day, "number": fields.get("number") or path.stem[:30], "numberRead": bool(fields.get("number")), "client": client or _name(path, rest), "taxId": client_tax or "",
+                       # The register says which rows were typed by hand (Ingresos has no notes column).
+                       "concept": str(path.relative_to(root)) + (" · datos escritos a mano" if fields.get("manual") else ""),
+                       "base": float(base) if base is not None else None,
                        "vatRate": vat_rate or 0.0, "withholdingRate": irpf_rate, "total": total, "currency": fields.get("currency") or "EUR",
-                       "guessedDate": guessed, "file": str(path.relative_to(root)), "manual": fields.get("manual")})
+                       "guessedDate": guessed, "file": str(path.relative_to(root)), "manual": fields.get("manual"),
+                       "unreadImage": bool(fields.get("image") and not fields.get("ai"))})
     for path, rest in received:
         if path not in read or not fresh(path, read[path]):
             continue
