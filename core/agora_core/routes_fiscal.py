@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import fiscal, fiscal_excel, fiscal_folder, invoice_extract, mail, qonto, receipts
+from . import fiscal, fiscal_excel, fiscal_folder, fiscal_scan, invoice_extract, mail, qonto, receipts
 from .db import DB_NAME, connect, now, transaction
 from .routes_mail import microsoft_login
 from .settings import Settings
@@ -322,16 +322,29 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
     def quarter_data(connection, folder_id: int, year: int, quarter: int) -> dict:
         folder, root = professional_root(connection, folder_id)
         start, end = fiscal_excel.quarter_range(year, quarter)
-        expenses = fiscal.invoices(connection, f"{year}-{quarter}T", folder_id)
-        income, problem, notes = [], None, []
-        auth = qonto_auth(connection)
-        if auth:
-            try:
-                income, notes = qonto.issued_invoices(auth, start, end)
-            except qonto.QontoError as error:
-                problem = str(error)
-        else:
-            problem = "Qonto no está conectado (Ajustes › Qonto): los ingresos quedarán vacíos."
+        filed = fiscal.invoices(connection, f"{year}-{quarter}T", folder_id)
+        # The invoices already in the folder count too, wherever they sit; what AgoraOne filed is not counted twice.
+        found_income, found_expenses, pending = fiscal_scan.scan(connection, folder_id, root, year, quarter, start.isoformat(),
+                                                                 end.isoformat(), {e["path"] for e in filed})
+        if pending:
+            fiscal_scan.read_in_background(database, folder_id, root, pending)
+        expenses = filed + found_expenses
+        income, problem, notes = found_income, None, []
+        if not found_income:
+            auth = qonto_auth(connection)
+            if auth:
+                try:
+                    income, notes = qonto.issued_invoices(auth, start, end)
+                except qonto.QontoError as error:
+                    problem = str(error)
+            else:
+                problem = "No hay facturas emitidas en «Facturas Salientes» para este trimestre."
+        if pending:
+            notes.insert(0, f"Leyendo {len(pending)} facturas de la carpeta por primera vez: el trimestre se completará en unos minutos (pulsa «Actualizar»).")
+        if guessed := sum(1 for r in income if r.get("guessedDate")) + sum(1 for e in found_expenses if "Fecha no leída" in e["notes"]):
+            notes.append(f"{guessed} facturas sin fecha legible: se han puesto al inicio del trimestre.")
+        if images := sum(1 for e in found_expenses if "imagen" in e["notes"]):
+            notes.append(f"{images} facturas en imagen: sus importes hay que revisarlos a mano.")
         if missing := sum(1 for e in expenses if not e["taxId"]):
             notes.append(f"{missing} facturas recibidas sin NIF del proveedor.")
         if foreign := sum(1 for e in expenses if e["currency"] != "EUR"):
@@ -340,7 +353,8 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             notes.append(f"{others} de ellas no están en euros ni en dólares: el Excel no las suma en ningún total.")
         if plain := sum(1 for e in expenses if not e["base"] and not e["vat"]):
             notes.append(f"{plain} facturas recibidas sin base ni IVA desglosados: revísalas antes de presentar.")
-        return {"folder": folder, "root": root, "income": income, "incomeProblem": problem, "expenses": expenses, "notes": notes}
+        return {"folder": folder, "root": root, "income": income, "incomeProblem": problem, "expenses": expenses, "notes": notes,
+                "reading": len(pending)}
 
     @router.get("/fiscal/folders/{folder_id}/quarter")
     async def quarter_view(folder_id: int, year: int, quarter: int):
@@ -368,6 +382,8 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
     async def make_excel(folder_id: int, body: QuarterIn):
         def work(connection):
             data = quarter_data(connection, folder_id, body.year, body.quarter)
+            if data["reading"]:
+                raise fiscal.FiscalError(f"Aún se están leyendo {data['reading']} facturas de la carpeta: espera a que termine para generar el Excel.")
             folder = data["folder"]
             book = fiscal_excel.build(body.year, body.quarter, folder["holder"] or folder["name"], data["income"], data["expenses"], data["notes"])
             return {"path": fiscal_excel.write(data["root"], folder["name"], body.year, body.quarter, book)}
