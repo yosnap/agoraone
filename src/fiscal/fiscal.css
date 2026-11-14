@@ -6,7 +6,7 @@
 .fiscal-totals strong { font-size:24px; font-weight:600; color:var(--c-173d3c) }
 .fiscal-warning { font-size:12px; padding:9px 11px; border-radius:8px; background:var(--c-f3e6c4); color:var(--c-7a5717); margin:0 0 8px }
 .fiscal-actions { margin:12px 0 20px }
-.fiscal h2 { margin:32px 0 12px }
+.page.fiscal h2 { margin:36px 0 14px }
 .fiscal-table { overflow-x:auto; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fbfaf3) }
 .fiscal-table table { width:100%; border-collapse:collapse; font-size:12px }
 .fiscal-table th, .fiscal-table td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--c-dfe3d6); vertical-align:top }

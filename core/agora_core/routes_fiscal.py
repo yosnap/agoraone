@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from . import exchange, invoice_ai, fiscal, fiscal_excel, fiscal_folder, fiscal_scan, invoice_extract, mail, qonto, receipts
 from .db import DB_NAME, connect, now, transaction
-from .engines import AnthropicApiEngine, ClaudeCodeEngine, Turn, usable
+from .engines import AnthropicApiEngine, ClaudeCodeEngine, Turn, ask_with_image, usable
 from .routes_mail import microsoft_login
 from .settings import Settings
 
@@ -347,6 +347,11 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
                             parts.append(text)
                 return "".join(parts)
             return invoice_ai.parse(asyncio.run(run()), len(texts))
+
+        def image(jpeg: bytes) -> dict | None:
+            text = "Extrae los datos de este documento (es la imagen: trátala como el documento n=1)."
+            return invoice_ai.parse(asyncio.run(ask_with_image(engines[0], invoice_ai.SYSTEM, text, jpeg)), 1).get(1)
+        ask.image = image
         return ask
 
     @router.get("/fiscal/reading")

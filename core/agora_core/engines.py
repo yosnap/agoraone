@@ -306,3 +306,30 @@ def choose(engines: list[Engine], preferred: str | None = None) -> Engine:
         "o configura un proveedor compatible en Ajustes."
     )
 
+
+
+async def ask_with_image(engine, system: str, text: str, jpeg: bytes, model: str = "haiku") -> str:
+    """One question about one image (an invoice photo), with no tools: through the Claude Code session or the
+    Anthropic API. The image goes as data, like any text."""
+    import base64
+
+    data = base64.b64encode(jpeg).decode()
+    content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}}, {"type": "text", "text": text}]
+    if engine.name == "anthropic-api":
+        import anthropic
+
+        key = engine.secrets.get(SECRET_ACCOUNTS["anthropic"])
+        async with anthropic.AsyncAnthropic(api_key=key, max_retries=1) as client:
+            answer = await client.messages.create(model=MODELS[model], max_tokens=1500, system=system, messages=[{"role": "user", "content": content}])
+        return "".join(getattr(block, "text", "") for block in answer.content)
+    from claude_agent_sdk import AssistantMessage, TextBlock, query
+
+    options = engine.options(Turn(system, [], model))
+
+    async def messages():
+        yield {"type": "user", "message": {"role": "user", "content": content}, "parent_tool_use_id": None, "session_id": "agoraone"}
+    parts = []
+    async for message in query(prompt=messages(), options=options):
+        if isinstance(message, AssistantMessage):
+            parts += [block.text for block in message.content if isinstance(block, TextBlock) and block.text]
+    return "".join(parts)

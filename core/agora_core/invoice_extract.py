@@ -234,7 +234,7 @@ _IRPF = re.compile(r"(?:IRPF|retenci[oó]n)[^\d\n%]{0,12}-?\s?(\d{1,2}(?:[.,]\d{
 _NUMBER = re.compile(r"(?:factura|invoice|n[º°o]\.?\s*de\s*factura)\s*(?:n[º°o.]*|number|num\.?|#)?\s*[:\-]?\s*(?!\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})([A-Z]{0,4}[\-/]?\d[\w\-/]{0,20})", re.I)
 
 
-VERSION = 7  # bump when the reading rules change: files read with older rules are read again
+VERSION = 10  # bump when the reading rules change: files read with older rules are read again
 
 
 _LEGAL = re.compile(r"\b(limited|ltd|llc|inc|gmbh|s\.?\s?l\.?u?|s\.?\s?a\.?u?|b\.?v\.?|sas|sarl|ag|plc|oy|ab|d\.o\.o\.|corp(oration)?)\b\.?", re.I)
@@ -276,5 +276,7 @@ def breakdown(text: str) -> dict:
                 block = [n for n in lines[max(0, index - 6): index] if _looks_like_name(n)]
                 legal = next((n for n in block if _LEGAL.search(n)), None)
                 before[tax_id] = legal or (block[0] if block else None)
-    return {"v": VERSION, "taxIds": tax_ids[:4], "after": {t: after.get(t) for t in tax_ids[:4]}, "before": {t: before.get(t) for t in tax_ids[:4]}, "base": amount(base[1]) if base else None, "vatRate": vat_rate, "vat": vat_value,
+    webs = [w.lower() for w in re.findall(r"(?:https?://)?(?:www\.)?([a-z0-9-]{3,40})\.(?:es|com|net|org|eu|io|co)\b", text, re.I)
+            if w.lower() not in ("google", "paypal", "apple", "facebook", "twitter", "instagram", "linkedin")]
+    return {"v": VERSION, "web": webs[0] if webs else None, "taxIds": tax_ids[:4], "after": {t: after.get(t) for t in tax_ids[:4]}, "before": {t: before.get(t) for t in tax_ids[:4]}, "base": amount(base[1]) if base else None, "vatRate": vat_rate, "vat": vat_value,
             "withholdingRate": rate(irpf), "withholding": amount(irpf[2]) if irpf else None, "number": number[1] if number else None}

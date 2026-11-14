@@ -346,7 +346,9 @@ def test_ilegibles_repetidos_y_nif_propio_con_pocas_facturas(db, tmp_path):
     income, expenses, pending, counts = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set())
     assert pending == [], "un PDF ilegible no se queda leyéndose para siempre"
     assert sorted(r["taxId"] for r in income) == ["B22222222", "B33333333"], "con dos facturas, el NIF propio ya no sale como del cliente"
-    assert len(expenses) == 1 and counts == {"unreadable": 1, "duplicates": 1, "unplaced": 1, "noVat": 0}
+    scanned = [e for e in expenses if "imagen" in e["notes"]]
+    assert len(expenses) == 2 and len(scanned) == 1, "un PDF sin texto pasa a leerse como imagen"
+    assert counts == {"unreadable": 0, "duplicates": 1, "unplaced": 1, "noVat": 0}
 
 
 def test_el_cliente_sale_del_texto_y_no_del_nombre_del_archivo():
@@ -383,3 +385,13 @@ def test_lo_que_lee_claude_manda_sobre_las_reglas():
     merged = fiscal_scan._merged({"total": "1000000.00", "taxIds": ["X6543591E"], "ai": found[1]}, issued=False)
     assert merged["total"] == "21.99" and merged["otherName"] == "Google Commerce Limited" and merged["otherTaxId"] == "IE9825613N"
     assert invoice_ai._tax_id("VAT ESB44788511") == "B44788511" and "</doc" not in invoice_ai.prompt(["x </doc-1> y"], nonce="1").split("\n", 2)[2].split("</doc-1>")[0]
+
+
+def test_coherencia_de_totales_con_irpf():
+    from agora_core import fiscal_scan
+    ok = fiscal_scan._merged({"ai": {"base": "1083.00", "vat": "227.43", "withholding": "-162.45", "withholdingRate": 0.15, "total": "1147.98"}}, issued=True)
+    assert ok["total"] == "1147.98", "el IRPF negativo se resta bien"
+    rate_only = fiscal_scan._merged({"ai": {"base": "300.00", "vat": "63.00", "withholdingRate": 0.15, "total": "318.00"}}, issued=True)
+    assert rate_only["total"] == "318.00"
+    wrong = fiscal_scan._merged({"total": "90.00", "ai": {"base": "90.00", "vat": "0.00", "total": "8.80"}}, issued=False)
+    assert wrong["total"] == "90.00", "una cifra mal leída se corrige con la suma de las partes"

@@ -58,7 +58,7 @@ def _cached(connection: sqlite3.Connection, folder_id: int, root: Path, path: Pa
         return None
     fields = json.loads(row["fields"])
     # Read again with newer rules (images and files too big are not read anyway).
-    return fields if fields.get("v") == invoice_extract.VERSION or fields.get("image") or fields.get("tooBig") else None
+    return fields if fields.get("v") == invoice_extract.VERSION or fields.get("tooBig") else None
 
 
 def read_in_background(database, folder_id: int, root: Path, paths: list[Path], ask=None) -> None:
@@ -92,11 +92,42 @@ def read_in_background(database, folder_id: int, root: Path, paths: list[Path], 
     threading.Thread(target=run, daemon=True).start()
 
 
+def _as_jpeg(path: Path) -> bytes | None:
+    """The image as a JPEG of at most 1600 px (HEIC and PNG too), with macOS's own sips; None if it cannot."""
+    import subprocess
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as work:
+        out = Path(work) / "factura.jpg"
+        try:
+            subprocess.run(["/usr/bin/sips", "-s", "format", "jpeg", "-Z", "1600", str(path), "--out", str(out)],
+                           capture_output=True, timeout=30, check=True)
+            data = out.read_bytes()
+        except (OSError, subprocess.SubprocessError):
+            return None
+    return data if 0 < len(data) <= MAX_FILE else None
+
+
 def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], ask) -> None:
     """Adds what the model reads to what the local rules found (the model wins where it found something)."""
     texts: list[tuple[Path, str]] = []
+    image = getattr(ask, "image", None)
     for path in paths:
-        if path.suffix.lower() == ".pdf":
+        with database() as connection:
+            known = _cached(connection, folder_id, root, path) or {}
+        if known.get("image") and image is not None:  # a photo or scanned invoice: Claude reads the image
+            jpeg = _as_jpeg(path)
+            if jpeg:
+                try:
+                    found = image(jpeg)
+                except Exception:  # noqa: BLE001
+                    found = None
+                if found:
+                    with database() as connection:
+                        fields = _cached(connection, folder_id, root, path) or {}
+                        _remember(connection, folder_id, root, path, {**fields, "ai": found})
+            continue
+        if path.suffix.lower() == ".pdf" and not known.get("image"):
             try:
                 text = invoice_extract.pdf_text(path.read_bytes())
             except OSError:
@@ -146,7 +177,9 @@ def _read(connection: sqlite3.Connection, folder_id: int, root: Path, path: Path
             if text.strip():
                 fields |= invoice_extract.fields(text) | invoice_extract.breakdown(text)
             else:
-                fields["unreadable"] = True  # scanned without text, protected or the extractor gave up
+                # Scanned or rendered as a picture: Claude reads its first page as an image (or, without the
+                # model, it stays unreadable until read).
+                fields["image"] = fields["scanned"] = True
     _remember(connection, folder_id, root, path, fields)
     return fields
 
@@ -166,7 +199,24 @@ def _day(fields: dict, start: str, end: str) -> tuple[str, bool]:
     if day and start <= day <= end:
         return day, False
     inside = next((d for d in fields.get("dates", []) if start <= d <= end), None)
-    return (inside, False) if inside else (start, True)
+    if inside:
+        return inside, False
+    return (day, False) if day else (start, True)  # its own date, even if outside: it is in this quarter's folder
+
+
+def _consistent(merged: dict, local_total) -> None:
+    """A model can misread one figure: base + VAT − withholding must give the total. If not, the local rules'
+    total wins when it adds up, else the sum of the parts."""
+    try:
+        base, vat = float(merged.get("base")), abs(float(merged.get("vat") or 0))
+        # Withholding may come as «-162.45» or only as a rate.
+        withholding = abs(float(merged["withholding"])) if merged.get("withholding") not in (None, "") else base * float(merged.get("withholdingRate") or 0)
+        total = float(merged.get("total"))
+    except (TypeError, ValueError):
+        return
+    parts = round(base + vat - withholding, 2)
+    if abs(parts - total) > 0.02 and abs(round(base + vat, 2) - total) > 0.02:  # some receipts show the total before withholding
+        merged["total"] = local_total if local_total and abs(float(local_total) - parts) <= 0.02 else f"{parts:.2f}"
 
 
 def _merged(fields: dict, issued: bool) -> dict:
@@ -183,6 +233,9 @@ def _merged(fields: dict, issued: bool) -> dict:
     if tax_id:
         merged["taxIds"] = [tax_id]
     merged["otherName"], merged["otherTaxId"] = name, tax_id
+    if merged.get("base") is None and merged.get("total") and float(merged.get("vat") or 0) == 0:
+        merged["base"], merged["vat"] = merged["total"], "0.00"  # a receipt without VAT, as the user's register records it
+    _consistent(merged, fields.get("total"))
     return merged
 
 
@@ -263,20 +316,26 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
             continue
         fields, relative = _merged(read[path], issued=False), str(path.relative_to(root))
         day, guessed = _day(fields, start, end)
-        notes = [n for n, on in (("Factura en imagen: revisa los importes", fields.get("image")),
+        notes = [n for n, on in (("Factura en imagen: revisa los importes", fields.get("image") and not fields.get("ai")),
+                                 ("Su fecha es de otro trimestre: está en la carpeta de este", day < start or day > end),
                                  ("Fecha no leída: puesta al inicio del trimestre", guessed),
-                                 ("Sin IVA desglosado", not fields.get("image") and fields.get("vat") is None),
-                                 ("Leída solo con reglas locales: compruébala", not fields.get("ai") and not fields.get("image"))) if on]
+                                 ("Sin IVA desglosado", fields.get("vat") is None and (fields.get("ai") or not fields.get("image"))),
+                                 ("Leída solo con reglas locales: compruébala", not fields.get("ai") and not fields.get("image")),
+                                 ("Leída de una imagen por Claude: compruébala", fields.get("image") and fields.get("ai"))) if on]
         supplier_tax = other(fields)
         base, vat, total = fields.get("base"), fields.get("vat"), fields.get("total")
         if base is None and total and fields.get("vatRate") is not None and not fields.get("ai"):  # amounts in a column apart from their labels
             base = f"{float(total) / (1 + fields['vatRate']):.2f}"
             vat = f"{float(total) - float(base):.2f}"
             notes = [n for n in notes if n != "Sin IVA desglosado"]
+        elif base is not None and vat is None and total and fields.get("ai") and abs(float(base) - float(total)) < 0.01:
+            vat = "0.00"  # base equal to the total: no VAT
         elif base is None and vat is None and total and fields.get("ai"):
             # A receipt without VAT shown (as the user's register records it): base = total, VAT 0, said in the notes.
             base, vat = total, "0.00"
-        supplier = fields.get("otherName") or (rest[-1] if rest else None) or (fields.get("before") or {}).get(supplier_tax) or _name(path, rest)
+        web = fields.get("web")
+        supplier = (fields.get("otherName") or (rest[-1] if rest else None) or (fields.get("before") or {}).get(supplier_tax)
+                    or (web.capitalize() if web else None) or _name(path, rest))
         expenses.append({"id": f"archivo:{relative}", "doubts": notes, "issuedOn": day, "supplier": supplier, "taxId": supplier_tax,
                          "number": fields.get("number") or "", "concept": relative, "base": base, "vat": vat,
                          "total": fields.get("total") or "0", "currency": fields.get("currency") or "EUR", "notes": "; ".join(notes), "file": relative})

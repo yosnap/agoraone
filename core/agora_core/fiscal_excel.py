@@ -88,7 +88,7 @@ def build(year: int, quarter: int, holder: str, income: list[dict], expenses: li
     first = 5
     for n, row in enumerate(income):
         r = first + n
-        ingresos.append(_clean([_month(row["date"]), _dmy(row["date"]), row.get("number"), row.get("client"), row.get("taxId"), row.get("concept"),
+        ingresos.append(_clean([_month(row["date"]) if _month(row["date"]) in months else months[0], _dmy(row["date"]), row.get("number"), row.get("client"), row.get("taxId"), row.get("concept"),
                          _number(row.get("base")), row.get("vatRate") or 0, f"=ROUND(G{r}*H{r},2)", row.get("withholdingRate") or 0,
                          f"=ROUND(G{r}*J{r},2)", f"=G{r}+I{r}-K{r}"]))
         _literal(ingresos, r)
@@ -106,7 +106,9 @@ def build(year: int, quarter: int, holder: str, income: list[dict], expenses: li
     for row in expenses:
         base, vat = _number(row.get("base")), _number(row.get("vat"))
         rate = round(vat / base, 2) if base and vat is not None else None
-        gastos.append(_clean([_month(row["issuedOn"]), _dmy(row["issuedOn"]), row.get("number") or "", row.get("supplier"), row.get("taxId") or "—",
+        # A document dated in another quarter but filed in this one counts in the quarter's first month.
+        month = _month(row["issuedOn"]) if _month(row["issuedOn"]) in months else months[0]
+        gastos.append(_clean([month, _dmy(row["issuedOn"]), row.get("number") or "", row.get("supplier"), row.get("taxId") or "—",
                        row.get("concept") or "", base, rate, vat, _number(row.get("total")), row.get("currency") or "EUR",
                        " ".join(filter(None, [row.get("notes") or "", f"Cambio BCE del {row['rate']['day']}: {row['rate']['eur']:.4f}" if row.get("rate") else ""])),
                        _number(row.get("totalEur")) if row.get("currency", "EUR") != "EUR" else _number(row.get("total"))]))
