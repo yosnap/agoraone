@@ -22,7 +22,12 @@ export function ReceiptsPanel({ onNote }: { onNote: (note: string) => void }) {
   const holder = useRef((node: HTMLDivElement | null) => { live.current = node !== null; if (!node) window.clearTimeout(timer.current); }).current;
   const load = () => Promise.all([getReceipts(), getFiscalFolders()]).then(([found, known]) => { if (live.current) { setReceipts(found.receipts); setFolders(known.folders); } })
     .catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer los recibos.'));
-  if (!asked.current) { asked.current = true; void load(); }
+  if (!asked.current) {
+    asked.current = true;
+    void load();
+    // An upload still open (the panel was left and opened again) shows its QR again.
+    getUpload().then(state => { if (live.current && state.open) { setUpload(state); follow(); } }).catch(() => undefined);
+  }
   const follow = () => {
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
@@ -47,7 +52,7 @@ export function ReceiptsPanel({ onNote }: { onNote: (note: string) => void }) {
       {upload?.open ? <button type="button" className="button" onClick={() => void stop()}>Cerrar la subida</button>
         : <button type="button" className="button" onClick={() => void start()}>Subir desde el móvil</button>}</div>
     {upload?.open && upload.qr && <div className="card receipt-upload">
-      <div className="receipt-qr" aria-label="Código QR para subir el recibo" dangerouslySetInnerHTML={{ __html: upload.qr }}/>
+      <img className="receipt-qr" alt="Código QR para subir el recibo" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(upload.qr)}`}/>
       <div>
         <p>Escanea el código con la cámara del móvil (en la misma wifi de casa), haz la foto del recibo o elige un PDF y pulsa «Enviar al Mac».</p>
         <p className="muted">El enlace sirve para una sola subida y se cierra solo en unos {minutes} minutos. Mientras esté abierto, solo esa página es accesible desde la red de casa. Si macOS pregunta si permites conexiones entrantes, acéptalo para esta subida.</p>
@@ -62,7 +67,8 @@ export function ReceiptsPanel({ onNote }: { onNote: (note: string) => void }) {
 function ReceiptCard({ receipt, folders, onDone }: { receipt: Receipt; folders: FiscalFolder[]; onDone: (note: string) => void }) {
   const [fields, setFields] = useState<InvoiceFields>({ supplier: receipt.fields.supplier ?? '', taxId: receipt.fields.taxId ?? null,
     issuedOn: receipt.fields.issuedOn ?? today(), total: receipt.fields.total ?? '', currency: receipt.fields.currency ?? 'EUR' });
-  const [folderId, setFolderId] = useState<number | null>(folders.length === 1 ? folders[0].id : null);
+  const [picked, setFolderId] = useState<number | null>(null);
+  const folderId = picked ?? (folders.length === 1 ? folders[0].id : null);
   const [category, setCategory] = useState<Category | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -84,7 +90,7 @@ function ReceiptCard({ receipt, folders, onDone }: { receipt: Receipt; folders: 
       {folder && <p className="muted">Irá a «{folder.name}»: <code>{place(fields, folder.kind, category, suffixes[receipt.mediaType]) ?? '—'}</code></p>}
     </>}
     <div className="inbox-actions">
-      <button type="button" className="button primary" disabled={busy || !folder || (folder.kind === 'personal' && !category) || !fields.supplier.trim() || !fields.total.trim()}
+      <button type="button" className="button primary" disabled={busy || !folder || (folder.kind === 'personal' && !category) || !fields.supplier.trim() || !fields.total.trim() || !fields.issuedOn}
         onClick={() => void file()}>{busy ? 'Archivando…' : 'Archivar el recibo'}</button>
       <button type="button" className="button" onClick={() => void dismissReceipt(receipt.id).then(() => onDone('Recibo descartado.')).catch(() => setError('No se pudo descartar.'))}>Descartar</button>
     </div>

@@ -37,8 +37,21 @@ class UploadError(RuntimeError):
     pass
 
 
+def _default_interface() -> str:
+    import subprocess
+
+    try:
+        out = subprocess.run(["/sbin/route", "-n", "get", "default"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return next((line.split(":", 1)[1].strip() for line in out.splitlines() if line.strip().startswith("interface:")), "")
+
+
 def lan_address() -> str:
-    """This Mac's address on the home network (a private one); no packet is sent to find it."""
+    """This Mac's address on the home network (a private one); no packet is sent to find it. With a VPN as
+    the way out, the address would be the VPN's, so the upload is not opened."""
+    if _default_interface().startswith(("utun", "ipsec", "ppp", "tun")):
+        raise UploadError("Hay una VPN activa: desconéctala para subir desde el móvil por la wifi de casa.")
     probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         probe.connect(("192.0.2.1", 9))  # documentation address: only picks the outgoing interface
@@ -59,6 +72,7 @@ class Window:
     expires_at: float
     server: ThreadingHTTPServer | None = None
     received: int | None = None  # the receipt id once uploaded
+    busy: bool = False  # an upload is being read: one at a time
     closed: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -68,7 +82,12 @@ class Window:
                 return
             self.closed = True
         if self.server is not None:
-            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            server = self.server
+
+            def stop():
+                server.shutdown()
+                server.server_close()  # the port stops listening at once
+            threading.Thread(target=stop, daemon=True).start()
 
 
 def _multipart_file(content_type: str, body: bytes) -> tuple[str | None, bytes] | None:
@@ -88,8 +107,11 @@ def save_receipt(connection: sqlite3.Connection, folder: Path, data: bytes, name
     if kind is None or len(data) > MAX_FILE:
         raise UploadError("Solo se aceptan fotos (JPEG, PNG, HEIC) o PDF de hasta 15 MB.")
     digest = hashlib.sha256(data).hexdigest()
-    known = connection.execute("SELECT id FROM receipt WHERE sha256 = ?", (digest,)).fetchone()
+    known = connection.execute("SELECT id, state FROM receipt WHERE sha256 = ?", (digest,)).fetchone()
     if known:
+        if known["state"] == "filed":
+            raise UploadError("Ese recibo ya está archivado.")
+        connection.execute("UPDATE receipt SET state = 'pending', decided_at = NULL WHERE id = ?", (known["id"],))
         return known["id"]
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     file = f"{digest[:24]}{SUFFIXES[kind]}"
@@ -109,6 +131,7 @@ def open_window(store, address: str | None = None, seconds: int = OPEN_SECONDS) 
     class Handler(BaseHTTPRequestHandler):
         server_version = "AgoraOne"
         sys_version = ""
+        timeout = 15  # per read on the socket: a slow or silent client is dropped
 
         def log_message(self, *args):  # nothing about the phone or the link in the logs
             pass
@@ -121,12 +144,16 @@ def open_window(store, address: str | None = None, seconds: int = OPEN_SECONDS) 
             self.send_header("Cache-Control", "no-store")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Connection", "close")
             self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'")
             self.end_headers()
             self.wfile.write(data)
+            self.close_connection = True
 
         def _valid(self) -> bool:
-            ok = (hmac.compare_digest(self.path, f"/{token}") and not window.closed and time.time() < window.expires_at and window.received is None)
+            path = self.path.encode("latin-1", "replace")
+            ok = (hmac.compare_digest(path, f"/{token}".encode()) and not window.closed and time.time() < window.expires_at
+                  and window.received is None)
             if not ok:
                 self._send(404, "<p>Este enlace ya no sirve. Pide otro QR en AgoraOne.</p>")
             return ok
@@ -135,31 +162,82 @@ def open_window(store, address: str | None = None, seconds: int = OPEN_SECONDS) 
             if self._valid():
                 self._send(200, FORM)
 
+        def _body(self, length: int) -> bytes | None:
+            """The whole body, within a total time limit (each read also has the socket's own limit)."""
+            started, chunks, size = time.monotonic(), [], 0
+            while size < length:
+                chunk = self.rfile.read(min(64 * 1024, length - size))
+                if not chunk or time.monotonic() - started > 120:
+                    return None
+                chunks.append(chunk)
+                size += len(chunk)
+            return b"".join(chunks)
+
         def do_POST(self):
             if not self._valid():
                 return
-            length = int(self.headers.get("Content-Length") or 0)
+            content_type = self.headers.get("Content-Type", "")
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            if not content_type.startswith("multipart/form-data") or "boundary=" not in content_type:
+                self._send(400, "<p>Envía el recibo desde el formulario.</p>")
+                return
             if not 0 < length <= MAX_FILE + 64 * 1024:
                 self._send(413, "<p>El archivo es demasiado grande (máximo 15 MB).</p>")
                 return
-            body = self.rfile.read(length)
-            found = _multipart_file(self.headers.get("Content-Type", ""), body)
-            if found is None:
-                self._send(400, "<p>No llegó ningún archivo. Vuelve atrás e inténtalo de nuevo.</p>")
-                return
+            with window.lock:  # one upload at a time, reserved before reading anything
+                if window.busy or window.received is not None:
+                    self._send(409, "<p>Ya se está subiendo un recibo con este enlace.</p>")
+                    return
+                window.busy = True
             try:
+                body = self._body(length)
+                boundary = content_type.split("boundary=", 1)[1].split(";")[0].strip().strip('"').encode()
+                if body is None or body.count(b"--" + boundary) > 4:
+                    self._send(400, "<p>No llegó el archivo completo. Vuelve atrás e inténtalo de nuevo.</p>")
+                    return
+                found = _multipart_file(content_type, body)
+                if found is None:
+                    self._send(400, "<p>No llegó ningún archivo. Vuelve atrás e inténtalo de nuevo.</p>")
+                    return
+                try:
+                    received = store(found[1], found[0])
+                except UploadError as error:
+                    self._send(415, f"<p>{html.escape(str(error))}</p>")
+                    return
+                except Exception:  # noqa: BLE001 - the phone gets a plain answer and the link stays usable
+                    self._send(500, "<p>No se pudo guardar en el Mac. Inténtalo otra vez.</p>")
+                    return
                 with window.lock:
-                    if window.received is not None:
-                        raise UploadError("Este enlace ya se ha usado.")
-                    window.received = store(found[1], found[0])
-            except UploadError as error:
-                self._send(415, f"<p>{html.escape(str(error))}</p>")
-                return
+                    window.received = received
+            finally:
+                with window.lock:
+                    window.busy = False
             self._send(200, "<p>Recibido. Ya está en tu Mac, en la Bandeja de AgoraOne. Puedes cerrar esta página.</p>")
             window.close()
 
-    server = ThreadingHTTPServer((host, 0), Handler)
-    server.timeout = 30
+    class Server(ThreadingHTTPServer):
+        daemon_threads = True
+        slots = threading.BoundedSemaphore(4)  # at most four connections at once: nobody can exhaust the core
+
+        def process_request(self, request, client_address):
+            if not self.slots.acquire(blocking=False):
+                self.shutdown_request(request)
+                return
+            super().process_request(request, client_address)
+
+        def process_request_thread(self, request, client_address):
+            try:
+                super().process_request_thread(request, client_address)
+            finally:
+                self.slots.release()
+
+        def handle_error(self, request, client_address):  # nothing about the phone in the logs
+            pass
+
+    server = Server((host, 0), Handler)
     window.server = server
     window.url = f"http://{host}:{server.server_address[1]}/{token}"
     threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.5}, daemon=True).start()

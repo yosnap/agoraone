@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import unicodedata
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -120,18 +121,28 @@ def remove_folder(connection: sqlite3.Connection, folder_id: int) -> bool:
 
 
 def suggested_folder(connection: sqlite3.Connection, message_id: int | None) -> int | None:
-    """The folder for a message: the one of its rule's scope, else of its account's scope, else the only one."""
+    """The folder for a message: the one of its rule's scope, else of its account's scope. Only a message
+    with no scope at all falls back to the only professional folder; a scope without a folder gets none, so
+    nothing personal is ever proposed for a professional folder (or the other way round)."""
+    scopes: list[int] = []
     if message_id is not None:
         row = connection.execute(
-            """SELECT COALESCE(r.scope_id, a.scope_id) AS scope FROM mail_message m JOIN mail_account a ON a.id = m.account_id
+            """SELECT r.scope_id AS rule_scope, a.scope_id AS account_scope FROM mail_message m JOIN mail_account a ON a.id = m.account_id
                LEFT JOIN mail_summary s ON s.message_id = m.id LEFT JOIN mail_rule r ON r.id = s.rule_id WHERE m.id = ?""",
             (message_id,)).fetchone()
-        if row and row["scope"] is not None:
-            found = connection.execute("SELECT id FROM fiscal_folder WHERE scope_id = ? ORDER BY id LIMIT 1", (row["scope"],)).fetchone()
-            if found:
-                return found["id"]
+        if row:
+            scopes = [s for s in (row["rule_scope"], row["account_scope"]) if s is not None]
+    for scope in scopes:
+        found = connection.execute("SELECT id FROM fiscal_folder WHERE scope_id = ? ORDER BY id LIMIT 1", (scope,)).fetchone()
+        if found:
+            return found["id"]
+    if scopes:
+        return None
     ids = [r["id"] for r in connection.execute("SELECT id FROM fiscal_folder WHERE kind != 'personal'")]
     return ids[0] if len(ids) == 1 else None
+
+
+_CHOOSING = threading.Lock()
 
 
 def choose_with_finder(runner=None) -> str | None:
@@ -140,10 +151,15 @@ def choose_with_finder(runner=None) -> str | None:
 
     run = runner or subprocess.run
     script = 'POSIX path of (choose folder with prompt "Elige la carpeta fiscal")'
+    if not _CHOOSING.acquire(blocking=False):
+        raise FiscalError("Ya hay un selector de carpetas abierto.")
     try:
-        done = run(["/usr/bin/osascript", "-e", script], capture_output=True, text=True, timeout=300)
+        # Below the server's wait for the core, so a slow choice never comes back as «core unavailable».
+        done = run(["/usr/bin/osascript", "-e", script], capture_output=True, text=True, timeout=110)
     except (OSError, subprocess.TimeoutExpired):
         return None
+    finally:
+        _CHOOSING.release()
     path = (done.stdout or "").strip()
     return path.rstrip("/") or None if done.returncode == 0 else None
 

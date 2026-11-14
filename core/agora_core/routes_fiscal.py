@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictInt
 
 from . import fiscal, fiscal_folder, invoice_extract, mail, receipts
-from .db import DB_NAME, connect, now
+from .db import DB_NAME, connect, now, transaction
 from .routes_mail import microsoft_login
 from .settings import Settings
 
@@ -130,7 +130,10 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
     @router.post("/fiscal/folders/choose")
     async def choose_folder():
         """The macOS folder chooser, on this Mac; returns the path picked (or null)."""
-        return {"path": await run_in_threadpool(fiscal.choose_with_finder)}
+        try:
+            return {"path": await run_in_threadpool(fiscal.choose_with_finder)}
+        except fiscal.FiscalError as error:
+            return refuse(error, 409)
 
     @router.post("/fiscal/folders", status_code=201)
     async def add_folder(body: FolderIn):
@@ -214,9 +217,10 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
                 if not body.source.url or body.source.url not in invoice_extract.links(notice["body"]):
                     raise fiscal.FiscalError("Ese enlace no está en el correo.")
                 data = invoice_extract.download(body.source.url)
-            filed = fiscal.file_invoice(connection, folder, root, data, body.fields.model_dump(), body.messageId, body.doubts, body.category)
-            connection.execute("UPDATE mail_summary SET state = 'done', decided_at = ? WHERE message_id = ? AND state = 'pending'",
-                               (now(), body.messageId))
+            with transaction(connection):
+                filed = fiscal.file_invoice(connection, folder, root, data, body.fields.model_dump(), body.messageId, body.doubts, body.category)
+                connection.execute("UPDATE mail_summary SET state = 'done', decided_at = ? WHERE message_id = ? AND state = 'pending'",
+                                   (now(), body.messageId))
             return filed
         try:
             return await db(work)
@@ -281,8 +285,11 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             with database() as connection:
                 receipt_id = receipts.save_receipt(connection, receipt_dir, data, name)
                 if data.startswith(b"%PDF-"):
-                    found = invoice_extract.fields(invoice_extract.pdf_text(data))
-                    connection.execute("UPDATE receipt SET fields = ? WHERE id = ?", (json.dumps(found), receipt_id))
+                    try:  # reading it is a help, never a reason to lose the upload
+                        found = invoice_extract.fields(invoice_extract.pdf_text(data))
+                        connection.execute("UPDATE receipt SET fields = ? WHERE id = ?", (json.dumps(found), receipt_id))
+                    except Exception:  # noqa: BLE001
+                        pass
                 return receipt_id
         try:
             upload["window"] = await run_in_threadpool(receipts.open_window, store)
@@ -320,8 +327,9 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
                 raise fiscal.FiscalError("Ese recibo no existe o ya está archivado.")
             folder, root = fiscal.folder_root(connection, body.folderId)
             data = (receipt_dir / row["file"]).read_bytes()
-            filed = fiscal.file_invoice(connection, folder, root, data, body.fields.model_dump(), None, [], body.category, receipt_id)
-            connection.execute("UPDATE receipt SET state = 'filed', decided_at = ? WHERE id = ?", (now(), receipt_id))
+            with transaction(connection):
+                filed = fiscal.file_invoice(connection, folder, root, data, body.fields.model_dump(), None, [], body.category, receipt_id)
+                connection.execute("UPDATE receipt SET state = 'filed', decided_at = ? WHERE id = ?", (now(), receipt_id))
             return filed
         try:
             return await db(work)
