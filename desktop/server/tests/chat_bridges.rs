@@ -65,6 +65,35 @@ async fn un_proceso_por_sesion_reutilizado_un_turno_a_la_vez_y_descartado_tras_f
     worker::stop("prueba-b");
 }
 
+#[tokio::test]
+async fn si_el_puente_muere_solo_no_deja_huerfanos_sus_procesos() {
+    // A bridge that starts a long-lived child (as the agent's terminal tool would), notes its pid and crashes.
+    let (_dir, base) = temp();
+    let pid_file = base.join("hijo.pid");
+    let source = format!("import subprocess, os\nchild = subprocess.Popen(['/bin/sleep', '120'])\nopen({:?}, 'w').write(str(child.pid))\nos._exit(1)\n", pid_file.display().to_string());
+    let spawn = Spawn { python: "/usr/bin/python3".into(), source, home: base.clone(), env: vec![("PATH".into(), "/usr/bin:/bin".into())] };
+    let _ = worker::request("prueba-huerfano", &spawn, &json!({}), None, Duration::from_secs(10)).await;
+    let mut child = None;
+    for _ in 0..50 {
+        if let Some(pid) = fs::read_to_string(&pid_file).ok().and_then(|text| text.trim().parse::<i32>().ok()) {
+            child = Some(pid);
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    let child = child.expect("el puente arrancó su proceso hijo");
+    let mut alive = true;
+    for _ in 0..50 {
+        // SAFETY: signal 0 only checks whether that pid still exists.
+        alive = unsafe { libc::kill(child, 0) } == 0;
+        if !alive {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(!alive, "el proceso que dejó el puente se detiene");
+}
+
 #[test]
 fn el_puente_de_luma_solo_acepta_notas_y_copias_emitidas_por_agoraone() {
     // The Python bridge keeps its own allowlist; this keeps it in step with the ids the server issues.

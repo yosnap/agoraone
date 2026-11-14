@@ -1,7 +1,8 @@
 //! The text of an uploaded PDF or DOCX, extracted by the core's Python (`agora_core.extract`, pypdf and
 //! python-docx) in its own process: bytes on stdin, JSON on stdout, no credentials in its environment, at
 //! most two at a time, 15 seconds and 100 000 bytes of output. On macOS it runs sandboxed: no network, no
-//! file writes and no child processes, so a flaw in a parser stays contained.
+//! file writes, no child processes and no reading the contents of the user's files (only its own Python and
+//! the core's folder), so a flaw in a parser stays contained.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -21,8 +22,11 @@ const MAX_BINARY: usize = 5 * 1024 * 1024;
 const MAX_OUTPUT: u64 = 100_000;
 const LIMIT: Duration = Duration::from_secs(15);
 const SANDBOX: &str = "/usr/bin/sandbox-exec";
-/// Everything is allowed except what a parser never needs: the network, writing files and new processes.
-pub const SANDBOX_PROFILE: &str = "(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write-data (literal \"/dev/null\"))(deny process-fork)";
+/// Everything is allowed except what a parser never needs: the network, writing files, new processes and
+/// the contents of the user's files (homes, other disks and temporary folders). File names and sizes stay
+/// visible, which Python needs to resolve its own paths.
+const SANDBOX_BASE: &str = "(version 1)(allow default)(deny network*)(deny file-write*)(allow file-write-data (literal \"/dev/null\"))(deny process-fork)\
+(deny file-read-data (subpath \"/Users\") (subpath \"/Volumes\") (subpath \"/private/var/folders\") (subpath \"/private/tmp\"))";
 static RUNNING: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(2));
 
 const SIZE: &str = "Tamaño o codificación no válidos. TXT/Markdown: 24 KiB; PDF/DOCX: 5 MiB.";
@@ -44,11 +48,28 @@ impl Extractor {
     }
 }
 
-/// A command run inside the sandbox when the system has one.
-pub fn sandboxed(program: &Path) -> Command {
+/// The sandbox profile that lets `program` (and the Python installation it belongs to) and `readable` be read.
+pub fn sandbox_profile(program: &Path, readable: &[&Path]) -> String {
+    let mut allowed: Vec<PathBuf> = readable.iter().filter_map(|path| std::fs::canonicalize(path).ok()).collect();
+    // A venv's python is a link to the real installation, whose standard library lives two levels up. A
+    // shallow one (a python straight in ~/bin) would open the whole home, so it is not added.
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    if let Some(root) = std::fs::canonicalize(program).ok().and_then(|real| real.parent()?.parent().map(Path::to_path_buf))
+        && root.components().count() >= 4
+        && !home.starts_with(&root)
+    {
+        allowed.push(root);
+    }
+    let quoted: Vec<String> = allowed.iter().map(|path| format!("(subpath \"{}\")", path.display().to_string().replace('\\', "\\\\").replace('"', "\\\""))).collect();
+    if quoted.is_empty() { SANDBOX_BASE.to_string() } else { format!("{SANDBOX_BASE}(allow file-read-data {})", quoted.join(" ")) }
+}
+
+/// A command run inside the sandbox when the system has one; besides the system, it reads only its own
+/// Python and `readable`.
+pub fn sandboxed(program: &Path, readable: &[&Path]) -> Command {
     if Path::new(SANDBOX).exists() {
         let mut command = Command::new(SANDBOX);
-        command.arg("-p").arg(SANDBOX_PROFILE).arg(program);
+        command.arg("-p").arg(sandbox_profile(program, readable)).arg(program);
         command
     } else {
         Command::new(program)
@@ -79,7 +100,7 @@ pub async fn extract_upload(extractor: Option<&Extractor>, name: &str, base64: &
 }
 
 async fn run(extractor: &Extractor, kind: &str, bytes: Vec<u8>) -> Result<String, String> {
-    let mut command = sandboxed(&extractor.python);
+    let mut command = sandboxed(&extractor.python, &[&extractor.folder]);
     command
         .args(["-E", "-s", "-B", "-m", "agora_core.extract", kind])
         .current_dir(&extractor.folder)

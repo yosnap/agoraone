@@ -55,6 +55,41 @@ pub fn app_support() -> Option<PathBuf> {
     Some(PathBuf::from(std::env::var_os("HOME")?).join("Library/Application Support/AgoraOne"))
 }
 
+fn is_sqlite(path: &Path) -> bool {
+    use std::io::Read;
+    let mut header = [0u8; 16];
+    std::fs::File::open(path).and_then(|mut file| file.read_exact(&mut header)).is_ok() && &header == b"SQLite format 3\0"
+}
+
+/// A consistent copy of a SQLite database that may be open (the core and Hermes use WAL): what is still in
+/// its `-wal` file goes in, and nothing half-written does. Opened read-only, so the original and its
+/// journal files are left exactly as they were.
+fn snapshot(from: &Path, to: &Path) -> rusqlite::Result<()> {
+    use rusqlite::{Connection, OpenFlags};
+    let target = to.to_str().ok_or(rusqlite::Error::InvalidPath(to.to_path_buf()))?;
+    let source = Connection::open_with_flags(from, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;
+    source.busy_timeout(Duration::from_secs(5))?;
+    source.execute("VACUUM INTO ?1", [target])?;
+    Ok(())
+}
+
+/// Copies a database consistently, or, if SQLite cannot read it (damaged, locked or not really SQLite), as
+/// plain files together with its journal, as before: the user's data is never left behind.
+fn copy_database(from: &Path, to: &Path) -> std::io::Result<()> {
+    if snapshot(from, to).is_ok() {
+        return Ok(());
+    }
+    let _ = std::fs::remove_file(to);
+    std::fs::copy(from, to)?;
+    for journal in ["-wal", "-shm"] {
+        let (source, target) = (PathBuf::from(format!("{}{journal}", from.display())), PathBuf::from(format!("{}{journal}", to.display())));
+        if std::fs::symlink_metadata(&source).is_ok_and(|m| m.is_file()) {
+            std::fs::copy(&source, &target)?;
+        }
+    }
+    Ok(())
+}
+
 /// The first time the packaged app starts, the data the user already had in the project's `.agora` is
 /// copied (never moved or deleted) to its own folder; later starts leave both alone. Links are not followed.
 pub fn copy_first_run(from: &Path, to: &Path) -> std::io::Result<bool> {
@@ -73,7 +108,16 @@ pub fn copy_first_run(from: &Path, to: &Path) -> std::io::Result<bool> {
             if kind.is_dir() {
                 copy(&entry.path(), &target)?;
             } else if kind.is_file() {
-                std::fs::copy(entry.path(), &target)?;
+                let name = entry.file_name().to_string_lossy().to_string();
+                let journal = name.strip_suffix("-wal").or_else(|| name.strip_suffix("-shm"));
+                if journal.is_some_and(|base| is_sqlite(&from.join(base))) {
+                    continue; // copied with its database
+                }
+                if is_sqlite(&entry.path()) {
+                    copy_database(&entry.path(), &target)?;
+                } else {
+                    std::fs::copy(entry.path(), &target)?;
+                }
             }
         }
         Ok(())
@@ -267,6 +311,48 @@ mod tests {
         assert_eq!(std::fs::read_to_string(to.join("access-token")).unwrap(), "token");
         let empty = dir.path().join("nueva");
         assert!(!copy_first_run(&dir.path().join("no-existe"), &empty).unwrap());
+    }
+
+    #[test]
+    fn las_bases_sqlite_abiertas_se_copian_completas_y_sin_su_wal() {
+        let dir = tempfile::tempdir().unwrap();
+        let (live, from, to) = (dir.path().join("viva"), dir.path().join(".agora"), dir.path().join("AgoraOne"));
+        std::fs::create_dir_all(&live).unwrap();
+        std::fs::create_dir_all(from.join("core")).unwrap();
+        // A database in WAL mode, as the core keeps it, with rows that are still only in the -wal file.
+        let open = rusqlite::Connection::open(live.join("agora.db")).unwrap();
+        open.pragma_update(None, "journal_mode", "WAL").unwrap();
+        open.pragma_update(None, "wal_autocheckpoint", 0).unwrap();
+        open.execute_batch("CREATE TABLE notas(texto TEXT); INSERT INTO notas VALUES ('una'), ('dos');").unwrap();
+        // Its files as a writer that died leaves them: nobody else has them open, so the copy is the last
+        // connection and must still not checkpoint or delete anything.
+        for name in ["agora.db", "agora.db-wal", "agora.db-shm"] {
+            std::fs::copy(live.join(name), from.join("core").join(name)).unwrap();
+        }
+        drop(open);
+        // The -shm file is only a shared index that every reader updates; the data is the database and its WAL.
+        let read = |path: &Path| ["agora.db", "agora.db-wal"].map(|name| std::fs::read(path.join(name)).unwrap());
+        let original = read(&from.join("core"));
+        assert!(copy_first_run(&from, &to).unwrap());
+        assert_eq!(read(&from.join("core")), original, "el origen y su wal no cambian");
+        assert!(from.join("core/agora.db-shm").exists(), "ni se borra su índice");
+        assert!(!to.join("core/agora.db-wal").exists() && !to.join("core/agora.db-shm").exists());
+        let copy = rusqlite::Connection::open(to.join("core/agora.db")).unwrap();
+        let count: i64 = copy.query_row("SELECT count(*) FROM notas", [], |row| row.get(0)).unwrap();
+        assert_eq!(count, 2, "lo que estaba en el wal también se copia");
+    }
+
+    #[test]
+    fn una_base_que_sqlite_no_lee_se_copia_tal_cual() {
+        let dir = tempfile::tempdir().unwrap();
+        let (from, to) = (dir.path().join(".agora"), dir.path().join("AgoraOne"));
+        std::fs::create_dir_all(&from).unwrap();
+        let damaged = [b"SQLite format 3\0".as_slice(), &[0xff; 100]].concat();
+        std::fs::write(from.join("rota.db"), &damaged).unwrap();
+        std::fs::write(from.join("rota.db-wal"), "wal").unwrap();
+        assert!(copy_first_run(&from, &to).unwrap());
+        assert_eq!(std::fs::read(to.join("rota.db")).unwrap(), damaged);
+        assert_eq!(std::fs::read_to_string(to.join("rota.db-wal")).unwrap(), "wal");
     }
 
     #[test]

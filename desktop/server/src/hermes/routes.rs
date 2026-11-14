@@ -20,11 +20,17 @@ use crate::js::now_ms;
 use crate::security::error;
 
 const RUN_LIMIT: Duration = Duration::from_secs(20);
-static QUEUE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(8));
+static QUEUE: LazyLock<Arc<Semaphore>> = LazyLock::new(|| Arc::new(Semaphore::new(8)));
 
-/// Runs a blocking read; None if it failed, took too long or too many are already waiting.
+/// Runs a blocking read; None if it failed, took too long or too many are already running. A read that
+/// outlives its time limit cannot be stopped, so it keeps its place until it really ends: a stuck disk
+/// occupies at most eight threads instead of one more per request.
 pub(crate) async fn background<T: Send + 'static>(read: impl FnOnce() -> anyhow::Result<T> + Send + 'static) -> Option<T> {
-    let _permit = QUEUE.try_acquire().ok()?;
+    let permit = QUEUE.clone().try_acquire_owned().ok()?;
+    let read = move || {
+        let _permit = permit;
+        read()
+    };
     match tokio::time::timeout(RUN_LIMIT, tokio::task::spawn_blocking(read)).await {
         Ok(Ok(Ok(value))) => Some(value),
         _ => None,

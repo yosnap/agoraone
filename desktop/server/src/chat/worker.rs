@@ -1,7 +1,8 @@
 //! One Python bridge process per conversation, kept for five idle minutes: a JSON request per line on stdin,
 //! progress events and a final `done` per line on stdout. At most four per kind (profile agents and Luma
 //! apart), evicting only idle ones; one turn at a time; output capped at 8 MB; each bridge leads its own
-//! process group, so whatever it starts (MCP servers) is stopped with it. Same rules as the former
+//! process group, so whatever it starts in it (the agent's terminal commands, for instance) is stopped with
+//! it. MCP servers run in their own session and Hermes' own supervisor stops them. Same rules as the former
 //! server/hermes-worker.ts.
 
 use std::collections::HashMap;
@@ -67,6 +68,25 @@ fn signal(worker: &Worker, signal: libc::c_int) {
         // SAFETY: signals only the process group this bridge leads.
         unsafe { libc::kill(-(pid as libc::pid_t), signal) };
     }
+}
+
+/// Stops what a bridge left running in its group after it ended by itself (a crash would leave, say, a
+/// command the agent started behind): SIGTERM now, SIGKILL three seconds later if any are still there. The group's id cannot be
+/// given to a new process while one of its members lives, and the check right before each signal keeps a
+/// recycled id from being hit once it is empty.
+fn reap_group(pid: u32) {
+    let group = -(pid as libc::pid_t);
+    // SAFETY: signal 0 only asks whether the group still has members; the others go to that group alone.
+    if unsafe { libc::kill(group, 0) } != 0 {
+        return;
+    }
+    unsafe { libc::kill(group, libc::SIGTERM) };
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        if unsafe { libc::kill(group, 0) } == 0 {
+            unsafe { libc::kill(group, libc::SIGKILL) };
+        }
+    });
 }
 
 /// Forgets a bridge: its turn fails, stdin closes (so it can shut its MCP servers down), and signals follow
@@ -218,6 +238,9 @@ fn start(key: &str, spawn: &Spawn) -> Result<Arc<Worker>, String> {
     tokio::spawn(async move {
         let _ = child.wait().await;
         waiter.exited.store(true, Ordering::SeqCst);
+        if let Some(pid) = waiter.pid {
+            reap_group(pid);
+        }
         discard(&waiter_key, &waiter);
     });
     Ok(worker)

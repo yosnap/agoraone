@@ -7,9 +7,9 @@
 #
 # Set in your own terminal (never in the repository or the chat):
 #   APPLE_SIGNING_IDENTITY  the "Developer ID Application: …" identity in your keychain
-#   AGORA_NOTARY_PROFILE    optional: a profile saved with «xcrun notarytool store-credentials», or
-#   AGORA_NOTARY_ITEM       optional: a generic keychain item holding an app-specific password, with the
-#                           Apple ID as its account (as Snapclone's «snapclone-notary»); read when notarizing.
+#   AGORA_NOTARY_PROFILE    optional: a profile saved once with «xcrun notarytool store-credentials NAME
+#                           --apple-id … --team-id …», which asks for the app-specific password itself, so
+#                           the password never appears in a command line or in the process list.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -25,6 +25,11 @@ APP="$ROOT/desktop/target/release/bundle/macos/AgoraOne.app"
 
 : "${APPLE_SIGNING_IDENTITY:?Define APPLE_SIGNING_IDENTITY en tu terminal con tu identidad «Developer ID Application».}"
 [ "$(uname -m)" = "arm64" ] || { echo "Solo se empaqueta en un Mac con Apple Silicon." >&2; exit 1; }
+if [ -n "${AGORA_NOTARY_ITEM:-}" ] && [ -z "${AGORA_NOTARY_PROFILE:-}" ]; then
+  echo "AGORA_NOTARY_ITEM ya no se usa: pasaba la contraseña en la línea de órdenes. Crea un perfil con" >&2
+  echo "«xcrun notarytool store-credentials agoraone-notario --apple-id … --team-id …» y usa AGORA_NOTARY_PROFILE." >&2
+  exit 1
+fi
 step() { printf '\n== %s\n' "$1"; }
 
 step "Interfaz web"
@@ -85,20 +90,11 @@ APP="$WORK/AgoraOne.app"
 codesign --verify --deep --strict "$APP"
 echo "Firma correcta: $APP"
 
-if [ -n "${AGORA_NOTARY_PROFILE:-}" ] || [ -n "${AGORA_NOTARY_ITEM:-}" ]; then
+if [ -n "${AGORA_NOTARY_PROFILE:-}" ]; then
   step "Notarización"
   ZIP="$WORK/AgoraOne-notarizar.zip"
   ditto -c -k --keepParent "$APP" "$ZIP"
-  if [ -n "${AGORA_NOTARY_PROFILE:-}" ]; then
-    xcrun notarytool submit "$ZIP" --keychain-profile "$AGORA_NOTARY_PROFILE" --wait
-  else
-    apple_id="$(security find-generic-password -s "$AGORA_NOTARY_ITEM" 2>/dev/null | sed -nE 's/^ *"acct"<blob>="(.*)"$/\1/p')"
-    [ -n "$apple_id" ] || { echo "No está el elemento «$AGORA_NOTARY_ITEM» en el llavero." >&2; exit 1; }
-    team_id="$(sed -nE 's/.*\(([A-Z0-9]{10})\)$/\1/p' <<<"$APPLE_SIGNING_IDENTITY")"
-    apple_password="$(security find-generic-password -s "$AGORA_NOTARY_ITEM" -w)"
-    xcrun notarytool submit "$ZIP" --apple-id "$apple_id" --team-id "$team_id" --password "$apple_password" --wait
-    unset apple_password
-  fi
+  xcrun notarytool submit "$ZIP" --keychain-profile "$AGORA_NOTARY_PROFILE" --wait
   xcrun stapler staple "$APP"
   spctl --assess --type execute -vv "$APP"
   VERSION="$(grep -m1 '"version"' "$ROOT/desktop/app/tauri.conf.json" | sed -E 's/.*"([^"]+)",?$/\1/')"
@@ -106,5 +102,5 @@ if [ -n "${AGORA_NOTARY_PROFILE:-}" ] || [ -n "${AGORA_NOTARY_ITEM:-}" ]; then
   rm -f "$ZIP"
   echo "Notarizada y lista para distribuir: $WORK/AgoraOne-$VERSION.zip"
 else
-  echo "Sin AGORA_NOTARY_PROFILE ni AGORA_NOTARY_ITEM: firmada pero sin notarizar (solo para este Mac)."
+  echo "Sin AGORA_NOTARY_PROFILE: firmada pero sin notarizar (solo para este Mac)."
 fi

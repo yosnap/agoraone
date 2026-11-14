@@ -33,11 +33,9 @@ AgoraOne se usa como app de macOS autocontenida hecha con Tauri. Decisiones del 
 Variables, definidas en la terminal del usuario (nunca en el repositorio ni en el chat):
 
 - `APPLE_SIGNING_IDENTITY`: la identidad «Developer ID Application: …» del llavero.
-- Para notarizar, una de estas dos:
-  - `AGORA_NOTARY_PROFILE`: un perfil guardado con `xcrun notarytool store-credentials`.
-  - `AGORA_NOTARY_ITEM`: un elemento genérico del llavero con una contraseña de aplicación del Apple ID y el Apple ID como cuenta. Se lee solo al notarizar y no se muestra.
+- `AGORA_NOTARY_PROFILE`, para notarizar: un perfil del llavero que se crea una vez con `xcrun notarytool store-credentials agoraone-notario --apple-id <Apple ID> --team-id <equipo>`. La orden pide la contraseña de aplicación por su cuenta, así que nunca aparece en la línea de órdenes ni en la lista de procesos. (`AGORA_NOTARY_ITEM` ya no se admite por eso mismo.)
 
-Sin ninguna de las dos, la app queda firmada pero sin notarizar: abre en este Mac, pero no en otro.
+Sin perfil, la app queda firmada pero sin notarizar: abre en este Mac, pero no en otro.
 
 Si Apple responde «403: A required agreement is missing or has expired», el titular de la cuenta de desarrollador tiene que aceptar el acuerdo pendiente en developer.apple.com (o en App Store Connect, en Negocio). Puede tardar unos minutos en hacer efecto.
 
