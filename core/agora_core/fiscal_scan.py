@@ -54,7 +54,11 @@ def _cached(connection: sqlite3.Connection, folder_id: int, root: Path, path: Pa
         return {"unreadable": True}
     row = connection.execute("SELECT size, mtime, fields FROM fiscal_file WHERE folder_id = ? AND path = ?",
                              (folder_id, str(path.relative_to(root)))).fetchone()
-    return json.loads(row["fields"]) if row and row["size"] == stat.st_size and row["mtime"] == stat.st_mtime else None
+    if not row or row["size"] != stat.st_size or row["mtime"] != stat.st_mtime:
+        return None
+    fields = json.loads(row["fields"])
+    # Read again with newer rules (images and files too big are not read anyway).
+    return fields if fields.get("v") == invoice_extract.VERSION or fields.get("image") or fields.get("tooBig") else None
 
 
 def read_in_background(database, folder_id: int, root: Path, paths: list[Path]) -> None:
@@ -102,9 +106,9 @@ def _read(connection: sqlite3.Connection, folder_id: int, root: Path, path: Path
     cached = _cached(connection, folder_id, root, path)
     if cached is not None:
         return cached
-    fields: dict = {"image": path.suffix.lower() != ".pdf"}
+    fields: dict = {"image": path.suffix.lower() != ".pdf", "v": invoice_extract.VERSION}
     if path.stat().st_size > MAX_FILE:
-        fields["unreadable"] = True
+        fields["unreadable"] = fields["tooBig"] = True
     else:
         data = path.read_bytes()
         fields["sha256"] = hashlib.sha256(data).hexdigest()
@@ -192,7 +196,12 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
             base = str(round(float(total) / (1 + vat_rate - irpf_rate), 2))
         if vat_rate is None:
             counts["noVat"] += 1
-        income.append({"date": day, "number": fields.get("number") or path.stem[:30], "client": _name(path, rest), "taxId": other(fields) or "",
+        client_tax = other(fields)
+        # The customer is named after the holder's block; never the holder (the file name often carries the holder's name).
+        client = (fields.get("after") or {}).get(own) if own else None
+        if not client and client_tax:
+            client = (fields.get("after") or {}).get(client_tax)
+        income.append({"date": day, "number": fields.get("number") or path.stem[:30], "client": client or _name(path, rest), "taxId": client_tax or "",
                        "concept": str(path.relative_to(root)), "base": float(base) if base is not None else None,
                        "vatRate": vat_rate or 0.0, "withholdingRate": irpf_rate, "total": total, "currency": fields.get("currency") or "EUR",
                        "guessedDate": guessed, "file": str(path.relative_to(root))})

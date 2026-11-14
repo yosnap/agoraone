@@ -55,6 +55,10 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo generar el Excel.'); }
   };
   const folder = folders?.find(f => f.id === folderId);
+  // Each invoice opens with its app or shows in the Finder, to check it against what was read.
+  const fileButtons = (path: string | undefined) => path ? <span className="fiscal-file">
+    <button type="button" className="button" title={path} onClick={() => void reveal(path, false)}>Abrir</button>
+    <button type="button" className="button" title="Mostrar en Finder" onClick={() => void reveal(path, true)}>Finder</button></span> : null;
   const years = Array.from({ length: 4 }, (_, i) => currentQuarter().year - i);
   const totalIn = view?.income.reduce((sum, row) => sum + (row.base ?? 0), 0) ?? 0;
   const totalOut = view?.expenses.filter(e => e.currency === 'EUR').reduce((sum, row) => sum + Number(row.total), 0) ?? 0;
@@ -90,13 +94,13 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
             <button type="button" className="button" onClick={() => void reveal(null, false)}>Abrir la carpeta</button></span>}</div>
         {!discreet && <>
           <h2>Ingresos · facturas emitidas</h2>
-          {view.income.length === 0 ? <p className="muted">Ninguna en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Nº</th><th>Cliente</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
+          {view.income.length === 0 ? <p className="muted">Ninguna en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Nº</th><th>Cliente</th><th>Base</th><th>IVA</th><th>Total</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>
             <tbody>{view.income.map((row, index) => <tr key={index}><td>{day(row.date)}</td><td>{row.number}</td><td>{row.client}</td><td>{money(row.base, row.currency)}</td>
-              <td>{row.vatRate !== null ? `${Math.round((row.vatRate > 1 ? row.vatRate : row.vatRate * 100))} %` : '—'}</td><td>{money(row.total, row.currency)}</td></tr>)}</tbody></table></div>}
+              <td>{row.vatRate !== null ? `${Math.round((row.vatRate > 1 ? row.vatRate : row.vatRate * 100))} %` : '—'}</td><td>{money(row.total, row.currency)}</td><td>{fileButtons((row as { file?: string }).file)}</td></tr>)}</tbody></table></div>}
           <h2>Gastos · facturas recibidas</h2>
-          {view.expenses.length === 0 ? <p className="muted">Ninguna archivada en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>NIF</th><th>Total</th><th>Dudas</th></tr></thead>
+          {view.expenses.length === 0 ? <p className="muted">Ninguna archivada en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>NIF</th><th>Total</th><th>Dudas</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>
             <tbody>{view.expenses.map(row => <tr key={row.id}><td>{day(row.issuedOn)}</td><td>{row.supplier}</td><td>{row.taxId ?? '—'}</td><td>{money(row.total, row.currency)}</td>
-              <td>{row.doubts.length ? row.doubts.join(' ') : '—'}</td></tr>)}</tbody></table></div>}
+              <td>{row.doubts.length ? row.doubts.join(' ') : '—'}</td><td>{fileButtons((row as { file?: string }).file ?? row.path)}</td></tr>)}</tbody></table></div>}
         </>}
       </>}
     </>}

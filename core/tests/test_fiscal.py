@@ -346,3 +346,14 @@ def test_ilegibles_repetidos_y_nif_propio_con_pocas_facturas(db, tmp_path):
     assert pending == [], "un PDF ilegible no se queda leyéndose para siempre"
     assert sorted(r["taxId"] for r in income) == ["B22222222", "B33333333"], "con dos facturas, el NIF propio ya no sale como del cliente"
     assert len(expenses) == 1 and counts == {"unreadable": 1, "duplicates": 1, "unplaced": 1, "noVat": 0}
+
+
+def test_el_cliente_sale_del_texto_y_no_del_nombre_del_archivo():
+    text = ("Factura\nNúmero de factura F-2026-029\nTitular Persona\nX6543591E\nEMPRESA CLIENTE SL\nAVDA 11 19005\nB22789630\n"
+            "Número de IVA: ESB22789630\nDescripción Cant. Precio unitario IVA (%) Total sin IVA\nServicios 1 mes 1083,00 € 21 % 1083,00 €\n"
+            "Total sin IVA 1083,00 €\nImporte total del IVA 227,43 €\nIRPF (-15 %) -162,45 €\nTotal (IVA incluido) 1147,98 €")
+    found = invoice_extract.breakdown(text)
+    assert found["taxIds"] == ["X6543591E", "B22789630"], "DESARROLLO y similares no son NIF"
+    assert found["after"]["X6543591E"] == "EMPRESA CLIENTE SL"
+    assert (found["base"], found["vatRate"], found["vat"], found["withholdingRate"]) == ("1083.00", 0.21, "227.43", 0.15)
+    assert invoice_extract.breakdown("Servicios de DESARROLLO web")["taxIds"] == []
