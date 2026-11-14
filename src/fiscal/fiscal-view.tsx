@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { getFiscalFolders, getQuarter, makeQuarterExcel, type FiscalFolder, type QuarterView } from '../api/core';
+import { getFiscalFolders, getQuarter, makeQuarterExcel, openFiscalFile, type FiscalFolder, type QuarterView } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import './fiscal.css';
@@ -26,6 +26,7 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [made, setMade] = useState<string | null>(null);
   const asked = useRef(false);
   const request = useRef(0);
   const load = async (folder: number, year: number, quarter: number) => {
@@ -42,11 +43,15 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
       if (professional[0]) { setFolderId(professional[0].id); void load(professional[0].id, period.year, period.quarter); }
     }).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer las carpetas.'));
   }
-  const choose = (folder: number, year = period.year, quarter = period.quarter) => { setFolderId(folder); setPeriod({ year, quarter }); setConfirming(false); setNote(''); void load(folder, year, quarter); };
+  const reveal = async (path: string | null, show: boolean) => {
+    if (!folderId) return;
+    try { await openFiscalFile(folderId, path, show); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo abrir.'); }
+  };
+  const choose = (folder: number, year = period.year, quarter = period.quarter) => { setFolderId(folder); setPeriod({ year, quarter }); setConfirming(false); setNote(''); setMade(null); void load(folder, year, quarter); };
   const excel = async () => {
     if (!folderId) return;
     setConfirming(false); setNote(''); setError('');
-    try { setNote(`Excel guardado en la carpeta: ${(await makeQuarterExcel(folderId, period.year, period.quarter)).path}`); }
+    try { const path = (await makeQuarterExcel(folderId, period.year, period.quarter)).path; setMade(path); setNote(`Excel guardado en la carpeta: ${path}`); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo generar el Excel.'); }
   };
   const folder = folders?.find(f => f.id === folderId);
@@ -66,6 +71,9 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
       </div>
       {error && <LoadError message={error}/>}
       {note && <p className="ok-note" role="status">{note}</p>}
+      {made && <div className="field-row fiscal-made">
+        <button type="button" className="button primary" onClick={() => void reveal(made, false)}>Abrir el Excel</button>
+        <button type="button" className="button" onClick={() => void reveal(made, true)}>Mostrar en Finder</button></div>}
       {folderId && !view && !error ? <Loading label="Leyendo el trimestre" lines={4}/> : view && <>
         <div className="fiscal-totals">
           <article className="card"><span className="muted">Facturado (base)</span><strong>{discreet ? '•••' : money(totalIn)}</strong><small className="muted">{view.income.length} facturas emitidas</small></article>
@@ -77,7 +85,8 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
           <span>Se guardará en «{folder?.name}» como <code>Registro-{period.quarter}T-{period.year}-….xlsx</code> (si existe, con un número; nunca se sobrescribe).</span>
           <button type="button" className="button primary" onClick={() => void excel()}>Generar</button>
           <button type="button" className="button" onClick={() => setConfirming(false)}>Cancelar</button></span>
-          : <button type="button" className="button primary" onClick={() => setConfirming(true)}>Generar el Excel del {period.quarter}T</button>}</div>
+          : <span className="field-row"><button type="button" className="button primary" onClick={() => setConfirming(true)}>Generar el Excel del {period.quarter}T</button>
+            <button type="button" className="button" onClick={() => void reveal(null, false)}>Abrir la carpeta</button></span>}</div>
         {!discreet && <>
           <h2>Ingresos · facturas emitidas</h2>
           {view.income.length === 0 ? <p className="muted">Ninguna en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Nº</th><th>Cliente</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
