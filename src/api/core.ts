@@ -180,10 +180,10 @@ export type InvoicePrepared = {
 };
 export type Invoice = InvoiceFields & { id: number; direction: 'received' | 'issued'; messageId: number | null; doubts: string[]; quarter: string; path: string };
 export type FolderKind = 'autonomo' | 'empresa' | 'personal';
-export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null };
+export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null; holder: string | null };
 export const getFiscalFolders = () => core<{ folders: FiscalFolder[] }>('/fiscal/folders');
 export const chooseFiscalFolder = () => core<{ path: string | null }>('/fiscal/folders/choose', {});
-export const addFiscalFolder = (folder: Omit<FiscalFolder, 'id'>) => core<{ folders: FiscalFolder[] }>('/fiscal/folders', folder);
+export const addFiscalFolder = (folder: Omit<FiscalFolder, 'id' | 'holder'>) => core<{ folders: FiscalFolder[] }>('/fiscal/folders', folder);
 export const changeFiscalFolder = (id: number, changes: Partial<Omit<FiscalFolder, 'id' | 'path'>>) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, changes, 'PUT');
 export const removeFiscalFolder = (id: number) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, undefined, 'DELETE');
 export const prepareInvoice = (messageId: number) => core<InvoicePrepared>('/fiscal/invoices/prepare', { messageId });
@@ -204,3 +204,11 @@ export const getReceipts = () => core<{ receipts: Receipt[] }>('/fiscal/receipts
 export const dismissReceipt = (id: number) => core<{ receipts: Receipt[] }>(`/fiscal/receipts/${id}`, { state: 'dismissed' }, 'PUT');
 export const fileReceipt = (id: number, folderId: number, category: Category | null, fields: InvoiceFields) =>
   core<{ id: number; path: string }>(`/fiscal/receipts/${id}/file`, { folderId, category, fields });
+export const getQonto = () => core<{ login: string | null; hasKey: boolean }>('/fiscal/qonto');
+export const putQonto = (changes: { login?: string | null; secret?: string | null }) => core<{ login: string | null; hasKey: boolean }>('/fiscal/qonto', changes, 'PUT');
+export const checkQonto = () => core<{ name: string | null; accounts: number }>('/fiscal/qonto/check', {});
+export type IncomeRow = { date: string; number: string; client: string; taxId: string; concept: string; base: number | null; vatRate: number | null;
+  withholdingRate: number | null; withholding: number | null; total: number | null; currency: string };
+export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomeProblem: string | null; expenses: Invoice[]; notes: string[] };
+export const getQuarter = (folderId: number, year: number, quarter: number) => core<QuarterView>(`/fiscal/folders/${folderId}/quarter?year=${year}&quarter=${quarter}`);
+export const makeQuarterExcel = (folderId: number, year: number, quarter: number) => core<{ path: string }>(`/fiscal/folders/${folderId}/excel`, { year, quarter });

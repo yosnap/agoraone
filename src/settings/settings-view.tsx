@@ -5,6 +5,7 @@ import { MailSettingsCard } from './settings-mail';
 import { MailRulesCard } from './settings-mail-rules';
 import { FiscalSettingsCard } from './settings-fiscal';
 import { AppearanceCard } from './settings-appearance';
+import { QontoSettingsCard } from './settings-qonto';
 import './settings.css';
 
 /** The assistant, mail accounts, the brain's confidentiality and its backups. */
@@ -16,7 +17,7 @@ export function SettingsView() {
     <AppearanceCard/>
     <div className="settings-columns">
       <div className="settings-side"><AssistantSettingsCard/><MailSettingsCard/><MailRulesCard/></div>
-      <div className="settings-side"><FiscalSettingsCard/><PrivacySettingsCard/><BackupsCard/></div>
+      <div className="settings-side"><FiscalSettingsCard/><QontoSettingsCard/><PrivacySettingsCard/><BackupsCard/></div>
     </div>
   </section>;
 }

@@ -6,6 +6,7 @@ import { NoteReader, type NoteRef } from '../brain/note-reader';
 import { ShellNav } from './shell-nav';
 import { PendingView } from './pending-view';
 import { InboxView } from '../inbox/inbox-view';
+import { FiscalView } from '../fiscal/fiscal-view';
 import { readShell, writeShell, type Section } from './shell-state';
 import './shell.css';
 import './page.css';
@@ -46,6 +47,7 @@ export function Shell() {
           : section === 'connectors' ? <ConnectorsView/>
           : section === 'settings' ? <SettingsView/>
           : section === 'inbox' ? <InboxView discreet={discreet}/>
+          : section === 'fiscal' ? <FiscalView discreet={discreet}/>
           : <PendingView section={section}/>}
       </Suspense></main>}
       {status?.state === 'offline' && <section className="page" role="alert"><h1>Sin conexión</h1><p>{status.detail}</p></section>}

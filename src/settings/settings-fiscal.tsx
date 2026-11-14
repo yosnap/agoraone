@@ -97,6 +97,8 @@ export function FiscalSettingsCard() {
         <div className="mail-account-fields">
           <label className="field">Ámbito<ModernSelect value={folder.scopeId ? String(folder.scopeId) : ''} options={scopeOptions}
             onChange={value => void act(() => changeFiscalFolder(folder.id, { scopeId: value ? Number(value) : null }), 'Ámbito guardado.')}/></label>
+          {folder.kind !== 'personal' && <label className="field">Titular en el Excel<input defaultValue={folder.holder ?? ''} maxLength={120} placeholder={folder.name}
+            onBlur={event => { if (event.target.value !== (folder.holder ?? '')) void act(() => changeFiscalFolder(folder.id, { holder: event.target.value }), 'Titular guardado.'); }}/></label>}
         </div>
         <div className="field-row">
           {folder.kind !== 'personal' && <button type="button" className="button" disabled={busy} onClick={() => void calculate(folder.id)}>Proponer cómo ordenarla</button>}
