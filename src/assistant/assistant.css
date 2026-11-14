@@ -1,5 +1,7 @@
 /* The assistant: conversations on the left, the open one on the right with the composer at the bottom. */
-.assistant { display:grid; grid-template-columns:260px minmax(0,1fr); height:100%; color:var(--c-173d3c) }
+/* One row that never grows past the available height: only the message list scrolls, the composer stays in view.
+   Scoped to the section: an assistant's message also carries the class «assistant». */
+section.assistant { display:grid; grid-template-columns:260px minmax(0,1fr); grid-template-rows:minmax(0,1fr); height:100%; color:var(--c-173d3c) }
 .assistant-list { border-right:1px solid var(--c-dfe3d6); background:var(--c-fbfaf3); padding:20px 14px; overflow-y:auto; display:flex; flex-direction:column; gap:12px }
 .assistant-list ul { list-style:none; margin:0; padding:0 }
 .assistant-list li button { width:100%; text-align:left; border:0; background:none; border-radius:10px; padding:10px; color:var(--c-173d3c); display:flex; flex-direction:column; gap:3px }
@@ -30,7 +32,7 @@
 .assistant-form textarea { resize:vertical; min-height:70px; max-height:220px; border:1px solid var(--c-cbd6c9); border-radius:12px; padding:12px; background:var(--c-fffffa); color:var(--c-173d3c); font:inherit; font-size:13px }
 
 @media (max-width:850px) {
-  .assistant { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) }
+  section.assistant { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr) }
   .assistant-list { border-right:0; border-bottom:1px solid var(--c-dfe3d6); max-height:150px; padding:12px }
   .assistant-head { padding:16px }
 }
