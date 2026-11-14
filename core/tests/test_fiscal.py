@@ -399,3 +399,55 @@ def test_coherencia_de_totales_con_irpf():
     assert rate_only["total"] == "318.00"
     wrong = fiscal_scan._merged({"total": "90.00", "ai": {"base": "90.00", "vat": "0.00", "total": "8.80"}}, issued=False)
     assert wrong["total"] == "90.00", "una cifra mal leída se corrige con la suma de las partes"
+
+
+def test_la_lectura_nunca_se_queda_en_bucle(db, tmp_path):
+    """Un modelo que falla (sin red, sin sesión) deja de pedirse al tercer intento, y un archivo que no se puede
+    leer queda como ilegible en la caché, sin volver a la cola en cada carga."""
+    from contextlib import contextmanager
+    from agora_core import fiscal_scan
+    root = (tmp_path / "fiscal")
+    good = root / "Facturas Entrantes/2026/3T/a.pdf"
+    good.parent.mkdir(parents=True)
+    good.write_bytes(_pdf(b"Proveedor B44444444 Total 10,00 EUR"))
+    root = root.resolve()
+    good = good.resolve()
+    db.execute("INSERT INTO fiscal_folder (id, name, kind, path, created_at) VALUES (1, 'A', 'autonomo', ?, 'x')", (str(root),))
+
+    @contextmanager
+    def database():
+        connection = connect(tmp_path / "data" / DB_NAME)
+        try:
+            yield connection
+        finally:
+            connection.close()
+    with database() as connection:
+        fiscal_scan._read(connection, 1, root, good)
+    calls = []
+
+    def broken(texts):
+        calls.append(len(texts))
+        raise RuntimeError("sin red")
+    pending = lambda: fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set())[3]["modelPending"]  # noqa: E731
+    for _ in range(fiscal_scan.MAX_MODEL_FAILURES - 1):
+        fiscal_scan._read_with_model(database, 1, root, [good], broken)
+        assert pending() == [good], "un fallo pasajero se vuelve a intentar"
+    fiscal_scan._read_with_model(database, 1, root, [good], broken)
+    assert pending() == [] and len(calls) == fiscal_scan.MAX_MODEL_FAILURES, "tras el último intento se queda con las reglas locales"
+
+    def explode(*_):
+        raise PermissionError("sin permiso")
+    bad = root / "Facturas Entrantes/2026/3T/b.pdf"
+    bad.write_bytes(b"x")
+    original = fiscal_scan._read
+    fiscal_scan._read = explode
+    try:
+        fiscal_scan.read_in_background(database, 1, root, [bad])
+        for _ in range(100):
+            if not fiscal_scan.reading(1):
+                break
+            import time
+            time.sleep(0.05)
+    finally:
+        fiscal_scan._read = original
+    assert fiscal_scan._cached(db, 1, root, bad) == {"unreadable": True, "v": invoice_extract.VERSION}, "lo ilegible se queda en la caché"

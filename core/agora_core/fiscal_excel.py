@@ -40,7 +40,8 @@ def _number(value) -> float | None:
         return None
 
 
-TEXT_COLUMNS = {"A", "B", "C", "D", "E", "F", "K", "L"}
+TEXT_COLUMNS = {"A", "B", "C", "D", "E", "F", "K", "L"}  # Gastos: K and L hold text too
+INCOME_TEXT_COLUMNS = {"A", "B", "C", "D", "E", "F"}  # Ingresos: K and L are formulas
 
 
 def _literal(sheet, row: int, columns=TEXT_COLUMNS) -> None:
@@ -91,7 +92,7 @@ def build(year: int, quarter: int, holder: str, income: list[dict], expenses: li
         ingresos.append(_clean([_month(row["date"]) if _month(row["date"]) in months else months[0], _dmy(row["date"]), row.get("number"), row.get("client"), row.get("taxId"), row.get("concept"),
                          _number(row.get("base")), row.get("vatRate") or 0, f"=ROUND(G{r}*H{r},2)", row.get("withholdingRate") or 0,
                          f"=ROUND(G{r}*J{r},2)", f"=G{r}+I{r}-K{r}"]))
-        _literal(ingresos, r)
+        _literal(ingresos, r, INCOME_TEXT_COLUMNS)
     last_in = max(first, first + len(income) - 1)
     total_in = last_in + 1
     ingresos.cell(row=total_in, column=1, value="TOTAL").font = Font(bold=True)

@@ -46,6 +46,8 @@ def _files(root: Path, top: str, year: int, quarter: int, unplaced: list | None 
 _READING: set[tuple[int, str]] = set()
 _READING_LOCK = threading.Lock()
 _STARTED: dict[int, int] = {}  # how many files the current reading of each folder started with (for the progress bar)
+_MODEL_FAILURES: dict[tuple[int, str], int] = {}  # failed model calls per file (network, rate limit, no session)
+MAX_MODEL_FAILURES = 3
 
 
 def _cached(connection: sqlite3.Connection, folder_id: int, root: Path, path: Path) -> dict | None:
@@ -80,7 +82,7 @@ def read_in_background(database, folder_id: int, root: Path, paths: list[Path], 
                 try:
                     _read(connection, folder_id, root, path)
                 except Exception:  # noqa: BLE001 - kept as unreadable, so it is counted and never read in a loop
-                    _remember(connection, folder_id, root, path, {"unreadable": True})
+                    _remember(connection, folder_id, root, path, {"unreadable": True, "v": invoice_extract.VERSION})
         except Exception:  # noqa: BLE001
             pass
 
@@ -111,6 +113,23 @@ def _as_jpeg(path: Path) -> bytes | None:
     return data if 0 < len(data) <= MAX_FILE else None
 
 
+def _give_up(database, folder_id: int, root: Path, path: Path) -> None:
+    """Marks the file as asked, so it keeps the local rules and is never queued again in a loop."""
+    with database() as connection:
+        fields = _cached(connection, folder_id, root, path) or {}
+        if fields and not fields.get("unreadable"):
+            _remember(connection, folder_id, root, path, {**fields, "aiTried": True})
+    _MODEL_FAILURES.pop((folder_id, str(path)), None)
+
+
+def _model_failed(database, folder_id: int, root: Path, path: Path) -> None:
+    """A failed call may be passing (no network, rate limit): asked again on the next loads, up to a limit."""
+    key = (folder_id, str(path))
+    _MODEL_FAILURES[key] = _MODEL_FAILURES.get(key, 0) + 1
+    if _MODEL_FAILURES[key] >= MAX_MODEL_FAILURES:
+        _give_up(database, folder_id, root, path)
+
+
 def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], ask) -> None:
     """Adds what the model reads to what the local rules found (the model wins where it found something)."""
     texts: list[tuple[Path, str]] = []
@@ -120,29 +139,39 @@ def _read_with_model(database, folder_id: int, root: Path, paths: list[Path], as
             known = _cached(connection, folder_id, root, path) or {}
         if known.get("image") and image is not None:  # a photo or scanned invoice: Claude reads the image
             jpeg = _as_jpeg(path)
-            if jpeg:
+            if not jpeg:  # not convertible (damaged, protected, no sips): it will not change on its own
+                _give_up(database, folder_id, root, path)
+            else:
                 try:
                     found = image(jpeg)
                 except Exception:  # noqa: BLE001
-                    found = None
-                with database() as connection:
-                    fields = _cached(connection, folder_id, root, path) or {}
-                    _remember(connection, folder_id, root, path, {**fields, "ai": found} if found else {**fields, "aiTried": True})
+                    _model_failed(database, folder_id, root, path)
+                else:
+                    with database() as connection:
+                        fields = _cached(connection, folder_id, root, path) or {}
+                        _remember(connection, folder_id, root, path, {**fields, "ai": found} if found else {**fields, "aiTried": True})
+                    _MODEL_FAILURES.pop((folder_id, str(path)), None)
             _done(folder_id, [path])
             continue
         if path.suffix.lower() == ".pdf" and not known.get("image"):
             try:
                 text = invoice_extract.pdf_text(path.read_bytes())
             except OSError:
-                continue
+                text = ""
             if text.strip():
                 texts.append((path, text))
+            else:
+                _give_up(database, folder_id, root, path)
     for i in range(0, len(texts), 5):
         batch = texts[i:i + 5]
         try:
             found = ask([text for _, text in batch])
         except Exception:  # noqa: BLE001 - without the model, the local rules stay
-            return
+            for path, _ in batch:
+                _model_failed(database, folder_id, root, path)
+            continue
+        for path, _ in batch:
+            _MODEL_FAILURES.pop((folder_id, str(path)), None)
         with database() as connection:
             for n, (path, _) in enumerate(batch, 1):
                 _done(folder_id, [path])

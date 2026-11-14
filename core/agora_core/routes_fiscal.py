@@ -344,20 +344,30 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         if not engines:
             return None
 
+        def first_answer(call):
+            """The first engine that answers (the Claude Code session, then the API key); the last error if none."""
+            error: Exception | None = None
+            for engine in engines:
+                try:
+                    return asyncio.run(call(engine))
+                except Exception as failure:  # noqa: BLE001 - try the next engine
+                    error = failure
+            raise error or RuntimeError("Sin motor")
+
         def ask(texts: list[str]) -> dict:
-            async def run():
+            async def run(engine):
                 parts = []
                 turn = Turn(invoice_ai.SYSTEM, [{"role": "user", "content": invoice_ai.prompt(texts)}], "haiku")
-                async with aclosing(engines[0].stream(turn)) as stream:
+                async with aclosing(engine.stream(turn)) as stream:
                     async for text in stream:
                         if text:
                             parts.append(text)
                 return "".join(parts)
-            return invoice_ai.parse(asyncio.run(run()), len(texts))
+            return invoice_ai.parse(first_answer(run), len(texts))
 
         def image(jpeg: bytes) -> dict | None:
             text = "Extrae los datos de este documento (es la imagen: trátala como el documento n=1)."
-            return invoice_ai.parse(asyncio.run(ask_with_image(engines[0], invoice_ai.SYSTEM, text, jpeg)), 1).get(1)
+            return invoice_ai.parse(first_answer(lambda engine: ask_with_image(engine, invoice_ai.SYSTEM, text, jpeg)), 1).get(1)
         ask.image = image
         return ask
 

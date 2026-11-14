@@ -25,6 +25,7 @@ def test_el_excel_tiene_el_formato_del_gestor():
     assert [c.value for c in ingresos[4]][:3] == ["Mes", "Fecha", "Nº factura"] and ingresos["A4"].fill.fgColor.rgb == "FF1F4E78"
     assert (ingresos["A5"].value, ingresos["B5"].value, ingresos["H5"].value, ingresos["I5"].value) == ("Octubre", "03/10/2026", 0.21, "=ROUND(G5*H5,2)")
     assert ingresos["L5"].value == "=G5+I5-K5" and ingresos["G6"].value == "=SUM(G5:G5)"
+    assert all(ingresos[f"{c}5"].data_type == "f" for c in "IKL"), "IRPF y total de Ingresos son fórmulas, no texto"
     assert gastos["E5"].value == "—" and gastos["K6"].value == "USD"
     assert gastos["J7"].value == '=SUMIFS(J$5:J$6,$K$5:$K$6,"EUR")' and gastos["F8"].value == "TOTAL USD"
     assert resumen["A6"].value == "Octubre" and resumen["B22"].value == "=B20-B21" and resumen["A26"].value == "· Una nota."
