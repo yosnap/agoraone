@@ -234,7 +234,7 @@ _IRPF = re.compile(r"(?:IRPF|retenci[oó]n)[^\d\n%]{0,12}-?\s?(\d{1,2}(?:[.,]\d{
 _NUMBER = re.compile(r"(?:factura|invoice|n[º°o]\.?\s*de\s*factura)\s*(?:n[º°o.]*|number|num\.?|#)?\s*[:\-]?\s*(?!\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})([A-Z]{0,4}[\-/]?\d[\w\-/]{0,20})", re.I)
 
 
-VERSION = 6  # bump when the reading rules change: files read with older rules are read again
+VERSION = 7  # bump when the reading rules change: files read with older rules are read again
 
 
 _LEGAL = re.compile(r"\b(limited|ltd|llc|inc|gmbh|s\.?\s?l\.?u?|s\.?\s?a\.?u?|b\.?v\.?|sas|sarl|ag|plc|oy|ab|d\.o\.o\.|corp(oration)?)\b\.?", re.I)

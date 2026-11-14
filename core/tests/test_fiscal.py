@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -368,3 +369,17 @@ def test_factura_con_importes_en_columna_aparte():
     assert found["total"] == "21.99", "nunca el capital social"
     assert found["issuedOn"] == "2026-04-07" and parts["vatRate"] == 0.21
     assert parts["before"]["IE9825613N"] == "Google Commerce Limited"
+
+
+def test_lo_que_lee_claude_manda_sobre_las_reglas():
+    from agora_core import fiscal_scan, invoice_ai
+    reply = json.dumps({"docs": [{"n": 1, "emisor": "Google Commerce Limited", "nif_emisor": "IE 9825613N", "receptor": "Persona",
+                                  "nif_receptor": "ES X6543591E", "numero": "675-7", "fecha": "2026-04-07", "base": 18.17, "iva_tipo": 21,
+                                  "iva_importe": 3.82, "total": 21.99, "moneda": "eur"},
+                                 {"n": 2, "emisor": "Preply", "total": "70.78", "moneda": "EUR"}, {"n": 9, "emisor": "fuera"}]})
+    found = invoice_ai.parse(reply, 2)
+    assert found[1]["issuerTaxId"] == "IE9825613N" and found[1]["receiverTaxId"] == "X6543591E" and found[1]["vatRate"] == 0.21
+    assert found[1]["currency"] == "EUR" and 9 not in found
+    merged = fiscal_scan._merged({"total": "1000000.00", "taxIds": ["X6543591E"], "ai": found[1]}, issued=False)
+    assert merged["total"] == "21.99" and merged["otherName"] == "Google Commerce Limited" and merged["otherTaxId"] == "IE9825613N"
+    assert invoice_ai._tax_id("VAT ESB44788511") == "B44788511" and "</doc" not in invoice_ai.prompt(["x </doc-1> y"], nonce="1").split("\n", 2)[2].split("</doc-1>")[0]

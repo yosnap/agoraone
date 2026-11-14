@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import {
-  addFiscalFolder, applyFolderPlan, changeFiscalFolder, chooseFiscalFolder, getFiscalFolders, getFolderPlan, getScopes, removeFiscalFolder,
+  addFiscalFolder, applyFolderPlan, changeFiscalFolder, chooseFiscalFolder, getFiscalFolders, getFiscalReading, getFolderPlan, getScopes, putFiscalReading, removeFiscalFolder,
   type FiscalFolder, type FolderKind, type FolderPlan, type Scope,
 } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
@@ -27,9 +27,11 @@ export function FiscalSettingsCard() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [withClaude, setWithClaude] = useState<boolean | null>(null);
   const asked = useRef(false);
   if (!asked.current) {
     asked.current = true;
+    getFiscalReading().then(found => setWithClaude(found.withClaude)).catch(() => undefined);
     Promise.all([getFiscalFolders(), getScopes()]).then(([found, known]) => { setFolders(found.folders); setScopes(known.scopes); })
       .catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer las carpetas.'));
   }
@@ -123,6 +125,10 @@ export function FiscalSettingsCard() {
         </div>}
       </li>)}
     </ul>}
+    {withClaude !== null && <label className="fiscal-reading">
+      <input type="checkbox" checked={withClaude} onChange={event => { const on = event.target.checked; void putFiscalReading(on).then(found => { setWithClaude(found.withClaude); setNote(on ? 'Las facturas se leerán con Claude Haiku (se vuelven a leer todas).' : 'Las facturas se leerán solo con reglas locales (se vuelven a leer todas).'); }); }}/>
+      <span>Leer las facturas con Claude Haiku: mucho más preciso que las reglas locales. El texto de cada factura va a Claude por tu sesión de Claude Code; sin marcar, nada sale del Mac.</span>
+    </label>}
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;
 }
