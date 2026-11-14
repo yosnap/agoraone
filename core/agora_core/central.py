@@ -11,12 +11,15 @@ import json
 import os
 import re
 import shutil
+import threading
 import sqlite3
 from pathlib import Path
 from urllib.parse import urlparse
 
 from .db import now, transaction
 
+TOTAL_SECONDS = 180
+_REFRESHING = threading.Lock()  # one reading at a time (the half-hourly one or «Actualizar»)
 READING_TOOLS = {"list_clients", "list_projects", "list_websites", "list_servers", "get_project"}
 SNAPSHOT_SETTING = "central.snapshot"
 CALL_SECONDS = 60
@@ -54,20 +57,27 @@ async def _call_all(folder: Path) -> dict:
         except ValueError:
             return None
 
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await asyncio.wait_for(session.initialize(), CALL_SECONDS)
-            clients = await call(session, "list_clients") or []
-            projects = await call(session, "list_projects", {"limit": 200}) or []
-            websites = await call(session, "list_websites") or []
-            servers = await call(session, "list_servers") or []
-            # The client's address and tax id only come with a project's full record: one per client.
-            details: dict[str, dict] = {}
-            for project in projects:
-                name = project.get("client")
-                if name and name not in details:
-                    full = await call(session, "get_project", {"id": project["id"]}) or {}
-                    details[name] = full.get("client") or {}
+    def items(value) -> list[dict]:
+        return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
+
+    quiet = open(os.devnull, "w")  # Central's own messages (which may name its database) never reach AgoraOne's log
+    try:
+        async with stdio_client(params, errlog=quiet) as (read, write):
+            async with ClientSession(read, write) as session:
+                await asyncio.wait_for(session.initialize(), CALL_SECONDS)
+                clients = items(await call(session, "list_clients"))
+                projects = items(await call(session, "list_projects", {"limit": 200}))
+                websites = items(await call(session, "list_websites"))
+                servers = items(await call(session, "list_servers"))
+                # The client's address and tax id only come with a project's full record: one per client.
+                details: dict[str, dict] = {}
+                for project in projects:
+                    name = project.get("client")
+                    if name and name not in details and project.get("id"):
+                        full = await call(session, "get_project", {"id": project["id"]})
+                        details[name] = full.get("client") if isinstance(full, dict) and isinstance(full.get("client"), dict) else {}
+    finally:
+        quiet.close()
     return {"clients": clients, "projects": projects, "websites": websites, "servers": servers, "details": details}
 
 
@@ -112,13 +122,17 @@ def shape(raw: dict) -> dict:
 
 def refresh(connection: sqlite3.Connection, folder: Path, fetch=None) -> dict:
     """Reads Central now and keeps the snapshot. `fetch(folder)` is for tests."""
+    if not _REFRESHING.acquire(blocking=False):
+        raise CentralError("Ya se está leyendo Central; espera un momento.")
     try:
-        raw = fetch(folder) if fetch else asyncio.run(_call_all(folder))
+        raw = fetch(folder) if fetch else asyncio.run(asyncio.wait_for(_call_all(folder), TOTAL_SECONDS))
+        snapshot = shape(raw)
     except CentralError:
         raise
     except Exception as error:  # noqa: BLE001 - Central is an outside program: any failure is said plainly
         raise CentralError(f"No se pudo leer Central ({type(error).__name__}). ¿Está su base de datos en marcha?") from error
-    snapshot = shape(raw)
+    finally:
+        _REFRESHING.release()
     with transaction(connection):
         connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
                            (SNAPSHOT_SETTING, json.dumps(snapshot, ensure_ascii=False)))

@@ -188,13 +188,20 @@ def doubts(found: dict, notice: dict) -> list[str]:
     return result
 
 
-_NUM = r"(\d{1,3}(?:[.\s]\d{3})*(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
-_BASE = re.compile(r"(?:base\s+imponible|subtotal|importe\s+neto|total\s+sin\s+iva|net\s+amount)[^\d\n]{0,25}" + _NUM, re.I)
+# An amount: 1,234.56 (English) before 1.234,56 or 1 234,56 (Spanish), then 12,50 / 12.50, then 12; never a
+# percentage, and thousands are never split across lines.
+_NUM = (r"(?<![\d.,])(\d{1,3}(?:,\d{3})+\.\d{2}|\d{1,3}(?:[. \u00a0]\d{3})+(?:,\d{2})?|\d+[.,]\d{2}|\d+)(?![\d.,]*\s?%)(?![\d])")
+_GAP = r"(?:[^\d\n]|\(\d{1,2}(?:[.,]\d+)?\s?%\))"
+# The total needs decimals or thousands (so «Total 3 artículos» is not read as 3 €).
+_TOTAL = re.compile(r"(?:total(?!\s*(?:de\s+)?(?:iva|vat|tax|impuestos?|igic))(?:\s+a\s+pagar|\s+factura|\s+amount|\s+due|\s+paid)?"
+                    r"|importe\s+total|amount\s+paid|gesamt(?:betrag)?)[^\d\n]{0,25}"
+                    r"(?<![\d.,])(\d{1,3}(?:,\d{3})+\.\d{2}|\d{1,3}(?:[. \u00a0]\d{3})+(?:,\d{2})?|\d+[.,]\d{2})(?![\d.,]*\s?%)(?!\d)", re.I)
+_BASE = re.compile(r"(?:base\s+imponible|subtotal|importe\s+neto|total\s+sin\s+iva|net\s+amount)" + _GAP + r"{0,25}" + _NUM, re.I)
 _VAT_AMOUNT = re.compile(r"(?:importe\s+(?:total\s+)?del?\s+IVA|cuota\s+(?:de\s+)?IVA|total\s+(?:del\s+)?IVA|IVA\s+total|total\s+VAT|VAT\s+amount|total\s+tax)[^\d\n]{0,20}" + _NUM, re.I)
 _MONEY_NEAR = re.compile(r"(?:[€$£]|EUR|USD|GBP)\s?" + _NUM + r"|" + _NUM + r"\s?(?:[€$£]|EUR|USD|GBP)")
 _VAT = re.compile(r"(?:IVA|VAT|TVA|MwSt)[^\d\n%]{0,12}(\d{1,2}(?:[.,]\d{1,2})?)\s?%[^\d\n]{0,20}" + _NUM, re.I)
 _IRPF = re.compile(r"(?:IRPF|retenci[oó]n)[^\d\n%]{0,12}-?\s?(\d{1,2}(?:[.,]\d{1,2})?)\s?%[^\d\n]{0,20}-?\s?" + _NUM, re.I)
-_NUMBER = re.compile(r"(?:factura|invoice|n[º°o]\.?\s*de\s*factura)\s*(?:n[º°o.]*|number|num\.?|#)?\s*[:\-]?\s*([A-Z]{0,4}[\-/]?\d[\w\-/]{1,20})", re.I)
+_NUMBER = re.compile(r"(?:factura|invoice|n[º°o]\.?\s*de\s*factura)\s*(?:n[º°o.]*|number|num\.?|#)?\s*[:\-]?\s*(?!\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})([A-Z]{0,4}[\-/]?\d[\w\-/]{0,20})", re.I)
 
 
 def breakdown(text: str) -> dict:
@@ -207,6 +214,11 @@ def breakdown(text: str) -> dict:
     rate = lambda found: round(float(found[1].replace(",", ".")) / 100, 4) if found else None  # noqa: E731
     vat_value = amount(vat[2]) if vat else amount(vat_amount[1]) if vat_amount else None
     vat_rate = rate(vat)
+    base_value = amount(base[1]) if base else None
+    if base_value and vat_rate is not None:
+        expected = round(float(base_value) * vat_rate, 2)
+        if vat_value is None or abs(float(vat_value) - expected) > max(0.05, expected * 0.02):
+            vat_value = f"{expected:.2f}"  # «IVA 21 % sobre 100,00: 21,00» names the base too: trust base × rate
     if vat_rate is None and vat_value is not None and base and amount(base[1]) and float(amount(base[1])) > 0:
         vat_rate = round(float(vat_value) / float(amount(base[1])), 2)
     tax_ids = []

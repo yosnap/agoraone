@@ -214,7 +214,7 @@ export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomePro
 export const getQuarter = (folderId: number, year: number, quarter: number) => core<QuarterView>(`/fiscal/folders/${folderId}/quarter?year=${year}&quarter=${quarter}`);
 export const makeQuarterExcel = (folderId: number, year: number, quarter: number) => core<{ path: string }>(`/fiscal/folders/${folderId}/excel`, { year, quarter });
 export const openFiscalFile = (folderId: number, path: string | null, reveal = false) => core<{ ok: true }>(`/fiscal/folders/${folderId}/open`, { path, reveal });
-export type CentralClient = { name: string; company: string | null; email: string | null; taxId: string | null; domains: string[];
+export type CentralClient = { name: string; company: string | null; domains: string[];
   projects: { name: string; status: string; phase: string | null }[]; websites: { url: string; status: string | null }[] };
 export type CentralServer = { name: string; status: string | null; provider: string | null; projects: string[] };
 export type CentralState = { configured: boolean; snapshot: { clients: CentralClient[]; servers: CentralServer[]; fetchedAt: string } | null; problem: string | null };

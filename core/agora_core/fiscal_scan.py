@@ -3,6 +3,7 @@ Entrantes» and issued ones in «Facturas Salientes», wherever they sit (the qu
 names, as in the tidying plan). Each PDF is read once with the isolated extractor and local rules, and
 read again only if it changes. Nothing in the folder is modified."""
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -12,22 +13,31 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import fiscal_folder, invoice_extract
-from .fiscal import ISSUED, RECEIVED
+from .fiscal import ISSUED, MAX_FILE, RECEIVED
 
 DOCS = {".pdf", ".png", ".jpg", ".jpeg", ".heic"}
 
 
-def _files(root: Path, top: str, year: int, quarter: int):
+def _files(root: Path, top: str, year: int, quarter: int, unplaced: list | None = None):
+    """The documents of that quarter; those whose folders do not tell a quarter go to `unplaced`."""
     base = root / top
     if not base.is_dir() or base.is_symlink():
         return
     for path in sorted(base.rglob("*")):
-        if path.is_symlink() or not path.is_file() or path.suffix.lower() not in DOCS or path.name.startswith("."):
+        try:
+            if path.is_symlink() or not path.is_file() or path.suffix.lower() not in DOCS or path.name.startswith("."):
+                continue
+        except OSError:
             continue
         folders = list(path.relative_to(base).parts[:-1])
         try:
             found_year, found_quarter, rest = fiscal_folder._where(folders)
         except fiscal_folder.Unclear:
+            found_year = found_quarter = None
+            rest = []
+        if found_year is None or found_quarter is None:
+            if unplaced is not None:
+                unplaced.append(path)
             continue
         if (found_year, found_quarter) == (year, quarter):
             yield path, rest
@@ -38,7 +48,10 @@ _READING_LOCK = threading.Lock()
 
 
 def _cached(connection: sqlite3.Connection, folder_id: int, root: Path, path: Path) -> dict | None:
-    stat = path.stat()
+    try:
+        stat = path.stat()
+    except OSError:
+        return {"unreadable": True}
     row = connection.execute("SELECT size, mtime, fields FROM fiscal_file WHERE folder_id = ? AND path = ?",
                              (folder_id, str(path.relative_to(root)))).fetchone()
     return json.loads(row["fields"]) if row and row["size"] == stat.st_size and row["mtime"] == stat.st_mtime else None
@@ -55,8 +68,11 @@ def read_in_background(database, folder_id: int, root: Path, paths: list[Path]) 
     def one(path: Path) -> None:
         try:
             with database() as connection:
-                _read(connection, folder_id, root, path)
-        except Exception:  # noqa: BLE001 - a file that cannot be read is simply left unread
+                try:
+                    _read(connection, folder_id, root, path)
+                except Exception:  # noqa: BLE001 - kept as unreadable, so it is counted and never read in a loop
+                    _remember(connection, folder_id, root, path, {"unreadable": True})
+        except Exception:  # noqa: BLE001
             pass
         finally:
             with _READING_LOCK:
@@ -73,18 +89,32 @@ def reading(folder_id: int) -> int:
         return sum(1 for f, _ in _READING if f == folder_id)
 
 
+def _remember(connection: sqlite3.Connection, folder_id: int, root: Path, path: Path, fields: dict) -> None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return
+    connection.execute("INSERT OR REPLACE INTO fiscal_file (folder_id, path, size, mtime, fields) VALUES (?, ?, ?, ?, ?)",
+                       (folder_id, str(path.relative_to(root)), stat.st_size, stat.st_mtime, json.dumps(fields)))
+
+
 def _read(connection: sqlite3.Connection, folder_id: int, root: Path, path: Path) -> dict:
-    relative = str(path.relative_to(root))
-    stat = path.stat()
     cached = _cached(connection, folder_id, root, path)
     if cached is not None:
         return cached
     fields: dict = {"image": path.suffix.lower() != ".pdf"}
-    if not fields["image"]:
-        text = invoice_extract.pdf_text(path.read_bytes())
-        fields |= invoice_extract.fields(text) | invoice_extract.breakdown(text)
-    connection.execute("INSERT OR REPLACE INTO fiscal_file (folder_id, path, size, mtime, fields) VALUES (?, ?, ?, ?, ?)",
-                       (folder_id, relative, stat.st_size, stat.st_mtime, json.dumps(fields)))
+    if path.stat().st_size > MAX_FILE:
+        fields["unreadable"] = True
+    else:
+        data = path.read_bytes()
+        fields["sha256"] = hashlib.sha256(data).hexdigest()
+        if not fields["image"]:
+            text = invoice_extract.pdf_text(data)
+            if text.strip():
+                fields |= invoice_extract.fields(text) | invoice_extract.breakdown(text)
+            else:
+                fields["unreadable"] = True  # scanned without text, protected or the extractor gave up
+    _remember(connection, folder_id, root, path, fields)
     return fields
 
 
@@ -101,13 +131,30 @@ def _day(fields: dict, start: str, end: str) -> tuple[str, bool]:
     return (day, False) if day and start <= day <= end else (start, True)
 
 
+def own_tax_id(connection: sqlite3.Connection, folder_id: int) -> str | None:
+    """The holder's tax id: on an issued invoice the issuer is always the holder, so it is the one most of the
+    folder's issued invoices (of every quarter) carry."""
+    issued = [json.loads(r["fields"]).get("taxIds", []) for r in connection.execute(
+        "SELECT fields FROM fiscal_file WHERE folder_id = ? AND path LIKE ?", (folder_id, f"{ISSUED}/%"))]
+    issued = [list(dict.fromkeys(ids)) for ids in issued if ids]
+    counts = Counter(t for ids in issued for t in ids)
+    if not counts:
+        return None
+    # Most common first; on a tie, the one written earlier (the issuer heads an invoice).
+    position = {t: sum(ids.index(t) for ids in issued if t in ids) / counts[t] for t in counts}
+    tax_id = min(counts, key=lambda t: (-counts[t], position[t], t))
+    return tax_id if counts[tax_id] >= max(1, round(len(issued) * 0.6)) else None
+
+
 def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, quarter: int, start: str, end: str,
-         known: set[str]) -> tuple[list[dict], list[dict], list[Path]]:
-    """(issued rows, received rows, files still to read) found in the folder for that quarter; `known` are
-    paths already in the register, which are not counted twice. Only what was already read is used; the
-    rest is returned so it can be read in the background."""
-    issued = list(_files(root, ISSUED, year, quarter))
-    received = [(p, r) for p, r in _files(root, RECEIVED, year, quarter) if str(p.relative_to(root)) not in known]
+         known: set[str], known_files: set[str] | None = None) -> tuple[list[dict], list[dict], list[Path], dict]:
+    """(issued rows, received rows, files still to read, counts) for that quarter. `known` are paths and
+    `known_files` the sha256 of documents already in the register, which are not counted twice; the same
+    file saved twice in the folder counts once. Only what was already read is used; the rest is returned to
+    be read in the background."""
+    unplaced: list[Path] = []
+    issued = list(_files(root, ISSUED, year, quarter, unplaced))
+    received = [(p, r) for p, r in _files(root, RECEIVED, year, quarter, unplaced) if str(p.relative_to(root)) not in known]
     pending, read = [], {}
     for path, _ in issued + received:
         fields = _cached(connection, folder_id, root, path)
@@ -115,28 +162,42 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
             pending.append(path)
         else:
             read[path] = fields
-    # The user's own tax id is on every invoice (as issuer or as customer): it is never the other party's.
-    counts = Counter(t for f in read.values() for t in f.get("taxIds", []))
-    own = {t for t, n in counts.items() if n >= max(3, len(read) // 2)}
+    own = own_tax_id(connection, folder_id)
+    seen = set(known_files or ())
+    counts = {"unreadable": 0, "duplicates": 0, "unplaced": len(unplaced), "noVat": 0}
 
     def other(fields: dict) -> str | None:
-        return next((t for t in fields.get("taxIds", [fields.get("taxId")]) if t and t not in own), None)
+        return next((t for t in fields.get("taxIds", []) if t and t != own), None)
+
+    def fresh(fields: dict) -> bool:
+        digest = fields.get("sha256")
+        if digest and digest in seen:
+            counts["duplicates"] += 1
+            return False
+        if digest:
+            seen.add(digest)
+        if fields.get("unreadable"):
+            counts["unreadable"] += 1
+            return False
+        return True
     income, expenses = [], []
     for path, rest in issued:
-        if path not in read:
+        if path not in read or not fresh(read[path]):
             continue
         fields = read[path]
         day, guessed = _day(fields, start, end)
         base, total = fields.get("base"), fields.get("total")
-        vat_rate, irpf_rate = fields.get("vatRate") or 0.0, fields.get("withholdingRate") or 0.0
-        if base is None and total is not None:  # total = base + VAT − withholding
+        vat_rate, irpf_rate = fields.get("vatRate"), fields.get("withholdingRate") or 0.0
+        if base is None and total is not None and vat_rate is not None:  # total = base + VAT − withholding
             base = str(round(float(total) / (1 + vat_rate - irpf_rate), 2))
+        if vat_rate is None:
+            counts["noVat"] += 1
         income.append({"date": day, "number": fields.get("number") or path.stem[:30], "client": _name(path, rest), "taxId": other(fields) or "",
                        "concept": str(path.relative_to(root)), "base": float(base) if base is not None else None,
-                       "vatRate": vat_rate, "withholdingRate": irpf_rate, "total": total, "currency": fields.get("currency") or "EUR",
+                       "vatRate": vat_rate or 0.0, "withholdingRate": irpf_rate, "total": total, "currency": fields.get("currency") or "EUR",
                        "guessedDate": guessed, "file": str(path.relative_to(root))})
     for path, rest in received:
-        if path not in read:
+        if path not in read or not fresh(read[path]):
             continue
         fields, relative = read[path], str(path.relative_to(root))
         day, guessed = _day(fields, start, end)
@@ -146,4 +207,4 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
         expenses.append({"id": f"archivo:{relative}", "doubts": notes, "issuedOn": day, "supplier": _name(path, rest), "taxId": other(fields),
                          "number": fields.get("number") or "", "concept": relative, "base": fields.get("base"), "vat": fields.get("vat"),
                          "total": fields.get("total") or "0", "currency": fields.get("currency") or "EUR", "notes": "; ".join(notes), "file": relative})
-    return income, expenses, pending
+    return income, expenses, pending, counts

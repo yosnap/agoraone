@@ -63,10 +63,16 @@ def central_router(settings: Settings, health: CentralHealth) -> APIRouter:
                 return work(connection)
         return await run_in_threadpool(task)
 
+    def public(data: dict | None) -> dict | None:
+        """What the screen needs: no client's address or tax id leaves the core here."""
+        if not data:
+            return data
+        return {**data, "clients": [{k: v for k, v in c.items() if k not in ("email", "taxId")} for c in data["clients"]]}
+
     @router.get("/central")
     async def get_central():
         data, configured = await db(lambda c: (central.snapshot(c), _folder(c) is not None))
-        return {"configured": configured, "snapshot": data, "problem": health.problem}
+        return {"configured": configured, "snapshot": public(data), "problem": health.problem}
 
     @router.post("/central/refresh")
     async def refresh():
@@ -81,6 +87,6 @@ def central_router(settings: Settings, health: CentralHealth) -> APIRouter:
             health.problem = str(error)
             return JSONResponse({"error": str(error)}, status_code=502)
         health.problem = None
-        return {"configured": True, "snapshot": data, "problem": None}
+        return {"configured": True, "snapshot": public(data), "problem": None}
 
     return router

@@ -231,11 +231,14 @@ class CompatibleEngine:
             raise EngineError(f"El proveedor no responde ({type(error).__name__}).") from error
 
 
+PRIVATE_TOOLS = {"consultar_bandeja", "consultar_clientes"}  # mail and clients: Claude only
+
+
 def _specs(mail: bool = True) -> list[dict]:
     from .brain_tools import SPECS
 
     if not mail:  # normal mail is read by Claude only (plan of 1.1, 14/11/2026), never by the compatible provider
-        return [spec for spec in SPECS if spec["name"] != "consultar_bandeja"]
+        return [spec for spec in SPECS if spec["name"] not in PRIVATE_TOOLS]
     return SPECS
 
 
