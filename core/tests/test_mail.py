@@ -41,6 +41,11 @@ class FakeImap:
         self.commands: list[str] = []
         self.readonly = None
 
+    def authenticate(self, mechanism, answer):
+        self.commands.append(f"AUTHENTICATE {mechanism}")
+        if answer(b"") != b"user=yo@outlook.com\x01auth=Bearer acceso-1\x01\x01":
+            raise imaplib.IMAP4.error("AUTHENTICATIONFAILED")
+
     def login(self, user, password):
         password.encode("ascii")  # like imaplib, which sends arguments as ASCII
         if password != self.password:
@@ -203,6 +208,80 @@ def test_cambios_todo_o_nada_y_sin_nulos_obligatorios(db):
         mail.create_account(db, {"address": "otro@example.com", "provider": "gmail", "username": "con espacio"})
 
 
+class FakeMicrosoft:
+    """Microsoft's token endpoints: the code, two «pending» answers, then the tokens."""
+
+    def __init__(self):
+        self.calls = []
+        self.polls = 0
+
+    def __call__(self, url, data):
+        self.calls.append((url.rsplit("/", 1)[-1], dict(data)))
+        if url.endswith("/devicecode"):
+            body = {"user_code": "ABCD-1234", "device_code": "dispositivo", "verification_uri": "https://microsoft.com/devicelogin", "expires_in": 900, "interval": 1}
+        elif data.get("grant_type") == "refresh_token":
+            body = {"access_token": "acceso-2", "refresh_token": "renovacion-2", "expires_in": 3600} if data["refresh_token"] != "revocada" else {"error": "invalid_grant"}
+        else:
+            self.polls += 1
+            body = {"error": "authorization_pending"} if self.polls < 3 else {"access_token": "acceso-1", "refresh_token": "renovacion-1", "expires_in": 3600}
+
+        class Answer:
+            def json(self_inner):
+                return body
+        return Answer()
+
+
+def test_microsoft_codigo_tokens_y_xoauth2(db):
+    from agora_core import mail_oauth
+    flows, http, saved = mail_oauth.Flows(), FakeMicrosoft(), []
+    client = "00000000-0000-4000-8000-000000000001"
+    pending = mail_oauth.start(flows, 1, client, saved.append, http=http, sleep=lambda _: None)
+    assert (pending.user_code, pending.verification_uri) == ("ABCD-1234", "https://microsoft.com/devicelogin")
+    for _ in range(200):
+        if pending.state != "waiting":
+            break
+        import time
+        time.sleep(0.01)
+    assert pending.state == "done" and saved == ["renovacion-1"], "guarda solo la renovación"
+    assert "offline_access" in http.calls[0][1]["scope"] and "IMAP.AccessAsUser.All" in http.calls[0][1]["scope"]
+    # The account signs in with XOAUTH2 and the token in memory; no password reaches the server.
+    account = mail.create_account(db, {"address": "Yo@Outlook.com", "provider": "microsoft"})
+    row = db.execute("SELECT provider, auth, username, imap_host FROM mail_account").fetchone()
+    assert tuple(row) == ("other", "microsoft", "yo@outlook.com", "outlook.office365.com")
+
+    def login(imap, acc, refresh):
+        token = mail_oauth.access_token(flows, 1, client, refresh, saved.append, http=http)
+        imap.authenticate("XOAUTH2", lambda _: mail_oauth.xoauth2(acc["username"], token))
+    server = FakeImap({1: message(1)})
+    assert mail.sync_account(db, account, "renovacion-1", lambda h, p: server, login=login) == {"status": "ok", "added": 1}
+    assert "AUTHENTICATE XOAUTH2" in server.commands
+    # Expired access token: renewed with the refresh token, which Microsoft rotated and is saved again.
+    flows.tokens.clear()
+    assert mail_oauth.access_token(flows, 1, client, "renovacion-1", saved.append, http=http) == "acceso-2"
+    assert saved[-1] == "renovacion-2"
+    # A revoked permission is reported on the account, never retried blindly.
+    flows.tokens.clear()
+
+    def revoked(imap, acc, refresh):
+        try:
+            mail_oauth.access_token(flows, 1, client, refresh, saved.append, http=http)
+        except mail_oauth.OAuthError as error:
+            raise mail.LoginError(str(error)) from error
+    assert mail.sync_account(db, account, "revocada", lambda h, p: FakeImap({}), login=revoked)["status"] == "auth"
+    assert "vuelve a conectar" in db.execute("SELECT last_error FROM mail_account").fetchone()[0]
+    assert mail.sync_account(db, account, "renovacion-1", lambda h, p: FakeImap({}))["status"] == "auth", "sin identificador de aplicación"
+
+
+def test_identificador_de_aplicacion_valido(db):
+    from agora_core import mail_oauth
+    with pytest.raises(mail_oauth.OAuthError):
+        mail_oauth.save_client_id(db, "no-es-un-guid")
+    mail_oauth.save_client_id(db, "ABCDEF01-2345-4678-9ABC-DEF012345678")
+    assert mail_oauth.client_id(db) == "abcdef01-2345-4678-9abc-def012345678"
+    mail_oauth.save_client_id(db, None)
+    assert mail_oauth.client_id(db) is None
+
+
 class MemorySecrets:
     def __init__(self):
         self.values = {}
@@ -231,7 +310,7 @@ def test_rutas_de_cuentas_y_ambitos(tmp_path):
                                                       "password": "clave-de-app"}, headers=headers)
         assert created.status_code == 201
         account = created.json()["accounts"][0]
-        assert account["hasPassword"] and account["scopeName"] == "CodeIA" and "password" not in json.dumps(account).lower().replace("haspassword", "")
+        assert account["hasPassword"] and account["scopeName"] == "CodeIA" and "clave-de-app" not in json.dumps(account)
         assert secrets.get(f"mail:{account['id']}") == "clave-de-app"
         changed = client.put(f"/mail/accounts/{account['id']}", json={"password": None, "confidentiality": "local_only"}, headers=headers).json()
         assert not changed["accounts"][0]["hasPassword"] and changed["accounts"][0]["confidentiality"] == "local_only"
@@ -241,3 +320,8 @@ def test_rutas_de_cuentas_y_ambitos(tmp_path):
         assert client.delete(f"/mail/accounts/{account['id']}", headers=headers).status_code == 404
         assert client.post("/mail/accounts", json={"address": "x@example.com", "provider": "other"}, headers=headers).status_code == 422
         assert client.post("/scopes", json={"name": "   "}, headers=headers).status_code == 422
+        microsoft = client.post("/mail/accounts", json={"address": "yo@outlook.com", "provider": "microsoft"}, headers=headers).json()["accounts"][0]
+        assert microsoft["provider"] == "microsoft" and microsoft["auth"] == "microsoft"
+        assert client.post(f"/mail/accounts/{microsoft['id']}/microsoft", headers=headers).status_code == 422, "sin identificador"
+        assert client.put("/mail/microsoft", json={"clientId": "x"}, headers=headers).status_code == 422
+        assert client.get(f"/mail/accounts/{microsoft['id']}/microsoft", headers=headers).json() == {"state": "none"}

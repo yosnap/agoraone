@@ -12,13 +12,15 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import mail
+from . import mail, mail_oauth
 from .db import DB_NAME, connect, now
 from .settings import Settings
 
 SYNC_SECONDS = 300
 Level = Literal["normal", "local_only", "private"]
-Provider = Literal["gmail", "icloud", "other"]
+Provider = Literal["gmail", "icloud", "microsoft", "other"]
+# Microsoft sign-ins in progress and access tokens in memory, shared by the routes and the background reader.
+FLOWS = mail_oauth.Flows()
 
 
 class AccountIn(BaseModel):
@@ -51,6 +53,10 @@ class AccountChange(BaseModel):
     password: str | None = Field(default=None, min_length=4, max_length=500)
 
 
+class MicrosoftIn(BaseModel):
+    clientId: str | None = Field(default=None, max_length=64)
+
+
 class ScopeIn(BaseModel):
     name: str = Field(min_length=1, max_length=80, pattern=r"\S")
     color: str | None = Field(default=None, pattern=r"^#[0-9a-f]{6}$")
@@ -63,12 +69,29 @@ def _slug(name: str) -> str:
     return slug[:40] or "ambito"
 
 
+def microsoft_login(connection, secrets):
+    """How Microsoft accounts sign in (XOAUTH2 with a token renewed from the Keychain), or None without a client id."""
+    client = mail_oauth.client_id(connection)
+    if not client:
+        return None
+
+    def login(imap, account, refresh):
+        account_id = account["id"]
+        try:
+            token = mail_oauth.access_token(FLOWS, account_id, client, refresh, lambda new: secrets.put(mail.secret_account(account_id), new))
+        except mail_oauth.OAuthError as error:
+            raise mail.LoginError(str(error)) from error
+        imap.authenticate("XOAUTH2", lambda _: mail_oauth.xoauth2(account["username"], token))
+    return login
+
+
 def sync_all(settings: Settings, secrets) -> None:
     connection = connect(settings.data_dir / DB_NAME)
     try:
+        login = microsoft_login(connection, secrets)
         for row in connection.execute("SELECT id FROM mail_account WHERE enabled = 1").fetchall():
             try:  # one account failing never stops the others
-                mail.sync_account(connection, row["id"], secrets.get(mail.secret_account(row["id"])))
+                mail.sync_account(connection, row["id"], secrets.get(mail.secret_account(row["id"])), login=login)
             except Exception as error:
                 print(f"AgoraOne núcleo: no se pudo leer una cuenta de correo ({type(error).__name__}).", file=sys.stderr)
     finally:
@@ -149,15 +172,59 @@ def mail_router(settings: Settings, secrets) -> APIRouter:
         if not await db(lambda c: mail.delete_account(c, account_id)):
             return JSONResponse({"error": "Esa cuenta no existe."}, status_code=404)
         await run_in_threadpool(secrets.put, mail.secret_account(account_id), None)
+        mail_oauth.forget(FLOWS, account_id)
         return await accounts()
 
     @router.post("/mail/accounts/{account_id}/sync")
     async def sync_now(account_id: int):
         password = await run_in_threadpool(secrets.get, mail.secret_account(account_id))
-        result = await db(lambda c: mail.sync_account(c, account_id, password, batch=mail.MANUAL_BATCH))
+        result = await db(lambda c: mail.sync_account(c, account_id, password, batch=mail.MANUAL_BATCH, login=microsoft_login(c, secrets)))
         if result["status"] == "missing":
             return JSONResponse({"error": "Esa cuenta no existe."}, status_code=404)
         return {"result": result, **(await accounts())}
+
+    @router.get("/mail/microsoft")
+    async def microsoft_settings():
+        return {"clientId": await db(mail_oauth.client_id)}
+
+    @router.put("/mail/microsoft")
+    async def save_microsoft(body: MicrosoftIn):
+        try:
+            await db(lambda c: mail_oauth.save_client_id(c, body.clientId))
+        except mail_oauth.OAuthError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
+        return {"clientId": await db(mail_oauth.client_id)}
+
+    def describe(pending: mail_oauth.Pending | None) -> dict:
+        if pending is None:
+            return {"state": "none"}
+        return {"state": pending.state, "message": pending.message, "userCode": pending.user_code,
+                "verificationUri": pending.verification_uri, "expiresAt": int(pending.expires_at)}
+
+    @router.post("/mail/accounts/{account_id}/microsoft")
+    async def connect_microsoft(account_id: int):
+        row = await db(lambda c: c.execute("SELECT auth FROM mail_account WHERE id = ?", (account_id,)).fetchone())
+        if row is None or row["auth"] != "microsoft":
+            return JSONResponse({"error": "Esa cuenta no es de Microsoft."}, status_code=404)
+        client = await db(mail_oauth.client_id)
+        if not client:
+            return JSONResponse({"error": "Falta el identificador de la aplicación de Microsoft (arriba, en esta misma tarjeta)."}, status_code=422)
+
+        def saved(refresh: str) -> None:  # runs in the waiting thread once the user accepts
+            secrets.put(mail.secret_account(account_id), refresh)
+            with database() as c:
+                c.execute("UPDATE mail_account SET status = 'pending', last_error = NULL WHERE id = ?", (account_id,))
+        try:
+            pending = await run_in_threadpool(mail_oauth.start, FLOWS, account_id, client, saved)
+        except mail_oauth.OAuthError as error:
+            return JSONResponse({"error": str(error)}, status_code=502)
+        return describe(pending)
+
+    @router.get("/mail/accounts/{account_id}/microsoft")
+    async def microsoft_status(account_id: int):
+        with FLOWS.lock:
+            pending = FLOWS.pending.get(account_id)
+        return describe(pending)
 
     @router.get("/scopes")
     async def scopes():

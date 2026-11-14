@@ -4,6 +4,7 @@ import {
   type Level, type MailAccount, type MailPreset, type MailProvider, type Scope,
 } from '../api/core';
 import { ModernSelect } from '../ui/modern-select';
+import { MicrosoftClientField, MicrosoftConnect } from './settings-microsoft';
 import { Loading, LoadError } from '../ui/load-state';
 
 const statusLabels: Record<MailAccount['status'], string> = {
@@ -73,7 +74,7 @@ export function MailSettingsCard() {
       address: form.address.trim(), provider: form.provider, username: form.username.trim() || undefined,
       imapHost: other ? form.imapHost.trim() : undefined, imapPort: other ? form.imapPort : undefined, smtpHost: other && form.smtpHost.trim() ? form.smtpHost.trim() : undefined,
       scopeId: form.scopeId ? Number(form.scopeId) : null, confidentiality: form.confidentiality, maxAgeDays: form.maxAgeDays, password: form.password || undefined,
-    }), 'Cuenta añadida. La contraseña está en el Llavero; pulsa «Leer ahora» para probarla.').then(ok => { if (ok) { setForm(empty); setAdding(false); } });
+    }), `${form.provider === 'microsoft' ? 'Cuenta añadida: pulsa «Conectar con Microsoft».' : 'Cuenta añadida. La contraseña está en el Llavero; pulsa «Leer ahora» para probarla.'}`).then(ok => { if (ok) { setForm(empty); setAdding(false); } });
   };
   if (!accounts || !presets) return <article className="card"><h2>Cuentas de correo</h2>{error ? <LoadError message={error} onRetry={load}/> : <Loading label="Leyendo las cuentas de correo"/>}</article>;
   const preset = presets[form.provider];
@@ -93,11 +94,12 @@ export function MailSettingsCard() {
         <label className="field">Nivel<ModernSelect value={account.confidentiality} options={levels}
           onChange={value => void act(account.id, () => changeMailAccount(account.id, { confidentiality: value as Level }), 'Nivel guardado.')}/></label>
       </div>
+      {account.auth === 'microsoft' ? <MicrosoftConnect accountId={account.id} connected={account.hasPassword} onDone={load}/> :
       <form className="field-row" onSubmit={event => { event.preventDefault(); void act(account.id, () => changeMailAccount(account.id, { password: passwords[account.id] }), 'Contraseña guardada en el Llavero.').then(ok => { if (ok) setPasswords({ ...passwords, [account.id]: '' }); }); }}>
         <label className="field">{account.hasPassword ? 'Cambiar la contraseña de aplicación' : 'Contraseña de aplicación'}
           <input type="password" autoComplete="off" spellCheck={false} value={passwords[account.id] ?? ''} onChange={event => setPasswords({ ...passwords, [account.id]: event.target.value })} placeholder="Nunca se muestra una vez guardada"/></label>
         <button className="button" disabled={(passwords[account.id] ?? '').length < 4 || busy === account.id}>Guardar</button>
-      </form>
+      </form>}
       <div className="actions">
         <button className="button primary" disabled={busy === account.id || !account.hasPassword}
           onClick={() => void act(account.id, async () => {
@@ -117,14 +119,15 @@ export function MailSettingsCard() {
       <label className="field">Proveedor<ModernSelect value={form.provider} onChange={value => setForm({ ...form, provider: value as MailProvider })}
         options={(Object.keys(presets) as MailProvider[]).map(key => ({ value: key, label: presets[key].name }))}/></label>
       <small className="muted">{preset.hint}</small>
+      {form.provider === 'microsoft' && <MicrosoftClientField/>}
       <label className="field">Dirección<input type="email" required value={form.address} onChange={event => setForm({ ...form, address: event.target.value })} autoComplete="off"/></label>
-      <label className="field">Usuario (si no es la dirección)<input value={form.username} onChange={event => setForm({ ...form, username: event.target.value })} autoComplete="off"/></label>
+      {form.provider !== 'microsoft' && <label className="field">Usuario (si no es la dirección)<input value={form.username} onChange={event => setForm({ ...form, username: event.target.value })} autoComplete="off"/></label>}
       {form.provider === 'other' && <div className="mail-account-fields">
         <label className="field">Servidor IMAP<input required value={form.imapHost} onChange={event => setForm({ ...form, imapHost: event.target.value })} placeholder="imap.tudominio.com"/></label>
         <label className="field">Puerto IMAP (SSL)<input type="number" min={1} max={65535} value={form.imapPort} onChange={event => setForm({ ...form, imapPort: Math.max(1, Math.min(65535, Number(event.target.value) || 993)) })}/></label>
         <label className="field">Servidor SMTP<input value={form.smtpHost} onChange={event => setForm({ ...form, smtpHost: event.target.value })} placeholder="smtp.tudominio.com"/></label>
       </div>}
-      <label className="field">Contraseña de aplicación<input type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} autoComplete="off" spellCheck={false} placeholder="Va directa al Llavero"/></label>
+      {form.provider !== 'microsoft' && <label className="field">Contraseña de aplicación<input type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} autoComplete="off" spellCheck={false} placeholder="Va directa al Llavero"/></label>}
       <div className="mail-account-fields">
         <label className="field">Ámbito<ScopeSelect value={form.scopeId} scopes={scopes} onCreated={setScopes} onChange={value => setForm({ ...form, scopeId: value })}/></label>
         <label className="field">Nivel<ModernSelect value={form.confidentiality} options={levels} onChange={value => setForm({ ...form, confidentiality: value as Level })}/></label>

@@ -118,10 +118,10 @@ export const getCoreSummary = (discreet: boolean) => core<CoreSummary>(`/summary
 export type Scope = { id: number; slug: string; name: string; color: string | null; fiscal: boolean };
 export const getScopes = () => core<{ scopes: Scope[] }>('/scopes');
 export const createScope = (name: string, fiscal = false) => core<{ scopes: Scope[] }>('/scopes', { name, fiscal });
-export type MailProvider = 'gmail' | 'icloud' | 'other';
+export type MailProvider = 'gmail' | 'icloud' | 'microsoft' | 'other';
 export type MailPreset = { name: string; imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; hint: string };
 export type MailAccount = {
-  id: number; address: string; label: string | null; provider: MailProvider; username: string; imapHost: string; imapPort: number;
+  id: number; address: string; label: string | null; provider: MailProvider; auth: 'password' | 'microsoft'; username: string; imapHost: string; imapPort: number;
   smtpHost: string | null; smtpPort: number | null; scopeId: number | null; scopeName: string | null; confidentiality: Level;
   maxAgeDays: number; enabled: boolean; status: 'pending' | 'ok' | 'auth' | 'unreachable' | 'error'; lastError: string | null;
   lastSyncAt: string | null; messages: number; hasPassword: boolean;
@@ -137,3 +137,8 @@ export const changeMailAccount = (id: number, changes: Partial<MailAccountIn & {
   core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, changes, 'PUT');
 export const deleteMailAccount = (id: number) => core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, undefined, 'DELETE');
 export const syncMailAccount = (id: number) => core<{ result: { status: string; added: number }; accounts: MailAccount[] }>(`/mail/accounts/${id}/sync`, {});
+export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
+export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail/microsoft');
+export const putMicrosoftClient = (clientId: string | null) => core<{ clientId: string | null }>('/mail/microsoft', { clientId }, 'PUT');
+export const startMicrosoftSignIn = (id: number) => core<MicrosoftSignIn>(`/mail/accounts/${id}/microsoft`, {});
+export const getMicrosoftSignIn = (id: number) => core<MicrosoftSignIn>(`/mail/accounts/${id}/microsoft`);

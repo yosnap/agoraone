@@ -19,3 +19,6 @@
 .chip.mail-ok { background:var(--c-f1f5ee); color:var(--c-244e42) }
 .chip.mail-auth, .chip.mail-error, .chip.mail-unreachable { background:var(--c-fffaf6); color:var(--c-8e3d2a) }
 .mail-new { display:flex; flex-direction:column; gap:10px; border:1px solid var(--c-dfe3d6); border-radius:12px; padding:12px; margin-bottom:10px }
+.mail-microsoft { display:flex; flex-direction:column; gap:6px; border:1px solid var(--c-dfe3d6); border-radius:10px; padding:10px 12px; background:var(--c-f1f5ee) }
+.mail-steps { margin:0; padding-left:18px; font-size:12px; line-height:1.55; color:var(--c-355a50) }
+.mail-code { font-family:'JetBrains Mono',monospace; font-size:15px; letter-spacing:.08em }

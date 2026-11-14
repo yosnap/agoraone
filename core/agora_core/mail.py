@@ -37,13 +37,15 @@ class Preset:
     hint: str
 
 
-# Providers with their own setup; any other server is entered by hand ("other"). Microsoft accounts need
-# OAuth (Microsoft no longer accepts app passwords for IMAP), so they are not offered yet.
+# Providers with their own setup; any other server is entered by hand ("other"). Microsoft signs in with
+# OAuth (it no longer accepts app passwords for IMAP): stored as an "other" server with auth = 'microsoft'.
 PRESETS = {
     "gmail": Preset("Gmail / Google Workspace", ("imap.gmail.com", 993), ("smtp.gmail.com", 465),
                     "Necesita la verificación en dos pasos y una contraseña de aplicación (myaccount.google.com/apppasswords)."),
     "icloud": Preset("iCloud", ("imap.mail.me.com", 993), ("smtp.mail.me.com", 587),
                      "Usuario: tu dirección de iCloud. Contraseña de aplicación desde account.apple.com."),
+    "microsoft": Preset("Microsoft (Outlook, Hotmail, Microsoft 365)", ("outlook.office365.com", 993), ("smtp.office365.com", 587),
+                        "Se conecta con tu cuenta de Microsoft, sin contraseña de aplicación: AgoraOne te dará un código para microsoft.com/devicelogin."),
     # Namecheap, Hostinger and any hosting with its own domain are plain IMAP/SMTP: their servers go here.
     "other": Preset("Otro servidor (IMAP)", ("", 993), ("", 465),
                     "Los servidores IMAP y SMTP de tu proveedor (en Namecheap, mail.privateemail.com; en Hostinger, imap/smtp.hostinger.com). Usuario: la dirección completa."),
@@ -94,13 +96,16 @@ def create_account(connection: sqlite3.Connection, data: dict) -> int:
     if level not in LEVELS:
         raise MailError("Nivel de confidencialidad no válido.")
     _scope_exists(connection, data.get("scopeId"))
+    microsoft = provider == "microsoft"
     try:
         cursor = connection.execute(
             """INSERT INTO mail_account (address, label, provider, username, imap_host, imap_port, smtp_host, smtp_port,
-               scope_id, confidentiality, max_age_days, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (address, data.get("label") or None, provider, _username(data.get("username") or address), imap_host,
+               scope_id, confidentiality, max_age_days, created_at, auth) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (address, data.get("label") or None, "other" if microsoft else provider,
+             address if microsoft else _username(data.get("username") or address), imap_host,
              int(data.get("imapPort") or preset.imap[1]), _host(data.get("smtpHost")) or preset.smtp[0] or None,
-             int(data.get("smtpPort") or preset.smtp[1]), data.get("scopeId"), level, int(data.get("maxAgeDays") or 60), now()),
+             int(data.get("smtpPort") or preset.smtp[1]), data.get("scopeId"), level, int(data.get("maxAgeDays") or 60), now(),
+             "microsoft" if microsoft else "password"),
         )
     except sqlite3.IntegrityError as error:
         if "UNIQUE" in str(error):
@@ -162,7 +167,8 @@ def list_accounts(connection: sqlite3.Connection, has_password: Callable[[int], 
            FROM mail_account a LEFT JOIN scope s ON s.id = a.scope_id ORDER BY a.address"""
     ).fetchall()
     return [{
-        "id": r["id"], "address": r["address"], "label": r["label"], "provider": r["provider"], "username": r["username"],
+        "id": r["id"], "address": r["address"], "label": r["label"], "provider": "microsoft" if r["auth"] == "microsoft" else r["provider"],
+        "auth": r["auth"], "username": r["username"],
         "imapHost": r["imap_host"], "imapPort": r["imap_port"], "smtpHost": r["smtp_host"], "smtpPort": r["smtp_port"],
         "scopeId": r["scope_id"], "scopeName": r["scope_name"], "confidentiality": r["confidentiality"],
         "maxAgeDays": r["max_age_days"], "enabled": bool(r["enabled"]), "status": r["status"], "lastError": r["last_error"],
@@ -227,25 +233,31 @@ _LOCKS: dict[int, threading.Lock] = {}
 _LOCKS_GUARD = threading.Lock()
 
 
-def sync_account(connection: sqlite3.Connection, account_id: int, password: str | None, opener=open_imap, batch: int = BATCH) -> dict:
+def sync_account(connection: sqlite3.Connection, account_id: int, password: str | None, opener=open_imap, batch: int = BATCH, login=None) -> dict:
     """Reads what is new in the account's inbox. Returns {"status", "added"}; failures are recorded on the
-    account with a message for the user and never raise."""
+    account with a message for the user and never raise. `login(client, account, secret)` signs in when the
+    account does not use a plain password (Microsoft's XOAUTH2); it raises LoginError with the reason."""
     with _LOCKS_GUARD:
         lock = _LOCKS.setdefault(account_id, threading.Lock())
     if not lock.acquire(blocking=False):
         return {"status": "busy", "added": 0}
     try:
-        return _sync(connection, account_id, password, opener, batch)
+        return _sync(connection, account_id, password, opener, batch, login)
     finally:
         lock.release()
 
 
-def _sync(connection: sqlite3.Connection, account_id: int, password: str | None, opener, batch: int) -> dict:
+class LoginError(RuntimeError):
+    """A sign-in that could not even be attempted (an expired Microsoft permission, a missing client id)."""
+
+
+def _sync(connection: sqlite3.Connection, account_id: int, password: str | None, opener, batch: int, login) -> dict:
     account = connection.execute("SELECT * FROM mail_account WHERE id = ?", (account_id,)).fetchone()
     if account is None:
         return {"status": "missing", "added": 0}
     if not password:
-        _status(connection, account_id, "auth", "Falta la contraseña de aplicación de esta cuenta.")
+        _status(connection, account_id, "auth", "Falta conectar la cuenta con Microsoft." if account["auth"] == "microsoft"
+                else "Falta la contraseña de aplicación de esta cuenta.")
         return {"status": "auth", "added": 0}
     try:
         client = opener(account["imap_host"], account["imap_port"])
@@ -254,7 +266,15 @@ def _sync(connection: sqlite3.Connection, account_id: int, password: str | None,
         return {"status": "unreachable", "added": 0}
     try:
         try:
-            client.login(account["username"], password)
+            if account["auth"] == "microsoft":
+                if login is None:
+                    raise LoginError("Falta el identificador de la aplicación de Microsoft en Ajustes.")
+                login(client, account, password)
+            else:
+                client.login(account["username"], password)
+        except LoginError as error:
+            _status(connection, account_id, "auth", str(error))
+            return {"status": "auth", "added": 0}
         except imaplib.IMAP4.error:
             _status(connection, account_id, "auth", "El servidor rechazó el usuario o la contraseña de aplicación.")
             return {"status": "auth", "added": 0}

@@ -24,6 +24,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   // Inside a <label> a pick must not reopen the list (the click would be forwarded to the trigger).
   assert.equal(await page.getByRole('listbox').count(), 0, 'el desplegable se cierra al elegir');
   assert.equal(await page.getByRole('option').count(), 0);
+  // Microsoft: no password field; the app registration's id and its steps instead.
+  await form.locator('.modern-select button').first().click();
+  await page.getByRole('option', { name: /Microsoft/ }).click();
+  await form.getByText('Aplicación de Microsoft').waitFor();
+  assert.equal(await form.getByLabel('Contraseña de aplicación').count(), 0, 'Microsoft no pide contraseña');
   assert.equal(await page.locator('.page select').count(), 0, 'ningún select nativo');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'sin desplazamiento horizontal');
   if (shots) await card.screenshot({ path: `${shots}/mail-settings-${viewport.width}.png` });
