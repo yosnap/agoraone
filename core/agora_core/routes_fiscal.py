@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictInt
 
-from . import fiscal, fiscal_folder, invoice_extract, mail, receipts
+from . import fiscal, fiscal_excel, fiscal_folder, invoice_extract, mail, qonto, receipts
 from .db import DB_NAME, connect, now, transaction
 from .routes_mail import microsoft_login
 from .settings import Settings
@@ -35,6 +35,7 @@ class FolderIn(BaseModel):
 
 
 class FolderChange(BaseModel):
+    holder: str | None = Field(default=None, max_length=120)
     name: str | None = Field(default=None, min_length=1, max_length=80)
     kind: Kind | None = None
     scopeId: StrictInt | None = None
@@ -83,6 +84,17 @@ class ReceiptFileIn(BaseModel):
     folderId: StrictInt
     category: Category | None = None
     fields: Fields
+
+
+class QontoIn(BaseModel):
+    login: str | None = Field(default=None, max_length=120)
+    # A new secret key replaces the stored one; an explicit null forgets it. Never returned.
+    secret: str | None = Field(default=None, min_length=8, max_length=200)
+
+
+class QuarterIn(BaseModel):
+    year: StrictInt = Field(ge=2000, le=2100)
+    quarter: StrictInt = Field(ge=1, le=4)
 
 
 class ApplyIn(BaseModel):
@@ -260,6 +272,84 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
                 connection.execute("UPDATE invoice SET path = ? WHERE path = ? AND folder_id = ?", (new, old, folder_id))
             chosen = [{"from": m.from_, "to": m.to} for m in body.moves]
             return fiscal_folder.apply(root, settings.data_dir / "fiscal-backups", chosen, on_move=moved)
+        try:
+            return await db(work)
+        except fiscal.FiscalError as error:
+            return refuse(error)
+
+    # Qonto (read-only) and the quarterly register.
+    def qonto_auth(connection) -> str | None:
+        name = qonto.login(connection)
+        key = secrets.get(qonto.SECRET_ACCOUNT) if secrets else None
+        return f"{name}:{key}" if name and key else None
+
+    @router.get("/fiscal/qonto")
+    async def qonto_settings():
+        name = await db(qonto.login)
+        has_key = bool(await run_in_threadpool(secrets.get, qonto.SECRET_ACCOUNT)) if secrets else False
+        return {"login": name, "hasKey": has_key}
+
+    @router.put("/fiscal/qonto")
+    async def save_qonto(body: QontoIn):
+        try:
+            if "login" in body.model_fields_set:
+                await db(lambda c: qonto.save_login(c, body.login))
+        except qonto.QontoError as error:
+            return refuse(error)
+        if "secret" in body.model_fields_set and secrets:
+            await run_in_threadpool(secrets.put, qonto.SECRET_ACCOUNT, body.secret)
+        return await qonto_settings()
+
+    @router.post("/fiscal/qonto/check")
+    async def check_qonto():
+        auth = await db(qonto_auth)
+        if not auth:
+            return refuse(qonto.QontoError("Falta el identificador o la clave secreta de Qonto."))
+        try:
+            return await run_in_threadpool(qonto.check, auth)
+        except qonto.QontoError as error:
+            return refuse(error, 502)
+
+    def quarter_data(connection, folder_id: int, year: int, quarter: int) -> dict:
+        folder, root = professional_root(connection, folder_id)
+        start, end = fiscal_excel.quarter_range(year, quarter)
+        expenses = fiscal.invoices(connection, f"{year}-{quarter}T", folder_id)
+        income, problem = [], None
+        auth = qonto_auth(connection)
+        if auth:
+            try:
+                income = qonto.issued_invoices(auth, start, end)
+            except qonto.QontoError as error:
+                problem = str(error)
+        else:
+            problem = "Qonto no está conectado (Ajustes › Qonto): los ingresos quedarán vacíos."
+        notes = []
+        if missing := sum(1 for e in expenses if not e["taxId"]):
+            notes.append(f"{missing} facturas recibidas sin NIF del proveedor.")
+        if foreign := sum(1 for e in expenses if e["currency"] != "EUR"):
+            notes.append(f"{foreign} facturas recibidas en otra moneda: van aparte y no suman al IVA en euros.")
+        if plain := sum(1 for e in expenses if not e["base"] and not e["vat"]):
+            notes.append(f"{plain} facturas recibidas sin base ni IVA desglosados: revísalas antes de presentar.")
+        return {"folder": folder, "root": root, "income": income, "incomeProblem": problem, "expenses": expenses, "notes": notes}
+
+    @router.get("/fiscal/folders/{folder_id}/quarter")
+    async def quarter_view(folder_id: int, year: int, quarter: int):
+        if not (2000 <= year <= 2100 and 1 <= quarter <= 4):
+            return refuse(fiscal.FiscalError("Trimestre no válido."))
+        try:
+            data = await db(lambda c: quarter_data(c, folder_id, year, quarter))
+        except fiscal.FiscalError as error:
+            return refuse(error)
+        data.pop("root")
+        return data
+
+    @router.post("/fiscal/folders/{folder_id}/excel", status_code=201)
+    async def make_excel(folder_id: int, body: QuarterIn):
+        def work(connection):
+            data = quarter_data(connection, folder_id, body.year, body.quarter)
+            folder = data["folder"]
+            book = fiscal_excel.build(body.year, body.quarter, folder["holder"] or folder["name"], data["income"], data["expenses"], data["notes"])
+            return {"path": fiscal_excel.write(data["root"], folder["name"], body.year, body.quarter, book)}
         try:
             return await db(work)
         except fiscal.FiscalError as error:

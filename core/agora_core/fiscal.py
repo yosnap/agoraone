@@ -59,7 +59,7 @@ CATEGORIES = ("gastos", "compras")
 
 
 def _folder_row(row: sqlite3.Row) -> dict:
-    return {"id": row["id"], "name": row["name"], "kind": row["kind"], "path": row["path"], "scopeId": row["scope_id"]}
+    return {"id": row["id"], "name": row["name"], "kind": row["kind"], "path": row["path"], "scopeId": row["scope_id"], "holder": row["holder"]}
 
 
 def folders(connection: sqlite3.Connection) -> list[dict]:
@@ -106,6 +106,8 @@ def change_folder(connection: sqlite3.Connection, folder_id: int, changes: dict)
         values["kind"] = changes["kind"]
     if "scopeId" in changes:
         values["scope_id"] = changes["scopeId"]
+    if "holder" in changes:
+        values["holder"] = (changes["holder"] or "").strip()[:120] or None
     if not values:
         return bool(connection.execute("SELECT 1 FROM fiscal_folder WHERE id = ?", (folder_id,)).fetchone())
     try:
