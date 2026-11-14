@@ -24,7 +24,7 @@ from .fiscal import MAX_FILE, amount
 
 _URL = re.compile(r"https://[^\s<>\"')\]]{4,500}", re.I)
 _INVOICE_WORDS = re.compile(r"invoice|factura|facture|rechnung|fattura|receipt|recibo|download|descarga|pdf", re.I)
-_TAX_ID = re.compile(r"\b(?:ES)?([A-HJNP-SUVW]\d{7}[0-9A-J]|\d{8}[A-Z]|[XYZ]\d{7}[A-Z])\b|\b((?:EU|GB|IE|FR|DE|NL|LU|IT|PT)[0-9A-Z]{8,12})\b")
+_TAX_ID = re.compile(r"\b(?:ES)?([A-HJNP-SUVW]\d{7}[0-9A-J]|\d{8}[A-Z]|[XYZ]\d{7}[A-Z])\b|\b((?:EU|GB|IE|FR|DE|NL|LU|IT|PT)(?=[0-9A-Z]*\d)[0-9A-Z]{8,12})\b")
 _TOTAL = re.compile(r"(?:total(?!\s*(?:de\s+)?(?:iva|vat|tax|impuestos?|igic))(?:\s+a\s+pagar|\s+factura|\s+amount|\s+due|\s+paid)?|importe\s+total|amount\s+paid|gesamt(?:betrag)?)"
                     r"[^\d\n]{0,25}(\d{1,3}(?:[.,\s]\d{3})*(?:[.,]\d{2})|\d+(?:[.,]\d{2}))", re.I)
 _DATE = re.compile(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)|(?<!\d)(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?!\d)")
@@ -204,6 +204,15 @@ _IRPF = re.compile(r"(?:IRPF|retenci[oó]n)[^\d\n%]{0,12}-?\s?(\d{1,2}(?:[.,]\d{
 _NUMBER = re.compile(r"(?:factura|invoice|n[º°o]\.?\s*de\s*factura)\s*(?:n[º°o.]*|number|num\.?|#)?\s*[:\-]?\s*(?!\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})([A-Z]{0,4}[\-/]?\d[\w\-/]{0,20})", re.I)
 
 
+VERSION = 3  # bump when the reading rules change: files read with older rules are read again
+
+
+def _looks_like_name(line: str) -> bool:
+    if not 3 <= len(line) <= 80 or "@" in line or re.search(r"https?:|www\.|n[uú]mero de iva|\bnif\b|\bcif\b|\d{4,}|descripci|precio|cantidad|\bcant\.|importe|total|\biva\b", line, re.I):
+        return False
+    return sum(c.isdigit() for c in line) <= 2 and any(c.isalpha() for c in line)
+
+
 def breakdown(text: str) -> dict:
     """Base, VAT and withholding of an invoice's text, by local rules (any may be missing)."""
     base = _BASE.search(text)
@@ -221,10 +230,14 @@ def breakdown(text: str) -> dict:
             vat_value = f"{expected:.2f}"  # «IVA 21 % sobre 100,00: 21,00» names the base too: trust base × rate
     if vat_rate is None and vat_value is not None and base and amount(base[1]) and float(amount(base[1])) > 0:
         vat_rate = round(float(vat_value) / float(amount(base[1])), 2)
-    tax_ids = []
-    for found in _TAX_ID.finditer(text.upper()):
-        tax_id = found[1] or found[2]
-        if tax_id not in tax_ids:
-            tax_ids.append(tax_id)
-    return {"taxIds": tax_ids[:4], "base": amount(base[1]) if base else None, "vatRate": vat_rate, "vat": vat_value,
+    tax_ids, after = [], {}
+    lines = [line.strip() for line in text.splitlines()]
+    for index, line in enumerate(lines):
+        for found in _TAX_ID.finditer(line.upper()):
+            tax_id = found[1] or found[2]
+            if tax_id not in tax_ids:
+                tax_ids.append(tax_id)
+                # The party's name usually follows its tax id (the customer block comes after the issuer's).
+                after[tax_id] = next((n for n in lines[index + 1: index + 4] if _looks_like_name(n)), None)
+    return {"v": VERSION, "taxIds": tax_ids[:4], "after": {t: after.get(t) for t in tax_ids[:4]}, "base": amount(base[1]) if base else None, "vatRate": vat_rate, "vat": vat_value,
             "withholdingRate": rate(irpf), "withholding": amount(irpf[2]) if irpf else None, "number": number[1] if number else None}
