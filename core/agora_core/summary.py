@@ -18,7 +18,7 @@ HIDDEN_LINE = re.compile(r"\[línea oculta \d+\]")
 
 @cache
 def stopwords() -> frozenset[str]:
-    # Shared with the backend (server/hermes-summary.ts), so both count words by the same rules.
+    # Shared with the server (desktop/server/src/hermes/summary.rs), so both count words by the same rules.
     path = Path(__file__).resolve().parents[2] / "shared" / "stopwords.json"
     try:
         return frozenset(json.loads(path.read_text(encoding="utf-8")))
@@ -60,7 +60,7 @@ class NoteWords:
             if cached and cached[0] == signature:
                 return cached[1]
         hidden = "AND item.confidentiality = 'normal'" if discreet else ""
-        # Hidden credential lines arrive as «[línea oculta N]» (server/secret-lines.ts): they are not words.
+        # Hidden credential lines arrive as «[línea oculta N]» (desktop/server/src/secret_lines.rs): they are not words.
         texts = (HIDDEN_LINE.sub(" ", row[0].split("\n\n", 1)[-1]) for row in connection.execute(
             f"SELECT chunk.text FROM chunk JOIN item ON item.id = chunk.item_id WHERE item.class = 'note' {hidden}"
         ))

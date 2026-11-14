@@ -1,5 +1,6 @@
 //! `agoraone`: starts AgoraOne from the project folder (or `AGORA_ROOT`) and prints the private access link
-//! to this terminal only; `agoraone abrir` opens that link in the default browser.
+//! to this terminal only; `agoraone abrir` opens that link in the default browser, and
+//! `agoraone comprobar-hermes` checks once that Hermes and the provider answer.
 
 use std::path::PathBuf;
 
@@ -41,6 +42,17 @@ async fn main() {
         };
     }
     load_dotenv(&root.join(".env"));
+    if std::env::args().nth(1).as_deref() == Some("comprobar-hermes") {
+        let location = agora_server::hermes::location::from_env();
+        println!("{}", agora_server::hermes_readiness_at(&location));
+        return match agora_server::chat::check_hermes(&location, &paths.data).await {
+            Ok(answer) => println!("{answer}"),
+            Err(message) => {
+                eprintln!("{message}");
+                std::process::exit(1);
+            }
+        };
+    }
     let server = match prepare(&paths).await {
         Ok(server) => server,
         Err(error) => {

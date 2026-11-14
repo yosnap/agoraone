@@ -68,7 +68,7 @@ async fn un_proceso_por_sesion_reutilizado_un_turno_a_la_vez_y_descartado_tras_f
 #[test]
 fn el_puente_de_luma_solo_acepta_notas_y_copias_emitidas_por_agoraone() {
     // The Python bridge keeps its own allowlist; this keeps it in step with the ids the server issues.
-    let source = include_str!("../../../server/hermes_bridge.py");
+    let source = include_str!("../python/hermes_bridge.py");
     let patterns: Vec<regex::Regex> = regex::Regex::new(r#"re\.fullmatch\(r"([^"]+)", document_id\)"#)
         .unwrap()
         .captures_iter(source)

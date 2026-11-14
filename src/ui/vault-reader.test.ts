@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { headingsOf, Markdown } from '../src/ui/markdown';
-import { findNote } from '../src/ui/vault-links';
+import { headingsOf, Markdown } from './markdown';
+import { findNote } from './vault-links';
 
 const render = (source: string, known: string[] = []) =>
   renderToStaticMarkup(createElement(Markdown, { source, resolve: target => known.includes(target) ? () => {} : null }));

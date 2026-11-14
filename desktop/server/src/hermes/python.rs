@@ -11,11 +11,11 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 /// Writes one identity or skill file: revision check, backup, Hermes' memory lock, atomic replace.
-pub const PROFILE_WRITER: &str = include_str!("../../../../server/hermes_profile_write.py");
+pub const PROFILE_WRITER: &str = include_str!("../../python/hermes_profile_write.py");
 /// Scheduled tasks and kanban cards of one profile, with Hermes' own functions.
-pub const MANAGE: &str = include_str!("../../../../server/hermes_manage.py");
+pub const MANAGE: &str = include_str!("../../python/hermes_manage.py");
 /// One MCP tool of a profile called by hand.
-pub const MCP_CALL: &str = include_str!("../../../../server/hermes_mcp_call.py");
+pub const MCP_CALL: &str = include_str!("../../python/hermes_mcp_call.py");
 
 #[derive(Debug, PartialEq)]
 pub enum RunError {
