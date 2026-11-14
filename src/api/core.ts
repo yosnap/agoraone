@@ -211,7 +211,7 @@ export const checkQonto = () => core<{ name: string | null; accounts: number }>(
 export type IncomeRow = { date: string; number: string; client: string; taxId: string; concept: string; base: number | null; vatRate: number | null;
   withholdingRate: number | null; withholding: number | null; total: number | null; currency: string };
 export type FiscalIssue = { key: string; text: string; items: { label: string; detail: string; path?: string | null; qonto?: string }[] };
-export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomeProblem: string | null; expenses: Invoice[]; notes: string[]; issues: FiscalIssue[]; reading: number };
+export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomeProblem: string | null; expenses: Invoice[]; notes: string[]; issues: FiscalIssue[]; reading: number; readingTotal: number };
 export const downloadFromQonto = (folderId: number, year: number, quarter: number, numbers: string[]) =>
   core<{ saved: { number: string; path: string }[]; failed: { number: string; error: string }[] }>(`/fiscal/folders/${folderId}/qonto-download`, { year, quarter, numbers });
 export const getQuarter = (folderId: number, year: number, quarter: number) => core<QuarterView>(`/fiscal/folders/${folderId}/quarter?year=${year}&quarter=${quarter}`);

@@ -250,7 +250,8 @@ def test_abrir_en_el_finder_solo_dentro_de_la_carpeta(tmp_path):
     calls = []
     fiscal.open_in_finder(root, "Registro.xlsx", True, runner=lambda args, **k: calls.append(args))
     fiscal.open_in_finder(root, None, False, runner=lambda args, **k: calls.append(args))
-    assert calls == [["/usr/bin/open", "-R", "--", str(root / "Registro.xlsx")], ["/usr/bin/open", "--", str(root)]]
+    if __import__("sys").platform == "darwin":
+        assert calls == [["/usr/bin/open", "-R", "--", str(root / "Registro.xlsx")], ["/usr/bin/open", "--", str(root)]]
     for bad in ("../fuera.xlsx", "no-existe.xlsx"):
         with pytest.raises(fiscal.FiscalError):
             fiscal.open_in_finder(root, bad, False, runner=lambda args, **k: calls.append(args))

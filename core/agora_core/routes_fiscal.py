@@ -388,7 +388,7 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         todo = pending + (counts["modelPending"] if reader else [])
         if todo:
             fiscal_scan.read_in_background(database, folder_id, root, todo, reader)
-        in_flight = fiscal_scan.reading(folder_id)
+        in_flight, started = fiscal_scan.progress(folder_id)
         expenses = filed + found_expenses
         income, problem, notes = found_income, None, []
         auth = qonto_auth(connection)
@@ -428,8 +428,6 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         issue("unplaced", "{n} archivos de Facturas Entrantes o Salientes están en carpetas que no dicen año y trimestre: no entran en ningún trimestre.",
               files(counts["unplaced"]))
         issue("noVat", "{n} facturas emitidas sin tipo de IVA leído: revisa su base y su IVA.", files(counts["noVat"]))
-        if in_flight:
-            notes.insert(0, f"Leyendo {in_flight} facturas de la carpeta: el trimestre se completa solo en unos minutos.")
         issue("dates", "{n} facturas sin fecha legible: se han puesto al inicio del trimestre.",
               rows([r for r in income if r.get("guessedDate")] + [e for e in found_expenses if "Fecha no leída" in e["notes"]], lambda r: "Fecha puesta al inicio del trimestre"))
         issue("otherQuarter", "{n} facturas con fecha de otro trimestre guardadas en la carpeta de este: cuentan aquí.",
@@ -442,7 +440,7 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
               rows([e for e in expenses if not e["base"] and not e["vat"]], lambda r: r.get("issuedOn", "")))
         notes += [i["text"] for i in issues]
         return {"folder": folder, "root": root, "income": income, "incomeProblem": problem, "expenses": expenses, "notes": notes,
-                "issues": issues, "reading": in_flight, "qontoMissing": [i["qonto"] for x in issues if x["key"] == "qonto" for i in x["items"]]}
+                "issues": issues, "reading": in_flight, "readingTotal": started, "qontoMissing": [i["qonto"] for x in issues if x["key"] == "qonto" for i in x["items"]]}
 
     @router.get("/fiscal/folders/{folder_id}/quarter")
     async def quarter_view(folder_id: int, year: int, quarter: int):
