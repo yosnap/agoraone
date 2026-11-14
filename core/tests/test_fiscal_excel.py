@@ -11,7 +11,7 @@ from agora_core.keystore import MemoryStore
 from agora_core.settings import load_settings
 
 SECRET, OWNER = "a" * 64, "b" * 64
-INCOME = [{"date": "2026-10-03", "number": "F-1", "client": "Cliente", "taxId": "B12345678", "concept": "Curso", "base": 100, "vatRate": 21,
+INCOME = [{"date": "2026-10-03", "number": "F-1", "client": "Cliente", "taxId": "B12345678", "concept": "Curso", "base": 100, "vatRate": 0.21,
            "withholdingRate": 0.15, "withholding": 15, "total": 106, "currency": "EUR"}]
 EXPENSES = [{"issuedOn": "2026-11-13", "supplier": "Proveedor", "taxId": None, "base": None, "vat": None, "total": "12.50", "currency": "EUR"},
             {"issuedOn": "2026-12-01", "supplier": "Hosting", "taxId": "EU123", "base": "10.00", "vat": "0.00", "total": "10.00", "currency": "USD"}]
@@ -52,14 +52,16 @@ def test_facturas_emitidas_de_qonto_solo_lectura():
 
     def http(url, headers, params):
         calls.append((url, headers["Authorization"], params))
+        if url.endswith("/credit_notes"):
+            return Answer(200, {"credit_notes": [], "meta": {"next_page": None}})
         return Answer(200, {"client_invoices": [
             {"status": "paid", "issue_date": "2026-10-03", "number": "F-1", "client": {"name": "Cliente", "tax_identification_number": "B1"},
              "items": [{"title": "Curso", "vat_rate": "0.21"}], "total_amount": {"value": "121.00", "currency": "EUR"}, "vat_amount": {"value": "21.00"}},
             {"status": "draft", "issue_date": "2026-10-04", "number": "B"},
             {"status": "unpaid", "issue_date": "2026-09-30", "number": "Viejo"},
         ], "meta": {"next_page": None}})
-    rows = qonto.issued_invoices("org:clave", date(2026, 10, 1), date(2026, 12, 31), http=http)
-    assert [r["number"] for r in rows] == ["F-1"] and rows[0]["base"] == 100.0 and rows[0]["vatRate"] == 0.21
+    rows, notes = qonto.issued_invoices("org:clave", date(2026, 10, 1), date(2026, 12, 31), http=http)
+    assert [r["number"] for r in rows] == ["F-1"] and rows[0]["base"] == 100.0 and rows[0]["vatRate"] == 0.21 and notes == []
     assert all(url.startswith(qonto.API) for url, _, _ in calls)
     import pytest
     with pytest.raises(qonto.QontoError, match="no acepta la clave"):
@@ -92,9 +94,48 @@ def test_rutas_de_qonto_y_del_excel(tmp_path, monkeypatch):
         saved = client.put("/fiscal/qonto", json={"login": "mi-org", "secret": "clave-secreta-123"}, headers=headers).json()
         assert saved == {"login": "mi-org", "hasKey": True} and "clave-secreta-123" not in str(saved)
         assert secrets.values[qonto.SECRET_ACCOUNT] == "clave-secreta-123"
-        monkeypatch.setattr(qonto, "issued_invoices", lambda auth, start, end, http=None: INCOME)
+        monkeypatch.setattr(qonto, "issued_invoices", lambda auth, start, end, http=None: (INCOME, []))
         folder = client.post("/fiscal/folders", json={"name": "Actividad", "kind": "autonomo", "path": str(work)}, headers=headers).json()["folders"][0]
         view = client.get(f"/fiscal/folders/{folder['id']}/quarter?year=2026&quarter=4", headers=headers).json()
         assert view["income"] == INCOME and view["expenses"] == [] and view["incomeProblem"] is None
         made = client.post(f"/fiscal/folders/{folder['id']}/excel", json={"year": 2026, "quarter": 4}, headers=headers).json()
         assert made["path"] == "Registro-4T-2026-Actividad.xlsx" and (work / made["path"]).exists()
+
+
+def test_forma_real_de_qonto_varios_tipos_irpf_y_rectificativas():
+    invoice = {"status": "paid", "issue_date": "2026-11-02", "number": "F-9", "client": {"name": "C"}, "currency": "EUR",
+               "withholding_tax": {"rate": "0.15", "amount": "15.00"},
+               "items": [{"title": "Curso", "vat_rate": "0.21", "subtotal": {"value": "80.00"}, "total_vat": {"value": "16.80"}},
+                         {"title": "Libro", "vat_rate": "0.04", "subtotal": {"value": "20.00"}, "total_vat": {"value": "0.80"}}],
+               "total_amount": {"value": "102.60", "currency": "EUR"}, "vat_amount": {"value": "17.60"}}
+    credit = {"status": "paid", "issue_date": "2026-11-20", "number": "R-1", "client": {"name": "C"},
+              "items": [{"title": "Abono", "vat_rate": "0.21", "subtotal": {"value": "10.00"}, "total_vat": {"value": "2.10"}}]}
+    broken = {"status": "paid", "issue_date": "2026-11-21", "items": "esto no es una lista"}
+
+    def http(url, headers, params):
+        assert params["sort_by"] == "created_at:asc" and "filter[created_at_to]" in params
+        key = "credit_notes" if url.endswith("/credit_notes") else "client_invoices"
+        return Answer(200, {key: [credit] if key == "credit_notes" else [invoice, broken], "meta": {"next_page": None}})
+    rows, notes = qonto.issued_invoices("org:clave", date(2026, 10, 1), date(2026, 12, 31), http=http)
+    by_rate = {(r["number"], r["vatRate"]): r for r in rows}
+    assert by_rate[("F-9", 0.21)]["base"] == 80.0 and by_rate[("F-9", 0.04)]["base"] == 20.0
+    assert by_rate[("F-9", 0.21)]["withholdingRate"] == 0.15
+    assert by_rate[("R-1", 0.21)]["base"] == -10.0, "la rectificativa resta"
+    assert any("no se pudieron leer" in n for n in notes)
+
+
+def test_paginas_sin_fin_avisan():
+    import pytest
+    def http(url, headers, params):
+        return Answer(200, {"client_invoices": [], "credit_notes": [], "meta": {"next_page": params["page"] + 1}})
+    with pytest.raises(qonto.QontoError, match="demasiadas"):
+        qonto.issued_invoices("org:clave", date(2026, 10, 1), date(2026, 12, 31), http=http)
+
+
+def test_texto_de_terceros_nunca_es_formula():
+    evil = [{**EXPENSES[0], "supplier": '=HYPERLINK("http://x","clic")', "notes": "@SUM(A1)\x0b"}]
+    income = [{**INCOME[0], "client": "+cmd|' /C calc'!A0"}]
+    book = openpyxl.load_workbook(io.BytesIO(fiscal_excel.build(2026, 4, "=Titular", income, evil, [])))
+    assert book["Gastos"]["D5"].data_type == "s" and book["Gastos"]["D5"].value.startswith("=HYPERLINK")
+    assert book["Gastos"]["L5"].value == "@SUM(A1)" and book["Ingresos"]["D5"].data_type == "s"
+    assert book["Resumen"]["A2"].data_type == "s"

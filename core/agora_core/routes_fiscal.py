@@ -297,7 +297,11 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         except qonto.QontoError as error:
             return refuse(error)
         if "secret" in body.model_fields_set and secrets:
-            await run_in_threadpool(secrets.put, qonto.SECRET_ACCOUNT, body.secret)
+            try:
+                secret = qonto.clean_secret(body.secret) if body.secret else None
+            except qonto.QontoError as error:
+                return refuse(error)
+            await run_in_threadpool(secrets.put, qonto.SECRET_ACCOUNT, secret)
         return await qonto_settings()
 
     @router.post("/fiscal/qonto/check")
@@ -314,20 +318,21 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         folder, root = professional_root(connection, folder_id)
         start, end = fiscal_excel.quarter_range(year, quarter)
         expenses = fiscal.invoices(connection, f"{year}-{quarter}T", folder_id)
-        income, problem = [], None
+        income, problem, notes = [], None, []
         auth = qonto_auth(connection)
         if auth:
             try:
-                income = qonto.issued_invoices(auth, start, end)
+                income, notes = qonto.issued_invoices(auth, start, end)
             except qonto.QontoError as error:
                 problem = str(error)
         else:
             problem = "Qonto no está conectado (Ajustes › Qonto): los ingresos quedarán vacíos."
-        notes = []
         if missing := sum(1 for e in expenses if not e["taxId"]):
             notes.append(f"{missing} facturas recibidas sin NIF del proveedor.")
         if foreign := sum(1 for e in expenses if e["currency"] != "EUR"):
             notes.append(f"{foreign} facturas recibidas en otra moneda: van aparte y no suman al IVA en euros.")
+        if others := sum(1 for e in expenses if e["currency"] not in ("EUR", "USD")):
+            notes.append(f"{others} de ellas no están en euros ni en dólares: el Excel no las suma en ningún total.")
         if plain := sum(1 for e in expenses if not e["base"] and not e["vat"]):
             notes.append(f"{plain} facturas recibidas sin base ni IVA desglosados: revísalas antes de presentar.")
         return {"folder": folder, "root": root, "income": income, "incomeProblem": problem, "expenses": expenses, "notes": notes}

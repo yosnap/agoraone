@@ -6,7 +6,7 @@ Amounts may come as {"value": "12.50", "currency": "EUR"} or as cents, so both a
 
 import json
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 
 import httpx
 
@@ -24,6 +24,13 @@ class QontoError(RuntimeError):
 def login(connection: sqlite3.Connection) -> str | None:
     row = connection.execute("SELECT value FROM setting WHERE key = ?", (LOGIN_SETTING,)).fetchone()
     return json.loads(row["value"]) if row else None
+
+
+def clean_secret(value: str) -> str:
+    value = value.strip()
+    if any(c.isspace() for c in value):
+        raise QontoError("La clave secreta no puede llevar espacios ni saltos de línea.")
+    return value
 
 
 def save_login(connection: sqlite3.Connection, value: str | None) -> None:
@@ -68,42 +75,81 @@ def _money(value) -> float | None:
         return None
 
 
-def _cents(item: dict, *names: str) -> float | None:
-    for name in names:
-        if item.get(name) not in (None, ""):
-            found = _money(item[name])
-            if found is not None:
-                return found
-        if item.get(f"{name}_cents") not in (None, ""):
-            return round(int(item[f"{name}_cents"]) / 100, 2)
-    return None
+def _rate(value) -> float | None:
+    """Qonto gives rates as decimals ("0.21"); a percentage ("21") is turned into one."""
+    number = _money(value)
+    if number is None:
+        return None
+    return round(number / 100, 4) if number > 1 else number
 
 
-def issued_invoices(auth: str, start: date, end: date, http=None) -> list[dict]:
-    """Issued invoices with an issue date in [start, end], neither drafts nor cancelled, as register rows."""
-    rows, page = [], 1
-    while page and page <= MAX_PAGES:
-        data = _get("/client_invoices", auth, {"filter[created_at_from]": f"{start.isoformat()}T00:00:00Z", "page": page, "per_page": 100}, http=http)
-        for item in data.get("client_invoices", []):
-            issued = (item.get("issue_date") or "")[:10]
-            if item.get("status") in ("draft", "canceled", "cancelled") or not (start.isoformat() <= issued <= end.isoformat()):
-                continue
-            client = item.get("client") or {}
-            items = item.get("items") or []
-            total = _cents(item, "total_amount", "amount")
-            vat = _cents(item, "vat_amount")
-            base = _cents(item, "subtotal_amount", "total_amount_excluding_vat") or (round(total - vat, 2) if total is not None and vat is not None else None)
-            rates = {str(i.get("vat_rate")) for i in items if i.get("vat_rate") not in (None, "")}
-            withholding = _cents(item, "withholding_tax_amount")
-            rows.append({
-                "date": issued, "number": item.get("number") or item.get("invoice_number") or "",
-                "client": client.get("name") or " ".join(filter(None, [client.get("first_name"), client.get("last_name")])) or "",
-                "taxId": client.get("tax_identification_number") or client.get("vat_number") or "",
-                "concept": "; ".join(str(i.get("title") or "") for i in items if i.get("title"))[:200],
-                "base": base, "vatRate": float(next(iter(rates))) if len(rates) == 1 else None,
-                "withholdingRate": _money(item.get("withholding_tax_rate")), "withholding": withholding,
-                "total": total, "currency": (item.get("currency") or (item.get("total_amount") or {}).get("currency") or "EUR"),
-            })
-        meta = data.get("meta") or {}
-        page = meta.get("next_page")
-    return sorted(rows, key=lambda r: (r["date"], r["number"]))
+def _rows(item: dict, sign: int) -> list[dict]:
+    """One register row per VAT rate of an invoice (what the VAT return needs), from its lines."""
+    issued = (item.get("issue_date") or "")[:10]
+    client = item.get("client") or {}
+    name = client.get("name") or " ".join(filter(None, [client.get("first_name"), client.get("last_name")]))
+    withholding = item.get("withholding_tax") if isinstance(item.get("withholding_tax"), dict) else {}
+    currency = item.get("currency") or (item.get("total_amount") or {}).get("currency") or "EUR"
+    common = {"date": issued, "number": item.get("number") or "", "client": name or "", "currency": currency,
+              "taxId": client.get("tax_identification_number") or client.get("vat_number") or "",
+              "withholdingRate": _rate(withholding.get("rate")) or 0.0}
+    groups: dict[float, dict] = {}
+    for line in item.get("items") or []:
+        rate = _rate(line.get("vat_rate")) or 0.0
+        base = _money(line.get("subtotal"))
+        if base is None and _money(line.get("total_amount")) is not None:
+            base = _money(line.get("total_amount")) - (_money(line.get("total_vat")) or 0)
+        if base is None:
+            continue  # a line without amounts: the invoice's own totals are used below
+        group = groups.setdefault(rate, {"base": 0.0, "vat": 0.0, "titles": []})
+        group["base"] += base
+        group["vat"] += _money(line.get("total_vat")) or round(base * rate, 2)
+        if line.get("title"):
+            group["titles"].append(str(line["title"]))
+    if not groups:  # no lines: the base is what is left of the total once VAT is taken out and withholding put back
+        total, vat = _money(item.get("total_amount")) or 0, _money(item.get("vat_amount")) or 0
+        base = total - vat + (_money(withholding.get("amount")) or 0)
+        groups[_rate(round(vat / base, 4)) if base else 0.0] = {"base": base, "vat": vat, "titles": []}
+    return [{**common, "concept": "; ".join(g["titles"])[:200], "base": round(sign * g["base"], 2), "vatRate": rate,
+             "vat": round(sign * g["vat"], 2)} for rate, g in groups.items()]
+
+
+def _list(path: str, key: str, auth: str, start: date, end: date, sign: int, http) -> tuple[list[dict], int]:
+    """Documents issued in [start, end] (searched with a margin on their creation date, which may be earlier
+    than the issue date or a day off in UTC), oldest first; returns the rows and how many could not be read."""
+    rows, skipped, page = [], 0, 1
+    params = {"filter[created_at_from]": f"{(start - timedelta(days=120)).isoformat()}T00:00:00Z",
+              "filter[created_at_to]": f"{(end + timedelta(days=31)).isoformat()}T23:59:59Z",
+              "sort_by": "created_at:asc", "per_page": 100, "exclude_imported": "false"}
+    while page:
+        if page > MAX_PAGES:
+            raise QontoError("Hay demasiadas facturas en Qonto para este periodo: no se ha podido leer todo.")
+        data = _get(path, auth, {**params, "page": page}, http=http)
+        for item in data.get(key, []):
+            try:
+                issued = (item.get("issue_date") or "")[:10]
+                if item.get("status") in ("draft", "canceled", "cancelled") or not (start.isoformat() <= issued <= end.isoformat()):
+                    continue
+                rows += _rows(item, sign)
+            except (TypeError, ValueError, AttributeError, KeyError):
+                skipped += 1
+        page = (data.get("meta") or {}).get("next_page")
+    return rows, skipped
+
+
+def issued_invoices(auth: str, start: date, end: date, http=None) -> tuple[list[dict], list[str]]:
+    """Issued invoices (one row per VAT rate) and credit notes as negative rows, with notes about anything
+    that could not be read or does not add up in euros."""
+    invoices, skipped = _list("/client_invoices", "client_invoices", auth, start, end, 1, http)
+    notes = []
+    try:
+        credit, skipped_credit = _list("/credit_notes", "credit_notes", auth, start, end, -1, http)
+    except QontoError as error:
+        credit, skipped_credit = [], 0
+        notes.append(f"No se pudieron leer las facturas rectificativas de Qonto: {error}")
+    rows = sorted(invoices + credit, key=lambda r: (r["date"], r["number"]))
+    if skipped + skipped_credit:
+        notes.append(f"{skipped + skipped_credit} facturas de Qonto no se pudieron leer: revísalas en Qonto.")
+    if foreign := sum(1 for r in rows if r["currency"] != "EUR"):
+        notes.append(f"{foreign} facturas emitidas en otra moneda: comprueba su cambio a euros.")
+    return rows, notes

@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Font, PatternFill
 
 from .fiscal import FiscalError, _free, inside
@@ -32,18 +33,27 @@ def _dmy(day: str) -> str:
     return f"{day[8:10]}/{day[5:7]}/{day[:4]}"
 
 
-def _rate(value) -> float | None:
-    if value in (None, ""):
-        return None
-    value = float(value)
-    return value / 100 if value > 1 else value
-
-
 def _number(value) -> float | None:
     try:
         return round(float(value), 2) if value not in (None, "") else None
     except (TypeError, ValueError):
         return None
+
+
+TEXT_COLUMNS = {"A", "B", "C", "D", "E", "F", "K", "L"}
+
+
+def _literal(sheet, row: int, columns=TEXT_COLUMNS) -> None:
+    """Text from mail, PDFs or Qonto is always text: a name starting with «=» never becomes a formula, and
+    control characters that Excel refuses are dropped."""
+    for cell in sheet[row]:
+        if cell.column_letter in columns and isinstance(cell.value, str):
+            cell.value = ILLEGAL_CHARACTERS_RE.sub("", cell.value)
+            cell.data_type = "s"
+
+
+def _clean(values: list) -> list:
+    return [ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v for v in values]
 
 
 def _header(sheet, row: int, titles: list[str]) -> None:
@@ -56,7 +66,8 @@ def _header(sheet, row: int, titles: list[str]) -> None:
 def _title(sheet, text: str, holder: str) -> None:
     sheet["A1"] = text
     sheet["A1"].font = Font(bold=True, size=14)
-    sheet["A2"] = holder
+    sheet["A2"] = ILLEGAL_CHARACTERS_RE.sub("", holder or "")
+    sheet["A2"].data_type = "s"
 
 
 def build(year: int, quarter: int, holder: str, income: list[dict], expenses: list[dict], notes: list[str]) -> bytes:
@@ -77,9 +88,10 @@ def build(year: int, quarter: int, holder: str, income: list[dict], expenses: li
     first = 5
     for n, row in enumerate(income):
         r = first + n
-        ingresos.append([_month(row["date"]), _dmy(row["date"]), row.get("number"), row.get("client"), row.get("taxId"), row.get("concept"),
-                         _number(row.get("base")), _rate(row.get("vatRate")) or 0, f"=ROUND(G{r}*H{r},2)", _rate(row.get("withholdingRate")) or 0,
-                         f"=ROUND(G{r}*J{r},2)", f"=G{r}+I{r}-K{r}"])
+        ingresos.append(_clean([_month(row["date"]), _dmy(row["date"]), row.get("number"), row.get("client"), row.get("taxId"), row.get("concept"),
+                         _number(row.get("base")), row.get("vatRate") or 0, f"=ROUND(G{r}*H{r},2)", row.get("withholdingRate") or 0,
+                         f"=ROUND(G{r}*J{r},2)", f"=G{r}+I{r}-K{r}"]))
+        _literal(ingresos, r)
     last_in = max(first, first + len(income) - 1)
     total_in = last_in + 1
     ingresos.cell(row=total_in, column=1, value="TOTAL").font = Font(bold=True)
@@ -94,8 +106,9 @@ def build(year: int, quarter: int, holder: str, income: list[dict], expenses: li
     for row in expenses:
         base, vat = _number(row.get("base")), _number(row.get("vat"))
         rate = round(vat / base, 2) if base and vat is not None else None
-        gastos.append([_month(row["issuedOn"]), _dmy(row["issuedOn"]), row.get("number") or "", row.get("supplier"), row.get("taxId") or "—",
-                       row.get("concept") or "", base, rate, vat, _number(row.get("total")), row.get("currency") or "EUR", row.get("notes") or ""])
+        gastos.append(_clean([_month(row["issuedOn"]), _dmy(row["issuedOn"]), row.get("number") or "", row.get("supplier"), row.get("taxId") or "—",
+                       row.get("concept") or "", base, rate, vat, _number(row.get("total")), row.get("currency") or "EUR", row.get("notes") or ""]))
+        _literal(gastos, gastos.max_row)
     last_out = max(first, first + len(expenses) - 1)
     for offset, currency in enumerate(("EUR", "USD"), 1):
         r = last_out + offset
@@ -141,7 +154,8 @@ def build(year: int, quarter: int, holder: str, income: list[dict], expenses: li
     ], 20):
         summary[f"A{r}"], summary[f"B{r}"] = label, formula
     for n, note in enumerate(notes[:20]):
-        summary[f"A{26 + n}"] = f"· {note}"
+        summary[f"A{26 + n}"] = ILLEGAL_CHARACTERS_RE.sub("", f"· {note}")
+        summary[f"A{26 + n}"].data_type = "s"
 
     # Formats, as in the user's own register
     for sheet, money_columns in ((summary, "BCDE"), (ingresos, "GIKL"), (gastos, "GIJ")):

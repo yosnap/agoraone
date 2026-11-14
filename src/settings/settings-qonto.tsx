@@ -9,8 +9,13 @@ export function QontoSettingsCard() {
   const [secret, setSecret] = useState('');
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [forgetting, setForgetting] = useState(false);
   const asked = useRef(false);
-  if (!asked.current) { asked.current = true; getQonto().then(found => { setState(found); setLogin(found.login ?? ''); }).catch(() => setState({ login: null, hasKey: false })); }
+  if (!asked.current) {
+    asked.current = true;
+    getQonto().then(found => { setState(found); setLogin(found.login ?? ''); })
+      .catch(failure => { setState({ login: null, hasKey: false }); setError(failure instanceof Error ? failure.message : 'No se pudo leer el ajuste de Qonto.'); });
+  }
   const run = async (work: () => Promise<string>) => { setError(''); setNote(''); try { setNote(await work()); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo completar.'); } };
   return <article className="card" aria-labelledby="qonto-title">
     <div className="card-head"><h2 id="qonto-title">Qonto</h2>
@@ -21,9 +26,12 @@ export function QontoSettingsCard() {
       <label className="field">Identificador (login)<input value={login} onChange={event => setLogin(event.target.value)} autoComplete="off" spellCheck={false}/></label>
       <label className="field">{state?.hasKey ? 'Cambiar la clave secreta' : 'Clave secreta'}<input type="password" value={secret} onChange={event => setSecret(event.target.value)}
         autoComplete="off" spellCheck={false} placeholder="Va directa al Llavero"/></label>
-      <div className="field-row"><button className="button primary" disabled={!login.trim()}>Guardar</button>
+      <div className="field-row"><button className="button primary" disabled={!login.trim() && !state?.login}>Guardar</button>
         <button type="button" className="button" disabled={!state?.hasKey} onClick={() => void run(async () => { const found = await checkQonto(); return `Conectado con ${found.name ?? 'tu organización'} (${found.accounts} cuentas).`; })}>Probar</button>
-        {state?.hasKey && <button type="button" className="button danger" onClick={() => void run(async () => { setState(await putQonto({ secret: null })); return 'Clave borrada del Llavero.'; })}>Borrar la clave</button>}</div>
+        {state?.hasKey && (forgetting ? <span className="field-row" role="group" aria-label="Confirmar borrar la clave">
+          <button type="button" className="button danger" onClick={() => void run(async () => { setForgetting(false); setState(await putQonto({ secret: null })); return 'Clave borrada del Llavero.'; })}>Borrar de verdad</button>
+          <button type="button" className="button" onClick={() => setForgetting(false)}>Cancelar</button></span>
+          : <button type="button" className="button danger" onClick={() => setForgetting(true)}>Borrar la clave…</button>)}</div>
     </form>
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;

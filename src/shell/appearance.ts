@@ -59,8 +59,12 @@ function hex(h: number, s: number, l: number, alpha: string) {
   return `#${f(0)}${f(8)}${f(4)}${alpha}`;
 }
 
+// Colours that mean «done» or «connected» (success notes, good badges and chips): they stay green in every palette.
+const STATUS = new Set(['--c-dcebdc', '--c-24563a', '--c-2d7a4f', '--c-315f48']);
+
 /** A token's colour in a palette: only the brand's greens and teals (hue 70–260) are changed. */
-export function shade(value: string, palette: Palette): string {
+export function shade(value: string, palette: Palette, token = ''): string {
+  if (STATUS.has(token)) return value;
   const spec = palettes[palette];
   const parsed = hsl(value);
   if (!parsed || palette === 'natural') return value;
@@ -78,7 +82,7 @@ function paletteCss(palette: Palette): string {
       else if (rule instanceof CSSStyleRule) {
         // --c-*: the colour tokens; --deep*: the dark surfaces (side rail, code, the ask box).
         const declarations = Array.from(rule.style).filter(name => name.startsWith('--c-') || name.startsWith('--deep'))
-          .map(name => `${name}: ${shade(rule.style.getPropertyValue(name), palette)};`);
+          .map(name => `${name}: ${shade(rule.style.getPropertyValue(name), palette, name)};`);
         if (declarations.length) out.push(wrap(`${rule.selectorText} { ${declarations.join(' ')} }`));
       }
     }

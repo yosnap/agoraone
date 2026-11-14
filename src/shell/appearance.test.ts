@@ -8,6 +8,7 @@ test('las paletas cambian los verdes de la marca y respetan rojos, ámbar y gris
   assert.equal(shade('#8e3d2a', 'oceano'), '#8e3d2a', 'el rojo de los errores no cambia');
   assert.equal(shade('#7a5717', 'ciruela'), '#7a5717', 'el ámbar de los avisos no cambia');
   assert.equal(shade('#ffffff', 'grafito'), '#ffffff');
+  assert.equal(shade('#2d7a4f', 'arena', '--c-2d7a4f'), '#2d7a4f', 'el verde de «conectada» no cambia');
   assert.equal(shade('#173d3c22', 'oceano').slice(-2), '22', 'la transparencia se conserva');
   const grey = shade('#244e42', 'grafito');
   const [r, g, b] = [1, 3, 5].map(i => parseInt(grey.slice(i, i + 2), 16));
