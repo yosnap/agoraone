@@ -26,7 +26,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   console.log(`${viewport.width}px · calendario ${granted ? `con permiso, ${await agenda.locator('.agenda-list li').count()} filas` : 'sin permiso (se ve la tarjeta para darlo)'}`);
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'sin desplazamiento horizontal');
   if (shots) await page.screenshot({ path: `${shots}/agenda-${viewport.width}.png` });
-  await page.goto(appUrl(5173, 'ajustes'));
+  await page.goto(appUrl(5173, 'ajustes&pestana=agenda'));
   for (const title of ['Calendarios', 'Avisos']) await page.getByRole('heading', { name: title, exact: true }).waitFor({ timeout: 60_000 });
   const alerts = page.locator('article', { has: page.getByRole('heading', { name: 'Avisos', exact: true }) });
   await alerts.locator('.alerts-permissions li').first().waitFor();
@@ -93,7 +93,7 @@ if (shots) await page.screenshot({ path: `${shots}/agenda-sample.png` });
 await page.locator('.alert-toast').getByRole('button', { name: 'Cerrar el aviso' }).click();
 assert.equal(await page.locator('.alert-toast').count(), 0);
 // Settings › Calendarios: hidden calendars stay out of the list until asked for.
-await page.goto(appUrl(5173, 'ajustes'));
+await page.goto(appUrl(5173, 'ajustes&pestana=agenda'));
 const calendarsCard = page.locator('article', { has: page.getByRole('heading', { name: 'Calendarios', exact: true }) });
 await calendarsCard.locator('.calendar-settings li').first().waitFor({ timeout: 60_000 });
 assert.equal(await calendarsCard.locator('.calendar-settings li').count(), 2, 'el oculto no se ve');

@@ -10,7 +10,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   const errors = [], writes = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('request', r => { if (r.method() !== 'GET' && !r.url().endsWith('/api/session')) writes.push(`${r.method()} ${new URL(r.url()).pathname}`); });
-  await page.goto(appUrl(5173, 'ajustes'));
+  await page.goto(appUrl(5173, 'ajustes&pestana=correo'));
   const card = page.locator('.settings-mail');
   await card.waitFor({ timeout: 60_000 });
   console.log(`${viewport.width}px · cuentas conectadas: ${await card.locator('.mail-accounts > li').count()}`);
@@ -37,5 +37,23 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   assert.deepEqual(errors, [], 'sin errores JS');
   await page.close();
 }
+
+// The tabs: one per area, with the keyboard, and the address names the open one (?pestana=…).
+const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+const errors = [];
+page.on('pageerror', e => errors.push(e.message));
+await page.goto(appUrl(5173, 'ajustes&pestana=general'));
+const tabs = page.getByRole('tab');
+await page.getByRole('tablist', { name: 'Apartados de Ajustes' }).waitFor({ timeout: 60_000 });
+assert.deepEqual(await tabs.allInnerTexts(), ['General', 'Asistente', 'Correo', 'Agenda y avisos', 'Fiscal', 'Trabajos', 'Privacidad y copias']);
+await page.getByRole('tab', { name: 'General' }).focus();
+await page.keyboard.press('ArrowRight');
+assert.equal(await page.getByRole('tab', { selected: true }).innerText(), 'Asistente', 'las flechas cambian de pestaña');
+assert.match(page.url(), /pestana=asistente/);
+await page.keyboard.press('End');
+await page.getByRole('heading', { name: 'Copias de seguridad' }).or(page.getByRole('heading', { name: /Copias/ })).first().waitFor();
+assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'las pestañas no desbordan la página en el móvil');
+assert.deepEqual(errors, [], 'sin errores JS');
+console.log('pestañas de Ajustes: correctas');
 await browser.close();
 console.log('verify-mail-settings correcto');
