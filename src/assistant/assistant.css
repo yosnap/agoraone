@@ -46,3 +46,38 @@ section.assistant { display:grid; grid-template-columns:260px minmax(0,1fr); gri
 .assistant.embedded .assistant-messages, .assistant.embedded .assistant-form { padding-left:18px; padding-right:18px }
 .assistant.embedded .assistant-message.user { max-width:92% }
 .assistant-steps { margin:0; padding-left:18px; font-size:11px; color:var(--c-5f7a71); display:flex; flex-direction:column; gap:2px }
+
+/* Watson beside the graph, as in the approved mockup (1.4): its state live, what it hears, its steps ticked
+   off and a large round microphone. */
+.assistant.embedded .assistant-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+.assistant.embedded .assistant-head h1 { font-size:20px; margin:0 }
+.watson-state { margin:2px 0 0; font-size:12px; color:var(--c-4c6b62) }
+.watson-orb { width:42px; height:42px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; gap:3px; background:var(--c-24563a) }
+.watson-orb i { width:3px; height:12px; border-radius:2px; background:#fff; transform-origin:center }
+.watson-orb.hearing { background:var(--c-8e3d2a) }
+.watson-orb.hearing i, .watson-orb.busy i { animation:watson-wave 1s ease-in-out infinite }
+.watson-orb i:nth-child(2) { animation-delay:.15s; height:18px }
+.watson-orb i:nth-child(3) { animation-delay:.3s }
+@keyframes watson-wave { 0%,100% { transform:scaleY(.4) } 50% { transform:scaleY(1) } }
+@media (prefers-reduced-motion: reduce) { .watson-orb i { animation:none !important } }
+.watson-empty { font-size:13px; line-height:1.6; margin:8px 0 }
+.watson-heard { align-self:flex-end; max-width:85%; border:1px dashed var(--c-8a9a91); border-radius:14px 14px 4px 14px; padding:9px 13px; font-style:italic; color:var(--c-4c6b62); display:flex; flex-direction:column; gap:3px }
+.watson-heard small { font-style:normal; font-size:10px; letter-spacing:.3px }
+.assistant.embedded .assistant-steps { list-style:none; padding:0; margin:4px 0 8px; display:flex; flex-direction:column; gap:4px; font-size:12.5px }
+.assistant.embedded .assistant-steps li { display:flex; gap:8px; align-items:baseline }
+.assistant.embedded .assistant-steps li::before { content:"✓"; color:var(--c-24563a); width:14px; flex:none }
+.assistant.embedded .assistant-message[aria-busy="true"] .assistant-steps li:last-child::before { content:"●"; color:var(--c-996a25) }
+.assistant.embedded .assistant-form { display:flex; align-items:center; gap:10px }
+.assistant.embedded .assistant-form textarea { flex:1; min-height:46px; max-height:140px; resize:none; border-radius:12px }
+.assistant.embedded .assistant-form .actions { display:flex; align-items:center; gap:8px; margin:0 }
+.dictation-button.big { width:52px; height:52px; border-radius:50%; padding:0; background:var(--c-8e3d2a); border-color:var(--c-8e3d2a); color:#fff }
+.dictation-button.big svg { width:22px; height:22px }
+.dictation-button.big.recording { background:var(--c-24563a); border-color:var(--c-24563a) }
+.assistant.embedded .assistant-head { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:4px 12px }
+.assistant.embedded .assistant-head > div:nth-of-type(2) { text-align:left }
+.assistant.embedded .assistant-head > .chip { grid-column:3; grid-row:1; justify-self:end }
+.assistant.embedded .assistant-head > .actions { grid-column:1 / -1; grid-row:2; display:flex; gap:6px; justify-content:flex-start }
+.assistant.embedded .assistant-head > .actions .button { padding:4px 10px; font-size:11px }
+.assistant.embedded .assistant-form { flex-direction:row; flex-wrap:nowrap }
+.assistant.embedded .assistant-form textarea { width:auto; min-width:0; flex:1 1 auto }
+.assistant.embedded .assistant-form .actions { flex-wrap:nowrap; flex:none }

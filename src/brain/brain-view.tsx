@@ -3,7 +3,7 @@ import { AssistantView, type Thinking } from '../assistant/assistant-view';
 import { SummaryStrip } from '../summary/summary-strip';
 import { BrainDock } from './brain-dock';
 import { BrainSide } from './brain-side';
-import { CommandBar } from './command-bar';
+import { BrainToday } from './brain-today';
 import { getBrainGraph, levelLabels, searchBrain, type BrainGraph, type GraphLayers, type NodeType, type SearchResult } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 import { layoutGraph } from './graph-layout';
@@ -118,7 +118,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
           <BrainGraphScene graph={graph} positions={positions} lit={lit} colors={colors} typeColors={typeColors} reading={thinking?.reading ?? null} still={reducedMotion()} onPick={pick} areas={areaLabels} picked={pickedArea} onArea={pickArea}/>
         </Suspense>}
     </div>
-    <div className={`brain-panel${explorer ? '' : ' folded'}`} aria-label="Explorar el cerebro" role="region">
+    <div className="brain-panel" aria-label="Explorar el cerebro" role="region">
       <button className="brain-fold button" aria-expanded={explorer} onClick={() => setExplorer(!explorer)}>{explorer ? 'Ocultar' : 'Explorar'}</button>
       <div className="eyebrow">CEREBRO{discreet ? ' · MODO DISCRETO' : ''}</div>
       <h1 id="brain-title">Tu cerebro</h1>
@@ -133,6 +133,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
         {focus.length > 0 && !shown && <button className="button" onClick={() => onFocus([])}>Quitar resaltado ({focus.length})</button>}
       </div>
       {searchError && <LoadError message={searchError}/>}
+      {!shown && !pickedNode && <BrainToday discreet={discreet}/>}
       {pickedNode && !shown ? <div className="brain-list" aria-live="polite">
         <h2>{typeLabels[pickedNode.type]}: {pickedNode.title}</h2>
         <ul>{around.flatMap(id => { const node = titles.get(id); return node?.type === 'note' ? [<li key={id}><button onClick={() => read(id)}><strong>{node.title}</strong><small>{node.folder || 'Raíz'}</small></button></li>] : []; })}</ul>
@@ -154,8 +155,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
       {folders.length > 0 && <ul className="brain-legend" aria-label="Colores por carpeta">{folders.slice(0, graphPalette.length).map(([folder, count]) =>
         <li key={folder}><span style={{ background: colors.get(folder) }} aria-hidden="true"/>{folder || 'Raíz'} <small>{count}</small></li>)}</ul>}
     </div>
-    <CommandBar onAsk={setQuestion}/>
-    <SummaryStrip discreet={discreet} onOpen={onSummary}/>
+    <SummaryStrip discreet={discreet} onOpen={onSummary} tail={graph ? `${graph.total} notas · ${areaLabels.length} áreas · ${links} enlaces` : undefined}/>
     <BrainDock/>
     {thinking && <div className="brain-thinking" role="status" aria-live="polite">
       <ol>{steps.map(([id, label]) => <li key={id} className={stepState(thinking.stage, id)}>{label}</li>)}</ol>

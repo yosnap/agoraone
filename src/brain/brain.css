@@ -42,21 +42,6 @@
 .graph-label.reading { background:var(--signal-amber); color:var(--signal-amber-ink); box-shadow:0 0 0 3px var(--signal-amber-glow) }
 @media (max-width:850px) { .brain-thinking { right:16px; bottom:auto; top:calc(48% - 70px) } }
 
-/* The command centre (1.4): one bar to ask, speak and record, over the graph; the dock at its foot. */
-.command-bar { position:absolute; top:16px; left:16px; right:calc(max(360px, 30vw) + 16px); z-index:5; display:flex; flex-wrap:wrap; gap:10px; align-items:center }
-.command-ask { flex:1 1 360px; display:flex; align-items:center; gap:8px; background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:14px; padding:5px 6px 5px 14px; box-shadow:0 6px 24px rgba(23,61,60,.08) }
-.command-ask input { flex:1; min-width:0; border:0; background:transparent; font:inherit; font-size:14px; color:var(--c-173d3c); padding:8px 0 }
-.command-ask input:focus { outline:none }
-.command-ask:focus-within { border-color:var(--c-355a50) }
-.command-record, .command-music { height:44px; display:inline-flex; align-items:center; gap:8px; border-radius:12px; background:var(--c-fbfaf3) }
-.command-record.on { background:var(--c-8e3d2a); border-color:var(--c-8e3d2a); color:#fff; font-variant-numeric:tabular-nums }
-.command-music small { font-size:10px; opacity:.8 }
-.command-dot { width:10px; height:10px; border-radius:50%; background:var(--c-8e3d2a); flex:none }
-.command-record.on .command-dot, .command-dot.on { background:#fff; animation:rail-pulse 1.4s ease-in-out infinite }
-.dock-recording .command-dot.on { background:var(--c-8e3d2a) }
-@media (prefers-reduced-motion: reduce) { .command-dot { animation:none !important } }
-.brain .brain-panel { top:76px; max-height:calc(100% - 92px) }
-.brain .summary-strip { top:76px }
 .brain-dock { position:absolute; left:332px; right:calc(max(360px, 30vw) + 16px); bottom:16px; z-index:4; display:flex; flex-wrap:wrap; gap:12px; align-items:stretch; pointer-events:none }
 .dock-card { pointer-events:auto; flex:1 1 280px; background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:16px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; font-size:12px; color:var(--c-355a50) }
 .dock-recording { border-color:var(--c-8e3d2a) }
@@ -72,11 +57,7 @@
 .dock-music > div:last-child { display:flex; flex-direction:column; gap:2px }
 .dock-music strong { color:var(--c-173d3c); font-size:13px }
 .dock-cover { width:48px; height:48px; flex:none; border-radius:10px; display:grid; place-items:center; background:var(--c-e6eadf); font-size:20px; color:var(--c-4c6b62) }
-.brain .brain-thinking { bottom:auto; top:130px }
-@media (max-width:850px) {
-  .command-bar { right:16px }
-  .brain-dock { left:16px; right:16px; bottom:auto; top:calc(48% - 120px) }
-}
+
 /* The side (1.4): the vault's areas, as a catalogue, and what changed lately. */
 .brain-side h2 { font:600 11px Manrope,sans-serif; letter-spacing:.8px; text-transform:uppercase; margin:10px 0 6px; color:var(--c-4c6b62) }
 .brain-side h3 { font:600 11px Manrope,sans-serif; margin:8px 0 4px; color:var(--c-355a50) }
@@ -103,3 +84,40 @@
 .graph-area span { width:9px; height:9px; border-radius:50% }
 .graph-area small { font-weight:500; font-size:11px; color:var(--c-6f8379) }
 .graph-area.picked { background:var(--c-f3e6c4) }
+
+.command-dot { width:10px; height:10px; border-radius:50%; background:var(--c-8e3d2a); flex:none }
+.command-dot.on { background:var(--c-8e3d2a); animation:rail-pulse 1.4s ease-in-out infinite }
+@media (prefers-reduced-motion: reduce) { .command-dot { animation:none !important } }
+.dock-record-button { display:inline-flex; align-items:center; gap:8px }
+.dock-record-button .command-dot { background:#fff }
+
+/* The layout of the approved mockup (1.4): the status strip across the top, a fixed side column, the graph
+   in the middle and Watson on the right; nothing floats over the graph but its dock. */
+.brain { --side:300px; --watson:max(360px, 28vw); grid-template-columns:var(--side) minmax(0,1fr) var(--watson); grid-template-rows:auto minmax(0,1fr) }
+.brain .summary-strip { position:static; grid-column:1 / -1; grid-row:1; border-radius:0; margin:0 }
+.brain .strip-tail { margin-left:auto }
+.brain .brain-panel { position:static; grid-column:1; grid-row:2; width:auto; max-height:none; border:0; border-right:1px solid var(--c-dfe3d6); border-radius:0; box-shadow:none; overflow-y:auto; background:var(--c-fbfaf3) }
+.brain .brain-fold, .brain .brain-panel > .eyebrow { display:none }
+.brain .brain-panel h1 { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0) }
+.brain .brain-stage { grid-column:2; grid-row:2 }
+.brain > .assistant.embedded { grid-column:3; grid-row:2 }
+.brain .brain-dock { left:calc(var(--side) + 16px); right:calc(var(--watson) + 16px) }
+.brain .brain-thinking { left:calc(var(--side) + 16px); right:calc(var(--watson) + 16px); top:64px; bottom:auto }
+.brain-today { display:flex; flex-direction:column; gap:4px }
+.brain-today h2 { font:600 11px Manrope,sans-serif; letter-spacing:.8px; text-transform:uppercase; margin:4px 0 4px; color:var(--c-4c6b62) }
+.today-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:3px; font-size:12px }
+.today-list li { display:grid; grid-template-columns:62px minmax(0,1fr); gap:6px }
+.today-list li span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.today-time { font-variant-numeric:tabular-nums; color:var(--c-6f8379); font-size:11px }
+.today-line { margin:4px 0 0; font-size:12px; color:var(--c-355a50) }
+@media (max-width:1100px) { .brain { --side:250px } }
+@media (max-width:850px) {
+  .brain { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(300px,48%) auto minmax(0,1fr) }
+  .brain .brain-stage { grid-column:1; grid-row:2 }
+  .brain .brain-panel { grid-column:1; grid-row:3; border-right:0; max-height:40vh }
+  .brain > .assistant.embedded { grid-column:1; grid-row:4 }
+  .brain .brain-dock { left:16px; right:16px; bottom:auto; top:calc(48% - 110px) }
+  .brain .brain-thinking { left:16px; right:16px }
+}
+.today-mail li { grid-template-columns:minmax(0,1fr); padding-left:10px; position:relative }
+.today-mail li::before { content:'·'; position:absolute; left:2px; color:var(--c-6f8379) }

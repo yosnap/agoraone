@@ -15,7 +15,11 @@ const Mic = () => <svg viewBox="0 0 24 24" width="18" height="18" fill="none" st
  * press again to stop; the words, transcribed on this machine by whisper.cpp, are sent as the message, after
  * anything already typed. The microphone closes when the button leaves the page, and stopping is never
  * disabled. */
-export function DictationButton({ onText, disabled }: { onText: (text: string) => void; disabled?: boolean }) {
+export function DictationButton({ onText, disabled, onPhase, big = false }: {
+  onText: (text: string) => void; disabled?: boolean;
+  /** Told when it starts or stops hearing, so a panel can show «oyendo…» live. */ onPhase?: (phase: 'idle' | 'starting' | 'recording' | 'transcribing') => void;
+  /** The large round microphone of Watson's panel. */ big?: boolean;
+}) {
   const [state, setState] = useState<State>('idle');
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState('');
@@ -24,7 +28,7 @@ export function DictationButton({ onText, disabled }: { onText: (text: string) =
   const timers = useRef<number[]>([]);
   const phase = useRef<State>('idle');
   const gone = useRef(false);
-  const move = (next: State) => { phase.current = next; if (!gone.current) setState(next); };
+  const move = (next: State) => { phase.current = next; if (!gone.current) { setState(next); onPhase?.(next); } };
   const clear = () => { timers.current.forEach(t => window.clearTimeout(t)); timers.current = []; };
   const release = () => { stream.current?.getTracks().forEach(track => track.stop()); stream.current = null; };
   // Leaving the page (another profile, another view) drops what was being recorded and closes the microphone.
@@ -81,7 +85,7 @@ export function DictationButton({ onText, disabled }: { onText: (text: string) =
   const press = () => { if (state === 'recording') stop(); else if (state === 'idle') void start(); };
   const recording = state === 'recording';
   return <span className="dictation" ref={attach}>
-    <button type="button" className={`button dictation-button${recording ? ' recording' : ''}`} aria-label="Hablar y enviar"
+    <button type="button" className={`button dictation-button${recording ? ' recording' : ''}${big ? ' big' : ''}`} aria-label="Hablar y enviar"
       disabled={!recording && (disabled || state === 'starting')} aria-pressed={recording} aria-busy={state === 'transcribing'} onClick={press}
       title={recording ? 'Parar y enviar' : 'Hablar: pulsa, di tu mensaje y vuelve a pulsar para enviarlo (se transcribe en este equipo)'}>
       <Mic/>{recording ? <span aria-hidden="true">{seconds} s</span> : state === 'transcribing' ? <span aria-hidden="true">…</span> : null}
