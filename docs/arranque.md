@@ -61,6 +61,7 @@ node scripts/verify-mail-settings.mjs
 node scripts/verify-mail-reply.mjs
 node scripts/verify-agenda.mjs
 node scripts/verify-fiscal.mjs   # al abrir Fiscal se leen las facturas nuevas de la carpeta, como en la app
+node scripts/verify-watson-rule.mjs  # una regla propuesta por Watson (respuesta simulada, nada se crea de verdad)
 node scripts/verify-jobs.mjs     # Trabajos: tareas, kanban, encargos y proyectos (con datos de ejemplo para lo que escribe)
 ```
 

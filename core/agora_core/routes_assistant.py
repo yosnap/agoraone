@@ -4,6 +4,7 @@ import json
 import re
 import sqlite3
 import sys
+import time
 from collections.abc import Callable
 from contextlib import aclosing, contextmanager
 from typing import Literal
@@ -15,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from . import assistant
 from .brain_tools import Toolbox
-from .db import DB_NAME, connect, now
+from .db import DB_NAME, connect, now, transaction
 from .embed import Embedder, VectorCache
 from .engines import (
     SECRET_ACCOUNTS, AnthropicApiEngine, ClaudeCodeEngine, CompatibleEngine, Engine, EngineError, Turn, usable,
@@ -75,7 +76,13 @@ def _logged(event: dict) -> tuple[str, str]:
         return "clientes", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
     if event["tool"] == "inbox":
         return "bandeja", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
-    return "leer", json.dumps({"n": event["n"]}, ensure_ascii=False)
+    if event["tool"] == "rule_proposal":  # what kind of rule, not its sender or words
+        return "proponer_regla", json.dumps({"action": event["rule"].get("action")}, ensure_ascii=False)
+    if event["tool"] in ("projects", "agenda", "day"):
+        return event["tool"], json.dumps({k: v for k, v in event.items() if k != "tool"}, ensure_ascii=False, default=str)
+    if event["tool"] == "read":
+        return "leer", json.dumps({"n": event.get("n")}, ensure_ascii=False)
+    return str(event.get("tool") or "herramienta"), "{}"
 
 
 def _event(kind: str, data) -> str:
@@ -87,6 +94,8 @@ def assistant_router(
     engines: Callable[[dict, object], list[Engine]] = default_engines,
 ) -> APIRouter:
     router = APIRouter(prefix="/assistant")
+    # Rules Watson proposed, waiting for the user's «Crear regla»: one-time ids, for one hour, for their owner.
+    proposals: dict[str, dict] = {}
 
     @contextmanager
     def database():
@@ -160,6 +169,35 @@ def assistant_router(
             "SELECT id, title, persona, updated_at FROM conversation WHERE owner = ? ORDER BY updated_at DESC LIMIT 100", (owner,)
         ).fetchall())
         return {"conversations": [dict(row) for row in rows]}
+
+    @router.post("/proposals/{proposal_id}/accept", status_code=201)
+    async def accept_proposal(proposal_id: str, request: Request):
+        """Creates the very rule Watson proposed, once, for the owner it was proposed to."""
+        from . import mail_rules
+        owner = owner_of(request)
+        found = proposals.get(proposal_id)
+        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time():
+            return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        proposals.pop(proposal_id, None)  # taken before any wait: a double click or a click and a «sí» create one rule
+        def work(connection):
+            rule_id = mail_rules.create_rule(connection, found["rule"])
+            with transaction(connection):
+                connection.execute("INSERT INTO action_log (occurred_at, actor, action, outcome, detail) VALUES (?, 'usuario', 'crear_regla', 'done', ?)",
+                                   (now(), json.dumps({"rule": rule_id, "from": "watson"}, ensure_ascii=False)))
+            return rule_id
+        try:
+            rule_id = await db(work)
+        except (mail_rules.RuleError, sqlite3.IntegrityError) as error:
+            message = str(error) if isinstance(error, mail_rules.RuleError) else "La regla no se pudo guardar tal cual: pídesela otra vez a Watson."
+            return JSONResponse({"error": message}, status_code=422)
+        return {"id": rule_id, "name": found["rule"]["name"]}
+
+    @router.post("/proposals/{proposal_id}/dismiss")
+    async def dismiss_proposal(proposal_id: str, request: Request):
+        owner = owner_of(request)
+        if owner and proposals.get(proposal_id, {}).get("owner") == owner:
+            proposals.pop(proposal_id, None)
+        return {"ok": True}
 
     @router.post("/conversations", status_code=201)
     async def create(request: Request):
@@ -244,6 +282,7 @@ def assistant_router(
                 context, included = assistant.context_block(found)
                 # The first notes come with the question; the tools number the next ones after them.
                 toolbox = Toolbox(database, embedder, cache)
+                toolbox.proposals, toolbox.owner = proposals, owner
                 toolbox.register(found[:included])
                 yield _event("sources", {"sources": toolbox.sources})
                 yield _event("stage", {"stage": "piensa"})

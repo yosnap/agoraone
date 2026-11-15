@@ -58,6 +58,10 @@ export const getAssistantConversation = (id: number) =>
   core<ConversationSummary & { messages: AssistantMessage[] }>(`/assistant/conversations/${id}`);
 
 export type Stage = 'recuerda' | 'piensa' | 'responde';
+/** A mail rule Watson proposed: created only with the user's «Crear regla» (or a plain «sí»), exactly as shown. */
+export type ProposedRule = { name: string; action: MailRuleAction; sender?: string; subject?: string; words?: string; confidentiality?: Level };
+export const acceptProposal = (id: string) => core<{ id: number; name: string }>(`/assistant/proposals/${encodeURIComponent(id)}/accept`, {});
+export const dismissProposal = (id: string) => core<{ ok: true }>(`/assistant/proposals/${encodeURIComponent(id)}/dismiss`, {});
 export type AssistantEvent =
   | { kind: 'stage'; stage: Stage; engine?: string; model?: string }
   | { kind: 'sources'; sources: Source[] }
@@ -66,6 +70,8 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'read'; id: string; title: string; n: number }
   | { kind: 'tool'; tool: 'inbox'; filter: string; count: number }
   | { kind: 'tool'; tool: 'clients'; filter: string; count: number }
+  | { kind: 'tool'; tool: 'rule_proposal'; id: string; rule: ProposedRule }
+  | { kind: 'tool'; tool: 'agenda' | 'day' | 'projects'; [key: string]: unknown }
   | { kind: 'done'; engine: string; model: string };
 
 /** Sends a question and follows the answer's Server-Sent Events until it ends; an `error` event throws. */

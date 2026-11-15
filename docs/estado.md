@@ -1,6 +1,13 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
+Versión 1.2.1 · Watson propone reglas del correo.
+- **`proponer_regla`** (solo Claude): Watson comprueba la regla con las validaciones de Ajustes y la enseña tal cual en el chat; se crea solo con «Crear regla» o un «sí» justo después (nunca para «ignorar» ni en modo discreto); escribir otra cosa la caduca. Propuesta en el núcleo, ligada al acceso, de un solo uso y de una hora; aceptar sin carreras. Solo la propone si lo pide el usuario, nunca un correo.
+- **Registro de acciones:** las consultas de agenda, día y trabajos de Watson ya se registran bien (caían en la rama de leer nota).
+- **Revisión** (plans/reports/code-review-261115-1045-watson-reglas.md) aplicada: A1, M1–M4, B3, B4.
+- **Verificado:** 221 pruebas del núcleo, 17 de la interfaz, build, verify-watson-rule y verify-inbox.
+- **Siguiente:** backlog de mejoras (plans/backlog-mejoras.md) y Reuniones (1.3).
+
 Versión 1.2.0 · Publicada el 15/11/2026, con toda la 1.1 (correo, Bandeja, fiscal, agenda, llamadas y avisos) y la 1.2 (Trabajos, encargos, proyectos de clientes, recibos por el bot de Hermes y Ajustes por pestañas). La 1.1 no se publicó por separado.
 - **Siguiente:** que Watson cree reglas de correo con propuesta y confirmación; después, el backlog de mejoras (plans/backlog-mejoras.md) y Reuniones (1.3).
 
