@@ -4,7 +4,7 @@ import './summary.css';
 
 /** One line over the brain's graph: Watson online and for how long, agents connected, today's tokens, the
  * busiest project and the words used most in the notes. «Ver resumen» opens the full page. */
-export function SummaryStrip({ discreet, onOpen }: { discreet: boolean; onOpen: () => void }) {
+export function SummaryStrip({ discreet, onOpen, tail }: { discreet: boolean; onOpen: () => void; /** The brain's totals, at the right end. */ tail?: string }) {
   const assistant = useAssistantName();
   const { summary } = useSummary(discreet);
   if (!summary.readAt) return null;
@@ -21,5 +21,6 @@ export function SummaryStrip({ discreet, onOpen }: { discreet: boolean; onOpen: 
     {project && <span>Proyecto <b>{project}</b></span>}
     {words.length > 0 && <span>Palabras <b>{words.join(' · ')}</b></span>}
     <button onClick={onOpen}>Ver resumen</button>
+    {tail && <span className="strip-tail">{tail}</span>}
   </div>;
 }

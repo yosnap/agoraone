@@ -11,6 +11,12 @@
   <string>AgoraOne lee tus recordatorios pendientes para tu agenda. Solo crea un recordatorio cuando tú lo confirmas, y nunca borra ninguno.</string>
   <key>NSRemindersUsageDescription</key>
   <string>AgoraOne lee tus recordatorios pendientes para tu agenda. Solo crea un recordatorio cuando tú lo confirmas, y nunca borra ninguno.</string>
+  <key>NSAppleEventsUsageDescription</key>
+	<string>AgoraOne controla Música y Spotify cuando se lo pides: ver lo que suena, pausar, pasar de canción o poner algo.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>AgoraOne escucha «Oye Watson» con el reconocimiento de voz de este Mac, sin enviar nada a internet.</string>
+	<key>NSMicrophoneUsageDescription</key>
+  <string>AgoraOne usa el micrófono solo mientras dictas o grabas una reunión, siempre tras pulsar el botón. La voz se transcribe en este Mac y no se envía a ningún sitio.</string>
   <key>NSContactsUsageDescription</key>
   <string>AgoraOne lee tus contactos solo para poner nombre a las llamadas perdidas en sus avisos. No cambia ni envía ningún contacto.</string>
 </dict>

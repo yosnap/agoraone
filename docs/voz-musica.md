@@ -1,0 +1,103 @@
+# Voz, música y aplicaciones (1.5)
+
+Plan: `plans/261115-1600-voz-musica/plan.md`. Todo funciona en este equipo, con un adaptador por sistema.
+
+## Música
+
+La tarjeta de música del pie del Cerebro enseña lo que suena en Apple Music o Spotify (título, artista,
+progreso) y tiene sus controles: anterior, reproducir o pausar, siguiente y volumen. Su campo «Pon…» sirve
+para pedir algo.
+
+- macOS: funciona por AppleScript. La primera vez macOS pide el permiso de Automatización («AgoraOne quiere
+  controlar Música»). La app lo declara (`NSAppleEventsUsageDescription` y `automation.apple-events`), y
+  `empaquetar.sh` comprueba que esté en la firma.
+- Linux: cualquier reproductor MPRIS, con `playerctl`.
+- Windows: todavía no.
+- Para ver lo que suena nunca se abre un reproductor: solo se pregunta a los que ya están abiertos.
+- «Pon…» funciona distinto según el reproductor:
+  - en Música, reproduce lo primero que coincida en tu biblioteca;
+  - en Spotify, abre su búsqueda para que elijas, porque su AppleScript no permite buscar y reproducir.
+- Las órdenes salen de una lista cerrada, y el texto de «pon…» se pasa como argumento de AppleScript, nunca
+  escrito dentro del guion.
+
+## Tu biblioteca y YouTube
+
+- En Ajustes › Voz › «Tu música» se eligen las carpetas de música, con el selector de macOS o escribiendo la
+  ruta.
+- AgoraOne las indexa por artista, álbum y título, a partir de la estructura `Artista/Álbum/01 Título.mp3` o del
+  nombre «Artista - Título». Admite MP3, M4A, FLAC, WAV, AAC y OGG, hasta 20.000 archivos y 6 niveles de
+  carpetas, y solo las lee.
+- Las reproduce su propio reproductor, el mismo para toda la app, así que sigue sonando aunque cambies de
+  sección. Cada canción se pide con la cabecera anti-CSRF y suena desde memoria.
+- Solo se sirven archivos que están dentro de esas carpetas.
+- «Pon…» decide dónde buscar así:
+  - si no nombras dónde, busca primero en tu biblioteca, después en el reproductor que esté abierto y por
+    último en Música;
+  - «en Spotify», «en Música» o «en mi biblioteca» lo fuerzan;
+  - «en YouTube» abre la búsqueda en el navegador, sin incrustar ni descargar nada (en Windows, con
+    `os.startfile`, nunca a través de `cmd`).
+- En la tarjeta de música, el desplegable elige la fuente.
+
+## Órdenes rápidas, sin modelo
+
+Si todo el mensaje a Watson, escrito o dicho, es una de estas órdenes, la hace al momento y la anota en el chat
+como «Orden rápida, sin modelo»:
+
+- pausa, sigue, siguiente, anterior, sube o baja el volumen;
+- «pon …» (como mucho 7 palabras);
+- «abre …».
+
+No cuentan como órdenes rápidas, y van a Watson:
+
+- los «pon» que hablan de reglas, recordatorios, notas, eventos, tareas, correos o reuniones;
+- los «abre» seguidos de artículo («abre una nota nueva…»).
+
+Código: `src/assistant/quick-commands.ts`.
+
+## Abrir aplicaciones
+
+«Abre Notas» busca entre las aplicaciones instaladas:
+
+- macOS: las carpetas de Aplicaciones, con el nombre que muestra el sistema en español y el original;
+- Linux: sus archivos `.desktop`.
+
+Las apps marcadas en Ajustes › Voz › «Aplicaciones que Watson puede abrir» se abren sin preguntar. Cualquier
+otra se abre solo si respondes «sí» justo después. Siempre se abren por su identificador (`open -b`,
+`gtk-launch`), nunca por un nombre o una orden escritos por alguien. Watson nunca cierra ni cambia una app.
+
+## Watson responde hablando
+
+Watson responde con las voces del sistema (la síntesis de voz del navegador, en este equipo), con una voz en
+español si la hay. Lee la respuesta sin el formato Markdown y sin las citas, cortada en una frase cerca de los
+700 caracteres. En Ajustes › Voz se elige cuándo: cuando le hablas con el micrófono (por defecto), siempre o
+nunca.
+
+## Llamar a Watson
+
+- ⌃⌥W desde cualquier app (lo registra la app de escritorio con el plugin de atajos globales de Tauri): AgoraOne
+  pasa delante, abre el Cerebro y el micrófono de Watson empieza a escuchar. Otra pulsación, o el botón, para
+  y envía. Si otra app ya usa ese atajo, AgoraOne arranca igual, sin él.
+- «Oye Watson», que se enciende en Ajustes › Voz y está apagado por defecto:
+  - Lo escucha `agora-wake` (`core/helpers/wake-macos.swift`), con el reconocimiento de voz de Apple en este
+    Mac. Si el Mac no puede reconocer sin red, el auxiliar no arranca.
+  - Solo escribe «wake» cuando oye la frase. No guarda ni envía nada de lo que oye, y reinicia la sesión cada
+    50 s.
+  - La app de escritorio lo arranca y lo para según el ajuste, y cada «wake» funciona como pulsar ⌃⌥W.
+  - Mientras esté activo, el micrófono queda abierto y macOS enseña su punto naranja.
+  - El auxiliar lleva dentro su Info.plist con los motivos de los permisos de micrófono y de reconocimiento
+    de voz.
+
+## Rutas del núcleo
+
+| Ruta | Para qué |
+|---|---|
+| `GET /music/status`, `POST /music/control`, `POST /music/play` | lo que suena, los controles y «pon…» |
+| `GET /apps`, `PUT /apps/allowed`, `POST /apps/open` | apps instaladas, las permitidas y abrir una (409 si hace falta confirmar) |
+| `GET/PUT /wake/settings` | «Oye Watson» encendido o apagado |
+| `GET /music/library`, `PUT /music/library/folders`, `POST /music/library/choose`, `GET /music/library/{id}/file` | biblioteca: carpetas, búsqueda y archivo |
+| `POST /music/youtube` | abre una búsqueda de YouTube en el navegador |
+
+## Pendiente
+
+- Probar ⌃⌥W y «Oye Watson» en la app firmada (permisos de micrófono y de reconocimiento de voz).
+- Probar Música y Spotify de verdad con la app firmada, por el permiso de Automatización.

@@ -12,6 +12,7 @@ use std::time::Duration;
 use agora_server::PORT;
 use agora_server::launch::{Paths, access_url, app_support, copy_first_run, load_dotenv, prepare, widen_path};
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 
 /// The project folder when not packaged: `AGORA_ROOT`, or (development builds only) the repository this app
@@ -125,6 +126,55 @@ fn own(url: &Url) -> bool {
     url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(PORT)
 }
 
+/// ⌃⌥W from any app (user's choice, 15/11/2026): AgoraOne comes to the front and Watson starts listening.
+fn listen(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        let _ = window.eval("window.dispatchEvent(new CustomEvent('agora:listen'))");
+    }
+}
+
+/// «Oye Watson» (1.5): while the user has it on in Ajustes › Voz, the on-device listener runs and each "wake"
+/// it prints works like ⌃⌥W. Off, or the app closing, stops it (its input pipe closes with the app).
+fn wake_loop(app: AppHandle, link: agora_server::core::CoreLink) {
+    let Some(helper) = bundle_resources().map(|r| r.join("core/helpers/bin/agora-wake")).filter(|p| p.is_file()) else { return };
+    tauri::async_runtime::spawn(async move {
+        use tokio::io::AsyncBufReadExt;
+        let http = reqwest::Client::new();
+        let mut child: Option<tokio::process::Child> = None;
+        loop {
+            let on = agora_server::core::core_request(&http, &link, "/wake/settings", None).await
+                .ok().and_then(|a| a.get("enabled").and_then(|e| e.as_bool())).unwrap_or(false);
+            let running = child.as_mut().is_some_and(|c| c.try_wait().ok().flatten().is_none());
+            if on && !running {
+                if let Ok(mut started) = tokio::process::Command::new(&helper).stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).kill_on_drop(true).spawn()
+                {
+                    if let Some(out) = started.stdout.take() {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let mut lines = tokio::io::BufReader::new(out).lines();
+                            while let Ok(Some(line)) = lines.next_line().await {
+                                if line.trim() == "wake" {
+                                    listen(&app);
+                                }
+                            }
+                        });
+                    }
+                    child = Some(started);
+                }
+            } else if !on && running {
+                if let Some(mut stopping) = child.take() {
+                    let _ = stopping.kill().await;
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(4)).await;
+        }
+    });
+}
+
 fn main() {
     let paths = layout();
     let server = match tauri::async_runtime::block_on(prepare(&paths)) {
@@ -140,9 +190,17 @@ fn main() {
     })));
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                listen(app);
+            }
+        }).build())
         .setup(move |app| {
+            // Taken by another app: AgoraOne still opens, only without the shortcut.
+            let _ = app.global_shortcut().register(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyW));
             if let Some(link) = core_link.clone() {
-                notify_loop(app.handle().clone(), link);
+                notify_loop(app.handle().clone(), link.clone());
+                wake_loop(app.handle().clone(), link);
             }
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(address.clone()))
                 .title("AgoraOne")

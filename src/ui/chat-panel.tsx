@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { DictationButton } from './dictation-button';
 import { cancelTurn, createConversation, getConversation, sendMessage, type Conversation, type Status, type DocumentSource, type ToolApproval } from '../api/client';
 import { ApprovalCard } from './approval-card';
 
@@ -58,15 +59,18 @@ export function ChatPanel({ status, onConnected, document, onDetach, profile, on
     const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
     return () => clearInterval(timer);
   }, [busy]);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!message.trim() || busy || restoring) return;
+  // `spoken`: what the microphone heard, added to what was typed and sent at once.
+  async function submit(event?: FormEvent, spoken?: string) {
+    event?.preventDefault();
+    const text = spoken === undefined ? message : (message.trim() ? `${message.trimEnd()} ${spoken}` : spoken);
+    if (!text.trim() || busy || restoring) return;
+    if (spoken !== undefined) setMessage(text);
     setBusy(true); setError(''); setPartial(''); setElapsed(0); setStage('Preparando conversación'); setApprovals([]); setUsedTools([]);
     try {
       const current = conversation || await createConversation(profile?.id);
       if (current.profileId !== profile?.id) throw new Error('La conversación no pertenece al perfil seleccionado.');
       setConversation(current); localStorage.setItem(storageKey, current.id);
-      setConversation(await sendMessage(current.id, message, document?.id, event => {
+      setConversation(await sendMessage(current.id, text, document?.id, event => {
         if (event.type === 'delta') { setPartial(previous => previous + event.text); setStage('Recibiendo respuesta'); }
         else if (event.type === 'tool') { setStage(event.state === 'start' ? `Usando ${event.name}` : 'Esperando al proveedor'); if (event.state === 'end') setUsedTools(previous => previous.includes(event.name) ? previous : [...previous, event.name]); }
         else if (event.type === 'approval') { setApprovals(previous => [...previous, event]); setStage('Esperando tu confirmación'); }
@@ -86,7 +90,7 @@ export function ChatPanel({ status, onConnected, document, onDetach, profile, on
     {error && <p role="alert" className="error">{error}</p>}
     {!ready && <p className="notice">{status?.detail || 'Comprobando el backend…'}</p>}
     {document && <div className="document-attached"><span>Solo lectura: {document.title}</span><button disabled={busy} onClick={onDetach} aria-label="Quitar documento">×</button></div>}
-    <form onSubmit={submit}><label htmlFor={fieldId}>Tu mensaje a {label} <span className="chat-shortcut">{sendShortcut} para enviar · ↑ recupera el último</span></label><textarea id={fieldId} aria-keyshortcuts="Enter" onKeyDown={shortcuts} placeholder="¿Qué te gustaría explorar?" maxLength={6000} value={message} onChange={e => setMessage(e.target.value)} disabled={busy || restoring}/><button className="primary" disabled={busy || restoring || !message.trim() || !ready}>{busy ? 'Consultando…' : 'Enviar a Hermes ↗'}</button></form>
+    <form onSubmit={submit}><label htmlFor={fieldId}>Tu mensaje a {label} <span className="chat-shortcut">{sendShortcut} para enviar · ↑ recupera el último</span></label><textarea id={fieldId} aria-keyshortcuts="Enter" onKeyDown={shortcuts} placeholder="¿Qué te gustaría explorar?" maxLength={6000} value={message} onChange={e => setMessage(e.target.value)} disabled={busy || restoring}/><DictationButton disabled={busy || restoring || !ready} onText={spoken => void submit(undefined, spoken)}/><button className="primary" disabled={busy || restoring || !message.trim() || !ready}>{busy ? 'Consultando…' : 'Enviar a Hermes ↗'}</button></form>
     <small>{profile ? `Usa el proveedor, las herramientas, los MCP y la memoria del propio perfil${document ? ', con el texto del documento adjunto' : ''}. Las consultas que solo leen se hacen sin preguntar; todo lo que cambie algo espera a que lo permitas.` : document ? 'Se enviará el texto del documento seleccionado a tu proveedor de inferencia. Se vuelve a leer en cada envío.' : 'Sin acceso directo al disco. Las respuestas utilizan tu proveedor de inferencia.'}</small>
   </section>;
 }
