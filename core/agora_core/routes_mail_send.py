@@ -73,7 +73,7 @@ def mail_send_router(settings: Settings, secrets, drafter=None) -> APIRouter:
                 return asyncio.run(run())
             except Exception as failure:  # noqa: BLE001 - try the next engine
                 error = failure
-        raise mail_send.SendError("No hay ningún motor de Claude disponible para redactar." if error is None else "Watson no ha podido redactar ahora.")
+        raise mail_send.SendError("No hay ningún motor de Claude disponible para redactar." if error is None else "El asistente no ha podido redactar ahora.")
 
     write = drafter or default_drafter
 
