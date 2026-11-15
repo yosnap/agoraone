@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 # The exact Hermes commit these bridges were checked against, with no local changes to its tracked files.
-EXPECTED_COMMIT = "28aceb3451f5a5d2a27396b2adf29231be34c482"
+EXPECTED_COMMIT = "d1b46d718ffe675427928eff7e5fff69bcb4519b"
 TIMEOUT = 90.0
 LIMIT = 50_000  # characters of result returned to AgoraOne
 
@@ -27,6 +27,23 @@ LIMIT = 50_000  # characters of result returned to AgoraOne
 class UserError(Exception):
     pass
 
+
+
+def hermes_unfinished(installation):
+    """True when Hermes left an update, repair or plugin install half done: its bootstrap would repair it
+    (install packages, restore files, rewrite config.yaml), which only Hermes itself may do. Read only."""
+    from hermes_cli._early_recovery import ZIP_SWAP_JOURNAL, interrupted_pull_marker
+    from pm.environments import committed_venv, install_state_dir, site_packages
+    state = install_state_dir(installation)
+    markers = [installation / ".update-incomplete", installation / ".lazy-refresh-incomplete", installation / ZIP_SWAP_JOURNAL,
+               interrupted_pull_marker(installation), state / ".repair-incomplete", state / "publication.json"]
+    if any(marker.exists() for marker in markers):
+        return True
+    try:
+        environment = committed_venv(installation)
+    except Exception:  # a broken record is repaired by the bootstrap too
+        return True
+    return environment is None or not site_packages(environment).is_dir()
 
 def isolate_environment():
     """Importing Hermes loads the main profile's dotenv file into os.environ: removed again, so the MCP
@@ -117,6 +134,25 @@ def main():
     if not (revision == EXPECTED_COMMIT and not subprocess.check_output(["/usr/bin/git", "-C", str(installation), "status", "--porcelain", "--untracked-files=no"], text=True).strip()):
         raise UserError("La versión de Hermes instalada no está verificada para AgoraOne.")
     sys.path.insert(0, str(installation))
+    if (installation / "hermes_bootstrap.py").is_file():
+        # Since November 2026 Hermes selects its installed dependencies in its own bootstrap, which every entry
+        # point (run_agent too) imports first. AgoraOne uses Hermes exactly as installed. Hermes' switch keeps
+        # the bootstrap from syncing packages, finishing an update or relaunching; it does not stop its repair
+        # of an unfinished update or plugin install, so that case is refused before the bootstrap runs. The
+        # only writes left are Hermes' own lock and lease that keep the environment in use from being collected.
+        os.environ["HERMES_DISABLE_LAZY_INSTALLS"] = "1"
+        from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+        from pm.environments import owning_home_root
+        # The dependencies belong to the data root that installed this checkout, whatever home this run uses.
+        owner = owning_home_root(installation)
+        token = set_hermes_home_override(owner) if owner else None
+        try:
+            if hermes_unfinished(installation):
+                raise UserError("Hermes tiene una actualización o reparación sin terminar. Ábrelo una vez o ejecuta «hermes update» y vuelve a intentarlo: AgoraOne no repara Hermes.")
+            import hermes_bootstrap  # noqa: F401
+        finally:
+            if token is not None:
+                reset_hermes_home_override(token)
     isolate_environment()
     return call(request)
 
