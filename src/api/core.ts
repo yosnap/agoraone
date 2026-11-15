@@ -359,3 +359,9 @@ export type MusicAction = 'toggle' | 'play' | 'pause' | 'next' | 'previous' | 'l
 export const getMusic = () => core<MusicState>('/music/status');
 export const controlMusic = (player: string, action: MusicAction) => core<MusicState>('/music/control', { player, action });
 export const playMusic = (player: string, query: string) => core<MusicState & { done: string }>('/music/play', { player, query });
+
+/** Opening apps (1.5): the installed ones, those Watson may open without asking, and opening one. */
+export type InstalledApp = { id: string; name: string; aliases?: string[] };
+export const getApps = () => core<{ apps: InstalledApp[]; allowed: string[] }>('/apps');
+export const putAllowedApps = (allowed: string[]) => core<{ allowed: string[] }>('/apps/allowed', { allowed }, 'PUT');
+export const openApp = (id: string, confirmed = false) => core<{ done: string }>('/apps/open', { id, confirmed });
