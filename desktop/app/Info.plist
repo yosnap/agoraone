@@ -11,5 +11,7 @@
   <string>AgoraOne lee tus recordatorios pendientes para tu agenda. Solo crea un recordatorio cuando tú lo confirmas, y nunca borra ninguno.</string>
   <key>NSRemindersUsageDescription</key>
   <string>AgoraOne lee tus recordatorios pendientes para tu agenda. Solo crea un recordatorio cuando tú lo confirmas, y nunca borra ninguno.</string>
+  <key>NSContactsUsageDescription</key>
+  <string>AgoraOne lee tus contactos solo para poner nombre a las llamadas perdidas en sus avisos. No cambia ni envía ningún contacto.</string>
 </dict>
 </plist>

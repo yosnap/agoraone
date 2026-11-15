@@ -301,7 +301,7 @@ def test_palabras_completas_y_listas_vacias(db):
 
 def test_el_proveedor_compatible_no_ve_la_bandeja(tmp_path):
     from agora_core.engines import _specs
-    assert {"consultar_bandeja", "consultar_clientes", "consultar_agenda"}.isdisjoint(s["name"] for s in _specs(mail=False))
+    assert {"consultar_bandeja", "consultar_clientes", "consultar_agenda", "resumen_del_dia"}.isdisjoint(s["name"] for s in _specs(mail=False))
     toolbox = Toolbox(lambda: None, None, VectorCache())
     toolbox.mail = False
     assert "no está disponible" in asyncio.run(toolbox.call("consultar_bandeja", {}))
