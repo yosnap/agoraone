@@ -399,3 +399,7 @@ export const getDoctor = () => core<{ pieces: DoctorPiece[]; platform: string; m
 export type InstallJob = { id: string; name: string; state: 'running' | 'done' | 'failed'; lines: string[]; done: number; total: number; error: string | null };
 export const getInstallJob = () => core<{ job: InstallJob | null }>('/doctor/install');
 export const installPiece = (id: string) => core<{ job: InstallJob }>('/doctor/install', { id });
+/** Modules (1.6): which are on; one off disappears, stops its background work and Watson loses its tools. */
+export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'conectores';
+export const getModules = () => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules');
+export const putModules = (modules: Partial<Record<ModuleName, boolean>>) => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules', { modules }, 'PUT');

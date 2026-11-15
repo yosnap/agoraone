@@ -5,7 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import doctor, installer
+from . import doctor, installer, modules
 from .db import DB_NAME, connect
 from .engines import SECRET_ACCOUNTS
 from .settings import Settings
@@ -13,6 +13,10 @@ from .settings import Settings
 
 class Install(BaseModel):
     id: str
+
+
+class Modules(BaseModel):
+    modules: dict[str, bool]
 
 
 def doctor_router(settings: Settings, secrets) -> APIRouter:
@@ -29,6 +33,21 @@ def doctor_router(settings: Settings, secrets) -> APIRouter:
     @router.get("/doctor")
     async def diagnosis():
         return await run_in_threadpool(diagnose)
+
+    def with_db(work):
+        connection = connect(settings.data_dir / DB_NAME)
+        try:
+            return work(connection)
+        finally:
+            connection.close()
+
+    @router.get("/modules")
+    async def list_modules():
+        return await run_in_threadpool(lambda: {"modules": with_db(modules.state), "labels": modules.MODULES})
+
+    @router.put("/modules")
+    async def change_modules(body: Modules):
+        return await run_in_threadpool(lambda: {"modules": with_db(lambda c: modules.save(c, body.modules)), "labels": modules.MODULES})
 
     @router.get("/doctor/install")
     async def install_state():
