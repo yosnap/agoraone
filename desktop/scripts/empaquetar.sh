@@ -87,8 +87,10 @@ codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/
 # app's own permission texts.
 codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/dev/null | grep -q personal-information.calendars \
   || { echo "Python no tiene el permiso de calendarios en su firma." >&2; exit 1; }
-/usr/libexec/PlistBuddy -c "Print :NSCalendarsFullAccessUsageDescription" "$APP/Contents/Info.plist" >/dev/null \
-  || { echo "El Info.plist de la app no lleva el texto del permiso de calendarios." >&2; exit 1; }
+for key in NSCalendarsFullAccessUsageDescription NSCalendarsUsageDescription NSRemindersFullAccessUsageDescription NSRemindersUsageDescription NSContactsUsageDescription; do
+  /usr/libexec/PlistBuddy -c "Print :$key" "$APP/Contents/Info.plist" >/dev/null \
+    || { echo "El Info.plist de la app no lleva $key (el texto de un permiso)." >&2; exit 1; }
+done
 "$APP/Contents/Resources/python/bin/python3.13" -I -c "import EventKit, Contacts" \
   || { echo "El Python de la app no carga EventKit o Contacts." >&2; exit 1; }
 codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/dev/null | grep -q personal-information.addressbook \
