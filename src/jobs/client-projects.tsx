@@ -14,7 +14,8 @@ const status = (value: string | null) => value ? statuses[value] ?? value.toLowe
  * apart, never guessed. */
 export function ClientProjectsSection({ period, discreet }: { period: Period; discreet: boolean }) {
   const [data, setData] = useState<ClientProjects | null>(null);
-  const [hermes, setHermes] = useState<Map<string, number>>(new Map());
+  const [hermes, setHermes] = useState<Map<string, number> | null>(null);
+  const [hermesFailed, setHermesFailed] = useState(false);
   const [error, setError] = useState('');
   const [onlyActive, setOnlyActive] = useState(true);
   const asked = useRef(false);
@@ -23,15 +24,16 @@ export function ClientProjectsSection({ period, discreet }: { period: Period; di
     getClientProjects().then(setData).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer los proyectos.'));
     getHermesSummary().then(summary => {
       const byKey = new Map<string, number>();
-      for (const p of summary.projects) byKey.set(projectKey(p.project), (byKey.get(projectKey(p.project)) ?? 0) + p.tokens);
+      for (const p of summary.projects) if (projectKey(p.project)) byKey.set(projectKey(p.project), (byKey.get(projectKey(p.project)) ?? 0) + p.tokens);
       setHermes(byKey);
-    }).catch(() => undefined);
+    }).catch(() => setHermesFailed(true));
   }
   const label = period === '24h' ? '24 h' : period === '7d' ? '7 días' : '30 días';
   if (error) return <LoadError message={error}/>;
   if (!data) return <Loading label="Leyendo los proyectos de Central" lines={3}/>;
   const open = (s: string | null) => !s || ['ACTIVE', 'MAINTENANCE'].includes(s);
   const clients = data.clients.map(c => ({ ...c, projects: c.projects.filter(p => !onlyActive || open(p.status)) })).filter(c => c.projects.length);
+  const usable = data.costguard && !data.problem;
   if (!data.clients.length) return <p className="muted">No hay clientes de Central. Configura Central en Conectores y pulsa «Actualizar» en su tarjeta.</p>;
   return <div className="client-projects">
     <div className="fiscal-bar">
@@ -41,21 +43,21 @@ export function ClientProjectsSection({ period, discreet }: { period: Period; di
     </div>
     {discreet ? <p className="muted">{clients.length === 1 ? '1 cliente' : `${clients.length} clientes`} con proyectos; nombres ocultos en modo discreto.</p>
       : <table className="work-table projects-table">
-        <thead><tr><th>Cliente y proyecto</th><th>Estado</th><th>Agentes ({label})</th><th>Hermes (30 días)</th></tr></thead>
+        <thead><tr><th>Cliente y proyecto</th><th>Estado</th><th title="CostGuard: tokens de entrada y salida, sin caché">Agentes de código ({label})</th><th title="Hermes: tokens de sus sesiones en esa carpeta, con caché">Hermes (30 días)</th></tr></thead>
         <tbody>{clients.map(client => client.projects.map((project, index) => {
-          const fromHermes = hermes.get(projectKey(project.name));
+          const fromHermes = project.ambiguous || !projectKey(project.name) ? undefined : hermes?.get(projectKey(project.name));
           return <tr key={`${client.name}-${project.name}-${index}`}>
             <td>{index === 0 && <strong>{client.name}</strong>}{index === 0 && <br/>}{project.name}</td>
             <td>{status(project.status)}{project.phase ? ` · ${project.phase}` : ''}</td>
-            <td>{!data.costguard ? <span className="muted">—</span> : project.usage ? (project.usage[period].tokens ? `${count(project.usage[period].tokens)} tokens · ${project.usage[period].turns === 1 ? '1 turno' : `${project.usage[period].turns} turnos`}` : '0')
+            <td>{!usable ? <span className="muted">—</span> : project.ambiguous ? <span className="muted" title="Otro proyecto se llama igual: no se puede saber de cuál es la carpeta">nombre repetido</span> : project.usage ? (project.usage[period].tokens ? `${count(project.usage[period].tokens)} tokens · ${project.usage[period].turns === 1 ? '1 turno' : `${project.usage[period].turns} turnos`}` : '0')
               : <span className="muted">sin carpeta</span>}</td>
-            <td>{fromHermes ? `${count(fromHermes)} tokens` : <span className="muted">—</span>}</td>
+            <td>{fromHermes ? `${count(fromHermes)} tokens` : <span className="muted">{project.ambiguous ? 'nombre repetido' : '—'}</span>}</td>
           </tr>;
         }))}</tbody>
       </table>}
     {!discreet && data.unmatched.some(u => u.usage[period].tokens) && <details className="projects-unmatched"><summary>Otras carpetas con consumo en {label} (no son proyectos de Central)</summary>
       <ul>{data.unmatched.filter(u => u.usage[period].tokens).map(u => <li key={u.name}>{u.name} · {count(u.usage[period].tokens)} tokens</li>)}</ul>
     </details>}
-    <p className="muted">El consumo se asocia a un proyecto solo cuando la carpeta en la que trabajó el agente se llama igual (sin contar tildes, mayúsculas ni signos).</p>
+    <p className="muted">El consumo se asocia a un proyecto solo cuando la carpeta en la que trabajó el agente se llama igual (sin contar tildes, mayúsculas ni signos) y ningún otro proyecto se llama así. Las dos columnas no se suman: los agentes de código cuentan sin caché y Hermes con ella. Hermes da sus 20 repositorios con más consumo{hermesFailed ? '; ahora no se ha podido leer' : ''}.</p>
   </div>;
 }

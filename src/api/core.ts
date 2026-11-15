@@ -277,7 +277,7 @@ export const putJobsSettings = (changes: JobsSettings) => core<JobsSettings>('/j
 /** Clients' projects (Central) with CostGuard's tokens per period, matched only by the same folder name. */
 export type ProjectUsage = Record<'24h' | '7d' | '30d', { tokens: number; turns: number }>;
 export type ClientProjects = {
-  clients: { name: string; company: string | null; projects: { name: string; status: string | null; phase: string | null; usage: ProjectUsage | null }[] }[];
+  clients: { name: string; projects: { name: string; status: string | null; phase: string | null; ambiguous: boolean; usage: ProjectUsage | null }[] }[];
   unmatched: { name: string; usage: ProjectUsage }[]; costguard: boolean; problem: string | null; fetchedAt: string | null;
 };
 export const getClientProjects = () => core<ClientProjects>('/jobs/projects');

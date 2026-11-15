@@ -62,3 +62,38 @@ def test_proyectos_de_clientes_con_su_consumo(tmp_path):
     text = json.dumps(found)
     assert "privado@x.es" not in text and "B123" not in text and "/Users/" not in text
     connection.close()
+
+
+def test_sin_clave_o_con_nombre_repetido_no_se_asigna(tmp_path):
+    """Folders with no Latin letters never feed a project (each stays apart under its name), and a name two
+    projects share gets no usage at all."""
+    import json
+    import sqlite3
+    import time
+
+    from agora_core import central, work_projects
+    from agora_core.db import DB_NAME, connect, migrate
+
+    usage = tmp_path / "costguard.db"
+    db = sqlite3.connect(usage)
+    db.execute("CREATE TABLE horas (espacio_id INTEGER, hora INTEGER, agente TEXT, proveedor TEXT, modelo TEXT, proyecto_raw TEXT, gi INTEGER, go INTEGER, cr INTEGER, cw INTEGER, turnos INTEGER)")
+    hour = int(time.time() // 3600) * 3600
+    db.executemany("INSERT INTO horas VALUES (1, ?, 'claude', 'a', 'm', ?, ?, 0, 0, 0, 1)",
+                   [(hour, "/x/Проект", 9000), (hour, "/x/项目", 7000), (hour, "/x/web", 300), (hour, "", 40)])
+    db.commit()
+    db.close()
+    connection = connect(tmp_path / "data" / DB_NAME)
+    migrate(connection)
+    snapshot = {"clients": [{"name": "A", "projects": [{"name": "🚀", "status": "ACTIVE"}, {"name": "Web", "status": "ACTIVE"}]},
+                            {"name": "B", "projects": [{"name": "WEB", "status": "ACTIVE"}, {"name": "Sin proyecto", "status": "ACTIVE"}]}], "servers": []}
+    connection.execute("INSERT INTO setting (key, value) VALUES (?, ?)", (central.SNAPSHOT_SETTING, json.dumps(snapshot)))
+    connection.execute("INSERT INTO setting (key, value) VALUES ('addons.costguard', ?)", (json.dumps({"dataPath": str(usage)}),))
+    found = work_projects.projects(connection)
+    rocket, web_a = found["clients"][0]["projects"]
+    web_b, nameless = found["clients"][1]["projects"]
+    assert rocket["usage"] is None, "un emoji no recibe el consumo de carpetas sin letras latinas"
+    assert web_a["usage"] is None and web_b["usage"] is None and web_a["ambiguous"] and web_b["ambiguous"]
+    assert nameless["usage"] is None, "el cubo sin nombre de CostGuard no se asocia"
+    apart = {u["name"]: u["usage"]["24h"]["tokens"] for u in found["unmatched"]}
+    assert apart == {"Проект": 9000, "项目": 7000, "web": 300, "Sin proyecto": 40}, "cada una aparte, con su nombre"
+    connection.close()
