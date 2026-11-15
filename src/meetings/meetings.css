@@ -1,0 +1,8 @@
+.meetings-page .card { max-width:820px; margin-bottom:18px }
+.meeting-record form { display:flex; flex-direction:column; gap:12px; max-width:520px }
+.meeting-live { display:inline-flex; align-items:center; gap:6px; font-variant-numeric:tabular-nums; color:var(--c-7a5717); background:var(--c-f3e6c4); padding:3px 10px; border-radius:999px; font-size:12px }
+.meeting-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px }
+.meeting-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--c-dfe3d6) }
+.meeting-main { display:flex; flex-direction:column; gap:3px; flex:1 1 260px; min-width:0 }
+.meeting-main strong { overflow-wrap:anywhere }
+.meeting-confirm { display:inline-flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12px }

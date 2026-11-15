@@ -313,3 +313,23 @@ export const getReplyDraft = (messageId: number) => core<MailDraft>(`/mail/messa
 export const composeReply = (messageId: number, instructions: string) => core<{ body: string }>(`/mail/messages/${messageId}/compose`, { instructions });
 export const previewMail = (draft: MailDraft) => core<MailPreview>('/mail/drafts/preview', draft);
 export const sendMail = (draft: MailDraft, digest: string) => core<{ sent: boolean; savedToSent: boolean; refused: string[] }>('/mail/send', { draft, digest });
+
+/** Recorded meetings: your microphone (sent here in pieces) and the system's audio (recorded by the core). */
+export type Meeting = { id: number; title: string; confidentiality: Level; status: 'recording' | 'recorded' | 'interrupted';
+  started_at: string; ended_at: string | null; seconds: number; mic_bytes: number; system_source: string | null; system_bytes: number; note: string | null };
+export type MeetingList = { meetings: Meeting[]; system: string | null; recording: number | null };
+export const getMeetings = () => core<MeetingList>('/meetings');
+export const startMeeting = (body: { title: string; confidentiality: Level; mic_type: string; system: boolean }) => core<Meeting>('/meetings', body);
+export const stopMeeting = (id: number) => core<Meeting>(`/meetings/${id}/stop`, {});
+export const deleteMeeting = (id: number) => core<{ deleted: boolean }>(`/meetings/${id}`, undefined, 'DELETE');
+/** One piece of the microphone, in order. */
+export async function sendMeetingPiece(id: number, piece: Blob): Promise<void> {
+  const response = await fetch(`/api/core/meetings/${id}/mic`, {
+    method: 'POST', body: piece,
+    headers: { 'Content-Type': 'application/octet-stream', ...(csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {}) },
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new ApiError(data.error || 'No se pudo guardar el audio.', response.status, data);
+  }
+}

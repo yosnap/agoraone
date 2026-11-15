@@ -59,6 +59,9 @@ rm -f "$STDLIB/site-packages/claude_agent_sdk/_bundled/claude"
 step "Núcleo, web y ejemplos"
 mkdir -p "$CONTENT/core"
 rsync -a --exclude '__pycache__' --exclude '*.pyc' "$ROOT/core/agora_core" "$CONTENT/core/"
+# The meetings' system audio (ScreenCaptureKit, audio only); signed below with the other binaries.
+mkdir -p "$CONTENT/core/helpers/bin"
+xcrun swiftc -O -swift-version 5 -target arm64-apple-macos13 "$ROOT/core/helpers/system-audio-macos.swift" -o "$CONTENT/core/helpers/bin/agora-system-audio"
 rsync -a "$ROOT/dist/" "$CONTENT/web/"
 rsync -a "$ROOT/resources/library-test/" "$CONTENT/library-test/"
 # Compiled now: the signed app is never written to (the core runs without writing bytecode).
@@ -77,6 +80,8 @@ while IFS= read -r -d '' file; do
   signed=$((signed + 1))
 done < <(find "$CONTENT" -type f \( -perm -u+x -o -name '*.so' -o -name '*.dylib' \) -print0)
 echo "$signed binarios firmados"
+codesign --verify --strict "$CONTENT/core/helpers/bin/agora-system-audio" \
+  || { echo "El programa de audio del sistema no está firmado." >&2; exit 1; }
 
 step "App de Tauri"
 (cd "$ROOT/desktop/app" && cargo tauri build --bundles app --config tauri.bundle.json)

@@ -18,6 +18,7 @@ const SummaryView = lazy(() => import('../summary/summary-view').then(module => 
 const AssistantView = lazy(() => import('../assistant/assistant-view').then(module => ({ default: module.AssistantView })));
 const ConnectorsView = lazy(() => import('../connectors/connectors-view').then(module => ({ default: module.ConnectorsView })));
 const JobsView = lazy(() => import('../jobs/jobs-view').then(module => ({ default: module.JobsView })));
+const MeetingsView = lazy(() => import('../meetings/meetings-view').then(module => ({ default: module.MeetingsView })));
 const SettingsView = lazy(() => import('../settings/settings-view').then(module => ({ default: module.SettingsView })));
 
 /** AgoraOne's frame: the rail with the sections and the section on screen. The office (the city) stays
@@ -54,6 +55,7 @@ export function Shell() {
           : section === 'fiscal' ? <FiscalView discreet={discreet}/>
           : section === 'agenda' ? <AgendaView discreet={discreet}/>
           : section === 'jobs' ? <JobsView discreet={discreet}/>
+          : section === 'meetings' ? <MeetingsView discreet={discreet}/>
           : <PendingView section={section}/>}
       </Suspense></main>}
       {status?.state === 'offline' && <section className="page" role="alert"><h1>Sin conexión</h1><p>{status.detail}</p></section>}
