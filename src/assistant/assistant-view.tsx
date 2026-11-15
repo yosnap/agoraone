@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { RuleProposals, useProposals } from './rule-proposals';
+import { DictationButton } from '../ui/dictation-button';
 import {
   askAssistant, createAssistantConversation, getAssistantConversation, getAssistantSettings, getEngines, getPersonas, listAssistantConversations,
   type AssistantMessage, type ConversationSummary, type Persona, type Source, type Stage,
@@ -161,6 +162,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <textarea id="assistant-input" value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={keys} maxLength={8000}
           placeholder={`Pregunta a ${name}…`} aria-keyshortcuts="Enter"/>
         <div className="actions">
+          <DictationButton disabled={Boolean(live)} onText={text => setDraft(current => current.trim() ? `${current.trimEnd()} ${text}` : text)}/>
           {live ? <button type="button" className="button" onClick={() => abort.current?.abort()}>Detener</button>
             : <button className="button primary" disabled={!draft.trim()}>Enviar</button>}
           <small className="muted">Enter envía · Mayús + Enter, nueva línea</small>

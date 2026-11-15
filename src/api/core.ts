@@ -1,4 +1,4 @@
-import { csrfToken, request } from './client';
+import { ApiError, csrfToken, request } from './client';
 
 // The Python core, reached through the backend at /api/core/* (cookie, CSRF and origin checked there).
 const core = <T>(path: string, body?: unknown, method?: string) => request<T>(`/core${path}`, body, method);
@@ -294,6 +294,16 @@ export type VoiceStatus = VoiceSettings & { chosen: VoiceSettings; binaries: str
   models: { name: string; path: string; bytes: number }[]; ready: boolean; platform: string };
 export const getVoiceStatus = () => core<VoiceStatus>('/voice/status');
 export const putVoiceSettings = (changes: Partial<VoiceSettings>) => core<VoiceSettings>('/voice/settings', changes, 'PUT');
+/** A short recorded clip to text, on this machine (the audio goes to the core only). */
+export async function transcribeVoice(audio: Blob): Promise<{ text: string; language: string | null; seconds: number }> {
+  const response = await fetch('/api/core/voice/transcribe', {
+    method: 'POST', body: audio,
+    headers: { 'Content-Type': audio.type || 'application/octet-stream', ...(csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {}) },
+  });
+  const data = await response.json();
+  if (!response.ok) throw new ApiError(data.error || 'No se pudo transcribir.', response.status, data);
+  return data;
+}
 
 /** Replying: a prefilled reply, a body drafted by Watson (normal mail only), the sealed preview and the send. */
 export type MailDraft = { accountId: number; to: string; cc: string; subject: string; body: string; replyTo: number | null };

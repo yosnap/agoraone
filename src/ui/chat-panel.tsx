@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { DictationButton } from './dictation-button';
 import { cancelTurn, createConversation, getConversation, sendMessage, type Conversation, type Status, type DocumentSource, type ToolApproval } from '../api/client';
 import { ApprovalCard } from './approval-card';
 
@@ -86,7 +87,7 @@ export function ChatPanel({ status, onConnected, document, onDetach, profile, on
     {error && <p role="alert" className="error">{error}</p>}
     {!ready && <p className="notice">{status?.detail || 'Comprobando el backend…'}</p>}
     {document && <div className="document-attached"><span>Solo lectura: {document.title}</span><button disabled={busy} onClick={onDetach} aria-label="Quitar documento">×</button></div>}
-    <form onSubmit={submit}><label htmlFor={fieldId}>Tu mensaje a {label} <span className="chat-shortcut">{sendShortcut} para enviar · ↑ recupera el último</span></label><textarea id={fieldId} aria-keyshortcuts="Enter" onKeyDown={shortcuts} placeholder="¿Qué te gustaría explorar?" maxLength={6000} value={message} onChange={e => setMessage(e.target.value)} disabled={busy || restoring}/><button className="primary" disabled={busy || restoring || !message.trim() || !ready}>{busy ? 'Consultando…' : 'Enviar a Hermes ↗'}</button></form>
+    <form onSubmit={submit}><label htmlFor={fieldId}>Tu mensaje a {label} <span className="chat-shortcut">{sendShortcut} para enviar · ↑ recupera el último</span></label><textarea id={fieldId} aria-keyshortcuts="Enter" onKeyDown={shortcuts} placeholder="¿Qué te gustaría explorar?" maxLength={6000} value={message} onChange={e => setMessage(e.target.value)} disabled={busy || restoring}/><DictationButton disabled={busy || restoring} onText={text => setMessage(current => current.trim() ? `${current.trimEnd()} ${text}` : text)}/><button className="primary" disabled={busy || restoring || !message.trim() || !ready}>{busy ? 'Consultando…' : 'Enviar a Hermes ↗'}</button></form>
     <small>{profile ? `Usa el proveedor, las herramientas, los MCP y la memoria del propio perfil${document ? ', con el texto del documento adjunto' : ''}. Las consultas que solo leen se hacen sin preguntar; todo lo que cambie algo espera a que lo permitas.` : document ? 'Se enviará el texto del documento seleccionado a tu proveedor de inferencia. Se vuelve a leer en cada envío.' : 'Sin acceso directo al disco. Las respuestas utilizan tu proveedor de inferencia.'}</small>
   </section>;
 }

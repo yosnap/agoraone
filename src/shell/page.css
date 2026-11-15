@@ -43,3 +43,6 @@
 .status-badge.waiting { background:var(--c-f3e6c4); color:var(--c-7a5717) }
 .status-badge.paused, .status-badge.neutral { background:var(--c-e7ece2); color:var(--c-355a50) }
 .status-badge.neutral::before { display:none }
+.dictation { display:inline-flex; flex-direction:column; gap:4px; min-width:0 }
+.dictation-button.recording { background:var(--c-f3e6c4); color:var(--c-7a5717); font-variant-numeric:tabular-nums }
+.dictation-error { font-size:11px; color:var(--c-7a5717); max-width:260px }

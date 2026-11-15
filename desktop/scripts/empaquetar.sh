@@ -87,7 +87,7 @@ codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/
 # app's own permission texts.
 codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/dev/null | grep -q personal-information.calendars \
   || { echo "Python no tiene el permiso de calendarios en su firma." >&2; exit 1; }
-for key in NSCalendarsFullAccessUsageDescription NSCalendarsUsageDescription NSRemindersFullAccessUsageDescription NSRemindersUsageDescription NSContactsUsageDescription; do
+for key in NSCalendarsFullAccessUsageDescription NSCalendarsUsageDescription NSRemindersFullAccessUsageDescription NSRemindersUsageDescription NSContactsUsageDescription NSMicrophoneUsageDescription; do
   /usr/libexec/PlistBuddy -c "Print :$key" "$APP/Contents/Info.plist" >/dev/null \
     || { echo "El Info.plist de la app no lleva $key (el texto de un permiso)." >&2; exit 1; }
 done
@@ -99,6 +99,8 @@ codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/
 rm -rf "$WORK/AgoraOne.app"
 ditto "$APP" "$WORK/AgoraOne.app"
 APP="$WORK/AgoraOne.app"
+codesign -d --entitlements - "$APP" 2>/dev/null | grep -q device.audio-input \
+  || { echo "La app no tiene el permiso de micrófono en su firma." >&2; exit 1; }
 codesign --verify --deep --strict "$APP"
 echo "Firma correcta: $APP"
 
