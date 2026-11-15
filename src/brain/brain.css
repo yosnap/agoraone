@@ -143,3 +143,15 @@
 .music-time { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--c-6f8379) }
 .music-ask { display:flex; gap:6px; align-items:center }
 .music-ask input { flex:1; min-width:0; border:1px solid var(--c-cbd6c9); border-radius:9px; padding:7px 10px; font:inherit; font-size:12px; background:var(--c-fffffa); color:var(--c-173d3c) }
+.side-head { display:flex; justify-content:space-between; align-items:center; gap:8px }
+.side-action { padding:4px 10px; font-size:11px }
+.review-panel { width:min(1100px,100%) }
+.review-grid { display:flex; flex-direction:column; gap:8px }
+.review-total { font-size:15px; margin:0 }
+.review-section { border:1px solid var(--c-dfe3d6); border-radius:12px; padding:10px 14px; background:var(--c-fffffa) }
+.review-section summary { cursor:pointer; font-weight:600; font-size:14px; display:flex; align-items:center; gap:8px }
+.review-section p { margin:6px 0 }
+.review-notes { list-style:none; margin:6px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:4px 14px; max-height:260px; overflow:auto }
+.review-notes button { background:none; border:0; padding:3px 0; text-align:left; display:flex; flex-direction:column; color:var(--c-173d3c); cursor:pointer }
+.review-notes button:hover strong { color:var(--c-996a25) }
+.review-notes small { color:var(--c-6f8379); font-size:11px }

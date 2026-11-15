@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { getBrainHome, type BrainArea, type LatelyEntry } from '../api/core';
+import { VaultReviewPanel } from './vault-review';
 
 const ago = (stamp: string | null) => {
   if (!stamp) return '';
@@ -16,6 +17,7 @@ export function BrainSide({ discreet, colors, picked, onPick, onRead }: {
 }) {
   const [home, setHome] = useState<{ areas: BrainArea[]; lately: { today: LatelyEntry[]; yesterday: LatelyEntry[] } } | null>(null);
   const [failed, setFailed] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
   const asked = useRef<boolean | null>(null);
   if (asked.current !== discreet) { asked.current = discreet; void getBrainHome(discreet).then(setHome).catch(() => setFailed(true)); }
   const pick = onPick;
@@ -30,7 +32,8 @@ export function BrainSide({ discreet, colors, picked, onPick, onRead }: {
     </li>)}</ul>
   </>;
   return <div className="brain-side">
-    <h2>Áreas</h2>
+    <div className="side-head"><h2>Áreas</h2><button type="button" className="button side-action" onClick={() => setReviewing(true)}>Revisar el vault</button></div>
+    {reviewing && <VaultReviewPanel discreet={discreet} onRead={key => { setReviewing(false); onRead(key); }} onClose={() => setReviewing(false)}/>}
     <ul className="areas">{home.areas.map(area => <li key={area.name}>
       <button type="button" aria-pressed={picked === area.name} onClick={() => pick(area.name)}
         title={picked === area.name ? 'Quitar el resaltado' : 'Resaltar sus notas en el grafo'}>
