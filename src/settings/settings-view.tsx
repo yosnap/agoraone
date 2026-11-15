@@ -14,12 +14,14 @@ import { VoiceSettingsCard } from './settings-voice';
 import { MeetingSettingsCard } from './settings-meetings';
 import { AppsSettingsCard } from './settings-apps';
 import { MusicSettingsCard } from './settings-music';
+import { InstallSettingsCard } from './settings-install';
 import './settings.css';
 
 type Tab = { id: string; label: string; cards: () => ReactNode };
 // One tab per area; what belongs together stays together (a mail account and its rules).
 const tabs: Tab[] = [
   { id: 'general', label: 'General', cards: () => <AppearanceCard/> },
+  { id: 'instalacion', label: 'Instalación', cards: () => <InstallSettingsCard/> },
   { id: 'asistente', label: 'Asistente', cards: () => <AssistantSettingsCard/> },
   { id: 'correo', label: 'Correo', cards: () => <><MailSettingsCard/><MailRulesCard/></> },
   { id: 'agenda', label: 'Agenda y avisos', cards: () => <><CalendarsSettingsCard/><AlertsSettingsCard/></> },

@@ -391,3 +391,8 @@ export async function trackUrl(id: string): Promise<string> {
   if (!response.ok) throw new ApiError('No se pudo abrir esa canción.', response.status, {});
   return URL.createObjectURL(await response.blob());
 }
+
+/** «Qué tengo instalado» (1.6): every piece, whether it is here, which modules use it and how to get it. */
+export type DoctorHow = { kind: 'brew' | 'command' | 'page' | 'model' | 'none'; package?: string; command?: string; url?: string; model?: string; bytes?: number };
+export type DoctorPiece = { id: string; name: string; state: 'ok' | 'missing' | 'optional'; modules: string[]; detail: string | null; how: DoctorHow };
+export const getDoctor = () => core<{ pieces: DoctorPiece[]; platform: string; missing: number; summary: string }>('/doctor');
