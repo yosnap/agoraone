@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { deleteMeeting, getMeetings, levelLabels, processMeeting, stopMeeting, type Level, type Meeting, type MeetingList } from '../api/core';
+import { deleteMeeting, getMeetings, getSummarizers, levelLabels, processMeeting, stopMeeting, type Summarizer, type Level, type Meeting, type MeetingList } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { MeetingDetailPanel } from './meeting-detail';
@@ -17,7 +17,9 @@ const statusText: Record<Meeting['status'], string> = { recording: 'Grabando', r
 const workText: Partial<Record<Meeting['work'], string>> = { transcribing: 'Transcribiendo en este equipo…', summarizing: 'Resumiendo…', failed: 'No se pudo procesar' };
 export const working = (m: Meeting) => m.work === 'transcribing' || m.work === 'summarizing';
 
-function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours }: { meeting: Meeting; discreet: boolean; onDeleted: () => void; onChanged: () => void; ours: boolean }) {
+const madeBy: Record<string, string> = { claude: 'Resumida por Claude', local: 'Resumida en este Mac con el modelo local', none: 'Sin resumen: solo la transcripción' };
+
+function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned }: { meeting: Meeting; discreet: boolean; onDeleted: () => void; onChanged: () => void; ours: boolean; planned?: Summarizer }) {
   const [confirming, setConfirming] = useState(false);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
@@ -37,6 +39,7 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours }: { meeting
       <small>{when(meeting.started_at)} · {clock(meeting.seconds)} · {levelLabels[meeting.confidentiality]}</small>
       <small className="muted">Tu micrófono: {meeting.mic_bytes ? size(meeting.mic_bytes) : 'vacío'} · Audio del sistema: {meeting.system_source ? (meeting.system_bytes ? size(meeting.system_bytes) : meeting.status === 'recording' ? 'grabando' : 'vacío') : 'no grabado'}</small>
       {meeting.note && !hidden && <small className="muted">{meeting.note}</small>}
+      <small className="meeting-engine">{meeting.summary_by ? madeBy[meeting.summary_by] : planned ? `Se resumirá con: ${planned.label}` : ''}</small>
     </div>
     <span className={`status-badge ${meeting.status === 'recorded' ? 'good' : 'paused'}`}>{statusText[meeting.status]}</span>
     {workText[meeting.work] && <span className="meeting-work" role="status">{workText[meeting.work]}</span>}
@@ -70,6 +73,9 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
   const [level, setLevel] = useState<Level>('normal');
   const [system, setSystem] = useState(true);
   const loaded = useRef<string | null>(null);
+  const [who, setWho] = useState<Record<Level, Summarizer> | null>(null);
+  const askedWho = useRef(false);
+  if (!askedWho.current) { askedWho.current = true; void getSummarizers().then(setWho).catch(() => setWho(null)); }
   const poll = useRef(0);
   // While a meeting is being transcribed or summarized, the list is read again every few seconds.
   const load = () => getMeetings().then(next => {
@@ -96,6 +102,7 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
       </> : <form onSubmit={event => { event.preventDefault(); void startRecording(title, level, system).then(() => setTitle('')); }}>
         <label className="field">Título<input value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder="Reunión del equipo (opcional)"/></label>
         <label className="field">Confidencialidad<ModernSelect value={level} options={levels} onChange={value => setLevel(value as Level)}/></label>
+        <p className="meeting-engine" role="note">La grabación y la transcripción se hacen en este Mac. Resumen: <strong>{who ? who[level].label : '…'}</strong>.</p>
         <label className="check"><input type="checkbox" checked={system} onChange={event => setSystem(event.target.checked)}/> Grabar también el audio del sistema (los demás)</label>
         {system && list?.system && <p className="fiscal-warning">{list.system}</p>}
         <button type="submit" className="button primary" disabled={busy}>{recorder.phase === 'starting' ? 'Empezando…' : 'Empezar a grabar'}</button>
@@ -105,7 +112,7 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
     <article className="card" aria-labelledby="recorded-title">
       <div className="card-head"><h2 id="recorded-title">Grabadas</h2></div>
       {!list && !error ? <Loading label="Leyendo las reuniones" lines={2}/>
-        : list && (list.meetings.length ? <ul className="meeting-list">{list.meetings.map(m => <MeetingRow key={m.id} meeting={m} discreet={discreet} onDeleted={() => void load()} onChanged={() => void load()} ours={recorder.meetingId === m.id}/>)}</ul>
+        : list && (list.meetings.length ? <ul className="meeting-list">{list.meetings.map(m => <MeetingRow key={m.id} meeting={m} discreet={discreet} onDeleted={() => void load()} onChanged={() => void load()} ours={recorder.meetingId === m.id} planned={who?.[m.confidentiality]}/>)}</ul>
           : <p className="muted">Todavía no hay reuniones grabadas.</p>)}
       {error && <LoadError message={error}/>}
     </article>

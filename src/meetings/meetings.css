@@ -17,3 +17,4 @@
 .meeting-draft { white-space:pre-wrap; font-size:12px; max-height:320px; overflow:auto; background:var(--c-edf0e8); padding:10px; border-radius:8px }
 .meeting-save { display:flex; flex-direction:column; gap:10px }
 .meeting-save-fields { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px }
+.meeting-engine { font-size:12px; color:var(--c-355a50) }

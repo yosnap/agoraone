@@ -130,3 +130,13 @@ def test_solo_modelos_locales_de_chat(client, monkeypatch):
         assert client.put("/meetings/settings", json={"local_url": "http://127.0.0.1:11434/v1", "local_model": name}, headers=H).status_code == 422, name
     with pytest.raises(local_model.LocalModelError):
         local_model.ask("http://127.0.0.1:11434/v1", "glm-4.6:cloud", "s", "t")
+
+
+def test_quien_resume_cada_reunion():
+    local = {"local_url": "http://127.0.0.1:11434/v1", "local_model": "qwen3:14b"}
+    who = meeting_notes.summarizers([Engine("claude-code")], local, reachable=lambda: True)
+    assert who["normal"] == {"by": "claude", "label": "Claude, con tu sesión de Claude Code"}
+    assert who["private"] == who["local_only"] == {"by": "local", "label": "qwen3:14b en Ollama, en este Mac"}
+    assert meeting_notes.summarizers([], local, reachable=lambda: False)["private"]["by"] == "local-off"
+    assert meeting_notes.summarizers([], meeting_notes.DEFAULTS)["normal"]["by"] == "none"
+    assert meeting_notes.summarizers([], meeting_notes.DEFAULTS)["private"]["by"] == "none"

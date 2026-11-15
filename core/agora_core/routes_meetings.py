@@ -84,6 +84,10 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
     async def put_local(request: Request, body: LocalSettings):
         return await run(request, lambda c, o: meeting_notes.save_settings(c, body.model_dump(exclude_unset=True)))
 
+    @router.get("/meetings/summarizers")
+    async def who(request: Request):
+        return await run(request, lambda c, o: meeting_notes.summarizers(worker.make_engines(), meeting_notes.settings(c)))
+
     @router.get("/meetings/local-models")
     async def local_models(request: Request, url: str):
         return await run(request, lambda c, o: {"models": local_model.models(url)})

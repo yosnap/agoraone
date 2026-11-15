@@ -328,6 +328,8 @@ export const markMeetingSaved = (id: number, vault: string, note: string) => cor
 export type MeetingSettings = { local_url: string | null; local_model: string | null; known?: { name: string; url: string }[]; detected?: string | null };
 export const getMeetingSettings = () => core<MeetingSettings>('/meetings/settings');
 export const putMeetingSettings = (changes: Partial<MeetingSettings>) => core<MeetingSettings>('/meetings/settings', changes, 'PUT');
+export type Summarizer = { by: 'claude' | 'local' | 'local-off' | 'none'; label: string };
+export const getSummarizers = () => core<Record<Level, Summarizer>>('/meetings/summarizers');
 export const getLocalModels = (url: string) => core<{ models: string[] }>(`/meetings/local-models?url=${encodeURIComponent(url)}`);
 export type MeetingList = { meetings: Meeting[]; system: string | null; recording: number | null };
 export const getMeetings = () => core<MeetingList>('/meetings');
