@@ -5,7 +5,8 @@ gbrain. Plan: `plans/261115-1455-centro-mando/plan.md`; maqueta aprobada por el 
 
 ## Qué hay en la página
 
-- Barra de mando, arriba. Escribe una pregunta y pulsa Enter, o pulsa el micrófono, habla y vuelve a
+- Sin barra arriba (1.4.1): se pregunta y se habla con Watson, en su panel de la derecha, como en la maqueta.
+- (1.4.0) Barra de mando, arriba, retirada en la 1.4.1. Escribe una pregunta y pulsa Enter, o pulsa el micrófono, habla y vuelve a
   pulsarlo. La pregunta va directa al panel de Watson de la derecha, que responde con sus pasos en directo y
   cita las notas. Nada se envía sin Enter o sin el micrófono.
 - Grabar reunión. El botón de la barra empieza a grabar con las opciones de la última vez y, pulsado otra
@@ -25,6 +26,13 @@ gbrain. Plan: `plans/261115-1455-centro-mando/plan.md`; maqueta aprobada por el 
 
   Pulsar un área resalta sus notas en el grafo. Debajo, «Últimamente» lista las notas cambiadas y las
   reuniones de hoy y de ayer; pulsar una nota la abre. «Notas más conectadas» queda plegada al final.
+- Hoy, arriba de la columna (1.4.1): los próximos eventos de la Agenda, los recordatorios de hoy y lo que
+  espera en la Bandeja, con sus primeros resúmenes.
+- Agentes (1.4.2), según el registro de actividad de gbrain, con datos de Hermes y en solo lectura:
+  - los encargos en curso del kanban, con quién los lleva y desde cuándo, y cuántas tarjetas están bloqueadas;
+  - las próximas rutinas (tareas programadas activas);
+  - lo último que han hecho los perfiles en 24 h, con su resultado («Hecho» o «Falló»). Un canal que sigue
+    conectado no se muestra; uno que se cae, sí.
 - Grafo por áreas. Las notas se agrupan por área, más separadas y compactas, y cada área grande lleva una
   etiqueta con su nombre y su número de notas. Pulsar la etiqueta resalta el área, igual que desde el panel.
 - Franja de estado: Watson en línea, agentes y tokens de las últimas 24 horas.

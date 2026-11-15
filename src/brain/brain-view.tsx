@@ -4,6 +4,7 @@ import { SummaryStrip } from '../summary/summary-strip';
 import { BrainDock } from './brain-dock';
 import { BrainSide } from './brain-side';
 import { BrainToday } from './brain-today';
+import { BrainAgents } from './brain-agents';
 import { getBrainGraph, levelLabels, searchBrain, type BrainGraph, type GraphLayers, type NodeType, type SearchResult } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 import { layoutGraph } from './graph-layout';
@@ -134,6 +135,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
       </div>
       {searchError && <LoadError message={searchError}/>}
       {!shown && !pickedNode && <BrainToday discreet={discreet}/>}
+      {!shown && !pickedNode && <BrainAgents/>}
       {pickedNode && !shown ? <div className="brain-list" aria-live="polite">
         <h2>{typeLabels[pickedNode.type]}: {pickedNode.title}</h2>
         <ul>{around.flatMap(id => { const node = titles.get(id); return node?.type === 'note' ? [<li key={id}><button onClick={() => read(id)}><strong>{node.title}</strong><small>{node.folder || 'Raíz'}</small></button></li>] : []; })}</ul>
