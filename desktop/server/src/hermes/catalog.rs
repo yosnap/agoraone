@@ -28,6 +28,17 @@ static PLATFORM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-z0-9_-]{1,6
 static VERSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"(?m)^version\s*=\s*["']([^"']+)"#).unwrap());
 static HEADING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^#\s+(.+)$").unwrap());
 static HEADINGS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^#+\s+.*$").unwrap());
+
+/// The name in a SOUL.md heading used as the main profile's label when Hermes has no display name:
+/// «SOUL.md — Sn4p · Perfil principal de Hermes» reads «Sn4p»; any other heading stays as written.
+pub fn soul_name(heading: &str) -> String {
+    let Some(rest) = heading.strip_prefix("SOUL.md").or_else(|| heading.strip_prefix("Soul.md")) else { return heading.to_string() };
+    let rest = rest.trim_start_matches(|c: char| c.is_whitespace() || matches!(c, '—' | '–' | '-' | ':' | '·' | '|'));
+    let name = rest.split([' ', '\u{a0}']).collect::<Vec<_>>().join(" ");
+    let cut = [" · ", " — ", " – ", " - ", " | "].iter().filter_map(|sep| name.find(sep)).min().unwrap_or(name.len());
+    let name = name[..cut].trim().to_string();
+    if name.is_empty() { heading.to_string() } else { name }
+}
 static EMPHASIS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[*_`]").unwrap());
 
 /// Revision of an identity file; the profile editor and its Python writer compute the same value.
@@ -387,7 +398,7 @@ impl HermesDiscovery {
                 redact_str(&masked.split('\n').filter(|line| !is_hidden_marker(line)).collect::<Vec<_>>().join("\n"), 2000)
             })
             .unwrap_or_default();
-        let heading = HEADING.captures(&soul).map(|c| slice_utf16(EMPHASIS.replace_all(&c[1], "").trim(), 100)).filter(|h| !h.is_empty());
+        let heading = HEADING.captures(&soul).map(|c| soul_name(&slice_utf16(EMPHASIS.replace_all(&c[1], "").trim(), 100))).filter(|h| !h.is_empty());
         let declared = or(meta.get("description"), get(bot, "description"));
         let mut description = redact(declared, 700);
         if description.is_empty() {

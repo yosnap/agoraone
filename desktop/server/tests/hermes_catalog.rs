@@ -251,3 +251,13 @@ fn hermes_python_comes_from_its_tools() {
     std::fs::write(tools.join("facts.json"), r#"{"packages":{"python":{"entry":"enlace"}}}"#).unwrap();
     assert!(!hermes_location(none, &home).python.starts_with(&tools));
 }
+
+/// A SOUL.md heading like «SOUL.md — Sn4p · Perfil principal» gives the name only.
+#[test]
+fn soul_heading_gives_the_name() {
+    use agora_server::hermes::catalog::soul_name;
+    assert_eq!(soul_name("SOUL.md — Sn4p · Perfil principal de Hermes"), "Sn4p");
+    assert_eq!(soul_name("SOUL.md: Atlas"), "Atlas");
+    assert_eq!(soul_name("Hermes, mi asistente"), "Hermes, mi asistente", "otro título se queda como está");
+    assert_eq!(soul_name("SOUL.md"), "SOUL.md", "sin nombre detrás, el título");
+}
