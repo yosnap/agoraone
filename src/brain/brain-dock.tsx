@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { getSummarizers, levelLabels, type Level, type Summarizer } from '../api/core';
-import { stopRecording, useMeetingRecorder } from '../meetings/meeting-recorder';
+import { lastChoice, stopRecording, toggleQuickRecording, useMeetingRecorder } from '../meetings/meeting-recorder';
 
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
@@ -12,7 +12,16 @@ export function BrainDock() {
   const asked = useRef(false);
   if (!asked.current) { asked.current = true; void getSummarizers().then(setWho).catch(() => setWho(null)); }
   const live = recorder.phase === 'recording' || recorder.phase === 'stopping';
+  const choice = lastChoice();
   return <div className="brain-dock">
+    {!live && <section className="dock-card dock-record-idle" aria-label="Grabar una reunión">
+      <div className="dock-head"><span className="command-dot" aria-hidden="true"/><strong>Grabar una reunión</strong></div>
+      <small>Tu micrófono y lo que suena en el Mac (Meet, Zoom, Teams), en este equipo. {levelLabels[choice.confidentiality]} · se resumirá con {who ? who[choice.confidentiality].label : '…'}.</small>
+      {recorder.error && <small className="dock-note" role="alert">{recorder.error}</small>}
+      <div className="dock-foot"><small>Título y opciones en Reuniones</small>
+        <button type="button" className="button primary dock-record-button" onClick={toggleQuickRecording} disabled={recorder.phase === 'starting'}>
+          <span className="command-dot" aria-hidden="true"/>{recorder.phase === 'starting' ? 'Empezando…' : 'Grabar'}</button></div>
+    </section>}
     {live && <section className="dock-card dock-recording" aria-label="Grabación de la reunión">
       <div className="dock-head">
         <span className="command-dot on" aria-hidden="true"/>

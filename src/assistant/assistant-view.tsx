@@ -28,6 +28,8 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   embedded?: boolean; onSources?: (ids: string[]) => void; onThinking?: (thinking: Thinking) => void; discreet?: boolean;
 }) {
   const [listOpen, setListOpen] = useState(!embedded);
+  // What the microphone is doing, shown live in the panel (1.4): hearing, then turning it into text.
+  const [hearing, setHearing] = useState<'idle' | 'starting' | 'recording' | 'transcribing'>('idle');
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const [listError, setListError] = useState('');
   const [current, setCurrent] = useState<number | null>(null);
@@ -129,15 +131,20 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
     </aside>}
     <div className="assistant-main">
       <header className="assistant-head">
-        <div><div className="eyebrow">ASISTENTE</div><h1 id="assistant-title">{name}</h1>
-          {persona && <p className="muted">{persona.conveys}. Inspirado en {persona.origin}.</p>}</div>
+        {embedded && <div className={`watson-orb ${hearing === 'recording' ? 'hearing' : live ? 'busy' : ''}`} aria-hidden="true"><i/><i/><i/></div>}
+        <div>{!embedded && <div className="eyebrow">ASISTENTE</div>}<h1 id="assistant-title">{name}</h1>
+          {embedded ? <p className="watson-state" role="status">{hearing === 'recording' ? 'Escuchando… (en este Mac)' : hearing === 'transcribing' ? 'Pasando tu voz a texto…'
+            : live ? (live.stage ? stageLabels[live.stage] : 'Enviando…') : 'Listo · escribe o pulsa el micrófono'}</p>
+            : persona && <p className="muted">{persona.conveys}. Inspirado en {persona.origin}.</p>}</div>
         {embedded && <div className="actions"><button className="button" aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)}>Conversaciones</button><button className="button" onClick={fresh}>Nueva</button></div>}
         <span className={`chip ${engine?.active ? 'good' : engine ? 'bad' : ''}`} role="status">
           {!engine ? 'Comprobando motor…' : engine.active ? `${engineName(engine.active)} · ${modelName(engine.model)}` : 'Sin motor disponible'}</span>
       </header>
       <div className="assistant-messages" aria-live="polite">
         <Announcements name={persona?.name ?? 'Watson'} items={announced.items} note={announced.note} decide={announced.decide} ready={announced.ready} filed={announced.filed} discreet={discreet}/>
-        {loading ? <Loading label="Abriendo la conversación"/> : !messages.length && !live ? <div className="assistant-empty">
+        {loading ? <Loading label="Abriendo la conversación"/> : !messages.length && !live && embedded ? <p className="watson-empty muted">
+          Pregúntale a {name} o habla con el micrófono. Busca en tus notas normales, cita lo que usa y solo cambia algo si lo confirmas.</p>
+        : !messages.length && !live ? <div className="assistant-empty">
           <h2>¿Qué quieres saber de tu cerebro?</h2>
           <p>{name} busca en tus notas normales, responde con el motor de Claude y cita lo que ha usado. También te avisa de lo que espera en la Bandeja. Solo lee: no envía ni cambia nada, y lo que propone (por ejemplo, una regla del correo) solo se crea si lo confirmas.</p>
         </div> : messages.map((message, index) => <article key={index} className={`assistant-message ${message.role}${message.failed ? ' failed' : ''}`}>
@@ -156,6 +163,8 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
             {sourceList(live.sources)}
           </article>
         </>}
+        {(hearing === 'recording' || hearing === 'transcribing') && <div className="watson-heard" aria-live="polite">
+          {hearing === 'recording' ? '«…»' : 'Transcribiendo…'}<small>{hearing === 'recording' ? 'oyendo · se transcribe en este Mac' : 'en este Mac, con whisper'}</small></div>}
         <RuleProposals state={proposals} discreet={discreet}/>
         {error && <LoadError message={error}/>}
         <div ref={end}/>
@@ -163,12 +172,12 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       <form className="assistant-form" onSubmit={submit}>
         <label htmlFor="assistant-input" className="visually-hidden">Pregunta para {name}</label>
         <textarea id="assistant-input" value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={keys} maxLength={8000}
-          placeholder={`Pregunta a ${name}…`} aria-keyshortcuts="Enter"/>
+          placeholder={embedded ? 'Escribe o habla…' : `Pregunta a ${name}…`} aria-keyshortcuts="Enter" rows={embedded ? 1 : undefined}/>
         <div className="actions">
-          <DictationButton disabled={Boolean(live)} onText={spoken => submit(undefined, spoken)}/>
+          <DictationButton disabled={Boolean(live)} onText={spoken => submit(undefined, spoken)} onPhase={setHearing} big={embedded}/>
           {live ? <button type="button" className="button" onClick={() => abort.current?.abort()}>Detener</button>
-            : <button className="button primary" disabled={!draft.trim()}>Enviar</button>}
-          <small className="muted">Enter envía · Mayús + Enter, nueva línea</small>
+            : !embedded && <button className="button primary" disabled={!draft.trim()}>Enviar</button>}
+          {!embedded && <small className="muted">Enter envía · Mayús + Enter, nueva línea</small>}
         </div>
       </form>
     </div>
