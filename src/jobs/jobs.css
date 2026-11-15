@@ -1,0 +1,21 @@
+.jobs { max-width:1100px }
+.jobs h2 { margin:24px 0 10px; font-size:15px }
+.jobs-filter { min-width:200px }
+.work-totals { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:12px 0 0 }
+.work-totals div { background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:12px; padding:12px 14px }
+.work-totals dt { font-size:12px; color:var(--c-355a50) }
+.work-totals dd { margin:4px 0 0; font-size:20px; font-weight:600; font-variant-numeric:tabular-nums }
+.work-profile { margin-bottom:12px }
+.work-profile h3 { margin:0; font-size:14px }
+.work-runs { display:flex; flex-direction:column; gap:4px; margin:4px 0 }
+.work-runs summary { cursor:pointer; font-size:12px }
+.work-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:6px }
+.work-table th, .work-table td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--c-dfe3d6); font-variant-numeric:tabular-nums }
+.work-board { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; align-items:start }
+.work-column { background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:12px; padding:10px; min-width:0 }
+.work-column h3 { margin:0 0 8px; font-size:13px }
+.work-column ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px }
+.work-card { display:flex; flex-direction:column; gap:3px; padding:9px 10px; border:1px solid var(--c-dfe3d6); border-radius:10px; font-size:13px; min-width:0; overflow-wrap:anywhere }
+.work-card small { font-size:11px; color:var(--c-355a50) }
+@media (max-width:900px) { .work-board { grid-template-columns:repeat(2,minmax(0,1fr)) } }
+@media (max-width:560px) { .work-board { grid-template-columns:1fr } .work-table th:nth-child(4), .work-table td:nth-child(4) { display:none } }

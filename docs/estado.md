@@ -1,6 +1,14 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
+Versión 1.2.0-alpha.2 · Trabajos (fases 1 y 2 de la 1.2) y compatibilidad con la Hermes del 14/11/2026.
+- **Trabajos** (sección nueva): las tareas programadas de todos los perfiles con sus últimas ejecuciones (duración, tokens y coste estimado reales de la sesión que abrió cada una) y el kanban de todos los tableros en columnas, con totales de 24 h, 7 y 30 días, filtro por perfil, modo discreto y las mismas acciones que la ficha del perfil (solo en el tablero `default`). Lector `GET /api/hermes/work` (`desktop/server/src/hermes/work.rs`), solo metadatos.
+- **Hermes nueva** (actualizada por el usuario el 15/11): AgoraOne usa su Python propio y su arranque con `HERMES_DISABLE_LAZY_INSTALLS=1`; con una actualización o reparación a medias se niega y dice cómo terminarla (decisión del usuario). Únicas escrituras aceptadas en Hermes: su bloqueo y sus arrendamientos. Ver docs/integracion-hermes.md.
+- **Ajustes:** calendarios ocultos plegados; el nombre del asistente sigue al personaje elegido.
+- **Revisiones** aplicadas: lectura de trabajos (plans/reports/code-review-261115-0730-lectura-trabajos.md), compatibilidad (…-0800-hermes-noviembre.md) y pantalla (…-0815-pantalla-trabajos.md).
+- **Verificado:** 105 pruebas de Rust (puentes contra la Hermes real con modelo falso), 215 del núcleo, 16 de la interfaz, build, verify-jobs, verify-profile-tasks y verify-browser; lectura real: 24 ejecuciones en 30 días, todas con tokens.
+- **Siguiente:** fase 3, encargos al bot central (perfil raíz) como tarjetas del kanban. En paralelo, backlog de mejoras a partir de proyectos similares (plans/backlog-mejoras.md).
+
 Versión 1.1.0-alpha.12 · Cierre de la 1.1 sin empaquetar (fase 9, primera parte).
 - **Documentación:** guías nuevas `docs/correo-bandeja.md`, `docs/fiscal.md` y `docs/agenda-avisos.md` (con los permisos de macOS y cómo dar el Acceso total al disco); arquitectura, README, arranque y app de escritorio al día.
 - **Verificaciones de navegador nuevas:** `verify-agenda.mjs` (solapes con segundo sí, aviso dentro de la app confirmado una vez, Ajustes de Calendarios y Avisos), `verify-mail-reply.mjs` (respuesta sellada, correo privado sin Watson, nota del proyecto en la carpeta del cliente) y `verify-fiscal.mjs` (solo lectura).

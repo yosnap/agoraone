@@ -134,6 +134,10 @@ fn reads_cards_with_runs_time_and_worker_tokens() {
     assert_eq!(done["seconds"], 600.0);
     assert_eq!(done["tokens"], json!({ "input": 3000, "output": 400, "costUsd": 0.25 }), "the worker's session, not the creator's chat; the actual cost wins");
     assert_eq!(done["runs"][0]["outcome"], "completed");
+    // Period totals count runs by when they ran, not by when the card was created.
+    assert_eq!(done["totals"]["24h"]["runs"], 1);
+    assert_eq!(done["totals"]["24h"]["tokens"]["input"], 3000);
+    assert_eq!(running["totals"]["24h"]["runs"], 1);
 }
 
 #[test]
