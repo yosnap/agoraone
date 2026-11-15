@@ -374,3 +374,7 @@ export type InstalledApp = { id: string; name: string; aliases?: string[] };
 export const getApps = () => core<{ apps: InstalledApp[]; allowed: string[] }>('/apps');
 export const putAllowedApps = (allowed: string[]) => core<{ allowed: string[] }>('/apps/allowed', { allowed }, 'PUT');
 export const openApp = (id: string, confirmed = false) => core<{ done: string }>('/apps/open', { id, confirmed });
+
+/** «Oye Watson» (1.5): off by default; the desktop app starts its on-device listener while it is on. */
+export const getWake = () => core<{ enabled: boolean }>('/wake/settings');
+export const putWake = (enabled: boolean) => core<{ enabled: boolean }>('/wake/settings', { enabled }, 'PUT');

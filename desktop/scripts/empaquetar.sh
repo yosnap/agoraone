@@ -62,6 +62,9 @@ rsync -a --exclude '__pycache__' --exclude '*.pyc' "$ROOT/core/agora_core" "$CON
 # The meetings' system audio (ScreenCaptureKit, audio only); signed below with the other binaries.
 mkdir -p "$CONTENT/core/helpers/bin"
 xcrun swiftc -O -swift-version 5 -target arm64-apple-macos13 "$ROOT/core/helpers/system-audio-macos.swift" -o "$CONTENT/core/helpers/bin/agora-system-audio"
+# «Oye Watson» (Apple's on-device speech recognition); it carries its own Info.plist with the permission's reason.
+xcrun swiftc -O -swift-version 5 -target arm64-apple-macos13 "$ROOT/core/helpers/wake-macos.swift" -o "$CONTENT/core/helpers/bin/agora-wake" \
+  -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "$ROOT/core/helpers/wake-info.plist"
 rsync -a "$ROOT/dist/" "$CONTENT/web/"
 rsync -a "$ROOT/resources/library-test/" "$CONTENT/library-test/"
 # Compiled now: the signed app is never written to (the core runs without writing bytecode).
