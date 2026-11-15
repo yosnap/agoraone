@@ -231,7 +231,7 @@ class CompatibleEngine:
             raise EngineError(f"El proveedor no responde ({type(error).__name__}).") from error
 
 
-PRIVATE_TOOLS = {"consultar_bandeja", "consultar_clientes"}  # mail and clients: Claude only
+PRIVATE_TOOLS = {"consultar_bandeja", "consultar_clientes", "consultar_agenda"}  # mail, clients and calendar: Claude only
 
 
 def _specs(mail: bool = True) -> list[dict]:

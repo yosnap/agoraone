@@ -46,3 +46,6 @@ li.open .compact-chevron { transform:rotate(180deg) }
 .palette-swatch i { width:12px; height:22px; display:block }
 .appearance-font { max-width:360px }
 .fiscal-reading { display:flex; gap:10px; align-items:flex-start; font-size:12px; line-height:1.5; color:var(--c-4c6b62) } .fiscal-reading input { margin-top:3px }
+.calendar-settings { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:8px }
+.calendar-settings li { display:grid; grid-template-columns:minmax(140px,1.4fr) minmax(110px,1fr) minmax(130px,1fr) auto; gap:8px; align-items:center; font-size:13px }
+@media (max-width:640px) { .calendar-settings li { grid-template-columns:1fr 1fr } .calendar-name { grid-column:1 / -1 } }

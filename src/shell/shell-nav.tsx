@@ -15,6 +15,7 @@ const main: Item[] = [
   { id: 'office', label: 'Oficina 3D', icon: '▦' },
   { id: 'connectors', label: 'Conectores', icon: '⧉' },
   { id: 'inbox', label: 'Bandeja', icon: '✉' },
+  { id: 'agenda', label: 'Agenda', icon: '▣' },
   { id: 'fiscal', label: 'Fiscal', icon: '€' },
 ];
 // Planned for later versions: shown so the map is complete, marked as pending and without content.

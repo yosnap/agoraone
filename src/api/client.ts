@@ -9,7 +9,7 @@ import type { HermesActivity } from '../../shared/hermes-activity';
 import type { ProfileSkill, ProfileSkillDetail } from '../../shared/hermes-skills';
 let csrf = '';
 /** An error answered by the backend, with its HTTP status (409 means the data changed meanwhile). */
-export class ApiError extends Error { constructor(message: string, public status: number) { super(message); } }
+export class ApiError extends Error { constructor(message: string, public status: number, public data?: Record<string, unknown>) { super(message); } }
 export async function request<T>(path: string, body?: unknown, method = body ? 'POST' : 'GET'): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method,
@@ -17,7 +17,7 @@ export async function request<T>(path: string, body?: unknown, method = body ? '
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await response.json();
-  if (!response.ok) throw new ApiError(data.error || 'El backend no está disponible.', response.status);
+  if (!response.ok) throw new ApiError(data.error || 'El backend no está disponible.', response.status, data);
   return data;
 }
 /** Trades the access token from the link (#acceso=…) for this browser's cookie, then removes it from the address bar. */

@@ -233,3 +233,24 @@ export const saveManual = (folderId: number, path: string, fields: ManualFields)
 export const removeManual = (folderId: number, path: string) => core<{ ok: true }>(`/fiscal/folders/${folderId}/manual?path=${encodeURIComponent(path)}`, undefined, 'DELETE');
 export const getFiscalReading = () => core<{ withClaude: boolean }>('/fiscal/reading');
 export const putFiscalReading = (withClaude: boolean) => core<{ withClaude: boolean }>('/fiscal/reading', { withClaude }, 'PUT');
+
+/** The macOS calendars (EventKit): permission, each calendar's scope and confidentiality, the agenda and
+ * events or reminders created only after the user confirms them. */
+export type CalendarAccess = 'granted' | 'denied' | 'undetermined' | 'restricted' | 'write_only' | 'unavailable';
+export type CalendarStatus = { events: CalendarAccess; reminders: CalendarAccess };
+export type CalendarInfo = { id: string; title: string; kind: 'event' | 'reminder'; account: string; writable: boolean;
+  scopeId: number | null; confidentiality: Level; hidden: boolean };
+export type CalendarEvent = { id: string; calendarId: string; title: string; start: string; end: string; allDay: boolean; location: string | null };
+export type CalendarReminder = { id: string; calendarId: string; title: string; due: string | null };
+export type Agenda = { events: CalendarEvent[]; reminders: CalendarReminder[]; overlaps: [string, string][]; problem: string | null };
+export type NewEvent = { calendarId?: string | null; title: string; start: string; end: string; allDay?: boolean; location?: string | null;
+  notes?: string | null; overlapOk?: boolean; inboxId?: number | null };
+export const getCalendarStatus = () => core<CalendarStatus>('/calendar/status');
+export const askCalendarAccess = () => core<CalendarStatus>('/calendar/access', {});
+export const getCalendars = () => core<{ calendars: CalendarInfo[]; problem: string | null }>('/calendar/calendars');
+export const changeCalendar = (id: string, change: { scopeId: number | null; confidentiality: Level; hidden: boolean }) =>
+  core<{ ok: true }>(`/calendar/calendars/${encodeURIComponent(id)}`, change, 'PUT');
+export const getAgenda = (when: 'hoy' | 'mañana' | 'semana') => core<Agenda>(`/calendar/agenda?when=${encodeURIComponent(when)}`);
+export const createEvent = (event: NewEvent) => core<{ id: string; clashes: number }>('/calendar/events', event);
+export const createReminder = (reminder: { calendarId?: string | null; title: string; due?: string | null; notes?: string | null; inboxId?: number | null }) =>
+  core<{ id: string }>('/calendar/reminders', reminder);
