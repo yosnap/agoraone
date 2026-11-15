@@ -35,6 +35,7 @@ Sirve para tener una vista de conjunto de tus agentes, revisar y corregir lo que
 | **Correo y Bandeja** | Leer tus cuentas en solo lectura, con reglas y resúmenes; tarjetas con lo que pide algo de ti; responder con vista previa exacta y envío solo al pulsar «Enviar»; pasar el correo de un cliente a una nota nueva en su carpeta del vault. Ver [docs/correo-bandeja.md](docs/correo-bandeja.md). |
 | **Fiscal** | El trimestre de cada carpeta fiscal leído de sus facturas, avisos de lo que falta o no cuadra, Qonto y el Excel para el gestor. Ver [docs/fiscal.md](docs/fiscal.md). |
 | **Agenda y avisos** | Calendarios y recordatorios de macOS con los solapes marcados, llamadas perdidas sin devolver, reuniones próximas, plazos de correos y resumen de la mañana como notificaciones. Ver [docs/agenda-avisos.md](docs/agenda-avisos.md). |
+| **Trabajos** | Las tareas programadas y el kanban de todos los perfiles con el tiempo, los tokens y el coste de cada ejecución; encargos al bot central o a cualquier perfil con su historia; y los proyectos de tus clientes con lo que han gastado en ellos los agentes. Ver [docs/trabajos.md](docs/trabajos.md). |
 | **Biblioteca y Luma** | Importar TXT, Markdown, PDF y DOCX como copias privadas y consultarlas con Luma, una asistente sin herramientas. |
 
 Los paseantes y el movimiento de la ciudad son decorativos: no representan tareas reales y no llaman a ningún modelo.
