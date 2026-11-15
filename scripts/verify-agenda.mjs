@@ -31,6 +31,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   const alerts = page.locator('article', { has: page.getByRole('heading', { name: 'Avisos', exact: true }) });
   await alerts.locator('.alerts-permissions li').first().waitFor();
   assert.equal(await page.locator('.page select').count(), 0, 'ningún select nativo');
+  // The confidentiality labels name the chosen character, not a fixed «Watson».
+  await page.waitForTimeout(1000);
+  const named = (await page.locator('.calendar-settings .modern-select button, .alerts-permissions ~ * .modern-select button, article .modern-select button').allInnerTexts()).map(t => t.replace('▾', '').trim()).filter(t => t.startsWith('Normal:'));
+  console.log(`${viewport.width}px · etiquetas de nivel normal: ${[...new Set(named)].join(' | ') || 'ninguna a la vista'}`);
   if (shots) await alerts.screenshot({ path: `${shots}/alerts-settings-${viewport.width}.png` });
   assert.deepEqual(writes, [], 'no se escribió nada');
   assert.deepEqual(errors, [], 'sin errores JS');

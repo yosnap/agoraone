@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAssistantName } from '../assistant/assistant-name';
 import { getEngines } from '../api/core';
 import type { HermesCatalog } from '../../shared/hermes-catalog';
 import { engineName, modelName } from '../assistant/assistant-labels';
@@ -11,6 +12,7 @@ export function AgentsBoard({ catalog, statuses, onWatson, onChat, onTasks, onEn
   catalog: HermesCatalog | null; statuses: Record<string, AgentStatus>;
   onWatson: () => void; onChat: (id: string) => void; onTasks: (id: string) => void; onEnter: (id: string) => void;
 }) {
+  const assistant = useAssistantName();
   const [engine, setEngine] = useState<{ active: string | null; model: string } | null>(null);
   useEffect(() => {
     let live = true;
@@ -21,7 +23,7 @@ export function AgentsBoard({ catalog, statuses, onWatson, onChat, onTasks, onEn
   }, []);
   return <section className="agents-board" aria-label="Oficina de agentes">
     <article className={`agent-card ${engine?.active ? 'state-connected' : 'state-idle'}`}>
-      <header><span className="agent-avatar watson" aria-hidden="true">W</span><div><strong>Watson</strong>
+      <header><span className="agent-avatar watson" aria-hidden="true">{assistant.slice(0, 1)}</span><div><strong>{assistant}</strong>
         <small>{engine?.active ? `En línea · ${engineName(engine.active)} · ${modelName(engine.model)}` : engine ? 'Sin motor disponible' : 'Comprobando…'}</small></div></header>
       <div className="agent-actions"><button onClick={onWatson}>Conversar</button></div>
     </article>

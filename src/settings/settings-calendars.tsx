@@ -1,14 +1,16 @@
 import { useRef, useState } from 'react';
+import { useAssistantName } from '../assistant/assistant-name';
 import { askCalendarAccess, changeCalendar, getCalendars, getCalendarStatus, getScopes, type CalendarInfo, type CalendarStatus, type Level, type Scope } from '../api/core';
 import { LoadError } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 
-const levels: { value: Level; label: string }[] = [
-  { value: 'normal', label: 'Normal: Watson la ve' }, { value: 'local_only', label: 'Solo en este Mac' }, { value: 'private', label: 'Privado' }];
+const levelsFor = (assistant: string): { value: Level; label: string }[] => [
+  { value: 'normal', label: `Normal: ${assistant} lo ve` }, { value: 'local_only', label: 'Solo en este Mac' }, { value: 'private', label: 'Privado' }];
 
 /** The macOS calendars and reminders lists: permission, and each one's scope and confidentiality (only the
- * normal ones reach Watson and its model); a hidden one leaves the agenda. */
+ * normal ones reach the assistant and its model); a hidden one leaves the agenda. */
 export function CalendarsSettingsCard() {
+  const levels = levelsFor(useAssistantName());
   const [status, setStatus] = useState<CalendarStatus | null>(null);
   const [calendars, setCalendars] = useState<CalendarInfo[] | null>(null);
   const [scopes, setScopes] = useState<Scope[]>([]);

@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
+import { useAssistantName } from '../assistant/assistant-name';
 import { askContactsAccess, getAlerts, openFullDiskAccess, putAlertSettings, type AlertSettings, type Level } from '../api/core';
 import { LoadError } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 
-const levels: { value: Level; label: string }[] = [
-  { value: 'local_only', label: 'Solo en este Mac' }, { value: 'normal', label: 'Normal: Watson las ve' }, { value: 'private', label: 'Privado' }];
+const levelsFor = (assistant: string): { value: Level; label: string }[] => [
+  { value: 'local_only', label: 'Solo en este Mac' }, { value: 'normal', label: `Normal: ${assistant} las ve` }, { value: 'private', label: 'Privado' }];
 const toggles: { key: keyof AlertSettings; label: string }[] = [
   { key: 'missedCalls', label: 'Llamadas perdidas sin devolver' }, { key: 'meetings', label: 'Reuniones 15 minutos antes' },
   { key: 'commitments', label: 'Plazos de los correos (hoy y mañana)' }, { key: 'summary', label: 'Resumen de la mañana' }];
@@ -12,6 +13,7 @@ const toggles: { key: keyof AlertSettings; label: string }[] = [
 /** The reminders: which ones, the morning summary's time, quiet hours, the calls' confidentiality and the
  * two macOS permissions they use (Full Disk Access for the call history, Contacts for the names). */
 export function AlertsSettingsCard() {
+  const levels = levelsFor(useAssistantName());
   const [chosen, setChosen] = useState<AlertSettings | null>(null);
   const [contacts, setContacts] = useState('');
   const [callsProblem, setCallsProblem] = useState<string | null>(null);

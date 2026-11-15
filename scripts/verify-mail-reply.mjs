@@ -48,8 +48,8 @@ const first = cards.filter({ hasText: 'Cambio en la portada' });
 // The reply: Watson drafts, the user previews, and only «Enviar» sends the sealed preview.
 await first.getByRole('button', { name: 'Responder…' }).click();
 const composer = first.getByRole('form', { name: 'Responder al correo' });
-await composer.getByLabel('Indicaciones para Watson').fill('dile que el lunes');
-await composer.getByRole('button', { name: 'Redactar con Watson' }).click();
+await composer.getByLabel(/^Indicaciones para /).fill('dile que el lunes');
+await composer.getByRole('button', { name: /^Redactar con / }).click();
 await composer.getByLabel('Mensaje').evaluate(node => new Promise(resolve => { const wait = () => node.value.startsWith('Hola') ? resolve() : setTimeout(wait, 50); wait(); }));
 assert.deepEqual(composed, ['dile que el lunes']);
 assert.match(await composer.getByLabel('Mensaje').inputValue(), /^Hola, lo cambio el lunes\.\n\n> Texto citado/, 'el texto citado se conserva');
@@ -65,8 +65,8 @@ assert.equal(sent[0].digest, 'a'.repeat(64), 'se envía lo sellado en la vista p
 // A private mail: written by hand, Watson is not offered.
 const second = cards.filter({ hasText: 'Asunto privado' });
 await second.getByRole('button', { name: 'Responder…' }).click();
-await second.getByText('Watson no lo lee, escribe la respuesta tú.').waitFor();
-assert.equal(await second.getByRole('button', { name: 'Redactar con Watson' }).count(), 0, 'sin Watson en un correo privado');
+await second.getByText(/no lo lee, escribe la respuesta tú\./).waitFor();
+assert.equal(await second.getByRole('button', { name: /^Redactar con / }).count(), 0, 'sin asistente en un correo privado');
 await second.getByRole('button', { name: 'Cancelar' }).click();
 // The project note: one new note in the client's folder, created only on «Crear la nota».
 await first.getByRole('button', { name: 'Añadir a la nota del proyecto…' }).click();

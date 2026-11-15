@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useAssistantName } from '../assistant/assistant-name';
 import { createVaultNote, getHermesCatalog, listVaultNotes } from '../api/client';
 import { decideInbox, type InboxItem } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
@@ -12,6 +13,7 @@ const NO_PROJECT = '';
  * The user sees and can change the folder, the title and the whole text, and nothing is written until
  * «Crear la nota»; no existing note is ever changed. The card then goes to «Hechos». */
 export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDone: (note: string) => void; onCancel: () => void }) {
+  const assistant = useAssistantName();
   const [vaults, setVaults] = useState<Vault[] | null>(null);
   const [vaultId, setVaultId] = useState('');
   const [client, setClient] = useState(item.client?.name ?? '');
@@ -86,7 +88,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
     <label className="field">Título<input value={title} maxLength={200} required onChange={event => { setTitle(event.target.value); setTouched({ ...touched, title: true }); }}/></label>
     <label className="field">Texto de la nota<textarea value={content} rows={12} onChange={event => { setContent(event.target.value); setTouched({ ...touched, content: true }); }}/></label>
     {item.confidentiality !== 'normal' && <p className="muted">El correo es {item.confidentiality === 'private' ? 'privado' : 'solo de este Mac'}: la nota se guarda marcada igual
-      («confidencialidad: {item.confidentiality === 'private' ? 'privado' : 'solo-local'}»), y Watson ni ningún modelo remoto la leerán.</p>}
+      («confidencialidad: {item.confidentiality === 'private' ? 'privado' : 'solo-local'}»), y ni {assistant} ni ningún modelo remoto la leerán.</p>}
     {made && <p className="muted">La nota ya está creada; falta marcar la tarjeta como hecha.</p>}
     <p className="muted">Se crea una nota nueva, «{title.trim() || '…'}.md», en «{folder || '…'}»{vault && folder && !vault.folders.some(f => f === folder || f.startsWith(`${folder}/`)) ? ', que se crea con ella' : ''}. No se cambia ninguna nota que ya exista.</p>
     {error && <LoadError message={error}/>}
