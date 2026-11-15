@@ -1,4 +1,5 @@
-import { controlMusic, getApps, getMusic, openApp, playMusic, type MusicAction } from '../api/core';
+import { controlMusic, getApps, getLibrary, getMusic, openApp, openYouTube, playMusic, type MusicAction } from '../api/core';
+import { localActive, localControl, playLocal } from '../brain/local-player';
 
 /** Quick commands (1.5): what Watson does at once, without a model, when the whole message is one of these.
  * Anything else goes to the model as usual. Words are matched in Spanish, with or without accents. */
@@ -12,7 +13,7 @@ const controls: [RegExp, MusicAction, string][] = [
   [/^(sube|sube el volumen|mas alto|subele)$/, 'louder', 'Volumen más alto.'],
   [/^(baja|baja el volumen|mas bajo|bajale)$/, 'quieter', 'Volumen más bajo.'],
 ];
-const PLAY = /^(?:pon(?:me)?|reproduce|quiero escuchar|toca)\s+(.+?)(?:\s+en\s+(spotify|musica|apple music))?$/;
+const PLAY = /^(?:pon(?:me)?|reproduce|quiero escuchar|toca)\s+(.+?)(?:\s+en\s+(spotify|musica|apple music|youtube|mi biblioteca|la biblioteca))?$/;
 // «Pon» also means other things («pon una regla…», «pon un recordatorio…»): those go to Watson.
 const NOT_MUSIC = /\b(regla|recordatorio|evento|cita|alarma|nota|tarea|correo|reunion|aviso|calendario|agenda|titulo|encargo)s?\b/;
 
@@ -33,15 +34,29 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
   if (!control && !play) return null;
   return async () => {
     try {
+      if (control && localActive()) { localControl(control[1]); return { reply: control[2], failed: false }; }
       const now = (await getMusic()).players[0];
       if (control) {
         if (!now) return { reply: 'No hay ningún reproductor abierto (Música o Spotify).', failed: true };
         await controlMusic(now.player, control[1]);
         return { reply: control[2], failed: false };
       }
-      const wanted = play![2] === 'spotify' ? 'spotify' : play![2] ? 'music' : now && (now.player === 'spotify' || now.player === 'music') ? now.player : 'music';
+      const where = play![2];
       // The original words, not the accent-free ones, are what the player searches.
-      const query = text.replace(/^\s*(pon(me)?|reproduce|quiero escuchar|toca)\s+/i, '').replace(/\s+en\s+(spotify|m[uú]sica|apple music)\s*[.!?]*$/i, '').trim();
+      const query = text.replace(/^\s*(pon(me)?|reproduce|quiero escuchar|toca)\s+/i, '').replace(/\s+en\s+(spotify|m[uú]sica|apple music|youtube|mi biblioteca|la biblioteca)\s*[.!?]*$/i, '').trim();
+      if (where === 'youtube') return { reply: (await openYouTube(query)).done, failed: false };
+      // Unless a player is named, the user's own library first, then the player that is open, then Music.
+      if (!where || where.includes('biblioteca')) {
+        const found = await getLibrary(query).catch(() => null);
+        if (found?.tracks.length) {
+          if (now?.state === 'playing' && (now.player === 'music' || now.player === 'spotify')) await controlMusic(now.player, 'pause').catch(() => undefined);
+          playLocal(found.tracks);
+          return { reply: `Pongo «${found.tracks[0].title}»${found.tracks[0].artist ? ` de ${found.tracks[0].artist}` : ''} de tu biblioteca.`, failed: false };
+        }
+        if (where) return { reply: `No encuentro «${query}» en tu biblioteca.`, failed: true };
+      }
+      const wanted = where === 'spotify' ? 'spotify' : where ? 'music' : now && (now.player === 'spotify' || now.player === 'music') ? now.player : 'music';
+      if (localActive()) localControl('pause');
       const done = await playMusic(wanted, query);
       return { reply: done.done, failed: false };
     } catch (failure) {

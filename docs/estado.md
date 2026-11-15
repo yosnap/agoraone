@@ -1,7 +1,7 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
-En curso · 1.5 «Voz y música» (plan: plans/261115-1600-voz-musica/plan.md; guía: docs/voz-musica.md). Rama `feat/1.5.0-alpha.1-musica` integrada en `integracion/v1.5` (sale de `integracion/v1.4`); sin publicar ni empaquetar.
+Versión 1.5.0 · «Voz y música», completa: además de lo de abajo, ⌃⌥W, «Oye Watson» (reconocimiento de Apple en el equipo, apagado por defecto), callar a Watson, la conversación se recuerda, recibos del móvil visibles y legibles con Claude, y biblioteca local y YouTube. Antes, en curso: (plan: plans/261115-1600-voz-musica/plan.md; guía: docs/voz-musica.md). Rama `feat/1.5.0-alpha.1-musica` integrada en `integracion/v1.5` (sale de `integracion/v1.4`); sin publicar ni empaquetar.
 - Hecho: música en la tarjeta del Cerebro (Apple Music y Spotify por AppleScript, Linux por playerctl; permiso de Automatización declarado y comprobado al empaquetar), órdenes rápidas sin modelo (pon, pausa, siguiente, anterior, volumen, abre), abrir apps (lista permitida en Ajustes › Voz; nombres en español leídos de InfoPlist.loctable) y Watson responde hablando (voces del sistema; por defecto cuando se le habla). 246 pruebas del núcleo, 20 de la interfaz y build.
 - Pendiente: probar Música/Spotify y abrir apps con la app firmada (permiso de Automatización); fase 5 (atajo global con el plugin de Tauri y «Oye Watson» con openWakeWord, micrófono permanente desactivable); fase 6 (biblioteca local, YouTube y cierre).
 

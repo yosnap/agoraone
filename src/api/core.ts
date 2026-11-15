@@ -378,3 +378,16 @@ export const openApp = (id: string, confirmed = false) => core<{ done: string }>
 /** «Oye Watson» (1.5): off by default; the desktop app starts its on-device listener while it is on. */
 export const getWake = () => core<{ enabled: boolean }>('/wake/settings');
 export const putWake = (enabled: boolean) => core<{ enabled: boolean }>('/wake/settings', { enabled }, 'PUT');
+
+/** The user's own music (1.5): folders, search, a track to play (fetched with the CSRF header, played from
+ * memory) and a YouTube search opened in the browser. */
+export type LibraryTrack = { id: string; title: string; artist: string | null; album: string | null };
+export const getLibrary = (q = '') => core<{ folders: string[]; tracks: LibraryTrack[]; total: number }>(`/music/library?q=${encodeURIComponent(q)}`);
+export const putLibraryFolders = (folders: string[]) => core<{ folders: string[] }>('/music/library/folders', { folders }, 'PUT');
+export const chooseLibraryFolder = () => core<{ path: string | null }>('/music/library/choose', {});
+export const openYouTube = (query: string) => core<{ done: string }>('/music/youtube', { query });
+export async function trackUrl(id: string): Promise<string> {
+  const response = await fetch(`/api/core/music/library/${encodeURIComponent(id)}/file`, { headers: csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {} });
+  if (!response.ok) throw new ApiError('No se pudo abrir esa canción.', response.status, {});
+  return URL.createObjectURL(await response.blob());
+}
