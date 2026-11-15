@@ -14,3 +14,24 @@ def test_diagnostico(tmp_path, monkeypatch):
     assert all(p["state"] in ("ok", "missing", "optional") and p["modules"] for p in found["pieces"])
     assert ids["music-folder"]["state"] == "optional" and found["missing"] == sum(p["state"] == "missing" for p in found["pieces"])
     c.close()
+
+
+def test_instalar_solo_lo_de_la_lista(monkeypatch):
+    from agora_core import installer
+    import pytest
+    jobs = installer.Installer()
+    with pytest.raises(installer.InstallError):
+        jobs.start({"id": "x", "name": "X", "how": {"kind": "command", "command": "rm -rf ~"}})
+    ran = []
+    monkeypatch.setattr(installer.shutil, "which", lambda name: "/opt/homebrew/bin/brew")
+    class Process:
+        stdout = iter(["==> Instalando\n"])
+        def wait(self):
+            return 0
+    monkeypatch.setattr(installer.subprocess, "Popen", lambda args, **kw: ran.append(args) or Process())
+    jobs.start({"id": "ffmpeg", "name": "ffmpeg", "how": {"kind": "brew", "package": "ffmpeg"}})
+    for _ in range(50):
+        if jobs.state()["state"] != "running":
+            break
+        import time; time.sleep(0.02)
+    assert ran == [["/opt/homebrew/bin/brew", "install", "ffmpeg"]] and jobs.state()["state"] == "done"

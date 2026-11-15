@@ -396,3 +396,6 @@ export async function trackUrl(id: string): Promise<string> {
 export type DoctorHow = { kind: 'brew' | 'command' | 'page' | 'model' | 'none'; package?: string; command?: string; url?: string; model?: string; bytes?: number };
 export type DoctorPiece = { id: string; name: string; state: 'ok' | 'missing' | 'optional'; modules: string[]; detail: string | null; how: DoctorHow };
 export const getDoctor = () => core<{ pieces: DoctorPiece[]; platform: string; missing: number; summary: string }>('/doctor');
+export type InstallJob = { id: string; name: string; state: 'running' | 'done' | 'failed'; lines: string[]; done: number; total: number; error: string | null };
+export const getInstallJob = () => core<{ job: InstallJob | null }>('/doctor/install');
+export const installPiece = (id: string) => core<{ job: InstallJob }>('/doctor/install', { id });

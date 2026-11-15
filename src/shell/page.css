@@ -60,3 +60,6 @@
 .install-text { display:flex; flex-direction:column; gap:2px; font-size:12px; min-width:0 }
 .install-text strong { font-size:13px }
 .install-command { font-size:11px; padding:3px 6px; border-radius:6px; background:var(--c-edf0e8); width:fit-content; max-width:100%; overflow-x:auto; white-space:nowrap }
+.install-job { display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:10px; background:var(--c-edf0e8); margin:8px 0 }
+.install-job.failed { background:var(--c-f3e6c4) }
+.install-log { margin:0; font-size:11px; white-space:pre-wrap; max-height:140px; overflow:auto }
