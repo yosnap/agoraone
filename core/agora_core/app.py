@@ -35,6 +35,10 @@ from .routes_fiscal import fiscal_router
 from . import calendar_store, calls
 from .routes_alerts import alerts_router
 from .routes_jobs import jobs_router
+from .routes_voice import voice_router
+from .routes_meetings import meetings_router
+from .meetings import Recorder
+from .meeting_notes import Worker
 from .routes_calendar import calendar_router
 from .routes_central import CentralHealth, central_router, central_worker
 from .routes_summary import summary_router
@@ -74,6 +78,10 @@ def create_app(
     central_health = CentralHealth()
     secrets = secrets or KeychainSecrets()
     expected = settings.secret.encode()
+    recorder = Recorder(settings.data_dir, lambda: connect(settings.data_dir / DB_NAME))
+    # Summaries of normal meetings (Claude, like the rest of the core); the others use a local model.
+    meeting_engines = lambda: [ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)]  # noqa: E731
+    meeting_worker = Worker(recorder.folder, lambda: connect(settings.data_dir / DB_NAME), meeting_engines)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -82,6 +90,8 @@ def create_app(
         database = connect(settings.data_dir / DB_NAME)
         try:
             migrate(database, backup_first=lambda: create_backup(settings.data_dir, store, "premigration"))
+            recorder.recover(database)
+            meeting_worker.recover(database)
         finally:
             database.close()
         stop = threading.Event()
@@ -102,6 +112,7 @@ def create_app(
             yield
         finally:
             stop.set()
+            recorder.stop_all()
 
     app = FastAPI(title="AgoraOne núcleo", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
@@ -180,4 +191,6 @@ def create_app(
         calls.use_contacts(contacts)
     app.include_router(alerts_router(settings, **({'call_reader': call_reader} if call_reader else {})))
     app.include_router(jobs_router(settings))
+    app.include_router(voice_router(settings))
+    app.include_router(meetings_router(settings, recorder, meeting_worker))
     return app

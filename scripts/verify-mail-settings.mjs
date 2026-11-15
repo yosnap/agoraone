@@ -45,7 +45,7 @@ page.on('pageerror', e => errors.push(e.message));
 await page.goto(appUrl(5173, 'ajustes&pestana=general'));
 const tabs = page.getByRole('tab');
 await page.getByRole('tablist', { name: 'Apartados de Ajustes' }).waitFor({ timeout: 60_000 });
-assert.deepEqual(await tabs.allInnerTexts(), ['General', 'Asistente', 'Correo', 'Agenda y avisos', 'Fiscal', 'Trabajos', 'Privacidad y copias']);
+assert.deepEqual(await tabs.allInnerTexts(), ['General', 'Asistente', 'Correo', 'Agenda y avisos', 'Fiscal', 'Trabajos', 'Voz', 'Privacidad y copias']);
 await page.getByRole('tab', { name: 'General' }).focus();
 await page.keyboard.press('ArrowRight');
 assert.equal(await page.getByRole('tab', { selected: true }).innerText(), 'Asistente', 'las flechas cambian de pestaña');

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Section } from './shell-state';
 import { applyTheme, readTheme, themeLabels, type ThemeChoice } from './theme';
 import { setSound, useSoundOn } from '../sound/sound';
+import { useMeetingRecorder } from '../meetings/meeting-recorder';
 
 const themeOrder: ThemeChoice[] = ['system', 'light', 'dark'];
 const themeIcons: Record<ThemeChoice, string> = { system: '◑', light: '☀', dark: '☾' };
@@ -18,11 +19,10 @@ const main: Item[] = [
   { id: 'agenda', label: 'Agenda', icon: '▣' },
   { id: 'fiscal', label: 'Fiscal', icon: '€' },
   { id: 'jobs', label: 'Trabajos', icon: '☰' },
+  { id: 'meetings', label: 'Reuniones', icon: '◎' },
 ];
 // Planned for later versions: shown so the map is complete, marked as pending and without content.
-const later: Item[] = [
-  { id: 'meetings', label: 'Reuniones', icon: '◎', pending: true },
-];
+const later: Item[] = [];
 
 export const sectionLabel = (id: Section) => [...main, ...later, { id: 'settings', label: 'Ajustes' }].find(item => item.id === id)?.label ?? '';
 
@@ -34,17 +34,19 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
 }) {
   const [theme, setTheme] = useState(readTheme);
   const sound = useSoundOn();
+  const recording = useMeetingRecorder().phase === 'recording';
   const nextTheme = () => { const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length]; applyTheme(next); setTheme(next); };
   const button = (item: Item) => <li key={item.id}><button className={`rail-item${item.pending ? ' rail-pending' : ''}`}
     aria-current={section === item.id ? 'page' : undefined} onClick={() => onSection(item.id)} title={item.pending ? `${item.label}: pendiente` : item.label}>
     <span className="rail-icon" aria-hidden="true">{item.icon}</span><span className="rail-label">{item.label}</span>
     {item.pending && <span className="visually-hidden"> (pendiente)</span>}
+    {item.id === 'meetings' && recording && <span className="rail-alert rail-recording" role="status"><span aria-hidden="true">●</span><span className="visually-hidden">: grabando una reunión</span></span>}
     {item.id === 'office' && waiting && section !== 'office' && <span className="rail-alert" role="status"><span aria-hidden="true">●</span><span className="visually-hidden">: {waiting} espera tu permiso</span></span>}
   </button></li>;
   return <nav className="rail" aria-label="Secciones de AgoraOne">
     <a className="rail-brand" href="/" aria-label="AgoraOne">a</a>
     <ul className="rail-list">{main.map(button)}</ul>
-    <ul className="rail-list rail-later" aria-label="Próximamente">{later.map(button)}</ul>
+    {later.length > 0 && <ul className="rail-list rail-later" aria-label="Próximamente">{later.map(button)}</ul>}
     <div className="rail-foot">
       <button className="rail-item rail-discreet" aria-pressed={discreet} onClick={() => onDiscreet(!discreet)}
         title={discreet ? 'Modo discreto activo: solo se ven las notas normales' : 'Modo discreto: ocultar lo privado y lo solo-local de la pantalla'}>

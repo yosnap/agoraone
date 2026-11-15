@@ -1,6 +1,14 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
+Versión 1.3.0 · Reuniones y voz (plan: plans/261115-1110-reuniones-voz/plan.md; guía: docs/reuniones-voz.md). Rama de trabajo `feat/1.3.0-alpha.1-transcripcion`, integrada en `integracion/v1.3`; sin publicar.
+- **Dictado** en el chat de Watson y de cada bot, transcrito en el equipo con whisper.cpp; la revisión de las fases 1 y 2 está aplicada entera (plans/reports/code-review-261115-1145-voz.md): errores claros, micrófono que se cierra al salir, programas validados por nombre y sonda (solo .exe en Windows), entorno mínimo de Windows para el núcleo, plazos por debajo del proxy, listas blancas de ffmpeg y una transcripción a la vez.
+- **Reuniones**: dos pistas (micrófono desde la interfaz a trozos de 5 s; audio del sistema con `agora-system-audio`, ScreenCaptureKit solo audio, en macOS y ffmpeg sobre el monitor de PulseAudio/PipeWire en Linux; Windows solo micrófono). Indicador permanente en la barra lateral; se detiene sola si la pantalla deja de enviar 45 s o a las 4 h. Migraciones 0021 y 0022.
+- **De la grabación a la nota**: transcripción en dos voces (sin el eco del micrófono), resumen con decisiones y tareas por Claude (normal) o por un modelo local en loopback (solo en este Mac o privada; Ajustes › Voz), nota con su confidencialidad creada en el vault tras confirmar y tareas a recordatorio o encargo del bot central tras confirmar cada una.
+- **Verificado:** 239 pruebas del núcleo, 108 de Rust, 17 de la interfaz y build; captura real del audio del Mac transcrita exacta; reunión sintetizada de dos voces resumida de verdad por Claude Code en 11 s, con fechas relativas resueltas.
+- **Pendiente:** `scripts/verify-voice.mjs` (dictado y grabación real de una reunión en el navegador) con `pnpm dev`, que exige cerrar la app empaquetada; empaquetar la 1.3.0 y que el usuario pruebe en la app firmada el permiso de micrófono y el de grabación de pantalla y audio del sistema con una reunión real de Meet; publicar con su permiso.
+- **Siguiente:** 1.4, la ciudad por eventos (agentes trabajando de verdad).
+
 Versión 1.2.1 · Watson propone reglas del correo.
 - **`proponer_regla`** (solo Claude): Watson comprueba la regla con las validaciones de Ajustes y la enseña tal cual en el chat; se crea solo con «Crear regla» o un «sí» justo después (nunca para «ignorar» ni en modo discreto); escribir otra cosa la caduca. Propuesta en el núcleo, ligada al acceso, de un solo uso y de una hora; aceptar sin carreras. Solo la propone si lo pide el usuario, nunca un correo.
 - **Registro de acciones:** las consultas de agenda, día y trabajos de Watson ya se registran bien (caían en la rama de leer nota).

@@ -1,0 +1,19 @@
+.meetings-page .card { max-width:820px; margin-bottom:18px }
+.meeting-record form { display:flex; flex-direction:column; gap:12px; max-width:520px }
+.meeting-live { display:inline-flex; align-items:center; gap:6px; font-variant-numeric:tabular-nums; color:var(--c-7a5717); background:var(--c-f3e6c4); padding:3px 10px; border-radius:999px; font-size:12px }
+.meeting-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px }
+.meeting-row { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--c-dfe3d6) }
+.meeting-main { display:flex; flex-direction:column; gap:3px; flex:1 1 260px; min-width:0 }
+.meeting-main strong { overflow-wrap:anywhere }
+.meeting-confirm { display:inline-flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:12px }
+.meeting-actions { display:inline-flex; flex-wrap:wrap; gap:8px }
+.meeting-work { font-size:12px; color:var(--c-4c6b62) }
+.meeting-detail { flex:1 1 100%; display:flex; flex-direction:column; gap:10px; padding:6px 0 4px }
+.meeting-detail h3 { font:600 14px Manrope,sans-serif; margin:8px 0 2px }
+.meeting-detail p, .meeting-detail li { font-size:13px; line-height:1.6 }
+.meeting-tasks { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:8px }
+.meeting-task { display:flex; flex-wrap:wrap; align-items:center; gap:8px; justify-content:space-between }
+.meeting-transcript { max-height:320px; overflow-y:auto; padding-left:0; list-style:none; display:flex; flex-direction:column; gap:4px }
+.meeting-draft { white-space:pre-wrap; font-size:12px; max-height:320px; overflow:auto; background:var(--c-edf0e8); padding:10px; border-radius:8px }
+.meeting-save { display:flex; flex-direction:column; gap:10px }
+.meeting-save-fields { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px }

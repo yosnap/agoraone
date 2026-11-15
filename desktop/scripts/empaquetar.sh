@@ -59,6 +59,9 @@ rm -f "$STDLIB/site-packages/claude_agent_sdk/_bundled/claude"
 step "Núcleo, web y ejemplos"
 mkdir -p "$CONTENT/core"
 rsync -a --exclude '__pycache__' --exclude '*.pyc' "$ROOT/core/agora_core" "$CONTENT/core/"
+# The meetings' system audio (ScreenCaptureKit, audio only); signed below with the other binaries.
+mkdir -p "$CONTENT/core/helpers/bin"
+xcrun swiftc -O -swift-version 5 -target arm64-apple-macos13 "$ROOT/core/helpers/system-audio-macos.swift" -o "$CONTENT/core/helpers/bin/agora-system-audio"
 rsync -a "$ROOT/dist/" "$CONTENT/web/"
 rsync -a "$ROOT/resources/library-test/" "$CONTENT/library-test/"
 # Compiled now: the signed app is never written to (the core runs without writing bytecode).
@@ -77,6 +80,8 @@ while IFS= read -r -d '' file; do
   signed=$((signed + 1))
 done < <(find "$CONTENT" -type f \( -perm -u+x -o -name '*.so' -o -name '*.dylib' \) -print0)
 echo "$signed binarios firmados"
+codesign --verify --strict "$CONTENT/core/helpers/bin/agora-system-audio" \
+  || { echo "El programa de audio del sistema no está firmado." >&2; exit 1; }
 
 step "App de Tauri"
 (cd "$ROOT/desktop/app" && cargo tauri build --bundles app --config tauri.bundle.json)
@@ -87,7 +92,7 @@ codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/
 # app's own permission texts.
 codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/dev/null | grep -q personal-information.calendars \
   || { echo "Python no tiene el permiso de calendarios en su firma." >&2; exit 1; }
-for key in NSCalendarsFullAccessUsageDescription NSCalendarsUsageDescription NSRemindersFullAccessUsageDescription NSRemindersUsageDescription NSContactsUsageDescription; do
+for key in NSCalendarsFullAccessUsageDescription NSCalendarsUsageDescription NSRemindersFullAccessUsageDescription NSRemindersUsageDescription NSContactsUsageDescription NSMicrophoneUsageDescription; do
   /usr/libexec/PlistBuddy -c "Print :$key" "$APP/Contents/Info.plist" >/dev/null \
     || { echo "El Info.plist de la app no lleva $key (el texto de un permiso)." >&2; exit 1; }
 done
@@ -99,6 +104,8 @@ codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/
 rm -rf "$WORK/AgoraOne.app"
 ditto "$APP" "$WORK/AgoraOne.app"
 APP="$WORK/AgoraOne.app"
+codesign -d --entitlements - "$APP" 2>/dev/null | grep -q device.audio-input \
+  || { echo "La app no tiene el permiso de micrófono en su firma." >&2; exit 1; }
 codesign --verify --deep --strict "$APP"
 echo "Firma correcta: $APP"
 

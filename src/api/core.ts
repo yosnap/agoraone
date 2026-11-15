@@ -1,4 +1,4 @@
-import { csrfToken, request } from './client';
+import { ApiError, csrfToken, request } from './client';
 
 // The Python core, reached through the backend at /api/core/* (cookie, CSRF and origin checked there).
 const core = <T>(path: string, body?: unknown, method?: string) => request<T>(`/core${path}`, body, method);
@@ -288,6 +288,23 @@ export type ClientProjects = {
 };
 export const getClientProjects = () => core<ClientProjects>('/jobs/projects');
 
+/** Local speech to text (whisper.cpp): what is installed and chosen, and transcribing a short clip. */
+export type VoiceSettings = { binary: string | null; ffmpeg: string | null; model: string | null; language: string };
+export type VoiceStatus = VoiceSettings & { chosen: VoiceSettings; binaries: string[]; ffmpegs: string[];
+  models: { name: string; path: string; bytes: number }[]; ready: boolean; platform: string; missing: ('binary' | 'ffmpeg' | 'model')[] };
+export const getVoiceStatus = () => core<VoiceStatus>('/voice/status');
+export const putVoiceSettings = (changes: Partial<VoiceSettings>) => core<VoiceSettings>('/voice/settings', changes, 'PUT');
+/** A short recorded clip to text, on this machine (the audio goes to the core only). */
+export async function transcribeVoice(audio: Blob): Promise<{ text: string; language: string | null; seconds: number }> {
+  const response = await fetch('/api/core/voice/transcribe', {
+    method: 'POST', body: audio,
+    headers: { 'Content-Type': audio.type || 'application/octet-stream', ...(csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {}) },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new ApiError(data.error || 'No se pudo transcribir.', response.status, data);
+  return data;
+}
+
 /** Replying: a prefilled reply, a body drafted by Watson (normal mail only), the sealed preview and the send. */
 export type MailDraft = { accountId: number; to: string; cc: string; subject: string; body: string; replyTo: number | null };
 export type MailPreview = { draft: { accountId: number; to: string[]; cc: string[]; subject: string; body: string; replyTo: number | null };
@@ -296,3 +313,35 @@ export const getReplyDraft = (messageId: number) => core<MailDraft>(`/mail/messa
 export const composeReply = (messageId: number, instructions: string) => core<{ body: string }>(`/mail/messages/${messageId}/compose`, { instructions });
 export const previewMail = (draft: MailDraft) => core<MailPreview>('/mail/drafts/preview', draft);
 export const sendMail = (draft: MailDraft, digest: string) => core<{ sent: boolean; savedToSent: boolean; refused: string[] }>('/mail/send', { draft, digest });
+
+/** Recorded meetings: your microphone (sent here in pieces) and the system's audio (recorded by the core). */
+export type Meeting = { id: number; title: string; confidentiality: Level; status: 'recording' | 'recorded' | 'interrupted';
+  started_at: string; ended_at: string | null; seconds: number; mic_bytes: number; system_source: string | null; system_bytes: number; note: string | null;
+  work: 'none' | 'transcribing' | 'summarizing' | 'done' | 'failed'; work_error: string | null; summary_by: 'claude' | 'local' | 'none' | null;
+  has_transcript: boolean; saved_note: { vault: string; note: string } | null };
+export type MeetingTask = { title: string; who: string | null; due: string | null };
+export type MeetingDetail = Meeting & { transcript: { start: number; end: number; text: string; speaker: string }[];
+  summary: { summary: string; decisions: string[]; tasks: MeetingTask[] } | null; draft: { title: string; content: string } | null };
+export const getMeeting = (id: number) => core<MeetingDetail>(`/meetings/${id}`);
+export const processMeeting = (id: number, summaryOnly = false) => core<Meeting>(`/meetings/${id}/process`, { summary_only: summaryOnly });
+export const markMeetingSaved = (id: number, vault: string, note: string) => core<Meeting>(`/meetings/${id}/saved`, { vault, note });
+export type MeetingSettings = { local_url: string | null; local_model: string | null; known?: { name: string; url: string }[] };
+export const getMeetingSettings = () => core<MeetingSettings>('/meetings/settings');
+export const putMeetingSettings = (changes: Partial<MeetingSettings>) => core<MeetingSettings>('/meetings/settings', changes, 'PUT');
+export const getLocalModels = (url: string) => core<{ models: string[] }>(`/meetings/local-models?url=${encodeURIComponent(url)}`);
+export type MeetingList = { meetings: Meeting[]; system: string | null; recording: number | null };
+export const getMeetings = () => core<MeetingList>('/meetings');
+export const startMeeting = (body: { title: string; confidentiality: Level; mic_type: string; system: boolean }) => core<Meeting>('/meetings', body);
+export const stopMeeting = (id: number) => core<Meeting>(`/meetings/${id}/stop`, {});
+export const deleteMeeting = (id: number) => core<{ deleted: boolean }>(`/meetings/${id}`, undefined, 'DELETE');
+/** One piece of the microphone, in order. */
+export async function sendMeetingPiece(id: number, piece: Blob): Promise<void> {
+  const response = await fetch(`/api/core/meetings/${id}/mic`, {
+    method: 'POST', body: piece,
+    headers: { 'Content-Type': 'application/octet-stream', ...(csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {}) },
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new ApiError(data.error || 'No se pudo guardar el audio.', response.status, data);
+  }
+}
