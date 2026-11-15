@@ -4,6 +4,7 @@ Nothing records in the background unnoticed: when the interface stops sending th
 crashed, asleep) the recording stops by itself, and a meeting left «recording» by a core that died is
 marked interrupted on the next start. The audio lives in AgoraOne's data, never in the vault, until deleted."""
 
+import json
 import shutil
 import sqlite3
 import threading
@@ -44,7 +45,10 @@ class Recorder:
 
     # --- reading -------------------------------------------------------------------------------------------
     def view(self, row: sqlite3.Row) -> dict:
-        item = {k: row[k] for k in ("id", "title", "confidentiality", "status", "started_at", "ended_at", "mic_bytes", "system_source", "system_bytes", "note")}
+        item = {k: row[k] for k in ("id", "title", "confidentiality", "status", "started_at", "ended_at", "mic_bytes", "system_source", "system_bytes", "note",
+                                    "work", "work_error", "summary_by")}
+        item["has_transcript"] = bool(row["transcript"])
+        item["saved_note"] = json.loads(row["saved_note"]) if row["saved_note"] else None
         ended = row["ended_at"] or now()
         item["seconds"] = max(0, int((_parse(ended) - _parse(row["started_at"])).total_seconds()))
         return item
@@ -168,7 +172,8 @@ class Recorder:
 
     # --- deleting ------------------------------------------------------------------------------------------
     def delete(self, connection: sqlite3.Connection, owner: str, meeting_id: int) -> None:
-        self.owned(connection, owner, meeting_id)
+        if self.owned(connection, owner, meeting_id)["work"] in ("transcribing", "summarizing"):
+            raise MeetingError("Se está transcribiendo; bórrala cuando termine.", 409)
         with self.lock:
             if meeting_id in self.live:
                 raise MeetingError("Para borrarla, para antes la grabación.", 409)

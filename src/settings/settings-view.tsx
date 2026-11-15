@@ -11,6 +11,7 @@ import { CalendarsSettingsCard } from './settings-calendars';
 import { AlertsSettingsCard } from './settings-alerts';
 import { JobsSettingsCard } from './settings-jobs';
 import { VoiceSettingsCard } from './settings-voice';
+import { MeetingSettingsCard } from './settings-meetings';
 import './settings.css';
 
 type Tab = { id: string; label: string; cards: () => ReactNode };
@@ -22,7 +23,7 @@ const tabs: Tab[] = [
   { id: 'agenda', label: 'Agenda y avisos', cards: () => <><CalendarsSettingsCard/><AlertsSettingsCard/></> },
   { id: 'fiscal', label: 'Fiscal', cards: () => <><FiscalSettingsCard/><QontoSettingsCard/></> },
   { id: 'trabajos', label: 'Trabajos', cards: () => <JobsSettingsCard/> },
-  { id: 'voz', label: 'Voz', cards: () => <VoiceSettingsCard/> },
+  { id: 'voz', label: 'Voz', cards: () => <><VoiceSettingsCard/><MeetingSettingsCard/></> },
   { id: 'privacidad', label: 'Privacidad y copias', cards: () => <><PrivacySettingsCard/><BackupsCard/></> },
 ];
 const STORED = 'agora.settings.tab';

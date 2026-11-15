@@ -1,0 +1,67 @@
+"""A language model running on this machine (LM Studio, Ollama or any server with the OpenAI chat API),
+for what may not leave it: summaries of meetings marked «solo en este Mac» or private. Only loopback
+addresses are accepted, and requests never go through a proxy."""
+
+import ipaddress
+import json
+import urllib.error
+import urllib.parse
+import urllib.request
+
+MAX_REPLY = 2 * 1024 * 1024
+KNOWN = [{"name": "LM Studio", "url": "http://127.0.0.1:1234/v1"}, {"name": "Ollama", "url": "http://127.0.0.1:11434/v1"}]
+_DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class LocalModelError(RuntimeError):
+    pass
+
+
+def loopback(url: str | None) -> str | None:
+    """The URL without a trailing slash if it points to this machine (http or https), else None."""
+    if not url or len(url) > 300:
+        return None
+    try:
+        parts = urllib.parse.urlsplit(url.strip())
+        host = parts.hostname or ""
+        if parts.scheme not in ("http", "https") or parts.username or parts.password or parts.query or parts.fragment:
+            return None
+        if host != "localhost" and not ipaddress.ip_address(host).is_loopback:
+            return None
+        parts.port  # noqa: B018 - raises on a bad port
+    except ValueError:
+        return None
+    return url.strip().rstrip("/")
+
+
+def _call(url: str, path: str, body: dict | None, timeout: float) -> dict:
+    base = loopback(url)
+    if not base:
+        raise LocalModelError("El modelo local tiene que estar en este equipo (127.0.0.1 o localhost).")
+    request = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None,
+                                     headers={"Content-Type": "application/json"}, method="POST" if body is not None else "GET")
+    try:
+        with _DIRECT.open(request, timeout=timeout) as response:
+            data = response.read(MAX_REPLY + 1)
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        raise LocalModelError("No responde el modelo local: ¿está abierto LM Studio u Ollama con su servidor?") from error
+    if len(data) > MAX_REPLY:
+        raise LocalModelError("El modelo local devolvió demasiado texto.")
+    try:
+        return json.loads(data)
+    except ValueError as error:
+        raise LocalModelError("El modelo local devolvió algo que no se entiende.") from error
+
+
+def models(url: str) -> list[str]:
+    data = _call(url, "/models", None, 5)
+    return sorted({str(m.get("id")) for m in data.get("data") or [] if isinstance(m, dict) and m.get("id")})[:200]
+
+
+def ask(url: str, model: str, system: str, text: str, timeout: float = 900) -> str:
+    data = _call(url, "/chat/completions", {"model": model, "temperature": 0.2, "stream": False,
+                                            "messages": [{"role": "system", "content": system}, {"role": "user", "content": text}]}, timeout)
+    try:
+        return str(data["choices"][0]["message"]["content"] or "")
+    except (KeyError, IndexError, TypeError) as error:
+        raise LocalModelError("El modelo local devolvió algo que no se entiende.") from error

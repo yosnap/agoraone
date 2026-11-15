@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
-import { deleteMeeting, getMeetings, levelLabels, type Level, type Meeting, type MeetingList } from '../api/core';
+import { deleteMeeting, getMeetings, levelLabels, processMeeting, stopMeeting, type Level, type Meeting, type MeetingList } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { MeetingDetailPanel } from './meeting-detail';
 import { startRecording, stopRecording, useMeetingRecorder } from './meeting-recorder';
 import './meetings.css';
 
@@ -13,10 +14,18 @@ export const clock = (seconds: number) => {
 const size = (bytes: number) => bytes >= 1e6 ? `${(bytes / 1e6).toLocaleString('es-ES', { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
 const when = (stamp: string) => new Date(stamp).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
 const statusText: Record<Meeting['status'], string> = { recording: 'Grabando', recorded: 'Grabada', interrupted: 'Interrumpida' };
+const workText: Partial<Record<Meeting['work'], string>> = { transcribing: 'Transcribiendo en este equipo…', summarizing: 'Resumiendo…', failed: 'No se pudo procesar' };
+export const working = (m: Meeting) => m.work === 'transcribing' || m.work === 'summarizing';
 
-function MeetingRow({ meeting, discreet, onDeleted }: { meeting: Meeting; discreet: boolean; onDeleted: () => void }) {
+function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours }: { meeting: Meeting; discreet: boolean; onDeleted: () => void; onChanged: () => void; ours: boolean }) {
   const [confirming, setConfirming] = useState(false);
+  const [open, setOpen] = useState(false);
   const [error, setError] = useState('');
+  const process = async (summaryOnly: boolean) => {
+    setError('');
+    try { await processMeeting(meeting.id, summaryOnly); onChanged(); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo empezar.'); }
+  };
+  const idle = meeting.status !== 'recording' && !working(meeting);
   const hidden = discreet && meeting.confidentiality !== 'normal';
   const remove = async () => {
     setError('');
@@ -30,7 +39,16 @@ function MeetingRow({ meeting, discreet, onDeleted }: { meeting: Meeting; discre
       {meeting.note && !hidden && <small className="muted">{meeting.note}</small>}
     </div>
     <span className={`status-badge ${meeting.status === 'recorded' ? 'good' : 'paused'}`}>{statusText[meeting.status]}</span>
-    {meeting.status !== 'recording' && (confirming
+    {workText[meeting.work] && <span className="meeting-work" role="status">{workText[meeting.work]}</span>}
+    {meeting.status === 'recording' && !ours && <button type="button" className="button" onClick={() => void stopMeeting(meeting.id).then(onChanged, failure => setError(failure instanceof Error ? failure.message : 'No se pudo parar.'))}>
+      Parar (se grababa desde otra pantalla)</button>}
+    {idle && !hidden && <span className="meeting-actions">
+      {meeting.has_transcript && <button type="button" className="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Cerrar' : 'Ver'}</button>}
+      {!meeting.has_transcript && <button type="button" className="button primary" onClick={() => void process(false)}>Transcribir y resumir</button>}
+      {meeting.has_transcript && (meeting.work === 'failed' || (meeting.summary_by !== 'claude' && meeting.summary_by !== 'local')) &&
+        <button type="button" className="button" onClick={() => void process(true)}>Volver a resumir</button>}
+    </span>}
+    {idle && (confirming
       ? <span className="meeting-confirm" role="group" aria-label="Confirmar borrado">
           <span>¿Borrar el audio de esta reunión?</span>
           <button type="button" className="button danger" onClick={() => void remove()}>Borrar</button>
@@ -38,6 +56,7 @@ function MeetingRow({ meeting, discreet, onDeleted }: { meeting: Meeting; discre
         </span>
       : <button type="button" className="button" onClick={() => setConfirming(true)}>Borrar</button>)}
     {error && <small className="dictation-error" role="alert">{error}</small>}
+    {open && meeting.has_transcript && <MeetingDetailPanel key={`${meeting.id}:${meeting.work}`} id={meeting.id} onChanged={onChanged}/>}
   </li>;
 }
 
@@ -51,7 +70,13 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
   const [level, setLevel] = useState<Level>('normal');
   const [system, setSystem] = useState(true);
   const loaded = useRef<string | null>(null);
-  const load = () => getMeetings().then(setList).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer las reuniones.'));
+  const poll = useRef(0);
+  // While a meeting is being transcribed or summarized, the list is read again every few seconds.
+  const load = () => getMeetings().then(next => {
+    setList(next);
+    window.clearTimeout(poll.current);
+    if (next.meetings.some(working)) poll.current = window.setTimeout(() => void load(), 3000);
+  }).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer las reuniones.'));
   // Load on arrival and again whenever a recording ends (the list shows its tracks).
   const mark = `${recorder.finished}:${recorder.meetingId ?? ''}`;
   if (loaded.current !== mark) { loaded.current = mark; void load(); }
@@ -80,7 +105,7 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
     <article className="card" aria-labelledby="recorded-title">
       <div className="card-head"><h2 id="recorded-title">Grabadas</h2></div>
       {!list && !error ? <Loading label="Leyendo las reuniones" lines={2}/>
-        : list && (list.meetings.length ? <ul className="meeting-list">{list.meetings.map(m => <MeetingRow key={m.id} meeting={m} discreet={discreet} onDeleted={() => void load()}/>)}</ul>
+        : list && (list.meetings.length ? <ul className="meeting-list">{list.meetings.map(m => <MeetingRow key={m.id} meeting={m} discreet={discreet} onDeleted={() => void load()} onChanged={() => void load()} ours={recorder.meetingId === m.id}/>)}</ul>
           : <p className="muted">Todavía no hay reuniones grabadas.</p>)}
       {error && <LoadError message={error}/>}
     </article>

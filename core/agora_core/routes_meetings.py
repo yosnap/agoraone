@@ -9,12 +9,28 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import system_audio
-from .db import DB_NAME, connect
+import json
+
+from . import local_model, meeting_notes, system_audio
+from .db import DB_NAME, connect, transaction
 from .meetings import MeetingError, Recorder
 from .settings import Settings
 
 _OWNER = re.compile(r"[0-9a-f]{64}")
+
+
+class Process(BaseModel):
+    summary_only: bool = False
+
+
+class Saved(BaseModel):
+    vault: str
+    note: str
+
+
+class LocalSettings(BaseModel):
+    local_url: str | None = None
+    local_model: str | None = None
 
 
 class NewMeeting(BaseModel):
@@ -24,7 +40,7 @@ class NewMeeting(BaseModel):
     system: bool = True
 
 
-def meetings_router(settings: Settings, recorder: Recorder) -> APIRouter:
+def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_notes.Worker) -> APIRouter:
     router = APIRouter()
 
     @contextmanager
@@ -46,6 +62,10 @@ def meetings_router(settings: Settings, recorder: Recorder) -> APIRouter:
             return await run_in_threadpool(job)
         except MeetingError as error:
             return JSONResponse({"error": str(error)}, status_code=error.status)
+        except local_model.LocalModelError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
+        except (ValueError, RuntimeError) as error:
+            return JSONResponse({"error": str(error)}, status_code=409)
 
     @router.get("/meetings")
     async def listing(request: Request):
@@ -53,6 +73,45 @@ def meetings_router(settings: Settings, recorder: Recorder) -> APIRouter:
             meetings = recorder.list(connection, owner)
             return {"meetings": meetings, "system": system_audio.adapter()["note"],
                     "recording": next((m["id"] for m in meetings if m["status"] == "recording"), None)}
+        return await run(request, work)
+
+    # Before /meetings/{meeting_id}, so these names are not taken for an id.
+    @router.get("/meetings/settings")
+    async def get_local(request: Request):
+        return await run(request, lambda c, o: {**meeting_notes.settings(c), "known": local_model.KNOWN})
+
+    @router.put("/meetings/settings")
+    async def put_local(request: Request, body: LocalSettings):
+        return await run(request, lambda c, o: meeting_notes.save_settings(c, body.model_dump(exclude_unset=True)))
+
+    @router.get("/meetings/local-models")
+    async def local_models(request: Request, url: str):
+        return await run(request, lambda c, o: {"models": local_model.models(url)})
+
+    @router.get("/meetings/{meeting_id}")
+    async def detail(request: Request, meeting_id: int):
+        def work(connection, owner):
+            row = recorder.owned(connection, owner, meeting_id)
+            return {**recorder.view(row), "transcript": json.loads(row["transcript"] or "[]"),
+                    "summary": json.loads(row["summary"]) if row["summary"] else None, "draft": meeting_notes.note(row) if row["transcript"] else None}
+        return await run(request, work)
+
+    @router.post("/meetings/{meeting_id}/process")
+    async def process(request: Request, meeting_id: int, body: Process):
+        def work(connection, owner):
+            worker.begin(connection, recorder.owned(connection, owner, meeting_id), body.summary_only)
+            return recorder.view(recorder.owned(connection, owner, meeting_id))
+        return await run(request, work)
+
+    @router.post("/meetings/{meeting_id}/saved")
+    async def saved(request: Request, meeting_id: int, body: Saved):
+        def work(connection, owner):
+            recorder.owned(connection, owner, meeting_id)
+            if not (0 < len(body.vault) <= 200 and 0 < len(body.note) <= 1000):
+                raise MeetingError("Nota no válida.")
+            with transaction(connection):
+                connection.execute("UPDATE meeting SET saved_note = ? WHERE id = ? AND owner = ?", (json.dumps({"vault": body.vault, "note": body.note}), meeting_id, owner))
+            return recorder.view(recorder.owned(connection, owner, meeting_id))
         return await run(request, work)
 
     @router.post("/meetings")
