@@ -17,10 +17,10 @@ const main: Item[] = [
   { id: 'inbox', label: 'Bandeja', icon: '✉' },
   { id: 'agenda', label: 'Agenda', icon: '▣' },
   { id: 'fiscal', label: 'Fiscal', icon: '€' },
+  { id: 'jobs', label: 'Trabajos', icon: '☰' },
 ];
 // Planned for later versions: shown so the map is complete, marked as pending and without content.
 const later: Item[] = [
-  { id: 'jobs', label: 'Trabajos', icon: '☰', pending: true },
   { id: 'meetings', label: 'Reuniones', icon: '◎', pending: true },
 ];
 

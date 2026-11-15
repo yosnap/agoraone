@@ -9,7 +9,7 @@ export type WorkTask = {
 };
 export type CardRun = { profile: string | null; status: string | null; outcome: string | null; startedAt: string | null; endedAt: string | null; seconds: number | null };
 export type WorkCard = {
-  id: string | null; title: string; assignee: string | null; profileId: string | null; status: string; priority: number; createdBy: string | null;
+  id: string | null; board: string; title: string; assignee: string | null; profileId: string | null; status: string; priority: number; createdBy: string | null;
   createdAt: string | null; startedAt: string | null; completedAt: string | null; runs: CardRun[]; seconds: number | null; tokens: WorkTokens | null;
 };
 export type HermesWork = {
