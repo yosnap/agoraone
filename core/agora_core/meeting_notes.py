@@ -54,6 +54,10 @@ def save_settings(connection: sqlite3.Connection, changes: dict) -> dict:
         name = (changes["local_model"] or "").strip()
         if len(name) > 200 or any(c in name for c in "\n\r\0"):
             raise local_model.LocalModelError("Nombre de modelo no válido.")
+        if local_model.remote(name):
+            raise local_model.LocalModelError("Ese modelo se ejecuta en la nube de Ollama: las reuniones privadas no pueden salir del equipo. Elige uno local.")
+        if local_model.embedding(name):
+            raise local_model.LocalModelError("Ese modelo solo sirve para buscar (embeddings), no para resumir.")
         current["local_model"] = name or None
     with transaction(connection):
         connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", (SETTING, json.dumps(current)))

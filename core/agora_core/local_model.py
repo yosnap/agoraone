@@ -53,12 +53,38 @@ def _call(url: str, path: str, body: dict | None, timeout: float) -> dict:
         raise LocalModelError("El modelo local devolvió algo que no se entiende.") from error
 
 
+def remote(name: str) -> bool:
+    """Ollama's «cloud» models run on Ollama's servers, not here: never for what may not leave this machine."""
+    lowered = name.lower()
+    return lowered.endswith((":cloud", "-cloud")) or ":cloud" in lowered
+
+
+def embedding(name: str) -> bool:
+    """Models that only turn text into vectors (the brain's search) and cannot write a summary."""
+    return "embed" in name.lower()
+
+
 def models(url: str) -> list[str]:
+    """The chat models that run on this machine: neither cloud models nor embedding ones."""
     data = _call(url, "/models", None, 5)
-    return sorted({str(m.get("id")) for m in data.get("data") or [] if isinstance(m, dict) and m.get("id")})[:200]
+    names = {str(m.get("id")) for m in data.get("data") or [] if isinstance(m, dict) and m.get("id")}
+    return sorted(n for n in names if not remote(n) and not embedding(n))[:200]
+
+
+def detect() -> str | None:
+    """The first known local server that answers now (LM Studio, then Ollama), for Settings to start from."""
+    for known in KNOWN:
+        try:
+            _call(known["url"], "/models", None, 1)
+            return known["url"]
+        except LocalModelError:
+            continue
+    return None
 
 
 def ask(url: str, model: str, system: str, text: str, timeout: float = 900) -> str:
+    if remote(model):
+        raise LocalModelError("Ese modelo se ejecuta en la nube de Ollama, no en este equipo.")
     data = _call(url, "/chat/completions", {"model": model, "temperature": 0.2, "stream": False,
                                             "messages": [{"role": "system", "content": system}, {"role": "user", "content": text}]}, timeout)
     try:

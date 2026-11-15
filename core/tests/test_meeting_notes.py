@@ -119,3 +119,14 @@ def test_ajustes_del_modelo_local(client):
     saved = client.put("/meetings/settings", json={"local_url": "http://127.0.0.1:1234/v1/", "local_model": "qwen3"}, headers=H).json()
     assert saved == {"local_url": "http://127.0.0.1:1234/v1", "local_model": "qwen3"}
     assert client.get("/meetings/settings", headers=H).json()["known"][0]["name"] == "LM Studio"
+
+
+def test_solo_modelos_locales_de_chat(client, monkeypatch):
+    monkeypatch.setattr(local_model, "_call", lambda url, path, body, timeout: {"data": [
+        {"id": "qwen3:14b"}, {"id": "glm-4.6:cloud"}, {"id": "qwen3-coder:480b-cloud"}, {"id": "qwen3-embedding:0.6b"}]})
+    assert local_model.models("http://127.0.0.1:11434/v1") == ["qwen3:14b"], "ni nube ni embeddings"
+    assert client.get("/meetings/settings", headers=H).json()["detected"] == "http://127.0.0.1:1234/v1"
+    for name in ("glm-4.6:cloud", "qwen3-embedding:0.6b"):
+        assert client.put("/meetings/settings", json={"local_url": "http://127.0.0.1:11434/v1", "local_model": name}, headers=H).status_code == 422, name
+    with pytest.raises(local_model.LocalModelError):
+        local_model.ask("http://127.0.0.1:11434/v1", "glm-4.6:cloud", "s", "t")
