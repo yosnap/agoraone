@@ -27,6 +27,23 @@ class UserError(Exception):
     pass
 
 
+
+def hermes_unfinished(installation):
+    """True when Hermes left an update, repair or plugin install half done: its bootstrap would repair it
+    (install packages, restore files, rewrite config.yaml), which only Hermes itself may do. Read only."""
+    from hermes_cli._early_recovery import ZIP_SWAP_JOURNAL, interrupted_pull_marker
+    from pm.environments import committed_venv, install_state_dir, site_packages
+    state = install_state_dir(installation)
+    markers = [installation / ".update-incomplete", installation / ".lazy-refresh-incomplete", installation / ZIP_SWAP_JOURNAL,
+               interrupted_pull_marker(installation), state / ".repair-incomplete", state / "publication.json"]
+    if any(marker.exists() for marker in markers):
+        return True
+    try:
+        environment = committed_venv(installation)
+    except Exception:  # a broken record is repaired by the bootstrap too
+        return True
+    return environment is None or not site_packages(environment).is_dir()
+
 def text(request, key, limit, required=False):
     value = request.get(key)
     if value is None or value == "":
@@ -165,8 +182,10 @@ def main(request):
     sys.path.insert(0, str(installation))
     if (installation / "hermes_bootstrap.py").is_file():
         # Since November 2026 Hermes selects its installed dependencies in its own bootstrap, which every entry
-        # point (run_agent too) imports first. AgoraOne uses Hermes exactly as installed: Hermes' switch keeps
-        # the bootstrap from installing packages, finishing an update or relaunching the process.
+        # point (run_agent too) imports first. AgoraOne uses Hermes exactly as installed. Hermes' switch keeps
+        # the bootstrap from syncing packages, finishing an update or relaunching; it does not stop its repair
+        # of an unfinished update or plugin install, so that case is refused before the bootstrap runs. The
+        # only writes left are Hermes' own lock and lease that keep the environment in use from being collected.
         os.environ["HERMES_DISABLE_LAZY_INSTALLS"] = "1"
         from hermes_constants import reset_hermes_home_override, set_hermes_home_override
         from pm.environments import owning_home_root
@@ -174,6 +193,8 @@ def main(request):
         owner = owning_home_root(installation)
         token = set_hermes_home_override(owner) if owner else None
         try:
+            if hermes_unfinished(installation):
+                raise UserError("Hermes tiene una actualización o reparación sin terminar. Ábrelo una vez o ejecuta «hermes update» y vuelve a intentarlo: AgoraOne no repara Hermes.")
             import hermes_bootstrap  # noqa: F401
         finally:
             if token is not None:

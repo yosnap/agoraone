@@ -43,14 +43,18 @@ fn store_python(root: &Path, installation: &Path) -> Option<PathBuf> {
     if !installation.join("hermes_bootstrap.py").is_file() {
         return None;
     }
-    let tools = root.join("tools");
+    // Hermes keeps its tools in the data root that owns the checkout (<root>/hermes-agent), else the active one.
+    let owner = installation.parent().filter(|parent| parent.join("tools").join("facts.json").is_file());
+    let tools = owner.unwrap_or(root).join("tools");
     let facts: serde_json::Value = serde_json::from_slice(&std::fs::read(tools.join("facts.json")).ok()?).ok()?;
     let entry = facts.get("packages")?.get("python")?.get("entry")?.as_str()?;
     if entry.is_empty() || entry.contains('/') || entry.starts_with('.') {
         return None;
     }
     let python = tools.join(entry).join("bin/python3");
-    python.is_file().then_some(python)
+    // A link must not lead out of Hermes' tools.
+    let real = std::fs::canonicalize(&python).ok()?;
+    (real.is_file() && real.starts_with(std::fs::canonicalize(&tools).ok()?)).then_some(python)
 }
 
 /// The location from this process' environment and the user's home.

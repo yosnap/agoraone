@@ -220,3 +220,34 @@ fn obsidian_registry_bounded_without_notes_or_paths() {
     fs::write(&registry, " ".repeat(140 * 1024)).unwrap();
     assert!(obsidian_vaults(Some(&registry)).vaults.is_empty());
 }
+
+/// Hermes' own Python (November 2026): taken from tools/facts.json only for an installation with its
+/// bootstrap, never through a link out of its tools; older installations keep their virtual environment.
+#[test]
+fn hermes_python_comes_from_its_tools() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let home = std::fs::canonicalize(dir.path()).unwrap();
+    let root = home.join(".hermes");
+    let installation = root.join("hermes-agent");
+    std::fs::create_dir_all(&installation).unwrap();
+    std::fs::write(installation.join("run_agent.py"), "").unwrap();
+    let none = |_: &str| None::<String>;
+    let old = hermes_location(none, &home).python;
+    assert!(old.ends_with("bin/python") && old.starts_with(&installation), "without bootstrap, the virtual environment");
+    std::fs::write(installation.join("hermes_bootstrap.py"), "").unwrap();
+    let tools = root.join("tools");
+    std::fs::create_dir_all(tools.join("python-3.14/bin")).unwrap();
+    std::fs::write(tools.join("python-3.14/bin/python3"), "").unwrap();
+    std::fs::write(tools.join("facts.json"), r#"{"packages":{"python":{"entry":"python-3.14"}}}"#).unwrap();
+    assert_eq!(hermes_location(none, &home).python, tools.join("python-3.14/bin/python3"));
+    // An entry that tries to leave the folder, or a link that does, is not taken.
+    std::fs::write(tools.join("facts.json"), r#"{"packages":{"python":{"entry":"../x"}}}"#).unwrap();
+    assert!(!hermes_location(none, &home).python.starts_with(&tools));
+    let outside = home.join("fuera/bin");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("python3"), "").unwrap();
+    symlink(home.join("fuera"), tools.join("enlace")).unwrap();
+    std::fs::write(tools.join("facts.json"), r#"{"packages":{"python":{"entry":"enlace"}}}"#).unwrap();
+    assert!(!hermes_location(none, &home).python.starts_with(&tools));
+}
