@@ -1,6 +1,15 @@
 # Estado de continuidad — 14/11/2026
 
 ## Resultado
+Versión 1.1.0-alpha.10 · Llamadas y avisos proactivos (fase 7).
+- **Avisos:** llamadas perdidas sin devolver (tres días, con el nombre de Contactos), reuniones 15 minutos antes, plazos de correos de hoy o mañana y resumen de la mañana (8:30 por defecto, hasta mediodía). Notificaciones de macOS desde AgoraOne (tauri-plugin-notification) o, con la ventana delante, dentro de la app; cada aviso se confirma solo cuando se ha mostrado y nunca sale en horas de silencio (22:00–8:00). Nada va a Telegram.
+- **Llamadas:** historial de CallHistory en solo lectura sobre una copia (necesita Acceso total al disco; errores por causa: permiso, sin historial, ilegible). Por defecto «solo en este Mac»: no llegan a Watson salvo que se marquen normales; lo privado sale sin nombres ni títulos en los avisos.
+- **Ajustes › Avisos:** interruptores, horas, confidencialidad de las llamadas y permisos de Contactos y Acceso total al disco. La Agenda muestra arriba el resumen y los avisos de ahora. Watson: `resumen_del_dia`.
+- **App firmada:** NSContactsUsageDescription y derecho de Contactos; el empaquetado comprueba que Contacts carga (migración 0019).
+- **Revisión** (plans/reports/code-review-261115-0230-avisos.md) aplicada: A1, M1–M5, B1, B3–B6. Las llamadas rechazadas siguen contando como perdidas (no se distinguen sin ver la base real).
+- **Verificado:** 210 pruebas del núcleo, 14 de la interfaz, 99 de Rust y build. **Pendiente:** probar llamadas, Contactos y notificaciones reales en la app empaquetada.
+- **Siguiente:** fase 8, enviar y responder correos tras confirmar.
+
 Versión 1.1.0-alpha.9 · Agenda con los calendarios de macOS (fase 6).
 - **Agenda** (sección nueva): hoy, mañana o la semana con los calendarios de macOS (EventKit por PyObjC) y los recordatorios pendientes, con los solapes marcados. «Nuevo evento o recordatorio» y «Crear el evento» de la Bandeja crean solo al pulsar; si choca con otros eventos, los enseña y pide un segundo sí. Nunca se borra nada.
 - **Ajustes › Calendarios:** permiso, y ámbito, confidencialidad (normal por defecto) y ocultar por calendario (migración 0018).
@@ -8,7 +17,6 @@ Versión 1.1.0-alpha.9 · Agenda con los calendarios de macOS (fase 6).
 - **App firmada:** textos de permiso en `desktop/app/Info.plist` (Tauri los combina), derecho de calendarios en la app y en su Python; el empaquetado comprueba los tres y que EventKit carga. En macOS 13 se usa la API de permisos anterior.
 - **Revisión** (plans/reports/code-review-261115-0200-calendario.md) aplicada: un id por repetición, recordatorios sin fecha, permiso concedido fuera de la app sin reiniciar, fechas locales y días de cambio de hora, alarma en los recordatorios con fecha, fallos de macOS avisados.
 - **Verificado:** 207 pruebas del núcleo, 14 de la interfaz y build. **Pendiente:** probarlo con los calendarios reales en la app empaquetada (permiso de macOS); que Watson cree o cambie eventos desde el chat; usar el ámbito de cada calendario y el aviso de solapes del resumen de la mañana (fase 7).
-- **Siguiente:** fase 7, llamadas y avisos proactivos.
 
 Versión 1.1.0-alpha.8 · Correos de clientes en su nota del vault (fase 5), datos a mano en Fiscal y revisiones de código aplicadas.
 - **Bandeja › «Añadir a la nota del proyecto»** (tarjetas de cliente): crea una nota NUEVA por correo en la carpeta del cliente del vault (`- Clientes/Proyectos/<Cliente>/<Cliente> - <asunto> DD-MM-AAAA.md`), con cliente, proyecto, carpeta, título y texto editables; nada se escribe hasta «Crear la nota» y ninguna nota existente se modifica. La carpeta de un cliente nuevo se crea con su primera nota (solo un nivel dentro de una carpeta existente, nunca en la raíz ni por un enlace). La nota de un correo privado o «solo en este Mac» lleva esa confidencialidad en sus propiedades, y Watson no la lee. En modo discreto no se abre.
