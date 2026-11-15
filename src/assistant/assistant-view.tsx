@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { RuleProposals, useProposals } from './rule-proposals';
 import { DictationButton } from '../ui/dictation-button';
+import { quickCommand } from './quick-commands';
 import {
   askAssistant, createAssistantConversation, getAssistantConversation, getAssistantSettings, getEngines, getPersonas, listAssistantConversations,
   type AssistantMessage, type ConversationSummary, type Persona, type Source, type Stage,
@@ -109,6 +110,14 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
     if (!text || live) return; setDraft('');
     if (proposals.answer(text, discreet)) return;  // a plain «sí» / «no» answers the rule Watson just proposed, without a model
     proposals.expire();
+    // «Pon…», «pausa», «siguiente»…: done at once, without a model, and noted in the chat (not saved).
+    const quick = quickCommand(text);
+    if (quick) {
+      const at = new Date().toISOString();
+      setMessages(current => [...current, { role: 'user', content: text, sources: [], engine: null, model: null, failed: false, created_at: at }]);
+      void quick().then(result => setMessages(current => [...current, { role: 'assistant', content: result.reply, sources: [], engine: 'quick', model: null, failed: result.failed, created_at: new Date().toISOString() }]));
+      return;
+    }
     if (!announced.answer(text, messages.length > 0 || current !== null)) void send(text, current);  // a plain «sí» / «no» answers the open announcement, without a model
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
@@ -150,8 +159,9 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         </div> : messages.map((message, index) => <article key={index} className={`assistant-message ${message.role}${message.failed ? ' failed' : ''}`}>
           <strong>{message.role === 'user' ? 'Tú' : name}</strong>
           {message.role === 'user' ? <p>{message.content}</p> : <Markdown source={message.content} resolve={noLinks}/>}
-          {message.failed && <small className="muted">Sin respuesta: el motor falló. Puedes repetir la pregunta.</small>}
-          {message.role === 'assistant' && <small className="muted">Respondió {engineName(message.engine)}{message.model ? ` · ${modelName(message.model)}` : ''}</small>}
+          {message.failed && message.engine !== 'quick' && <small className="muted">Sin respuesta: el motor falló. Puedes repetir la pregunta.</small>}
+          {message.role === 'assistant' && message.engine === 'quick' && <small className="muted">Orden rápida, sin modelo</small>}
+          {message.role === 'assistant' && message.engine !== 'quick' && <small className="muted">Respondió {engineName(message.engine)}{message.model ? ` · ${modelName(message.model)}` : ''}</small>}
           {message.role === 'assistant' && sourceList(message.sources)}
         </article>)}
         {live && <>
