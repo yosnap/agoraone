@@ -53,6 +53,16 @@ node scripts/verify-browser.mjs
 node scripts/verify-browser.mjs --live
 ```
 
+Correo, Fiscal y Agenda (1.1), cada una en solo lectura contra los datos reales y con tarjetas, agenda y avisos de ejemplo que sirve la propia prueba (nada se envía ni se escribe):
+
+```sh
+node scripts/verify-inbox.mjs
+node scripts/verify-mail-settings.mjs
+node scripts/verify-mail-reply.mjs
+node scripts/verify-agenda.mjs
+node scripts/verify-fiscal.mjs   # al abrir Fiscal se leen las facturas nuevas de la carpeta, como en la app
+```
+
 La comprobación normal no llama a modelos. La variante live verifica dos turnos, continuidad, recarga, selección, primera persona y móvil. Capturas locales en `.agora/`.
 
 ## Controles

@@ -1,6 +1,13 @@
-# Estado de continuidad — 14/11/2026
+# Estado de continuidad — 15/11/2026
 
 ## Resultado
+Versión 1.1.0-alpha.12 · Cierre de la 1.1 sin empaquetar (fase 9, primera parte).
+- **Documentación:** guías nuevas `docs/correo-bandeja.md`, `docs/fiscal.md` y `docs/agenda-avisos.md` (con los permisos de macOS y cómo dar el Acceso total al disco); arquitectura, README, arranque y app de escritorio al día.
+- **Verificaciones de navegador nuevas:** `verify-agenda.mjs` (solapes con segundo sí, aviso dentro de la app confirmado una vez, Ajustes de Calendarios y Avisos), `verify-mail-reply.mjs` (respuesta sellada, correo privado sin Watson, nota del proyecto en la carpeta del cliente) y `verify-fiscal.mjs` (solo lectura).
+- **Empaquetado:** comprueba todos los textos de permisos del Info.plist (Calendarios, Recordatorios y Contactos), no solo el de Calendarios.
+- **Verificado:** las tres nuevas, verify-inbox, verify-mail-settings y verify-browser (falló una vez recién arrancado el entorno, mientras Vite preparaba la escena; tres pasadas seguidas después), 14 pruebas de la interfaz, build y lockfiles.
+- **Siguiente:** que el usuario pruebe en desarrollo; después empaquetar y probar en la app los permisos reales (calendario, llamadas, Contactos, notificaciones) y las migraciones 0017–0019, notarizar y publicar la 1.1.0 con su permiso.
+
 Versión 1.1.0-alpha.11 · Responder y enviar correos tras confirmar (fase 8).
 - **Bandeja › «Responder…»:** borrador con la misma cuenta, el remitente, «Re:» y el original citado; «Redactar con Watson» con indicaciones (solo correos normales; el correo va como dato entre marcas). Vista previa exacta y «Enviar»: el servidor solo envía el borrador sellado de esa vista previa y cada sello una sola vez.
 - **Envío:** SMTP de la cuenta, siempre cifrado (465 o STARTTLS con saludo de nuevo), contraseña de aplicación o XOAUTH2 de Microsoft; copia en «Enviados» por IMAP salvo Gmail y Outlook; destinatarios rechazados avisados; todo en el registro de acciones.
