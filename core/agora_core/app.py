@@ -27,6 +27,16 @@ from .routes_assistant import KeychainSecrets, assistant_router, default_engines
 from .entity_worker import ExtractHealth, entity_worker
 from .engines import AnthropicApiEngine, ClaudeCodeEngine
 from .routes_index import EmbedHealth, embed_worker, index_router
+from .routes_mail import mail_router, mail_worker
+from .routes_mail_send import mail_send_router
+from .mail_summarizer import SummaryHealth, summary_worker
+from .routes_inbox import inbox_router
+from .routes_fiscal import fiscal_router
+from . import calendar_store, calls
+from .routes_alerts import alerts_router
+from .routes_jobs import jobs_router
+from .routes_calendar import calendar_router
+from .routes_central import CentralHealth, central_router, central_worker
 from .routes_summary import summary_router
 from .settings import DEFAULT_DATA, Settings
 
@@ -50,7 +60,7 @@ _DEFAULT = object()
 
 def create_app(
     settings: Settings, store: KeyStore | None = None, scheduler: bool = True, embedder: Embedder | None | object = _DEFAULT,
-    secrets=None, engines=default_engines,
+    secrets=None, engines=default_engines, calendar=None, contacts=None, call_reader=None, drafter=None,
 ) -> FastAPI:
     """`scheduler` starts the background work (daily backups, embeddings); tests turn it off. `embedder`
     defaults to the local ollama; None disables search by meaning."""
@@ -60,6 +70,8 @@ def create_app(
     cache = VectorCache()
     embed_health = EmbedHealth()
     extract_health = ExtractHealth()
+    summary_health = SummaryHealth()
+    central_health = CentralHealth()
     secrets = secrets or KeychainSecrets()
     expected = settings.secret.encode()
 
@@ -80,6 +92,12 @@ def create_app(
             # Entities of normal notes, read by Claude Haiku (user's decision, 13/11/2026).
             extract_engines = lambda: [ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)]  # noqa: E731
             threading.Thread(target=entity_worker, args=(settings, extract_engines, stop, extract_health), daemon=True).start()
+            # New mail of the connected accounts, read-only (user's decision, 14/11/2026).
+            threading.Thread(target=mail_worker, args=(settings, secrets, stop), daemon=True).start()
+            # Kinds and summaries of new mail: rules first, then Claude Haiku for what may leave this Mac.
+            threading.Thread(target=summary_worker, args=(settings, extract_engines, stop, summary_health), daemon=True).start()
+            # Clients and servers from Central, read-only, every half hour (user's decision, 14/11/2026).
+            threading.Thread(target=central_worker, args=(settings, stop, central_health), daemon=True).start()
         try:
             yield
         finally:
@@ -150,4 +168,16 @@ def create_app(
     app.include_router(addons_router(settings))
     app.include_router(summary_router(settings, time.time()))
     app.include_router(assistant_router(settings, embedder, cache, secrets, engines))
+    app.include_router(mail_router(settings, secrets))
+    app.include_router(mail_send_router(settings, secrets, drafter))
+    app.include_router(inbox_router(settings, summary_health))
+    app.include_router(fiscal_router(settings, secrets))
+    app.include_router(central_router(settings, central_health))
+    if calendar is not None:
+        calendar_store.use(calendar)
+    app.include_router(calendar_router(settings))
+    if contacts is not None:
+        calls.use_contacts(contacts)
+    app.include_router(alerts_router(settings, **({'call_reader': call_reader} if call_reader else {})))
+    app.include_router(jobs_router(settings))
     return app

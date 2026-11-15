@@ -5,7 +5,8 @@ export type ModernSelectOption = { value: string; label: string; render?: ReactN
 
 // The select of the whole application (user's decision, 20/10/2026: no native selects): options are
 // buttons that may carry colours, indents and dots, and the control stays keyboard driven
-// (arrows, Enter to pick, Escape to close). Outside clicks close it.
+// (arrows, Enter to pick, Escape to close). Outside clicks close it. A pick cancels the click's default
+// action: inside a <label> the browser would otherwise forward it to the trigger and reopen the list.
 export function ModernSelect({ id, value, onChange, options, disabled = false }: {
   id?: string; value: string; onChange: (value: string) => void; options: ModernSelectOption[]; disabled?: boolean;
 }) {
@@ -37,7 +38,7 @@ export function ModernSelect({ id, value, onChange, options, disabled = false }:
     {open && <div className="modern-select-list" role="listbox" aria-label={id}>
       {options.map((option, index) => <button type="button" key={option.value} role="option"
         aria-selected={option.value === value} className={index === active ? 'modern-select-active' : ''}
-        onMouseEnter={() => setActive(index)} onClick={() => pick(index)}>{option.render ?? option.label}</button>)}
+        onMouseEnter={() => setActive(index)} onClick={event => { event.preventDefault(); pick(index); }}>{option.render ?? option.label}</button>)}
     </div>}
   </div>;
 }

@@ -156,6 +156,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/status", get(status))
         .route("/api/hermes/catalog", get(hermes::routes::catalog))
         .route("/api/hermes/activity", get(hermes::routes::activity))
+        .route("/api/hermes/work", get(hermes::routes::work))
         .route("/api/hermes/summary", get(hermes::routes::summary))
         .route("/api/hermes/profiles/{id}", get(hermes::routes::profile))
         .route("/api/hermes/profiles/{id}/mcp/{server}/tools", get(hermes::routes::mcp_tools))

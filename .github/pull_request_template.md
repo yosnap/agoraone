@@ -1,8 +1,8 @@
 ## Qué cambia y por qué
 
 ## Cómo lo has probado
-- [ ] `npm test`
-- [ ] `npm run build`
+- [ ] `pnpm test`
+- [ ] `pnpm build`
 - [ ] Probado en el navegador (adjunta capturas si cambia la interfaz, hechas sobre una instalación de ejemplo)
 
 ## Comprobaciones

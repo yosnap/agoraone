@@ -14,13 +14,14 @@ const main: Item[] = [
   { id: 'assistant', label: 'Asistente', icon: '✦' },
   { id: 'office', label: 'Oficina 3D', icon: '▦' },
   { id: 'connectors', label: 'Conectores', icon: '⧉' },
+  { id: 'inbox', label: 'Bandeja', icon: '✉' },
+  { id: 'agenda', label: 'Agenda', icon: '▣' },
+  { id: 'fiscal', label: 'Fiscal', icon: '€' },
+  { id: 'jobs', label: 'Trabajos', icon: '☰' },
 ];
 // Planned for later versions: shown so the map is complete, marked as pending and without content.
 const later: Item[] = [
-  { id: 'inbox', label: 'Bandeja', icon: '✉', pending: true },
-  { id: 'jobs', label: 'Trabajos', icon: '☰', pending: true },
   { id: 'meetings', label: 'Reuniones', icon: '◎', pending: true },
-  { id: 'fiscal', label: 'Fiscal', icon: '€', pending: true },
 ];
 
 export const sectionLabel = (id: Section) => [...main, ...later, { id: 'settings', label: 'Ajustes' }].find(item => item.id === id)?.label ?? '';

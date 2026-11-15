@@ -82,6 +82,26 @@ fn folder_of(index: &Index, folder: &str) -> Result<PathBuf, Failure> {
     Ok(directory)
 }
 
+/// A folder that does not exist yet, one level inside a folder that does (never at the vault's top level):
+/// a new client's folder in «Clientes/Proyectos». Created when its first note is created, never through a link.
+fn new_folder(index: &Index, folder: &str) -> Result<PathBuf, Failure> {
+    let missing = || Failure::new(404, "Esa carpeta no existe en el vault.");
+    let (parent, name) = folder.rsplit_once('/').ok_or_else(missing)?;
+    if parent.is_empty() || note_name(name).ok().as_deref() != Some(name) {
+        return Err(missing());
+    }
+    let directory = folder_of(index, parent)?.join(name);
+    match DirBuilder::new().mode(0o755).create(&directory) {
+        Ok(()) => {}
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+        Err(_) => return Err(refused("No se pudo crear la carpeta en el vault.")),
+    }
+    if fs::canonicalize(&directory).map_err(internal)? != directory {
+        return Err(refused(LINKED));
+    }
+    Ok(directory)
+}
+
 fn check(content: &str) -> Result<(), Failure> {
     if CONTROLS.is_match(content) {
         return Err(refused("El texto contiene caracteres de control."));
@@ -182,7 +202,10 @@ impl VaultNotes {
         let index = self.index(vault_id, true)?;
         let name = note_name(title)?;
         check(content)?;
-        let directory = folder_of(&index, folder)?;
+        let directory = match folder_of(&index, folder) {
+            Err(failure) if failure.status.as_u16() == 404 => new_folder(&index, folder)?,
+            found => found?,
+        };
         let linked = || fs::canonicalize(&directory).map(|real| real != directory);
         let file = directory.join(format!("{name}.md"));
         let mut handle = OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW).mode(0o644).open(&file).map_err(|error| {

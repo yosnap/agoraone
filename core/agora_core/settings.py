@@ -43,6 +43,6 @@ def load_settings(env: dict[str, str] | None = None) -> Settings:
     secret = source.get(SECRET_ENV, "")
     if not _SECRET.fullmatch(secret):
         raise SettingsError(
-            f"Falta {SECRET_ENV}: el núcleo solo se arranca desde AgoraOne (npm run dev o npm start)."
+            f"Falta {SECRET_ENV}: el núcleo solo se arranca desde AgoraOne (pnpm dev o pnpm start)."
         )
     return Settings(secret=secret, data_dir=data_dir(source))

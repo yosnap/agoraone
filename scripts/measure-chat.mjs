@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-// Two billable synthetic prompts to Luma through the running AgoraOne (npm run dev): start-up, first text and
+// Two billable synthetic prompts to Luma through the running AgoraOne (pnpm dev): start-up, first text and
 // total time of each turn. No profile files or personal documents; prints only times.
 if (!process.argv.includes('--live')) throw new Error('Añade --live para ejecutar dos consultas reales de prueba.');
 const base = 'http://127.0.0.1:4317';

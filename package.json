@@ -1,6 +1,6 @@
 {
   "name": "agoraone",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -8,7 +8,7 @@
     "node": ">=22.12"
   },
   "scripts": {
-    "dev": "concurrently -k -n backend,web \"npm:dev:server\" \"npm:dev:web\"",
+    "dev": "concurrently -k -n backend,web \"pnpm:dev:server\" \"pnpm:dev:web\"",
     "dev:server": "cargo run -q --manifest-path desktop/Cargo.toml --bin agoraone",
     "dev:web": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
@@ -46,5 +46,6 @@
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"
-  }
+  },
+  "packageManager": "pnpm@11.5.1"
 }

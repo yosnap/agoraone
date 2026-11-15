@@ -17,11 +17,11 @@ use serde_json::{Map, Value, json};
 
 fn installation() -> Option<PathBuf> {
     let installation = PathBuf::from(std::env::var("HOME").ok()?).join(".hermes/hermes-agent");
-    installation.join("venv/bin/python").exists().then_some(installation)
+    installation.join("run_agent.py").exists().then_some(installation)
 }
 
 fn discovery(root: &Path, installation: &Path) -> HermesDiscovery {
-    HermesDiscovery::new(HermesLocation { root: root.into(), installation: installation.into(), python: installation.join("venv/bin/python"), source: "test".into() })
+    HermesDiscovery::new(HermesLocation { root: root.into(), installation: installation.into(), python: agora_server::hermes::location::from_env().python, source: "test".into() })
 }
 
 fn map(value: Value) -> Map<String, Value> {

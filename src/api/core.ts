@@ -64,6 +64,8 @@ export type AssistantEvent =
   | { kind: 'delta'; text: string }
   | { kind: 'tool'; tool: 'search'; query: string; found: string[] }
   | { kind: 'tool'; tool: 'read'; id: string; title: string; n: number }
+  | { kind: 'tool'; tool: 'inbox'; filter: string; count: number }
+  | { kind: 'tool'; tool: 'clients'; filter: string; count: number }
   | { kind: 'done'; engine: string; model: string };
 
 /** Sends a question and follows the answer's Server-Sent Events until it ends; an `error` event throws. */
@@ -114,3 +116,177 @@ export type CoreSummary = {
   costguard: { available: false } | ({ available: true } & Record<'24h' | '7d' | '30d', { projects: TokenProject[]; agents: AgentUsage[] }>);
 };
 export const getCoreSummary = (discreet: boolean) => core<CoreSummary>(`/summary?discreet=${+discreet}`);
+
+export type Scope = { id: number; slug: string; name: string; color: string | null; fiscal: boolean };
+export const getScopes = () => core<{ scopes: Scope[] }>('/scopes');
+export const createScope = (name: string, fiscal = false) => core<{ scopes: Scope[] }>('/scopes', { name, fiscal });
+export type MailProvider = 'gmail' | 'icloud' | 'microsoft' | 'other';
+export type MailPreset = { name: string; imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; hint: string };
+export type MailAccount = {
+  id: number; address: string; label: string | null; provider: MailProvider; auth: 'password' | 'microsoft'; username: string; imapHost: string; imapPort: number;
+  smtpHost: string | null; smtpPort: number | null; scopeId: number | null; scopeName: string | null; confidentiality: Level;
+  maxAgeDays: number; enabled: boolean; status: 'pending' | 'ok' | 'auth' | 'unreachable' | 'error'; lastError: string | null;
+  lastSyncAt: string | null; messages: number; hasPassword: boolean;
+};
+export type MailAccountIn = {
+  address: string; provider: MailProvider; username?: string; imapHost?: string; imapPort?: number; smtpHost?: string; smtpPort?: number;
+  scopeId?: number | null; confidentiality: Level; maxAgeDays: number; password?: string;
+};
+export const getMailPresets = () => core<{ presets: Record<MailProvider, MailPreset> }>('/mail/presets');
+export const getMailAccounts = () => core<{ accounts: MailAccount[] }>('/mail/accounts');
+export const createMailAccount = (account: MailAccountIn) => core<{ accounts: MailAccount[] }>('/mail/accounts', account);
+export const changeMailAccount = (id: number, changes: Partial<MailAccountIn & { enabled: boolean; password: string | null }>) =>
+  core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, changes, 'PUT');
+export const deleteMailAccount = (id: number) => core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, undefined, 'DELETE');
+export const syncMailAccount = (id: number) => core<{ result: { status: string; added: number }; accounts: MailAccount[] }>(`/mail/accounts/${id}/sync`, {});
+export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error' | 'cancelled'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
+export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail/microsoft');
+export const putMicrosoftClient = (clientId: string | null) => core<{ clientId: string | null }>('/mail/microsoft', { clientId }, 'PUT');
+export const startMicrosoftSignIn = (id: number) => core<MicrosoftSignIn>(`/mail/accounts/${id}/microsoft`, {});
+export const getMicrosoftSignIn = (id: number) => core<MicrosoftSignIn>(`/mail/accounts/${id}/microsoft`);
+export type MailRuleAction = 'invoice' | 'client' | 'personal' | 'important' | 'ignore';
+export type MailRule = {
+  id: number; name: string; sender: string | null; accountId: number | null; subject: string | null; words: string | null;
+  action: MailRuleAction; scopeId: number | null; confidentiality: Level | null; enabled: boolean;
+};
+export type MailRuleIn = Omit<MailRule, 'id'>;
+export const getMailRules = () => core<{ rules: MailRule[] }>('/mail/rules');
+export const createMailRule = (rule: MailRuleIn) => core<{ rules: MailRule[] }>('/mail/rules', rule);
+export const changeMailRule = (id: number, changes: Partial<MailRuleIn>) => core<{ rules: MailRule[] }>(`/mail/rules/${id}`, changes, 'PUT');
+export const deleteMailRule = (id: number) => core<{ rules: MailRule[] }>(`/mail/rules/${id}`, undefined, 'DELETE');
+export type InboxKind = 'invoice' | 'payment' | 'job' | 'client' | 'incident' | 'appointment' | 'personal' | 'important' | 'advertising' | 'other';
+export type InboxState = 'pending' | 'done' | 'dismissed';
+export type InboxItem = {
+  id: number; kind: InboxKind; source: 'rule' | 'model' | 'local'; ruleId: number | null; ruleName: string | null; confidentiality: Level;
+  summary: string | null; details: { asks?: string[]; dates?: string[]; amounts?: string[]; language?: string | null };
+  state: InboxState; proposal: 'archive_invoice' | 'add_to_project' | 'create_event' | null;
+  suggestion: { sender: string; action: MailRuleAction; name: string } | null;
+  from: { name: string | null; address: string | null }; subject: string | null; sentAt: string;
+  account: { id: number; address: string }; scope: { id: number; name: string; color: string | null } | null;
+  attachments: number; announcedAt: string | null; client: { name: string; projects: string[] } | null;
+};
+export type InboxCounts = { pending: number; done: number; dismissed: number; unread: number; since: string | null };
+export const getInbox = (state: InboxState = 'pending') => core<{ items: InboxItem[]; counts: InboxCounts; problem: string | null }>(`/mail/inbox?state=${state}`);
+export const archiveAllInbox = () => core<{ archived: number; counts: InboxCounts }>('/mail/inbox/archive-all', {});
+export const decideInbox = (id: number, state: InboxState) => core<{ ok: true }>(`/mail/inbox/${id}`, { state }, 'PUT');
+/** The cards the assistant announces now; the core hands each one out only once. */
+export const claimAnnouncements = () => core<{ items: InboxItem[] }>('/mail/inbox/announce', {});
+export type InvoiceFields = { supplier: string; taxId?: string | null; issuedOn: string; total: string; currency: string; base?: string | null; vat?: string | null; notes?: string | null };
+export type InvoiceSource = { kind: 'attachment'; part: number; name?: string } | { kind: 'link'; url: string };
+export type InvoicePrepared = {
+  folders: FiscalFolder[]; folderId: number | null;
+  source: { kind: 'attachment'; part: number; name: string } | null; sources: { kind: 'attachment'; part: number; name: string }[];
+  links: { url: string; host: string }[];
+  proposal: InvoiceFields; doubts: string[]; destination: string;
+};
+export type Invoice = InvoiceFields & { id: number; direction: 'received' | 'issued'; messageId: number | null; doubts: string[]; quarter: string; path: string };
+export type FolderKind = 'autonomo' | 'empresa' | 'personal';
+export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null; holder: string | null };
+export const getFiscalFolders = () => core<{ folders: FiscalFolder[] }>('/fiscal/folders');
+export const chooseFiscalFolder = () => core<{ path: string | null }>('/fiscal/folders/choose', {});
+export const addFiscalFolder = (folder: Omit<FiscalFolder, 'id' | 'holder'>) => core<{ folders: FiscalFolder[] }>('/fiscal/folders', folder);
+export const changeFiscalFolder = (id: number, changes: Partial<Omit<FiscalFolder, 'id' | 'path'>>) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, changes, 'PUT');
+export const removeFiscalFolder = (id: number) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, undefined, 'DELETE');
+export const prepareInvoice = (messageId: number) => core<InvoicePrepared>('/fiscal/invoices/prepare', { messageId });
+export type Category = 'gastos' | 'compras';
+export const fileInvoice = (messageId: number, folderId: number, category: Category | null, source: InvoiceSource, fields: InvoiceFields, doubts: string[]) =>
+  core<{ id: number; path: string; quarter: string }>('/fiscal/invoices', { messageId, folderId, category, source, fields, doubts });
+export const getInvoices = (quarter?: string) => core<{ invoices: Invoice[] }>(`/fiscal/invoices${quarter ? `?quarter=${quarter}` : ''}`);
+export type FolderPlan = { moves: { from: string; to: string }[]; undecided: string[]; more: number };
+export const getFolderPlan = (id: number) => core<FolderPlan>(`/fiscal/folders/${id}/plan`);
+export const applyFolderPlan = (id: number, moves: { from: string; to: string }[]) =>
+  core<{ moved: { from: string; to: string }[]; backup: string; error: string | null }>(`/fiscal/folders/${id}/apply`, { moves });
+export type UploadState = { open: boolean; url?: string; qr?: string; expiresAt?: number; received?: number | null };
+export type Receipt = { id: number; name: string | null; mediaType: string; bytes: number; fields: Partial<InvoiceFields>; uploadedAt: string;
+  source: 'qr' | 'inbox'; inboxFolder: number | null };
+export const openUpload = () => core<UploadState>('/fiscal/receipts/upload', {});
+export const getUpload = () => core<UploadState>('/fiscal/receipts/upload');
+export const closeUpload = () => core<UploadState>('/fiscal/receipts/upload', undefined, 'DELETE');
+export const getReceipts = () => core<{ receipts: Receipt[]; inbox?: string }>('/fiscal/receipts');
+export const dismissReceipt = (id: number) => core<{ receipts: Receipt[] }>(`/fiscal/receipts/${id}`, { state: 'dismissed' }, 'PUT');
+export const fileReceipt = (id: number, folderId: number, category: Category | null, fields: InvoiceFields) =>
+  core<{ id: number; path: string }>(`/fiscal/receipts/${id}/file`, { folderId, category, fields });
+export const getQonto = () => core<{ login: string | null; hasKey: boolean }>('/fiscal/qonto');
+export const putQonto = (changes: { login?: string | null; secret?: string | null }) => core<{ login: string | null; hasKey: boolean }>('/fiscal/qonto', changes, 'PUT');
+export const checkQonto = () => core<{ name: string | null; accounts: number }>('/fiscal/qonto/check', {});
+export type IncomeRow = { date: string; number: string; client: string; taxId: string; concept: string; base: number | null; vatRate: number | null;
+  withholdingRate: number | null; withholding: number | null; total: number | null; currency: string; file?: string; manual?: ManualSaved | null };
+export type FiscalIssue = { key: string; text: string; items: { label: string; detail: string; path?: string | null; qonto?: string }[] };
+export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomeProblem: string | null; expenses: (Invoice & { file?: string; manual?: ManualSaved | null })[]; notes: string[]; issues: FiscalIssue[]; reading: number; readingTotal: number };
+export const downloadFromQonto = (folderId: number, year: number, quarter: number, numbers: string[]) =>
+  core<{ saved: { number: string; path: string }[]; failed: { number: string; error: string }[] }>(`/fiscal/folders/${folderId}/qonto-download`, { year, quarter, numbers });
+export const getQuarter = (folderId: number, year: number, quarter: number) => core<QuarterView>(`/fiscal/folders/${folderId}/quarter?year=${year}&quarter=${quarter}`);
+export const makeQuarterExcel = (folderId: number, year: number, quarter: number) => core<{ path: string }>(`/fiscal/folders/${folderId}/excel`, { year, quarter });
+export const openFiscalFile = (folderId: number, path: string | null, reveal = false) => core<{ ok: true }>(`/fiscal/folders/${folderId}/open`, { path, reveal });
+export type CentralClient = { name: string; company: string | null; domains: string[];
+  projects: { name: string; status: string; phase: string | null }[]; websites: { url: string; status: string | null }[] };
+export type CentralServer = { name: string; status: string | null; provider: string | null; projects: string[] };
+export type CentralState = { configured: boolean; snapshot: { clients: CentralClient[]; servers: CentralServer[]; fetchedAt: string } | null; problem: string | null };
+export const getCentral = () => core<CentralState>('/central');
+export const refreshCentral = () => core<CentralState>('/central/refresh', {});
+/** Data typed by hand, only for an invoice of the folder that could not be read in any way (rates in percent). */
+export type ManualFields = { name?: string; taxId?: string; number?: string; issuedOn: string; base?: string; vatRate?: string; vat?: string;
+  withholdingRate?: string; withholding?: string; total: string; currency?: string };
+/** What was saved: rates as fractions (0.21). */
+export type ManualSaved = { name: string | null; taxId: string | null; number: string | null; issuedOn: string; base: string | null; vatRate: number | null;
+  vat: string | null; withholdingRate: number | null; withholding: string | null; total: string; currency: string };
+export const saveManual = (folderId: number, path: string, fields: ManualFields) => core<{ ok: true }>(`/fiscal/folders/${folderId}/manual`, { path, fields }, 'PUT');
+export const removeManual = (folderId: number, path: string) => core<{ ok: true }>(`/fiscal/folders/${folderId}/manual?path=${encodeURIComponent(path)}`, undefined, 'DELETE');
+export const getFiscalReading = () => core<{ withClaude: boolean }>('/fiscal/reading');
+export const putFiscalReading = (withClaude: boolean) => core<{ withClaude: boolean }>('/fiscal/reading', { withClaude }, 'PUT');
+
+/** The macOS calendars (EventKit): permission, each calendar's scope and confidentiality, the agenda and
+ * events or reminders created only after the user confirms them. */
+export type CalendarAccess = 'granted' | 'denied' | 'undetermined' | 'restricted' | 'write_only' | 'unavailable';
+export type CalendarStatus = { events: CalendarAccess; reminders: CalendarAccess };
+export type CalendarInfo = { id: string; title: string; kind: 'event' | 'reminder'; account: string; writable: boolean;
+  scopeId: number | null; confidentiality: Level; hidden: boolean };
+export type CalendarEvent = { id: string; calendarId: string; title: string; start: string; end: string; allDay: boolean; location: string | null };
+export type CalendarReminder = { id: string; calendarId: string; title: string; due: string | null };
+export type Agenda = { events: CalendarEvent[]; reminders: CalendarReminder[]; overlaps: [string, string][]; problem: string | null };
+export type NewEvent = { calendarId?: string | null; title: string; start: string; end: string; allDay?: boolean; location?: string | null;
+  notes?: string | null; overlapOk?: boolean; inboxId?: number | null };
+export const getCalendarStatus = () => core<CalendarStatus>('/calendar/status');
+export const askCalendarAccess = () => core<CalendarStatus>('/calendar/access', {});
+export const getCalendars = () => core<{ calendars: CalendarInfo[]; problem: string | null }>('/calendar/calendars');
+export const changeCalendar = (id: string, change: { scopeId: number | null; confidentiality: Level; hidden: boolean }) =>
+  core<{ ok: true }>(`/calendar/calendars/${encodeURIComponent(id)}`, change, 'PUT');
+export const getAgenda = (when: 'hoy' | 'mañana' | 'semana') => core<Agenda>(`/calendar/agenda?when=${encodeURIComponent(when)}`);
+export const createEvent = (event: NewEvent) => core<{ id: string; clashes: number }>('/calendar/events', event);
+export const createReminder = (reminder: { calendarId?: string | null; title: string; due?: string | null; notes?: string | null; inboxId?: number | null }) =>
+  core<{ id: string }>('/calendar/reminders', reminder);
+
+/** Reminders: missed calls, meetings about to start, mail deadlines and the morning summary. */
+export type AlertItem = { key: string; kind: 'call' | 'meeting' | 'commitment' | 'summary'; title: string; body: string; at: string };
+export type AlertSettings = { morning: string; quietFrom: string; quietTo: string; missedCalls: boolean; meetings: boolean; commitments: boolean;
+  summary: boolean; callsLevel: Level };
+export type AlertsView = { alerts: AlertItem[]; morning: AlertItem | null; problems: string[]; callsProblem: 'permission' | 'missing' | 'unreadable' | null; settings: AlertSettings; contacts: string };
+export const getAlerts = () => core<AlertsView>('/alerts');
+export const putAlertSettings = (changes: Partial<AlertSettings>) => core<AlertSettings>('/alerts/settings', changes, 'PUT');
+export const askContactsAccess = () => core<{ contacts: string }>('/alerts/contacts', {});
+export const openFullDiskAccess = () => core<{ ok: true }>('/alerts/full-disk-access', {});
+export type DueAlert = { key: string; title: string; body: string; kind: AlertItem['kind'] };
+export const getDueAlerts = () => core<{ notifications: DueAlert[] }>('/alerts/due');
+export const ackAlerts = (keys: string[]) => core<{ ok: true }>('/alerts/ack', { keys });
+
+/** Trabajos: the central bot (a Hermes profile name; «default» is the root profile), default recipient of a commission. */
+export type JobsSettings = { central: string };
+export const getJobsSettings = () => core<JobsSettings>('/jobs/settings');
+export const putJobsSettings = (changes: JobsSettings) => core<JobsSettings>('/jobs/settings', changes, 'PUT');
+
+/** Clients' projects (Central) with CostGuard's tokens per period, matched only by the same folder name. */
+export type ProjectUsage = Record<'24h' | '7d' | '30d', { tokens: number; turns: number }>;
+export type ClientProjects = {
+  clients: { name: string; projects: { name: string; status: string | null; phase: string | null; ambiguous: boolean; usage: ProjectUsage | null }[] }[];
+  unmatched: { name: string; usage: ProjectUsage }[]; costguard: boolean; problem: string | null; fetchedAt: string | null;
+};
+export const getClientProjects = () => core<ClientProjects>('/jobs/projects');
+
+/** Replying: a prefilled reply, a body drafted by Watson (normal mail only), the sealed preview and the send. */
+export type MailDraft = { accountId: number; to: string; cc: string; subject: string; body: string; replyTo: number | null };
+export type MailPreview = { draft: { accountId: number; to: string[]; cc: string[]; subject: string; body: string; replyTo: number | null };
+  from: string; digest: string; attachments: string[] };
+export const getReplyDraft = (messageId: number) => core<MailDraft>(`/mail/messages/${messageId}/reply`);
+export const composeReply = (messageId: number, instructions: string) => core<{ body: string }>(`/mail/messages/${messageId}/compose`, { instructions });
+export const previewMail = (draft: MailDraft) => core<MailPreview>('/mail/drafts/preview', draft);
+export const sendMail = (draft: MailDraft, digest: string) => core<{ sent: boolean; savedToSent: boolean; refused: string[] }>('/mail/send', { draft, digest });

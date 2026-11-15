@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { refreshAssistantName } from '../assistant/assistant-name';
 import {
   getAssistantSettings, getEngines, getPersonas, putAssistantSettings, putKey,
   type AssistantSettings, type Persona, type ToneKey,
@@ -48,7 +49,7 @@ export function AssistantSettingsCard() {
   }, []);
   const change = async (changes: Partial<AssistantSettings>, what: string) => {
     setError(''); setSaved('');
-    try { setSettings(await putAssistantSettings(changes)); setSaved(`${what} guardado.`); void refreshEngines(); }
+    try { setSettings(await putAssistantSettings(changes)); setSaved(`${what} guardado.`); void refreshEngines(); if (changes.persona) refreshAssistantName(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
   };
   if (!settings || !tones) return <article className="card"><h2>Asistente</h2>{error ? <LoadError message={error}/> : <Loading label="Leyendo los ajustes del asistente"/>}</article>;

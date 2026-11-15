@@ -1,5 +1,10 @@
-.settings-columns { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr)); gap:16px; align-items:start }
-.settings-side { display:flex; flex-direction:column; gap:16px; min-width:0 }
+.settings { max-width:980px }
+.settings-tabs { display:flex; gap:4px; margin:4px 0 18px; padding:3px; background:var(--c-e7ece2); border-radius:12px; overflow-x:auto; scrollbar-width:none; max-width:100% }
+.settings-tabs::-webkit-scrollbar { display:none }
+.settings-tabs button { flex:0 0 auto; border:0; background:none; border-radius:9px; padding:8px 14px; font-size:12px; color:var(--c-355a50); white-space:nowrap; cursor:pointer }
+.settings-tabs button[aria-selected="true"] { background:var(--c-fffffa); color:var(--c-173d3c); box-shadow:0 1px 3px var(--c-173d3c22); font-weight:600 }
+.settings-tabs button:focus-visible { outline:2px solid var(--c-355a50); outline-offset:1px }
+.settings-panel { display:flex; flex-direction:column; gap:16px; min-width:0 }
 .persona-picker { border:0; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px }
 .persona-picker legend { margin-bottom:6px }
 .persona-option { position:relative; display:flex; flex-direction:column; gap:3px; border:1px solid var(--c-dfe3d6); border-radius:12px; padding:10px 12px; background:var(--c-fffffa); cursor:pointer }
@@ -11,3 +16,44 @@
 .tone-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:10px }
 .engine-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; font-size:12px; color:var(--c-355a50) }
 .rule-folder { width:100%; min-width:120px; border:1px solid var(--c-cbd6c9); border-radius:8px; padding:7px 9px; font:inherit; font-size:12px; background:var(--c-fffffa); color:var(--c-173d3c) }
+.mail-accounts { list-style:none; margin:0 0 12px; padding:0; display:flex; flex-direction:column; gap:10px }
+.mail-accounts > li { display:flex; flex-direction:column; gap:6px; border:1px solid var(--c-dfe3d6); border-radius:12px; padding:12px; background:var(--c-fffffa) }
+.mail-account-head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; overflow-wrap:anywhere }
+.mail-account-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px }
+.mail-error { color:var(--c-8e3d2a) }
+.chip.mail-ok { background:var(--c-f1f5ee); color:var(--c-244e42) }
+.chip.mail-auth, .chip.mail-error, .chip.mail-unreachable { background:var(--c-fffaf6); color:var(--c-8e3d2a) }
+.mail-new { display:flex; flex-direction:column; gap:10px; border:1px solid var(--c-dfe3d6); border-radius:12px; padding:12px; margin-bottom:10px }
+.mail-microsoft { display:flex; flex-direction:column; gap:6px; border:1px solid var(--c-dfe3d6); border-radius:10px; padding:10px 12px; background:var(--c-f1f5ee) }
+.mail-steps { margin:0; padding-left:18px; font-size:12px; line-height:1.55; color:var(--c-355a50) }
+.mail-code { font-family:'JetBrains Mono',monospace; font-size:15px; letter-spacing:.08em }
+.fiscal-moves { margin:0; padding-left:18px; font-size:11px; max-height:260px; overflow:auto; overflow-wrap:anywhere }
+.mail-accounts.compact { gap:6px }
+.mail-accounts.compact > li { padding:6px 8px; gap:8px }
+.mail-accounts.compact > li.open { padding:10px 12px 12px }
+.compact-row { display:flex; align-items:center; gap:8px }
+.compact-toggle { flex:1; min-width:0; display:flex; align-items:center; gap:10px; border:0; background:none; padding:4px; text-align:left; color:inherit; border-radius:8px; cursor:pointer }
+.compact-toggle:hover { background:var(--c-f1f5ee) }
+.compact-toggle > svg { flex:none; color:var(--c-355a50) }
+.compact-name { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px }
+.compact-name strong, .compact-name small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.compact-chevron { color:var(--c-6f8379); transition:transform .15s }
+li.open .compact-chevron { transform:rotate(180deg) }
+.compact-action { padding:6px 12px }
+@media (prefers-reduced-motion: reduce) { .compact-chevron { transition:none } }
+.appearance { margin-bottom:16px }
+.appearance-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap }
+.field-label { font-size:12px; font-weight:600; color:var(--c-355a50); min-width:70px }
+.palette-list { display:flex; flex-wrap:wrap; gap:8px }
+.palette-option { display:flex; align-items:center; gap:8px; border:1px solid var(--c-dfe3d6); border-radius:10px; background:var(--c-fffffa); padding:6px 10px 6px 6px; font-size:12px; color:inherit }
+.palette-option[aria-checked="true"] { border-color:var(--c-244e42); box-shadow:0 0 0 2px var(--c-244e42) inset }
+.palette-swatch { display:flex; border-radius:6px; overflow:hidden }
+.palette-swatch i { width:12px; height:22px; display:block }
+.appearance-font { max-width:360px }
+.fiscal-reading { display:flex; gap:10px; align-items:flex-start; font-size:12px; line-height:1.5; color:var(--c-4c6b62) } .fiscal-reading input { margin-top:3px }
+.calendar-settings { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:8px }
+.calendar-settings li { display:grid; grid-template-columns:minmax(140px,1.4fr) minmax(110px,1fr) minmax(130px,1fr) auto; gap:8px; align-items:center; font-size:13px }
+@media (max-width:640px) { .calendar-settings li { grid-template-columns:1fr 1fr } .calendar-name { grid-column:1 / -1 } }
+.alerts-toggles { display:flex; flex-direction:column; gap:6px; margin:6px 0 10px }
+.alerts-permissions { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:8px; font-size:13px }
+.alerts-permissions li { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap }

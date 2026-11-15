@@ -32,6 +32,10 @@ Sirve para tener una vista de conjunto de tus agentes, revisar y corregir lo que
 | **Centro de integraciones** | Los servidores MCP de todos los perfiles y su catálogo de herramientas. Puedes ejecutar una herramienta a mano tras revisar el JSON exacto. |
 | **Obsidian** | Recorrer tus vaults como una librería, leer notas con formato y enlaces internos, buscar en el contenido, y editar o crear notas con un editor visual en vivo. |
 | **Navegación** | Paleta de comandos con ⌘K para ir a cualquier lugar o acción, directorio agrupado con buscador (`/`) y avisos cuando un chat espera tu permiso. |
+| **Correo y Bandeja** | Leer tus cuentas en solo lectura, con reglas y resúmenes; tarjetas con lo que pide algo de ti; responder con vista previa exacta y envío solo al pulsar «Enviar»; pasar el correo de un cliente a una nota nueva en su carpeta del vault. Ver [docs/correo-bandeja.md](docs/correo-bandeja.md). |
+| **Fiscal** | El trimestre de cada carpeta fiscal leído de sus facturas, avisos de lo que falta o no cuadra, Qonto y el Excel para el gestor. Ver [docs/fiscal.md](docs/fiscal.md). |
+| **Agenda y avisos** | Calendarios y recordatorios de macOS con los solapes marcados, llamadas perdidas sin devolver, reuniones próximas, plazos de correos y resumen de la mañana como notificaciones. Ver [docs/agenda-avisos.md](docs/agenda-avisos.md). |
+| **Trabajos** | Las tareas programadas y el kanban de todos los perfiles con el tiempo, los tokens y el coste de cada ejecución; encargos al bot central o a cualquier perfil con su historia; y los proyectos de tus clientes con lo que han gastado en ellos los agentes. Ver [docs/trabajos.md](docs/trabajos.md). |
 | **Biblioteca y Luma** | Importar TXT, Markdown, PDF y DOCX como copias privadas y consultarlas con Luma, una asistente sin herramientas. |
 
 Los paseantes y el movimiento de la ciudad son decorativos: no representan tareas reales y no llaman a ningún modelo.
@@ -51,11 +55,11 @@ Los paseantes y el movimiento de la ciudad son decorativos: no representan tarea
 git clone https://github.com/yosnap/agoraone.git
 cd agoraone
 cp .env.example .env   # completa AGORA_MODEL, AGORA_BASE_URL y AGORA_API_KEY
-npm ci
-npm run dev
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-`npm run dev` arranca el servidor de AgoraOne (Rust, en `127.0.0.1:4317`), su núcleo Python y la interfaz con Vite. Abre el enlace privado que muestra la terminal («Abre AgoraOne con este enlace…») o ejecuta `npm run open`. Solo hace falta la primera vez en cada navegador.
+`pnpm dev` arranca el servidor de AgoraOne (Rust, en `127.0.0.1:4317`), su núcleo Python y la interfaz con Vite. Abre el enlace privado que muestra la terminal («Abre AgoraOne con este enlace…») o ejecuta `pnpm open`. Solo hace falta la primera vez en cada navegador.
 
 ### App de escritorio
 
@@ -82,9 +86,9 @@ En desarrollo activo. Lo que está conectado, lo pendiente y lo ilustrativo se d
 
 ```sh
 cargo test --manifest-path desktop/Cargo.toml   # pruebas del servidor (Rust)
-npm run test:core                                # pruebas del núcleo (Python)
-npm test                                         # pruebas de la interfaz
-npm run build                                    # tipos y compilación de la interfaz
+pnpm test:core                                # pruebas del núcleo (Python)
+pnpm test                                         # pruebas de la interfaz
+pnpm build                                    # tipos y compilación de la interfaz
 ```
 
 ## Colaborar
