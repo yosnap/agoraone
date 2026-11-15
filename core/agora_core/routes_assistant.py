@@ -76,11 +76,13 @@ def _logged(event: dict) -> tuple[str, str]:
         return "clientes", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
     if event["tool"] == "inbox":
         return "bandeja", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
-    if event["tool"] == "rule_proposal":
-        return "proponer_regla", json.dumps({"rule": event["rule"]}, ensure_ascii=False)
+    if event["tool"] == "rule_proposal":  # what kind of rule, not its sender or words
+        return "proponer_regla", json.dumps({"action": event["rule"].get("action")}, ensure_ascii=False)
     if event["tool"] in ("projects", "agenda", "day"):
         return event["tool"], json.dumps({k: v for k, v in event.items() if k != "tool"}, ensure_ascii=False, default=str)
-    return "leer", json.dumps({"n": event["n"]}, ensure_ascii=False)
+    if event["tool"] == "read":
+        return "leer", json.dumps({"n": event.get("n")}, ensure_ascii=False)
+    return str(event.get("tool") or "herramienta"), "{}"
 
 
 def _event(kind: str, data) -> str:
@@ -176,6 +178,7 @@ def assistant_router(
         found = proposals.get(proposal_id)
         if not owner or found is None or found["owner"] != owner or found["expires"] < time.time():
             return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        proposals.pop(proposal_id, None)  # taken before any wait: a double click or a click and a «sí» create one rule
         def work(connection):
             rule_id = mail_rules.create_rule(connection, found["rule"])
             with transaction(connection):
@@ -184,9 +187,9 @@ def assistant_router(
             return rule_id
         try:
             rule_id = await db(work)
-        except mail_rules.RuleError as error:
-            return JSONResponse({"error": str(error)}, status_code=422)
-        proposals.pop(proposal_id, None)
+        except (mail_rules.RuleError, sqlite3.IntegrityError) as error:
+            message = str(error) if isinstance(error, mail_rules.RuleError) else "La regla no se pudo guardar tal cual: pídesela otra vez a Watson."
+            return JSONResponse({"error": message}, status_code=422)
         return {"id": rule_id, "name": found["rule"]["name"]}
 
     @router.post("/proposals/{proposal_id}/dismiss")

@@ -35,7 +35,7 @@ El envío usa el SMTP de la cuenta, siempre cifrado (puerto 465, o STARTTLS), co
 ## Watson
 - `consultar_bandeja`: lo pendiente, «¿qué me ha pedido X?» (por remitente o cliente, también lo ya hecho) y «¿qué incidencias tengo abiertas?». Solo ve lo de nivel normal.
 - Al abrir el chat anuncia lo pendiente una vez. Un «sí» o un «no» a un único aviso se decide en la interfaz, sin pasar por un modelo.
-- **Reglas desde el chat** (`proponer_regla`, solo Claude): pídele «todo lo de facturas@proveedor.com, márcalo como factura». Watson comprueba la regla con las mismas validaciones que Ajustes y la enseña tal cual en el chat; **solo se crea** al pulsar «Crear regla» o responder «sí» (un «no» la descarta). La propuesta se guarda en el núcleo, ligada a tu acceso, sirve una sola vez y caduca en una hora; el navegador no puede cambiarla al confirmar. Queda en el registro de acciones.
+- **Reglas desde el chat** (`proponer_regla`, solo Claude): pídele «todo lo de facturas@proveedor.com, márcalo como factura». Watson comprueba la regla con las mismas validaciones que Ajustes y la enseña tal cual en el chat; **solo se crea** al pulsar «Crear regla», o respondiendo «sí» justo después (un «no» la descarta). Si escribes otra cosa, la propuesta caduca. Las reglas de «ignorar» y el modo discreto exigen el botón, y Watson solo propone reglas que le pides tú, nunca porque lo diga un correo. La propuesta se guarda en el núcleo, ligada a tu acceso, sirve una sola vez y caduca en una hora; el navegador no puede cambiarla al confirmar. Queda en el registro de acciones.
 
 ## Límites
 - No se envían adjuntos y la respuesta va al remitente aunque el correo traiga otra dirección de respuesta (`Reply-To`).

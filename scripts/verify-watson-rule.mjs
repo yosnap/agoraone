@@ -41,6 +41,7 @@ assert.equal(accepted.length, 0, 'proponer no crea nada');
 if (shots) await page.screenshot({ path: `${shots}/watson-rule.png` });
 await page.getByRole('button', { name: /discreto/i }).first().click();
 assert.equal(await card.getByText('facturas@proveedor.com').count(), 0, 'en modo discreto no se ve el remitente');
+assert.ok(await card.getByRole('button', { name: 'Crear regla' }).isDisabled(), 'en modo discreto no se puede confirmar');
 await page.getByRole('button', { name: /discreto/i }).first().click();
 await input.fill('sí');
 await input.press('Enter');

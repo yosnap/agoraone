@@ -101,7 +101,8 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   useEffect(() => { const list = end.current?.parentElement; if (list) list.scrollTop = list.scrollHeight; }, [messages, live?.text, live?.stage, live?.steps.length]);
   const submit = (event?: FormEvent) => {
     event?.preventDefault(); const text = draft.trim(); if (!text || live) return; setDraft('');
-    if (proposals.answer(text)) return;  // a plain «sí» / «no» answers the one open rule proposal, without a model
+    if (proposals.answer(text, discreet)) return;  // a plain «sí» / «no» answers the rule Watson just proposed, without a model
+    proposals.expire();
     if (!announced.answer(text, messages.length > 0 || current !== null)) void send(text, current);  // a plain «sí» / «no» answers the open announcement, without a model
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).

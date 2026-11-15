@@ -14,6 +14,9 @@ LEVELS = ("normal", "local_only", "private")
 KIND_OF_ACTION = {"invoice": "invoice", "client": "client", "personal": "personal", "important": "important"}
 _FIELDS = {"name": "name", "sender": "sender", "accountId": "account_id", "subject": "subject", "words": "words",
            "action": "action", "scopeId": "scope_id", "confidentiality": "confidentiality", "enabled": "enabled"}
+# The same limits as Settings (RuleIn) and the table, for every way a rule arrives (Watson's proposals too).
+_LIMITS = {"name": 80, "sender": 254, "subject": 200, "words": 200}
+_FIELD_NAMES = {"name": "nombre", "sender": "remitente", "subject": "asunto", "words": "palabras"}
 _SENDER = re.compile(r"(?:[^@\s<>\"]+@)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 
 
@@ -33,6 +36,8 @@ def _clean(data: dict) -> dict:
         value = data[key]
         if isinstance(value, str):
             value = re.sub(r"\s+", " ", value).strip() or None
+        if isinstance(value, str) and len(value) > _LIMITS.get(key, 10_000):
+            raise RuleError(f"Texto demasiado largo ({_FIELD_NAMES.get(key, key)}): {_LIMITS[key]} caracteres como máximo.")
         if key == "sender" and value is not None:
             value = value.lower().lstrip("@")
             if not _SENDER.fullmatch(value):

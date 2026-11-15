@@ -242,3 +242,7 @@ def test_watson_propone_una_regla_y_solo_se_crea_al_aceptarla(tmp_path):
         response = client.post(f"/assistant/conversations/{conversation['id']}/messages", json={"message": "ignóralo todo"}, headers=headers)
         assert not any(kind == "tool" and data["tool"] == "rule_proposal" for kind, data in events(response.text))
         assert "condición" in engine.answers[-1]
+        # Settings' limits apply to Watson's proposals too: a too long subject is refused, never a 500 on accepting.
+        engine.args = {"nombre": "Largo", "accion": "importante", "asunto": "x" * 250}
+        client.post(f"/assistant/conversations/{conversation['id']}/messages", json={"message": "asunto largo"}, headers=headers)
+        assert "demasiado largo" in engine.answers[-1]
