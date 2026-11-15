@@ -1,7 +1,9 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
-Versión 1.4.0 · Centro de mando en el Cerebro (plan: plans/261115-1455-centro-mando/plan.md; guía: docs/centro-mando.md). Rama `feat/1.4.0-alpha.1-centro-mando` sobre `integracion/v1.4` (que sale de `integracion/v1.3`); sin publicar.
+Versión 1.4.2 · Centro de mando en el Cerebro, fiel a la maqueta (1.4.1: sin barra arriba, grabar y música en el pie, columna fija con Hoy —agenda, recordatorios, Bandeja—, áreas y novedades, franja de lado a lado, Watson con estado, lo que oye, pasos y micrófono grande; 1.4.2: Agentes con encargos en curso, próximas rutinas y actividad de 24 h con su resultado). La app instalada es la 1.4.1; la 1.4.2 está integrada en `integracion/v1.4` y se empaqueta en la próxima tanda.
+
+Antes, 1.4.0 (plan: plans/261115-1455-centro-mando/plan.md; guía: docs/centro-mando.md). Rama `feat/1.4.0-alpha.1-centro-mando` sobre `integracion/v1.4` (que sale de `integracion/v1.3`); sin publicar.
 - Barra de mando arriba del Cerebro (preguntar o hablar con Watson, Grabar reunión, Música pendiente de la 1.5); tarjeta de grabación con el volumen real del micrófono; el botón de grabar sale de la barra lateral.
 - Áreas del vault a la izquierda (descripción de su nota índice o sus subcarpetas, recuento y actividad) y «Últimamente» (hoy y ayer); grafo agrupado por áreas con su nombre; pulsar un área la resalta. Ruta `GET /brain/home`.
 - Paleta Laboratorio (azul noche y ámbar) para el tema oscuro.
