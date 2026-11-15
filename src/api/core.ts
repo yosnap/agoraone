@@ -207,7 +207,13 @@ export const applyFolderPlan = (id: number, moves: { from: string; to: string }[
   core<{ moved: { from: string; to: string }[]; backup: string; error: string | null }>(`/fiscal/folders/${id}/apply`, { moves });
 export type UploadState = { open: boolean; url?: string; qr?: string; expiresAt?: number; received?: number | null; receiving?: boolean };
 /** A receipt to look at (photos as JPEG, PDFs as they are) and its data read by Claude Haiku to fill the form. */
-export const receiptPreviewUrl = (id: number) => `/api/core/fiscal/receipts/${id}/preview`;
+/** The receipt as an image in memory (a blob: URL): the core asks for the CSRF header even on reads, which an
+ * <img> cannot send, so it is fetched here. The caller revokes the URL when done. */
+export async function receiptPreview(id: number): Promise<string> {
+  const response = await fetch(`/api/core/fiscal/receipts/${id}/preview`, { headers: csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {} });
+  if (!response.ok) throw new ApiError('No se puede enseñar este recibo.', response.status, {});
+  return URL.createObjectURL(await response.blob());
+}
 export const readReceipt = (id: number) => core<InvoiceFields>(`/fiscal/receipts/${id}/read`, {});
 export type Receipt = { id: number; name: string | null; mediaType: string; bytes: number; fields: Partial<InvoiceFields>; uploadedAt: string;
   source: 'qr' | 'inbox'; inboxFolder: number | null };

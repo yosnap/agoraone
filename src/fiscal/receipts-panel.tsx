@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import {
-  closeUpload, dismissReceipt, fileReceipt, getFiscalFolders, getReceipts, getUpload, openUpload, readReceipt, receiptPreviewUrl,
+  closeUpload, dismissReceipt, fileReceipt, getFiscalFolders, getReceipts, getUpload, openUpload, readReceipt, receiptPreview,
   type Category, type FiscalFolder, type InvoiceFields, type Receipt, type UploadState,
 } from '../api/core';
 import { LoadError } from '../ui/load-state';
@@ -78,6 +78,16 @@ function ReceiptCard({ receipt, folders, onDone }: { receipt: Receipt; folders: 
   const [error, setError] = useState('');
   const folder = folders.find(item => item.id === folderId);
   const [zoom, setZoom] = useState(false);
+  const [image, setImage] = useState<string | null>(null);
+  const [imageError, setImageError] = useState('');
+  // Fetched when the card appears; its memory is let go when the card leaves.
+  const showPreview = useRef((node: HTMLButtonElement | null) => {
+    if (!node) return;
+    let url: string | null = null, gone = false;
+    receiptPreview(receipt.id).then(made => { if (gone) URL.revokeObjectURL(made); else { url = made; setImage(made); } })
+      .catch(() => { if (!gone) setImageError('No se puede enseñar este recibo.'); });
+    return () => { gone = true; if (url) URL.revokeObjectURL(url); };
+  }).current;
   const [reading, setReading] = useState(false);
   const read = async () => {
     setReading(true); setError('');
@@ -100,10 +110,9 @@ function ReceiptCard({ receipt, folders, onDone }: { receipt: Receipt; folders: 
     {receipt.name && <p className="inbox-subject">{receipt.name}</p>}
     {receipt.source === 'inbox' && <p className="muted">Lo dejó tu bot en «Recibos por revisar». Al archivarlo, el original sale de esa carpeta (queda la copia archivada); al descartarlo, pasa a «Descartados».</p>}
     <div className="receipt-preview">
-      {receipt.mediaType === 'application/pdf'
-        ? <a className="button" href={receiptPreviewUrl(receipt.id)} target="_blank" rel="noreferrer">Ver el PDF</a>
-        : <button type="button" className={`receipt-thumb${zoom ? ' zoomed' : ''}`} onClick={() => setZoom(!zoom)} aria-label={zoom ? 'Reducir la foto' : 'Ampliar la foto'}>
-            <img src={receiptPreviewUrl(receipt.id)} alt={`Recibo ${receipt.name ?? ''}`.trim()}/></button>}
+      <button type="button" className={`receipt-thumb${zoom ? ' zoomed' : ''}`} onClick={() => setZoom(!zoom)} aria-label={zoom ? 'Reducir el recibo' : 'Ampliar el recibo'} ref={showPreview}>
+        {image ? <img src={image} alt={`Recibo ${receipt.name ?? ''}`.trim()}/> : <span className="muted">{imageError || 'Cargando…'}</span>}
+      </button>
       <div className="receipt-read">
         <button type="button" className="button" disabled={reading} onClick={() => void read()}>{reading ? 'Leyendo con Claude…' : 'Leer los datos con Claude'}</button>
         <small className="muted">Rellena el formulario para que lo revises; no guarda nada.</small>

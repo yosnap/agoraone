@@ -730,13 +730,12 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
 
     @router.get("/fiscal/receipts/{receipt_id}/preview")
     async def receipt_preview(receipt_id: int):
-        """The receipt to look at while filling its data: photos as JPEG (HEIC from an iPhone too), PDFs as they are."""
+        """The receipt to look at while filling its data, always as an image: JPEG and PNG as they are, HEIC from
+        an iPhone and the first page of a PDF turned into JPEG by macOS's sips."""
         def work(connection):
             path, kind = receipt_path(connection, receipt_id)
             if path is None:
                 return None
-            if kind == "application/pdf":
-                return path.read_bytes(), kind
             if kind in ("image/jpeg", "image/png"):
                 return path.read_bytes(), kind
             jpeg = fiscal_scan._as_jpeg(path)
