@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { RuleProposals, useProposals } from './rule-proposals';
 import {
   askAssistant, createAssistantConversation, getAssistantConversation, getAssistantSettings, getEngines, getPersonas, listAssistantConversations,
   type AssistantMessage, type ConversationSummary, type Persona, type Source, type Stage,
@@ -37,6 +38,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const [persona, setPersona] = useState<Persona | null>(null);
   const [engine, setEngine] = useState<{ active: string | null; model: string } | null>(null);
   const announced = useAnnouncements();
+  const proposals = useProposals();
   const abort = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
   // The conversation on screen, read by answers that finish after the user moved to another one.
@@ -52,7 +54,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [refreshList]);
   const open = useCallback(async (id: number) => {
     abort.current?.abort();
-    setCurrent(id); setLive(null); setError(''); setLoading(true);
+    setCurrent(id); setLive(null); setError(''); setLoading(true); proposals.clear();
     if (embedded) setListOpen(false);
     try { const found = (await getAssistantConversation(id)).messages; setMessages(found); onSources?.(lastSources(found)); }
     catch (failure) { setMessages([]); setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.'); }
@@ -74,12 +76,13 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         else if (event.kind === 'tool' && event.tool === 'search') onThinking?.({ stage: 'busca', label: `Buscando «${event.query}»`, reading });
         else if (event.kind === 'tool' && event.tool === 'clients') onThinking?.({ stage: 'busca', label: 'Consultando los clientes', reading });
         else if (event.kind === 'tool' && event.tool === 'inbox') onThinking?.({ stage: 'busca', label: 'Consultando la Bandeja', reading });
+        else if (event.kind === 'tool' && event.tool === 'rule_proposal') proposals.add(event.id, event.rule);
         else if (event.kind === 'tool' && event.tool === 'read') { reading.push(event.id); onThinking?.({ stage: 'lee', label: `Leyendo «${event.title}»`, reading: [...reading] }); }
         setLive(previous => previous && (
         event.kind === 'stage' ? { ...previous, stage: event.stage, engine: event.engine ?? previous.engine, model: event.model ?? previous.model }
           : event.kind === 'sources' ? (onSources?.(event.sources.map(sourceId)), { ...previous, sources: event.sources })
           : event.kind === 'delta' ? { ...previous, text: previous.text + event.text }
-          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? `Consultó la Bandeja · ${event.count} correos` : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : `Leyó [${event.n}] ${event.title}`] }
+          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? `Consultó la Bandeja · ${event.count} correos` : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
           : previous));
       }, controller.signal);
     } catch (failure) {
@@ -98,11 +101,12 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   useEffect(() => { const list = end.current?.parentElement; if (list) list.scrollTop = list.scrollHeight; }, [messages, live?.text, live?.stage, live?.steps.length]);
   const submit = (event?: FormEvent) => {
     event?.preventDefault(); const text = draft.trim(); if (!text || live) return; setDraft('');
+    if (proposals.answer(text)) return;  // a plain «sí» / «no» answers the one open rule proposal, without a model
     if (!announced.answer(text, messages.length > 0 || current !== null)) void send(text, current);  // a plain «sí» / «no» answers the open announcement, without a model
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
-  const fresh = () => { abort.current?.abort(); setCurrent(null); setMessages([]); setLive(null); setError(''); onSources?.([]); if (embedded) setListOpen(false); };
+  const fresh = () => { abort.current?.abort(); setCurrent(null); setMessages([]); setLive(null); setError(''); proposals.clear(); onSources?.([]); if (embedded) setListOpen(false); };
   const sourceList = (sources: Source[]) => sources.length > 0 && <div className="sources">
     <span className="muted">Fuentes</span>
     <ol>{sources.map(source => <li key={source.n} value={source.n}><button onClick={() => onRead({ vault: source.source, note: source.ref })}>{source.title}</button><small>{source.folder || 'Raíz'}</small></li>)}</ol>
@@ -130,7 +134,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <Announcements name={persona?.name ?? 'Watson'} items={announced.items} note={announced.note} decide={announced.decide} ready={announced.ready} filed={announced.filed} discreet={discreet}/>
         {loading ? <Loading label="Abriendo la conversación"/> : !messages.length && !live ? <div className="assistant-empty">
           <h2>¿Qué quieres saber de tu cerebro?</h2>
-          <p>{name} busca en tus notas normales, responde con el motor de Claude y cita lo que ha usado. También te avisa de lo que espera en la Bandeja. Solo lee: no envía, crea ni cambia nada.</p>
+          <p>{name} busca en tus notas normales, responde con el motor de Claude y cita lo que ha usado. También te avisa de lo que espera en la Bandeja. Solo lee: no envía ni cambia nada, y lo que propone (por ejemplo, una regla del correo) solo se crea si lo confirmas.</p>
         </div> : messages.map((message, index) => <article key={index} className={`assistant-message ${message.role}${message.failed ? ' failed' : ''}`}>
           <strong>{message.role === 'user' ? 'Tú' : name}</strong>
           {message.role === 'user' ? <p>{message.content}</p> : <Markdown source={message.content} resolve={noLinks}/>}
@@ -147,6 +151,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
             {sourceList(live.sources)}
           </article>
         </>}
+        <RuleProposals state={proposals} discreet={discreet}/>
         {error && <LoadError message={error}/>}
         <div ref={end}/>
       </div>

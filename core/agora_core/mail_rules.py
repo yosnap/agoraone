@@ -56,12 +56,21 @@ def _check_refs(connection: sqlite3.Connection, values: dict) -> None:
         raise RuleError("Ese ámbito no existe.")
 
 
-def create_rule(connection: sqlite3.Connection, data: dict) -> int:
+def check_rule(data: dict) -> dict:
+    """The rule as it would be created (same checks as `create_rule`), in the request's own field names;
+    nothing is written. A proposal from Watson goes through this before the user sees it."""
     values = _clean(data)
     if not values.get("name") or not values.get("action"):
         raise RuleError("La regla necesita un nombre y una acción.")
     if not any(values.get(c) is not None for c in ("sender", "account_id", "subject", "words")):
         raise RuleError("La regla necesita al menos una condición: remitente, cuenta, asunto o palabras.")
+    back = {column: key for key, column in _FIELDS.items()}
+    return {back[column]: value for column, value in values.items() if value is not None}
+
+
+def create_rule(connection: sqlite3.Connection, data: dict) -> int:
+    check_rule(data)
+    values = _clean(data)
     _check_refs(connection, values)
     columns = [*values, "created_at"]
     with transaction(connection):

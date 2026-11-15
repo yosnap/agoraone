@@ -202,3 +202,43 @@ def test_clave_del_proveedor_ligada_a_su_direccion(setup):
     assert secrets.get("openai-compatible-key") is None, "la clave no viaja a una dirección nueva"
     for bad in ("https://127.0.0.1/v1", "https://192.168.1.10/v1", "https://localhost/v1", "https://nas.local/v1", "https://[::1]/v1"):
         assert client.put("/assistant/settings", json={"compatible": {"baseUrl": bad}}, headers=headers).status_code == 422, bad
+
+
+class ProposingEngine(FakeEngine):
+    """Asks for a rule through the tool, as Claude would, and then answers."""
+
+    def __init__(self, args):
+        super().__init__(reply=("Te la he dejado en pantalla para que la confirmes.",))
+        self.args, self.answers = args, []
+
+    async def stream(self, turn: Turn):
+        self.answers.append(await turn.toolbox.call("proponer_regla", self.args))
+        yield None
+        for part in self.reply:
+            yield part
+
+
+def test_watson_propone_una_regla_y_solo_se_crea_al_aceptarla(tmp_path):
+    settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
+    engine = ProposingEngine({"nombre": "Facturas de Proveedor", "accion": "factura", "remitente": "Facturas@Proveedor.com"})
+    app = create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets(), engines=lambda s, k: [engine])
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        headers = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
+        conversation = client.post("/assistant/conversations", headers=headers).json()
+        response = client.post(f"/assistant/conversations/{conversation['id']}/messages", json={"message": "Marca como factura lo de facturas@proveedor.com"}, headers=headers)
+        proposal = next(data for kind, data in events(response.text) if kind == "tool" and data["tool"] == "rule_proposal")
+        assert proposal["rule"] == {"name": "Facturas de Proveedor", "sender": "facturas@proveedor.com", "action": "invoice"}
+        assert "No está creada" in engine.answers[0]
+        assert client.get("/mail/rules", headers=headers).json()["rules"] == [], "proponer no crea nada"
+        other = {SECRET_HEADER: SECRET, "x-agora-owner": OTHER}
+        assert client.post(f"/assistant/proposals/{proposal['id']}/accept", headers=other).status_code == 404, "solo quien la pidió"
+        made = client.post(f"/assistant/proposals/{proposal['id']}/accept", headers=headers)
+        assert made.status_code == 201 and made.json()["name"] == "Facturas de Proveedor"
+        rules = client.get("/mail/rules", headers=headers).json()["rules"]
+        assert [(r["name"], r["sender"], r["action"]) for r in rules] == [("Facturas de Proveedor", "facturas@proveedor.com", "invoice")]
+        assert client.post(f"/assistant/proposals/{proposal['id']}/accept", headers=headers).status_code == 404, "una sola vez"
+        # A rule with no condition is refused before the user sees anything.
+        engine.args = {"nombre": "Todo", "accion": "ignorar"}
+        response = client.post(f"/assistant/conversations/{conversation['id']}/messages", json={"message": "ignóralo todo"}, headers=headers)
+        assert not any(kind == "tool" and data["tool"] == "rule_proposal" for kind, data in events(response.text))
+        assert "condición" in engine.answers[-1]
