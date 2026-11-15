@@ -131,3 +131,15 @@
 .agent-outcome { font-size:9.5px; text-align:center; padding:1px 4px; border-radius:6px; background:var(--c-e6eadf); color:var(--c-355a50) }
 .agent-outcome.hecho { background:var(--c-dcebdc); color:var(--c-24563a) }
 .agent-outcome.falló { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.dock-music { flex-direction:row; align-items:flex-start; opacity:1 }
+.music-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px }
+.music-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px }
+.music-head strong { font-size:13px; color:var(--c-173d3c); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.music-bar { height:4px; border-radius:2px; background:var(--c-e6eadf); overflow:hidden }
+.music-bar span { display:block; height:100%; background:var(--c-173d3c) }
+.music-controls { display:flex; align-items:center; gap:4px }
+.music-button { width:32px; height:32px; border-radius:50%; border:0; background:transparent; color:var(--c-173d3c); cursor:pointer }
+.music-button.main { width:36px; height:36px; background:var(--c-173d3c); color:var(--c-fbfaf3) }
+.music-time { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--c-6f8379) }
+.music-ask { display:flex; gap:6px; align-items:center }
+.music-ask input { flex:1; min-width:0; border:1px solid var(--c-cbd6c9); border-radius:9px; padding:7px 10px; font:inherit; font-size:12px; background:var(--c-fffffa); color:var(--c-173d3c) }
