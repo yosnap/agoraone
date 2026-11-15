@@ -49,9 +49,3 @@ body { background:var(--c-eef0e6) }
 .alert-toast p { margin:3px 0 0; color:var(--c-6f8379) }
 .alert-toast .icon-button { display:inline-grid; place-items:center; width:26px; height:26px; flex:none; border:1px solid var(--c-c9d3c4); border-radius:8px; background:transparent; color:inherit; cursor:pointer }
 
-.rail-record .rail-icon { color:var(--c-f0b45a) }
-.rail-record.on .rail-icon { color:inherit }
-.rail-record.on { background:var(--c-8e3d2a); color:#fff; font-variant-numeric:tabular-nums }
-.rail-record.on .rail-icon { animation:rail-pulse 1.4s ease-in-out infinite }
-@media (prefers-reduced-motion: reduce) { .rail-record.on .rail-icon { animation:none } }
-.rail-record-error { align-self:center; color:var(--c-8e3d2a); font-weight:700; font-size:12px; cursor:help }

@@ -13,8 +13,10 @@ export type RecorderState = {
   phase: 'idle' | 'starting' | 'recording' | 'stopping';
   meetingId: number | null; title: string; startedAt: number | null; note: string | null; error: string; finished: number;
   /** Seconds recorded, updated every second while recording. */ seconds: number;
+  /** How loud your microphone is now, 0 to 1 (measured here, never sent). */ level: number;
+  confidentiality: Level;
 };
-let state: RecorderState = { phase: 'idle', meetingId: null, title: '', startedAt: null, note: null, error: '', finished: 0, seconds: 0 };
+let state: RecorderState = { phase: 'idle', meetingId: null, title: '', startedAt: null, note: null, error: '', finished: 0, seconds: 0, level: 0, confidentiality: 'normal' };
 const listeners = new Set<() => void>();
 const set = (changes: Partial<RecorderState>) => { state = { ...state, ...changes }; listeners.forEach(listener => listener()); };
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
@@ -25,8 +27,30 @@ let stream: MediaStream | null = null;
 let queue: Promise<void> = Promise.resolve();
 let failed = false;
 let clock = 0;
+let meter = 0;
+let audio: AudioContext | null = null;
 
-const release = () => { window.clearInterval(clock); stream?.getTracks().forEach(track => track.stop()); stream = null; media = null; };
+const release = () => {
+  window.clearInterval(clock); window.clearInterval(meter);
+  void audio?.close().catch(() => undefined); audio = null;
+  stream?.getTracks().forEach(track => track.stop()); stream = null; media = null;
+};
+// The microphone's loudness for the brain's meter: an analyser on the same stream, read four times a second.
+function watchLevel(input: MediaStream) {
+  try {
+    audio = new AudioContext();
+    const analyser = audio.createAnalyser();
+    analyser.fftSize = 512;
+    audio.createMediaStreamSource(input).connect(analyser);
+    const samples = new Uint8Array(analyser.fftSize);
+    meter = window.setInterval(() => {
+      analyser.getByteTimeDomainData(samples);
+      let sum = 0;
+      for (const sample of samples) sum += ((sample - 128) / 128) ** 2;
+      set({ level: Math.min(1, Math.sqrt(sum / samples.length) * 4) });
+    }, 250);
+  } catch { /* no Web Audio here: the meter stays at zero */ }
+}
 const message = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
 
 export async function startRecording(title: string, confidentiality: Level, system: boolean) {
@@ -59,13 +83,14 @@ export async function startRecording(title: string, confidentiality: Level, syst
     release();
     set({ phase: 'stopping' });
     void queue.then(() => stopMeeting(id)).then(done => set({ note: done.note }), failure => set({ error: message(failure, 'No se pudo cerrar la grabación.') }))
-      .finally(() => set({ phase: 'idle', meetingId: null, startedAt: null, finished: Date.now() }));
+      .finally(() => set({ phase: 'idle', meetingId: null, startedAt: null, finished: Date.now(), level: 0 }));
   };
   try { recorder.start(PIECE_MS); }
   catch { release(); await stopMeeting(id).catch(() => undefined); set({ phase: 'idle', error: 'Este equipo no puede grabar audio aquí.' }); return; }
   media = recorder;
   const began = Date.now();
-  set({ phase: 'recording', meetingId: id, title: meeting.title, startedAt: began, note: meeting.note, seconds: 0 });
+  set({ phase: 'recording', meetingId: id, title: meeting.title, startedAt: began, note: meeting.note, seconds: 0, level: 0, confidentiality });
+  watchLevel(stream!);
   clock = window.setInterval(() => set({ seconds: Math.floor((Date.now() - began) / 1000) }), 1000);
 }
 

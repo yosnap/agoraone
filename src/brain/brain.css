@@ -41,3 +41,39 @@
 .graph-label.best { font-weight:700; font-size:12px; box-shadow:0 0 0 3px var(--signal-amber-glow) }
 .graph-label.reading { background:var(--signal-amber); color:var(--signal-amber-ink); box-shadow:0 0 0 3px var(--signal-amber-glow) }
 @media (max-width:850px) { .brain-thinking { right:16px; bottom:auto; top:calc(48% - 70px) } }
+
+/* The command centre (1.4): one bar to ask, speak and record, over the graph; the dock at its foot. */
+.command-bar { position:absolute; top:16px; left:16px; right:calc(max(360px, 30vw) + 16px); z-index:5; display:flex; flex-wrap:wrap; gap:10px; align-items:center }
+.command-ask { flex:1 1 360px; display:flex; align-items:center; gap:8px; background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:14px; padding:5px 6px 5px 14px; box-shadow:0 6px 24px rgba(23,61,60,.08) }
+.command-ask input { flex:1; min-width:0; border:0; background:transparent; font:inherit; font-size:14px; color:var(--c-173d3c); padding:8px 0 }
+.command-ask input:focus { outline:none }
+.command-ask:focus-within { border-color:var(--c-355a50) }
+.command-record, .command-music { height:44px; display:inline-flex; align-items:center; gap:8px; border-radius:12px; background:var(--c-fbfaf3) }
+.command-record.on { background:var(--c-8e3d2a); border-color:var(--c-8e3d2a); color:#fff; font-variant-numeric:tabular-nums }
+.command-music small { font-size:10px; opacity:.8 }
+.command-dot { width:10px; height:10px; border-radius:50%; background:var(--c-8e3d2a); flex:none }
+.command-record.on .command-dot, .command-dot.on { background:#fff; animation:rail-pulse 1.4s ease-in-out infinite }
+.dock-recording .command-dot.on { background:var(--c-8e3d2a) }
+@media (prefers-reduced-motion: reduce) { .command-dot { animation:none !important } }
+.brain .brain-panel { top:76px; max-height:calc(100% - 92px) }
+.brain .summary-strip { top:76px }
+.brain-dock { position:absolute; left:332px; right:calc(max(360px, 30vw) + 16px); bottom:16px; z-index:4; display:flex; flex-wrap:wrap; gap:12px; align-items:stretch; pointer-events:none }
+.dock-card { pointer-events:auto; flex:1 1 280px; background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:16px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; font-size:12px; color:var(--c-355a50) }
+.dock-recording { border-color:var(--c-8e3d2a) }
+.dock-head { display:flex; align-items:center; gap:8px; color:var(--c-173d3c) }
+.dock-head strong { font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.dock-time { margin-left:auto; font-variant-numeric:tabular-nums; font-weight:600 }
+.dock-levels { display:grid; grid-template-columns:70px minmax(0,1fr); gap:6px 10px; align-items:center }
+.dock-meter { height:6px; border-radius:3px; background:var(--c-e6eadf); overflow:hidden }
+.dock-meter span { display:block; height:100%; background:var(--c-24563a); transition:width .2s }
+.dock-note { color:var(--c-7a5717) }
+.dock-foot { display:flex; align-items:center; gap:10px; justify-content:space-between }
+.dock-music { flex-direction:row; align-items:center; opacity:.8 }
+.dock-music > div:last-child { display:flex; flex-direction:column; gap:2px }
+.dock-music strong { color:var(--c-173d3c); font-size:13px }
+.dock-cover { width:48px; height:48px; flex:none; border-radius:10px; display:grid; place-items:center; background:var(--c-e6eadf); font-size:20px; color:var(--c-4c6b62) }
+.brain .brain-thinking { bottom:auto; top:130px }
+@media (max-width:850px) {
+  .command-bar { right:16px }
+  .brain-dock { left:16px; right:16px; bottom:auto; top:calc(48% - 120px) }
+}

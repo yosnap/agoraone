@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Section } from './shell-state';
 import { applyTheme, readTheme, themeLabels, type ThemeChoice } from './theme';
 import { setSound, useSoundOn } from '../sound/sound';
-import { toggleQuickRecording, useMeetingRecorder } from '../meetings/meeting-recorder';
+import { useMeetingRecorder } from '../meetings/meeting-recorder';
 
 const themeOrder: ThemeChoice[] = ['system', 'light', 'dark'];
 const themeIcons: Record<ThemeChoice, string> = { system: '◑', light: '☀', dark: '☾' };
@@ -34,9 +34,7 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
 }) {
   const [theme, setTheme] = useState(readTheme);
   const sound = useSoundOn();
-  const recorder = useMeetingRecorder();
-  const recording = recorder.phase === 'recording';
-  const clock = `${Math.floor(recorder.seconds / 60)}:${String(recorder.seconds % 60).padStart(2, '0')}`;
+  const recording = useMeetingRecorder().phase === 'recording';
   const nextTheme = () => { const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length]; applyTheme(next); setTheme(next); };
   const button = (item: Item) => <li key={item.id}><button className={`rail-item${item.pending ? ' rail-pending' : ''}`}
     aria-current={section === item.id ? 'page' : undefined} onClick={() => onSection(item.id)} title={item.pending ? `${item.label}: pendiente` : item.label}>
@@ -47,13 +45,6 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
   </button></li>;
   return <nav className="rail" aria-label="Secciones de AgoraOne">
     <a className="rail-brand" href="/" aria-label="AgoraOne">a</a>
-    <button type="button" className={`rail-item rail-record${recording ? ' on' : ''}`} onClick={toggleQuickRecording} disabled={recorder.phase === 'starting' || recorder.phase === 'stopping'}
-      aria-pressed={recording} title={recording ? 'Parar la grabación de la reunión' : 'Grabar una reunión ahora (con las opciones de la última vez)'}>
-      <span className="rail-icon" aria-hidden="true">{recording ? '■' : '●'}</span>
-      <span className="rail-label">{recording ? clock : recorder.phase === 'stopping' ? 'Cerrando' : 'Grabar'}</span>
-      <span className="visually-hidden">{recording ? ': grabando una reunión; pulsa para parar' : ''}</span>
-    </button>
-    {recorder.error && recorder.phase === 'idle' && <span className="rail-record-error" role="alert" title={recorder.error}>!</span>}
     <ul className="rail-list">{main.map(button)}</ul>
     {later.length > 0 && <ul className="rail-list rail-later" aria-label="Próximamente">{later.map(button)}</ul>}
     <div className="rail-foot">

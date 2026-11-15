@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { AssistantView, type Thinking } from '../assistant/assistant-view';
 import { SummaryStrip } from '../summary/summary-strip';
+import { BrainDock } from './brain-dock';
+import { CommandBar } from './command-bar';
 import { getBrainGraph, levelLabels, searchBrain, type BrainGraph, type GraphLayers, type NodeType, type SearchResult } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 import { layoutGraph } from './graph-layout';
@@ -32,6 +34,8 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
 }) {
   const [explorer, setExplorer] = useState(true);
   const [thinking, setThinking] = useState<Thinking>(null);
+  // A question from the command bar, handed to Watson's panel (which sends it and then clears it).
+  const [question, setQuestion] = useState<string | null>(null);
   const [near, setNear] = useState(true);
   const [layers, setLayers] = useState<GraphLayers>({ entities: true, tags: true, folders: false });
   const [picked, setPicked] = useState<string | null>(null);
@@ -126,11 +130,13 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
       {folders.length > 0 && <ul className="brain-legend" aria-label="Colores por carpeta">{folders.slice(0, graphPalette.length).map(([folder, count]) =>
         <li key={folder}><span style={{ background: colors.get(folder) }} aria-hidden="true"/>{folder || 'Raíz'} <small>{count}</small></li>)}</ul>}
     </div>
+    <CommandBar onAsk={setQuestion}/>
     <SummaryStrip discreet={discreet} onOpen={onSummary}/>
+    <BrainDock/>
     {thinking && <div className="brain-thinking" role="status" aria-live="polite">
       <ol>{steps.map(([id, label]) => <li key={id} className={stepState(thinking.stage, id)}>{label}</li>)}</ol>
       <span>{thinking.label}</span>
     </div>}
-    <AssistantView embedded onRead={onRead} onSources={onFocus} onThinking={setThinking} discreet={discreet}/>
+    <AssistantView embedded question={question} onQuestionTaken={() => setQuestion(null)} onRead={onRead} onSources={onFocus} onThinking={setThinking} discreet={discreet}/>
   </section>;
 }

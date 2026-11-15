@@ -51,7 +51,7 @@ Las pistas son dos:
   - En Linux, con ffmpeg sobre el *monitor* de la salida por defecto.
   - Sin adaptador, o sin permiso, la reunión sigue solo con el micrófono, y se dice.
 
-También se puede grabar desde cualquier pantalla con el botón **Grabar** de la barra lateral: empieza con las opciones de la última vez (confidencialidad y audio del sistema) y, pulsado otra vez, para.
+También se graba desde el **Cerebro**, el centro de mando (1.4): el botón **Grabar reunión** de su barra superior empieza con las opciones de la última vez (confidencialidad y audio del sistema) y, pulsado otra vez, para; abajo, una tarjeta enseña el tiempo, el volumen de tu micrófono y quién la resumirá. La grabación sigue aunque cambies de sección, y la barra lateral lo indica en Reuniones.
 
 Mientras graba:
 
