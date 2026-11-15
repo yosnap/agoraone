@@ -37,6 +37,8 @@ from .routes_alerts import alerts_router
 from .routes_jobs import jobs_router
 from .routes_voice import voice_router
 from .routes_meetings import meetings_router
+from .routes_music import music_router
+from .routes_apps import apps_router
 from .meetings import Recorder
 from .meeting_notes import Worker
 from .routes_calendar import calendar_router
@@ -194,4 +196,6 @@ def create_app(
     app.include_router(jobs_router(settings))
     app.include_router(voice_router(settings))
     app.include_router(meetings_router(settings, recorder, meeting_worker))
+    app.include_router(music_router())
+    app.include_router(apps_router(settings))
     return app

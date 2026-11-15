@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { getVoiceStatus, putVoiceSettings, type VoiceSettings, type VoiceStatus } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { setVoiceMode, voiceMode, type VoiceMode } from '../assistant/speech';
 
 const OTHER = '__otra__';
 const languages = [{ value: 'auto', label: 'Detectar el idioma' }, { value: 'es', label: 'Español' }, { value: 'en', label: 'Inglés' },
@@ -53,6 +54,7 @@ export function VoiceSettingsCard() {
         found={state.ffmpegs.map(path => ({ path, text: path }))} onSave={path => void save({ ffmpeg: path })}/>
       <PathChoice label="Modelo" value={state.chosen.model} describe="/ruta/a/ggml-large-v3-turbo.bin"
         found={state.models.map(m => ({ path: m.path, text: `${m.name} · ${size(m.bytes)} · ${fileName(m.path)}` }))} onSave={path => void save({ model: path })}/>
+      <WatsonVoice/>
       <label className="field">Idioma<ModernSelect value={state.chosen.language} options={languages} onChange={value => void save({ language: value })}/></label>
       {!state.ready && <p className="fiscal-warning">{state.missing.length ? `Lo elegido ya no está (${state.missing.map(k => k === 'binary' ? 'whisper-cli' : k === 'model' ? 'el modelo' : 'ffmpeg').join(', ')}): ¿se desinstaló o actualizó? Elígelo de nuevo.`
         : !state.binary ? 'No se encuentra whisper-cli: instala whisper.cpp (Homebrew, el gestor de paquetes de tu Linux o la versión para Windows) o indica dónde está.'
@@ -63,4 +65,11 @@ export function VoiceSettingsCard() {
     {saved && <p className="ok-note" role="status">{saved}</p>}
     {error && <LoadError message={error}/>}
   </article>;
+}
+
+/** Whether Watson answers aloud, with the system's own voices (per viewer). */
+function WatsonVoice() {
+  const [mode, setMode] = useState<VoiceMode>(voiceMode);
+  return <label className="field">Watson responde hablando<ModernSelect value={mode} onChange={value => { setVoiceMode(value as VoiceMode); setMode(value as VoiceMode); }}
+    options={[{ value: 'spoken', label: 'Cuando le hablas con el micrófono' }, { value: 'always', label: 'Siempre' }, { value: 'never', label: 'Nunca' }]}/></label>;
 }

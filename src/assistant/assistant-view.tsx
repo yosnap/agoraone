@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { RuleProposals, useProposals } from './rule-proposals';
 import { DictationButton } from '../ui/dictation-button';
+import { isYes, quickCommand, type QuickResult } from './quick-commands';
+import { speak, stopSpeaking } from './speech';
 import {
   askAssistant, createAssistantConversation, getAssistantConversation, getAssistantSettings, getEngines, getPersonas, listAssistantConversations,
   type AssistantMessage, type ConversationSummary, type Persona, type Source, type Stage,
@@ -29,6 +31,9 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
 }) {
   const [listOpen, setListOpen] = useState(!embedded);
   // What the microphone is doing, shown live in the panel (1.4): hearing, then turning it into text.
+  const pendingQuick = useRef<(() => Promise<QuickResult>) | null>(null);
+  // Whether the question being answered was spoken: Watson then answers aloud too (Ajustes › Voz).
+  const spokenTurn = useRef(false);
   const [hearing, setHearing] = useState<'idle' | 'starting' | 'recording' | 'transcribing'>('idle');
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const [listError, setListError] = useState('');
@@ -93,7 +98,14 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
     } finally {
       abort.current = null;
       onThinking?.(null);
-      if (id !== null && shownId.current === id) { try { setMessages((await getAssistantConversation(id)).messages); } catch { /* the error above is enough */ } }
+      if (id !== null && shownId.current === id) {
+        try {
+          const found = (await getAssistantConversation(id)).messages;
+          setMessages(found);
+          const last = found.at(-1);
+          if (last?.role === 'assistant' && !last.failed) speak(last.content, spokenTurn.current);
+        } catch { /* the error above is enough */ }
+      }
       if (id === null || shownId.current === id) setLive(null);
       void refreshList();
     }
@@ -107,8 +119,25 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
     event?.preventDefault();
     const text = (spoken === undefined ? draft : (draft.trim() ? `${draft.trimEnd()} ${spoken}` : spoken)).trim();
     if (!text || live) return; setDraft('');
+    spokenTurn.current = spoken !== undefined;
+    stopSpeaking();
     if (proposals.answer(text, discreet)) return;  // a plain «sí» / «no» answers the rule Watson just proposed, without a model
     proposals.expire();
+    // «Pon…», «pausa», «siguiente», «abre…»: done at once, without a model, and noted in the chat (not saved).
+    // An app outside the allowed list waits for a «sí» right after; anything else drops that question.
+    const waiting = pendingQuick.current;
+    pendingQuick.current = null;
+    const quick = waiting && isYes(text) ? waiting : quickCommand(text);
+    if (quick) {
+      const at = new Date().toISOString();
+      setMessages(current => [...current, { role: 'user', content: text, sources: [], engine: null, model: null, failed: false, created_at: at }]);
+      void quick().then(result => {
+        pendingQuick.current = result.confirm ?? null;
+        speak(result.reply, spokenTurn.current);
+        setMessages(current => [...current, { role: 'assistant', content: result.reply, sources: [], engine: 'quick', model: null, failed: result.failed, created_at: new Date().toISOString() }]);
+      });
+      return;
+    }
     if (!announced.answer(text, messages.length > 0 || current !== null)) void send(text, current);  // a plain «sí» / «no» answers the open announcement, without a model
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
@@ -150,8 +179,9 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         </div> : messages.map((message, index) => <article key={index} className={`assistant-message ${message.role}${message.failed ? ' failed' : ''}`}>
           <strong>{message.role === 'user' ? 'Tú' : name}</strong>
           {message.role === 'user' ? <p>{message.content}</p> : <Markdown source={message.content} resolve={noLinks}/>}
-          {message.failed && <small className="muted">Sin respuesta: el motor falló. Puedes repetir la pregunta.</small>}
-          {message.role === 'assistant' && <small className="muted">Respondió {engineName(message.engine)}{message.model ? ` · ${modelName(message.model)}` : ''}</small>}
+          {message.failed && message.engine !== 'quick' && <small className="muted">Sin respuesta: el motor falló. Puedes repetir la pregunta.</small>}
+          {message.role === 'assistant' && message.engine === 'quick' && <small className="muted">Orden rápida, sin modelo</small>}
+          {message.role === 'assistant' && message.engine !== 'quick' && <small className="muted">Respondió {engineName(message.engine)}{message.model ? ` · ${modelName(message.model)}` : ''}</small>}
           {message.role === 'assistant' && sourceList(message.sources)}
         </article>)}
         {live && <>

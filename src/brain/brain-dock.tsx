@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { getSummarizers, levelLabels, type Level, type Summarizer } from '../api/core';
+import { MusicCard } from './music-card';
 import { lastChoice, stopRecording, toggleQuickRecording, useMeetingRecorder } from '../meetings/meeting-recorder';
 
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
 /** At the foot of the brain: the meeting being recorded (time, how loud your microphone is, who will
- * summarize it) and, from 1.5, the music player, marked pending until then and never simulated. */
+ * summarize it) and the music card (what plays, its controls and «pon …»). */
 export function BrainDock() {
   const recorder = useMeetingRecorder();
   const [who, setWho] = useState<Record<Level, Summarizer> | null>(null);
@@ -41,12 +42,6 @@ export function BrainDock() {
         <button type="button" className="button" onClick={stopRecording} disabled={recorder.phase === 'stopping'}>Parar</button>
       </div>
     </section>}
-    <section className="dock-card dock-music" aria-label="Música (pendiente)">
-      <div className="dock-cover" aria-hidden="true">♫</div>
-      <div>
-        <strong>Música</strong>
-        <small>Pendiente · versión 1.5. Desde aquí podrás pedir y controlar Apple Music, Spotify, tu biblioteca y YouTube, también por voz.</small>
-      </div>
-    </section>
+    <MusicCard/>
   </div>;
 }

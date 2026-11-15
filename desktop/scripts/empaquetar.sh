@@ -104,6 +104,8 @@ codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/
 rm -rf "$WORK/AgoraOne.app"
 ditto "$APP" "$WORK/AgoraOne.app"
 APP="$WORK/AgoraOne.app"
+codesign -d --entitlements - "$APP" 2>/dev/null | grep -q automation.apple-events \
+  || { echo "La app no tiene el permiso de Automatización (Música y Spotify) en su firma." >&2; exit 1; }
 codesign -d --entitlements - "$APP" 2>/dev/null | grep -q device.audio-input \
   || { echo "La app no tiene el permiso de micrófono en su firma." >&2; exit 1; }
 codesign --verify --deep --strict "$APP"

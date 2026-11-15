@@ -350,3 +350,18 @@ export async function sendMeetingPiece(id: number, piece: Blob): Promise<void> {
     throw new ApiError(data.error || 'No se pudo guardar el audio.', response.status, data);
   }
 }
+
+/** Music (1.5): what Apple Music or Spotify plays, its controls and «pon …». */
+export type MusicPlayer = { player: string; name: string; state: string; title?: string; artist?: string; album?: string;
+  duration?: number | null; position?: number | null; volume?: number | null; problem?: string };
+export type MusicState = { players: MusicPlayer[]; note: string | null };
+export type MusicAction = 'toggle' | 'play' | 'pause' | 'next' | 'previous' | 'louder' | 'quieter';
+export const getMusic = () => core<MusicState>('/music/status');
+export const controlMusic = (player: string, action: MusicAction) => core<MusicState>('/music/control', { player, action });
+export const playMusic = (player: string, query: string) => core<MusicState & { done: string }>('/music/play', { player, query });
+
+/** Opening apps (1.5): the installed ones, those Watson may open without asking, and opening one. */
+export type InstalledApp = { id: string; name: string; aliases?: string[] };
+export const getApps = () => core<{ apps: InstalledApp[]; allowed: string[] }>('/apps');
+export const putAllowedApps = (allowed: string[]) => core<{ allowed: string[] }>('/apps/allowed', { allowed }, 'PUT');
+export const openApp = (id: string, confirmed = false) => core<{ done: string }>('/apps/open', { id, confirmed });
