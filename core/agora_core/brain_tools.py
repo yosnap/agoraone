@@ -243,7 +243,7 @@ class Toolbox:
 
         def run():
             with self.database() as connection:
-                return alerts.collect(connection, contacts=calls.shared_contacts(), audience=AUDIENCE)
+                return alerts.collect(connection, contacts=calls.shared_contacts(), audience=AUDIENCE, respect=False)
         found = await run_in_threadpool(run)
         self._record({"tool": "day", "count": len(found["alerts"])})
         return json.dumps({

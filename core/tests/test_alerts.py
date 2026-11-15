@@ -38,8 +38,15 @@ def test_historial_de_llamadas_en_copia_y_perdidas_sin_devolver(tmp_path):
     found = calls.read_calls(days=7, db=db_file)
     assert [c["address"] for c in found] == ["+34699000000", "+34 699 000 000", "600111222", "+34 600 111 222"], "solo los últimos 7 días, las direcciones en bytes también"
     assert [c["id"] for c in calls.missed_not_returned(found)] == ["u4"], "la devuelta no cuenta, y cada número una vez"
-    with pytest.raises(calls.CallsUnavailable, match="Acceso total al disco"):
+    with pytest.raises(calls.CallsUnavailable) as missing:
         calls.read_calls(db=tmp_path / "no-existe")
+    assert missing.value.code == "missing", "no pide «Acceso total al disco» si el permiso no es el problema"
+    db_file.write_bytes(b"no es sqlite")
+    with pytest.raises(calls.CallsUnavailable) as broken:
+        calls.read_calls(db=db_file)
+    assert broken.value.code == "unreadable"
+    hidden = [{"id": "h1", "at": "2026-11-14T10:00:00+00:00", "address": None, "outgoing": False, "answered": False, "duration": 0, "name": None}]
+    assert calls.missed_not_returned(hidden) == hidden, "un número oculto también avisa"
 
 
 def test_silencio_que_cruza_la_medianoche():
@@ -62,14 +69,23 @@ def test_avisos_una_vez_resumen_y_lo_que_ve_watson(db):
     missed = [{"id": "c1", "at": (now - timedelta(hours=2)).isoformat(), "address": "+34 600 111 222", "outgoing": False, "answered": False, "duration": 0, "name": None}]
     sources = {"store": store, "call_reader": lambda: missed, "contacts": calls.FakeContacts({"600111222": "Ana Pérez"})}
 
-    shown = alerts.claim(db, now, **sources)
+    shown = alerts.due(db, now, **sources)
     assert [a["title"] for a in shown] == ["Llamada perdida de Ana Pérez", f"A las {soon.strftime('%H:%M')}: Llamada con Artilabs",
                                            "Mañana: Entrega del logo", "Tu día en AgoraOne"]
     assert shown[-1]["body"] == "1 en la agenda · 0 recordatorios · 1 en la Bandeja · 1 llamada sin devolver."
-    assert alerts.claim(db, now, **sources) == [], "cada aviso una sola vez"
+    assert len(alerts.due(db, now, **sources)) == 4, "lo que no se llegó a mostrar vuelve"
+    alerts.ack(db, [a["key"] for a in shown[:2]], now)
+    assert [a["title"] for a in alerts.due(db, now, **sources)] == ["Mañana: Entrega del logo", "Tu día en AgoraOne"], "cada aviso una sola vez"
     alerts.save_settings(db, {"quietFrom": "09:00", "quietTo": "11:00"})
+    assert alerts.due(db, now, **sources) == [], "nada en horas de silencio"
+    alerts.save_settings(db, {"quietFrom": "22:00", "quietTo": "08:00", "callsLevel": "private", "summary": False})
     db.execute("DELETE FROM alert_delivered")
-    assert alerts.claim(db, now, **sources) == [], "nada en horas de silencio"
+    private = alerts.due(db, now, **sources)
+    assert private[0]["title"] == "Llamada perdida" and all("Ana" not in a["title"] for a in private), "lo privado sale sin nombres"
+    assert all(a["kind"] != "summary" for a in private)
+    watson = alerts.collect(db, now, audience="owner", respect=False, **sources)
+    assert watson["morning"] is not None, "Watson tiene el resumen aunque las notificaciones del resumen estén apagadas"
+    alerts.save_settings(db, {"callsLevel": "local_only", "summary": True})
 
     outside = alerts.collect(db, now, audience="external", **sources)
     assert outside["missed"] == [] and "llamada" not in outside["morning"]["body"], "las llamadas son solo de este Mac por defecto"

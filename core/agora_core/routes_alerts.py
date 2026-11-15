@@ -1,15 +1,14 @@
-"""HTTP routes of the reminders: what deserves attention now, their settings, the Contacts permission and,
-for the app only (under /internal, which the backend never forwards from a browser), the notifications to
-show now, each one once."""
+"""HTTP routes of the reminders: what deserves attention now, their settings, the Contacts permission, and
+the notifications due now with their confirmation once shown (by the app as macOS notifications, or by the
+interface while it is in front), so none is lost and none is shown twice."""
 
 import re
 from contextlib import contextmanager
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, StrictBool, field_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator
 
 from . import alerts, calls
 from .db import DB_NAME, connect
@@ -34,6 +33,10 @@ class AlertSettings(BaseModel):
         return value
 
 
+class AckIn(BaseModel):
+    keys: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(max_length=100)
+
+
 def alerts_router(settings: Settings, call_reader=calls.read_calls) -> APIRouter:
     router = APIRouter()
 
@@ -53,7 +56,7 @@ def alerts_router(settings: Settings, call_reader=calls.read_calls) -> APIRouter
         def work():
             with database() as connection:
                 found = alerts.collect(connection, **sources())
-                return {"alerts": found["alerts"], "morning": found["morning"], "problems": found["problems"],
+                return {"alerts": found["alerts"], "morning": found["morning"], "problems": found["problems"], "callsProblem": found["callsProblem"],
                         "settings": alerts.settings(connection), "contacts": calls.shared_contacts().status()}
         return await run_in_threadpool(work)
 
@@ -79,14 +82,19 @@ def alerts_router(settings: Settings, call_reader=calls.read_calls) -> APIRouter
         await run_in_threadpool(run)
         return {"ok": True}
 
-    @router.post("/internal/alerts/claim")
-    async def claim():
+    @router.get("/alerts/due")
+    async def due():
         def work():
             with database() as connection:
-                return alerts.claim(connection, **sources())
-        try:
-            return {"notifications": await run_in_threadpool(work)}
-        except Exception:  # noqa: BLE001 - the app keeps asking next minute
-            return JSONResponse({"notifications": [], "error": "No se pudieron calcular los avisos."}, status_code=200)
+                return alerts.due(connection, **sources())
+        return {"notifications": await run_in_threadpool(work)}
+
+    @router.post("/alerts/ack")
+    async def ack(body: AckIn):
+        def work():
+            with database() as connection:
+                alerts.ack(connection, body.keys)
+        await run_in_threadpool(work)
+        return {"ok": True}
 
     return router

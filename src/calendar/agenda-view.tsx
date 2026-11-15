@@ -25,6 +25,7 @@ export function AgendaView({ discreet }: { discreet: boolean }) {
     try {
       const found = await getAgenda(which);
       if (mine === request.current) setAgenda(found);
+      void getAlerts().then(setReminders).catch(() => undefined);
     } catch (failure) { if (mine === request.current) setError(failure instanceof Error ? failure.message : 'No se pudo leer la agenda.'); }
   };
   const start = async () => {

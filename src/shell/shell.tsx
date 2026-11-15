@@ -8,6 +8,7 @@ import { PendingView } from './pending-view';
 import { InboxView } from '../inbox/inbox-view';
 import { FiscalView } from '../fiscal/fiscal-view';
 import { AgendaView } from '../calendar/agenda-view';
+import { AlertToasts } from './alert-toasts';
 import { readShell, writeShell, type Section } from './shell-state';
 import './shell.css';
 import './page.css';
@@ -39,6 +40,7 @@ export function Shell() {
   const ready = status?.csrf;
   return <div className="shell">
     <ShellNav section={section} onSection={go} discreet={discreet} onDiscreet={setDiscreet} waiting={waiting}/>
+    {ready && <AlertToasts discreet={discreet}/>}
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting} onWatson={() => go('brain')}/>}
       {ready && section !== 'office' && <main className="shell-page"><Suspense fallback={<div className="page"><Loading label="Cargando la sección"/></div>}>

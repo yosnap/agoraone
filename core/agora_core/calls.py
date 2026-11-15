@@ -17,7 +17,14 @@ CONTACTS_TTL = 600
 
 
 class CallsUnavailable(RuntimeError):
-    pass
+    """`code`: «permission» (no Full Disk Access), «missing» (no call history on this Mac) or «unreadable»."""
+
+    def __init__(self, message: str, code: str):
+        super().__init__(message)
+        self.code = code
+
+
+_LAST: dict = {}  # the last reading, kept while the database does not change (it is read every minute)
 
 
 def key_of(address: str | None) -> str | None:
@@ -32,21 +39,41 @@ def key_of(address: str | None) -> str | None:
 
 
 def read_calls(days: int = 7, db: Path = DB) -> list[dict]:
-    """The calls of the last `days`, newest first. Raises CallsUnavailable without Full Disk Access."""
+    """The calls of the last `days`, newest first, from a copy of the database and its write-ahead log (the
+    shared-memory file is left out: SQLite rebuilds it). A copy taken while macOS writes may come out
+    inconsistent, so it is tried twice."""
     try:
-        with tempfile.TemporaryDirectory() as work:
-            copy = Path(work) / "calls.sqlite"
-            shutil.copyfile(db, copy)
-            for suffix in ("-wal", "-shm"):  # what is still in the write-ahead log counts too
-                if Path(f"{db}{suffix}").exists():
-                    shutil.copyfile(f"{db}{suffix}", f"{copy}{suffix}")
-            connection = sqlite3.connect(copy)
-            try:
-                return _rows(connection, days)
-            finally:
-                connection.close()
-    except (OSError, sqlite3.DatabaseError) as error:
-        raise CallsUnavailable("AgoraOne no puede leer el historial de llamadas: dale «Acceso total al disco» en Ajustes del Sistema.") from error
+        stamp = tuple(Path(f"{db}{suffix}").stat().st_mtime_ns if Path(f"{db}{suffix}").exists() else 0 for suffix in ("", "-wal"))
+    except PermissionError as error:
+        raise CallsUnavailable("AgoraOne no puede leer el historial de llamadas: dale «Acceso total al disco» en Ajustes del Sistema.", "permission") from error
+    except OSError as error:
+        raise CallsUnavailable("Este Mac no tiene historial de llamadas.", "missing") from error
+    if stamp == (0, 0):
+        raise CallsUnavailable("Este Mac no tiene historial de llamadas.", "missing")
+    if _LAST.get("key") == (str(db), days, stamp):
+        return _LAST["calls"]
+    for attempt in range(2):
+        try:
+            with tempfile.TemporaryDirectory() as work:
+                copy = Path(work) / "calls.sqlite"
+                shutil.copyfile(db, copy)
+                if Path(f"{db}-wal").exists():
+                    shutil.copyfile(f"{db}-wal", f"{copy}-wal")
+                connection = sqlite3.connect(copy)
+                try:
+                    found = _rows(connection, days)
+                finally:
+                    connection.close()
+            _LAST.update(key=(str(db), days, stamp), calls=found)
+            return found
+        except PermissionError as error:
+            raise CallsUnavailable("AgoraOne no puede leer el historial de llamadas: dale «Acceso total al disco» en Ajustes del Sistema.", "permission") from error
+        except FileNotFoundError as error:
+            raise CallsUnavailable("Este Mac no tiene historial de llamadas.", "missing") from error
+        except (OSError, sqlite3.DatabaseError) as error:
+            if attempt:
+                raise CallsUnavailable("No se pudo leer el historial de llamadas (formato desconocido o base dañada).", "unreadable") from error
+    raise CallsUnavailable("No se pudo leer el historial de llamadas.", "unreadable")
 
 
 def _rows(connection: sqlite3.Connection, days: int) -> list[dict]:
@@ -75,7 +102,9 @@ def missed_not_returned(calls: list[dict]) -> list[dict]:
     found, seen = [], set()
     for call in sorted(calls, key=lambda c: c["at"], reverse=True):
         key = key_of(call["address"])
-        if key is None:
+        if key is None:  # a hidden number cannot be returned: each one is its own reminder
+            if not (call["outgoing"] or call["answered"]):
+                found.append(call)
             continue
         settled = call["outgoing"] or call["answered"]
         if not settled and key not in later and key not in seen:

@@ -14,17 +14,23 @@ const toggles: { key: keyof AlertSettings; label: string }[] = [
 export function AlertsSettingsCard() {
   const [chosen, setChosen] = useState<AlertSettings | null>(null);
   const [contacts, setContacts] = useState('');
-  const [problems, setProblems] = useState<string[]>([]);
+  const [callsProblem, setCallsProblem] = useState<string | null>(null);
+  // The hours are kept here while typed and saved when the field is left (a half-typed hour is never sent).
+  const [hours, setHours] = useState({ morning: '', quietFrom: '', quietTo: '' });
   const [error, setError] = useState('');
   const asked = useRef(false);
-  const load = () => getAlerts().then(found => { setChosen(found.settings); setContacts(found.contacts); setProblems(found.problems); })
+  const load = () => getAlerts().then(found => { setChosen(found.settings); setContacts(found.contacts); setCallsProblem(found.callsProblem);
+    setHours({ morning: found.settings.morning, quietFrom: found.settings.quietFrom, quietTo: found.settings.quietTo }); })
     .catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer los avisos.'));
   if (!asked.current) { asked.current = true; void load(); }
   const save = async (changes: Partial<AlertSettings>) => {
     setError('');
     try { setChosen(await putAlertSettings(changes)); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
   };
-  const callsBlocked = problems.some(p => p.includes('Acceso total al disco'));
+  const callsBlocked = callsProblem === 'permission';
+  const hour = (key: keyof typeof hours, label: string) => <label className="field">{label}<input type="time" value={hours[key]}
+    onChange={event => setHours({ ...hours, [key]: event.target.value })}
+    onBlur={() => hours[key] && chosen && hours[key] !== chosen[key] && void save({ [key]: hours[key] })}/></label>;
   return <article className="card" aria-labelledby="alerts-title">
     <div className="card-head"><h2 id="alerts-title">Avisos</h2></div>
     <p>Notificaciones de macOS desde AgoraOne, cada una una sola vez y nunca en horas de silencio. Nada sale a Telegram.</p>
@@ -32,17 +38,15 @@ export function AlertsSettingsCard() {
       <div className="alerts-toggles">{toggles.map(t => <label key={t.key} className="check">
         <input type="checkbox" checked={Boolean(chosen[t.key])} onChange={event => void save({ [t.key]: event.target.checked })}/> {t.label}</label>)}</div>
       <div className="field-row">
-        <label className="field">Resumen a las<input type="time" value={chosen.morning} onChange={event => event.target.value && void save({ morning: event.target.value })}/></label>
-        <label className="field">Silencio desde<input type="time" value={chosen.quietFrom} onChange={event => event.target.value && void save({ quietFrom: event.target.value })}/></label>
-        <label className="field">hasta<input type="time" value={chosen.quietTo} onChange={event => event.target.value && void save({ quietTo: event.target.value })}/></label>
+        {hour('morning', 'Resumen a las')}{hour('quietFrom', 'Silencio desde')}{hour('quietTo', 'hasta')}
       </div>
       <label className="field">Llamadas<ModernSelect value={chosen.callsLevel} options={levels} onChange={value => void save({ callsLevel: value as Level })}/></label>
     </>}
     <ul className="alerts-permissions">
-      <li><span>Historial de llamadas{callsBlocked ? ': necesita «Acceso total al disco»' : ''}</span>
+      <li><span>Historial de llamadas{callsBlocked ? ': necesita «Acceso total al disco»' : callsProblem === 'missing' ? ': este Mac no tiene historial' : callsProblem === 'unreadable' ? ': no se pudo leer' : ''}</span>
         {callsBlocked && <button type="button" className="button" onClick={() => void openFullDiskAccess().catch(() => undefined)}>Abrir Ajustes del Sistema</button>}</li>
       <li><span>Contactos (nombres de las llamadas): {contacts === 'granted' ? 'con permiso' : contacts === 'denied' ? 'denegado en Ajustes del Sistema' : contacts === 'unavailable' ? 'no disponible' : 'sin permiso'}</span>
-        {contacts !== 'granted' && contacts !== 'denied' && contacts !== 'unavailable' && <button type="button" className="button"
+        {contacts === 'undetermined' && <button type="button" className="button"
           onClick={() => void askContactsAccess().then(found => setContacts(found.contacts)).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo pedir el permiso.'))}>Dar permiso</button>}</li>
     </ul>
     {callsBlocked && <p className="muted">En Ajustes del Sistema › Privacidad y seguridad › Acceso total al disco, añade AgoraOne y vuelve a abrirla. Solo se lee el historial, nunca se cambia.</p>}

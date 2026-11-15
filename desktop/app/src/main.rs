@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use agora_server::PORT;
 use agora_server::launch::{Paths, access_url, app_support, copy_first_run, load_dotenv, prepare, widen_path};
-use tauri::{AppHandle, RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
 
 /// The project folder when not packaged: `AGORA_ROOT`, or (development builds only) the repository this app
@@ -91,18 +91,28 @@ fn serde_quote(text: &str) -> String {
     format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-/// Every minute, the reminders the core says are due now (each one once, never in quiet hours) become macOS
-/// notifications from AgoraOne. The core is asked on its internal route, with the start secret.
+/// Every minute, the reminders due now (never in quiet hours) become macOS notifications from AgoraOne, and
+/// only those really shown are confirmed to the core, so none is lost. While the window is in front the
+/// interface shows them itself (macOS does not show banners for the app in front).
 fn notify_loop(app: AppHandle, link: agora_server::core::CoreLink) {
     tauri::async_runtime::spawn(async move {
         let http = reqwest::Client::new();
         tokio::time::sleep(Duration::from_secs(45)).await;
         loop {
-            if let Ok(answer) = agora_server::core::core_request(&http, &link, "/internal/alerts/claim", Some(&serde_json::json!({}))).await {
-                for item in answer.get("notifications").and_then(|n| n.as_array()).into_iter().flatten() {
-                    let title = item.get("title").and_then(|t| t.as_str()).unwrap_or("AgoraOne");
-                    let body = item.get("body").and_then(|b| b.as_str()).unwrap_or("");
-                    let _ = app.notification().builder().title(title).body(body).show();
+            let in_front = app.get_webview_window("main").and_then(|w| w.is_focused().ok()).unwrap_or(false);
+            if !in_front {
+                if let Ok(answer) = agora_server::core::core_request(&http, &link, "/alerts/due", None).await {
+                    let mut shown = Vec::new();
+                    for item in answer.get("notifications").and_then(|n| n.as_array()).into_iter().flatten() {
+                        let (Some(key), Some(title)) = (item.get("key").and_then(|k| k.as_str()), item.get("title").and_then(|t| t.as_str())) else { continue };
+                        let body = item.get("body").and_then(|b| b.as_str()).unwrap_or("");
+                        if app.notification().builder().title(title).body(body).show().is_ok() {
+                            shown.push(key.to_string());
+                        }
+                    }
+                    if !shown.is_empty() {
+                        let _ = agora_server::core::core_request(&http, &link, "/alerts/ack", Some(&serde_json::json!({ "keys": shown }))).await;
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_secs(60)).await;
