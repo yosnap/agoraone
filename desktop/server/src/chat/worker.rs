@@ -20,6 +20,7 @@ use tokio::sync::oneshot;
 use crate::js::{js_string, number, slice_utf16};
 
 pub const FAILURE: &str = "Hermes no completó la petición. No se ha guardado este turno; puedes reintentarlo.";
+pub const UPDATE_PENDING: &str = "Hermes tiene una actualización o reparación sin terminar. Ábrelo una vez o ejecuta «hermes update» y vuelve a intentarlo: AgoraOne no repara Hermes.";
 const MAX_OUTPUT: usize = 8_000_000;
 const IDLE: Duration = Duration::from_secs(5 * 60);
 const PER_KIND: usize = 4;
@@ -36,7 +37,7 @@ pub struct Spawn {
 }
 
 struct Pending {
-    reply: oneshot::Sender<Result<Value, ()>>,
+    reply: oneshot::Sender<Result<Value, &'static str>>,
     progress: Option<Progress>,
 }
 
@@ -108,7 +109,7 @@ fn discard(key: &str, worker: &Arc<Worker>) {
         state.pending.take()
     };
     if let Some(pending) = pending {
-        let _ = pending.reply.send(Err(()));
+        let _ = pending.reply.send(Err(FAILURE));
     }
     let worker = worker.clone();
     tokio::spawn(async move {
@@ -211,6 +212,12 @@ fn start(key: &str, spawn: &Spawn) -> Result<Arc<Worker>, String> {
             let Ok(event) = serde_json::from_slice::<Value>(&line) else { break };
             if event.get("type").and_then(Value::as_str) == Some("done") {
                 if event.get("ok") != Some(&Value::Bool(true)) {
+                    // The one failure the user can fix: say how, instead of the generic message.
+                    if event.get("error").and_then(Value::as_str) == Some("hermes_update_pending")
+                        && let Some(pending) = state.pending.take()
+                    {
+                        let _ = pending.reply.send(Err(UPDATE_PENDING));
+                    }
                     break;
                 }
                 let pending = state.pending.take().expect("pending turn");
@@ -299,7 +306,7 @@ pub async fn request(key: &str, spawn: &Spawn, payload: &Value, progress: Option
     if !written {
         discard(key, &worker);
     }
-    answer.await.ok().and_then(Result::ok).ok_or_else(|| FAILURE.to_string())
+    answer.await.map_err(|_| FAILURE.to_string())?.map_err(str::to_string)
 }
 
 /// Sends a line to a conversation's bridge while it has a turn running (an approval answer or a cancel).

@@ -114,8 +114,9 @@ fn el_puente_de_luma_solo_acepta_notas_y_copias_emitidas_por_agoraone() {
 /// The installed Hermes, if any.
 fn hermes() -> Option<(PathBuf, PathBuf)> {
     let installation = PathBuf::from(std::env::var("HOME").ok()?).join(".hermes/hermes-agent");
-    let python = installation.join("venv/bin/python");
-    python.exists().then_some((installation, python))
+    // The interpreter AgoraOne itself would choose: Hermes' own Python, or its virtual environment before it had one.
+    let python = agora_server::hermes::location::from_env().python;
+    (installation.join("run_agent.py").exists() && python.exists()).then_some((installation, python))
 }
 
 /// A fake OpenAI-compatible model that asks for one tool depending on the user's words, then reports it.

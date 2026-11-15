@@ -1,7 +1,16 @@
 # Integración verificada — 17/10/2026
 
 ## Fuente de verdad
-Código local `~/.hermes/hermes-agent`, HEAD `28aceb3451f5a5d2a27396b2adf29231be34c482`. `hermes_cli/__init__.py` declara 0.21.4 (2026.9.21). Intérprete `venv/bin/python`: 3.11.15; paquete OpenAI: 2.24.0. El lanzador `~/.local/bin/hermes` remite a ese entorno. No se ejecutó actualización ni se modificó la instalación.
+Código local `~/.hermes/hermes-agent`, HEAD `d1b46d718ffe675427928eff7e5fff69bcb4519b` (14/11/2026; el usuario actualizó Hermes el 15/11/2026 desde la del 23/09, `28aceb3451`). No se ejecutó ninguna actualización ni se modificó la instalación desde AgoraOne.
+
+**Desde noviembre de 2026 Hermes gestiona su propio Python** (3.14, en `~/.hermes/tools`, registrado en `tools/facts.json`) y elige sus dependencias al arrancar con `hermes_bootstrap`, que importa todo punto de entrada (`run_agent` incluido). El antiguo `venv/bin/python` queda sin uso. AgoraOne (`desktop/server/src/hermes/location.rs` y los cuatro puentes de `desktop/server/python`):
+- usa ese Python cuando la instalación trae `hermes_bootstrap.py` (si no, el entorno virtual de antes; `AGORA_HERMES_PYTHON` lo fuerza);
+- importa `hermes_bootstrap` antes que nada de Hermes, con la raíz de datos dueña de la instalación (`pm.environments.owning_home_root`) para que elija las dependencias ya instaladas;
+- fija `HERMES_DISABLE_LAZY_INSTALLS=1`, el interruptor del propio Hermes para que su arranque no sincronice dependencias, no termine una actualización ni relance el proceso (solo corta `prepare_launch`);
+- antes de cargar el arranque comprueba, en solo lectura, que no haya una actualización, reparación o instalación de plugin a medias (`.update-incomplete`, `.lazy-refresh-incomplete`, el diario ZIP, el marcador de pull interrumpido, `.repair-incomplete`, `publication.json`) y que exista el entorno de dependencias registrado. Si falta algo, el arranque de Hermes lo repararía (instalando paquetes, devolviendo archivos o reescribiendo `config.yaml`), así que AgoraOne se niega y dice «Hermes tiene una actualización o reparación sin terminar: ábrelo una vez o ejecuta `hermes update`» (decisión del usuario, 15/11/2026);
+- las únicas escrituras que quedan son las del propio Hermes para no borrar un entorno en uso: `installs/<clave>/.install.lock` y los arrendamientos `environments/<generación>/.leases` (aceptadas por el usuario el 15/11/2026).
+
+Comprobado: las firmas de las 47 funciones y clases de Hermes que usan los puentes (solo cambios compatibles: parámetros opcionales nuevos), y las pruebas de los puentes contra el Hermes instalado con un modelo falso (chat con herramientas y confirmación, tareas y kanban, MCP a mano).
 
 Usuario confirma arranque mediante Hermes Desktop y proveedor privado OpenAI compatible, modelo elegido por el usuario. Configuración inspeccionada selectivamente: proveedor y modelo disponibles. AgoraOne selecciona su modelo sin cambiar el predeterminado de Hermes. No se imprimieron valores de claves ni contenidos completos de archivos secretos.
 
