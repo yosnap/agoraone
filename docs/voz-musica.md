@@ -20,6 +20,24 @@ para pedir algo.
 - Las órdenes salen de una lista cerrada, y el texto de «pon…» se pasa como argumento de AppleScript, nunca
   escrito dentro del guion.
 
+## Tu biblioteca y YouTube
+
+- En Ajustes › Voz › «Tu música» se eligen las carpetas de música, con el selector de macOS o escribiendo la
+  ruta.
+- AgoraOne las indexa por artista, álbum y título, a partir de la estructura `Artista/Álbum/01 Título.mp3` o del
+  nombre «Artista - Título». Admite MP3, M4A, FLAC, WAV, AAC y OGG, hasta 20.000 archivos y 6 niveles de
+  carpetas, y solo las lee.
+- Las reproduce su propio reproductor, el mismo para toda la app, así que sigue sonando aunque cambies de
+  sección. Cada canción se pide con la cabecera anti-CSRF y suena desde memoria.
+- Solo se sirven archivos que están dentro de esas carpetas.
+- «Pon…» decide dónde buscar así:
+  - si no nombras dónde, busca primero en tu biblioteca, después en el reproductor que esté abierto y por
+    último en Música;
+  - «en Spotify», «en Música» o «en mi biblioteca» lo fuerzan;
+  - «en YouTube» abre la búsqueda en el navegador, sin incrustar ni descargar nada (en Windows, con
+    `os.startfile`, nunca a través de `cmd`).
+- En la tarjeta de música, el desplegable elige la fuente.
+
 ## Órdenes rápidas, sin modelo
 
 Si todo el mensaje a Watson, escrito o dicho, es una de estas órdenes, la hace al momento y la anota en el chat
@@ -76,9 +94,10 @@ nunca.
 | `GET /music/status`, `POST /music/control`, `POST /music/play` | lo que suena, los controles y «pon…» |
 | `GET /apps`, `PUT /apps/allowed`, `POST /apps/open` | apps instaladas, las permitidas y abrir una (409 si hace falta confirmar) |
 | `GET/PUT /wake/settings` | «Oye Watson» encendido o apagado |
+| `GET /music/library`, `PUT /music/library/folders`, `POST /music/library/choose`, `GET /music/library/{id}/file` | biblioteca: carpetas, búsqueda y archivo |
+| `POST /music/youtube` | abre una búsqueda de YouTube en el navegador |
 
 ## Pendiente
 
 - Probar ⌃⌥W y «Oye Watson» en la app firmada (permisos de micrófono y de reconocimiento de voz).
-- La biblioteca local y YouTube.
 - Probar Música y Spotify de verdad con la app firmada, por el permiso de Automatización.

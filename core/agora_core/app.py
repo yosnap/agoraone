@@ -196,6 +196,6 @@ def create_app(
     app.include_router(jobs_router(settings))
     app.include_router(voice_router(settings))
     app.include_router(meetings_router(settings, recorder, meeting_worker))
-    app.include_router(music_router())
+    app.include_router(music_router(settings))
     app.include_router(apps_router(settings))
     return app
