@@ -22,6 +22,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   assert.equal(await page.locator('.page select').count(), 0, 'ningún select nativo');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'sin desplazamiento horizontal');
   if (shots) await page.screenshot({ path: `${shots}/jobs-${viewport.width}.png`, fullPage: true });
+  await page.goto(appUrl(5173, 'ajustes'));
+  const jobsCard = page.locator('article', { has: page.getByRole('heading', { name: 'Trabajos', exact: true }) });
+  await jobsCard.getByText('Bot central').waitFor({ timeout: 60_000 });
   assert.deepEqual(writes, [], 'no se escribió nada');
   assert.deepEqual(errors, [], 'sin errores JS');
   await page.close();
@@ -44,12 +47,22 @@ const sample = { schema: 1, readAt: iso(now), profiles: {
       totals: { '24h': period(1, 300, 0, tokens(0, 0, null)), '7d': period(1, 300, 0, tokens(0, 0, null)), '30d': period(1, 300, 0, tokens(0, 0, null)) } },
     { id: 't2', board: 'default', title: 'Tarjeta hecha', assignee: 'beta', profileId: 'beta', status: 'done', priority: 0, createdBy: 'user', createdAt: iso(now - 86_400_000 * 2),
       startedAt: null, completedAt: iso(now - 86_400_000), runs: [], seconds: 600, tokens: tokens(3000, 400, 0.25),
-      totals: { '24h': period(0, 0, 0, tokens(0, 0, null)), '7d': period(0, 0, 0, tokens(0, 0, null)), '30d': period(0, 0, 0, tokens(0, 0, null)) } }] } };
+      totals: { '24h': period(0, 0, 0, tokens(0, 0, null)), '7d': period(0, 0, 0, tokens(0, 0, null)), '30d': period(0, 0, 0, tokens(0, 0, null)) },
+      events: [{ kind: 'completed', at: iso(now - 86_400_000) }, { kind: 'created', at: iso(now - 86_400_000 * 2) }] }] }, dispatcher: true };
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [], changed = [];
 page.on('pageerror', e => errors.push(e.message));
 await page.route('**/api/core/alerts/due', route => route.fulfill({ json: { notifications: [] } }));
 await page.route('**/api/hermes/work', route => route.fulfill({ json: sample }));
+// Two sample profiles: the root one (the central bot) and another; a commission is created only on its button.
+const created = [];
+await page.route('**/api/hermes/catalog', async route => {
+  const real = await (await route.fetch()).json();
+  const base = real.profiles[0];
+  return route.fulfill({ json: { ...real, profiles: [{ ...base, id: 'alfa', name: 'default', label: 'Hermes principal' }, { ...base, id: 'beta', name: 'pro', label: 'Pro' }] } });
+});
+await page.route('**/api/core/jobs/settings', route => route.fulfill({ json: { central: 'default' } }));
+await page.route(/\/api\/hermes\/profiles\/[^/]+\/cards$/, route => { created.push({ url: new URL(route.request().url()).pathname, body: route.request().postDataJSON() }); return route.fulfill({ status: 201, json: { card: 't9' } }); });
 await page.route(/\/api\/hermes\/profiles\/[^/]+\/cards\/[^/]+$/, route => { changed.push(route.request().postDataJSON()); return route.fulfill({ json: { card: 't1' } }); });
 await page.goto(appUrl(5173, 'trabajos'));
 const jobs = page.locator('section.jobs');
@@ -64,6 +77,20 @@ assert.ok(await jobs.locator('.work-table').getByText('sin medir').count(), 'una
 assert.equal(await jobs.locator('.work-column[aria-label="En curso"] .work-card').count(), 1);
 assert.equal(await jobs.locator('.work-column[aria-label="Hechas"] .work-card').count(), 1);
 await jobs.getByText('encargo de AgoraOne').waitFor();
+// A card's history, from Hermes' events.
+await jobs.getByText('Historia (2)').click();
+await jobs.locator('.card-history').getByText('Completada').waitFor();
+// The commission: the central bot comes chosen; another profile can be picked; nothing is sent until «Crear encargo».
+await jobs.getByRole('button', { name: 'Nuevo encargo' }).click();
+const form = page.getByRole('form', { name: 'Nuevo encargo' });
+await form.getByText('Hermes principal (bot central)').waitFor();
+await form.getByLabel('Qué quieres que haga').fill('Revisa las facturas de prueba');
+await form.locator('.modern-select button').first().click();
+await page.getByRole('option', { name: 'Pro' }).click();
+assert.equal(created.length, 0, 'abrir y rellenar no crea nada');
+await form.getByRole('button', { name: 'Crear encargo' }).click();
+await jobs.getByText(/^Encargo «Revisa las facturas de prueba» creado para Pro\./).waitFor();
+assert.deepEqual(created, [{ url: '/api/hermes/profiles/beta/cards', body: { title: 'Revisa las facturas de prueba' } }]);
 if (shots) await page.screenshot({ path: `${shots}/jobs-sample.png`, fullPage: true });
 assert.equal(changed.length, 0, 'mirar no cambia nada');
 const running = jobs.locator('.work-card', { hasText: 'Tarjeta en curso' });

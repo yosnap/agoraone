@@ -14,7 +14,7 @@ use serde_json::{Map, Value, json};
 use super::activity_log::token;
 use super::catalog::ProfileTarget;
 use super::database::{HermesDb, with_hermes_database};
-use super::safe_read::redact;
+use super::safe_read::{read_metadata, redact};
 use crate::js::{iso, iso_ms, number, parse_date_ms};
 
 const RUNS_SHOWN: usize = 20;
@@ -25,6 +25,7 @@ const PAIR_WINDOW_S: f64 = 600.0;
 const CARDS: i64 = 300;
 const PER_TASK: i64 = 2000;
 const CONTINUATIONS: usize = 5;
+const EVENTS_SHOWN: usize = 30;
 
 #[derive(Clone, Default)]
 struct Usage {
@@ -281,7 +282,7 @@ fn boards(root: &Path) -> Vec<(String, PathBuf)> {
     found
 }
 
-type BoardRows = (Vec<Map<String, Value>>, Vec<Map<String, Value>>);
+type BoardRows = (Vec<Map<String, Value>>, Vec<Map<String, Value>>, Vec<Map<String, Value>>);
 
 fn board_rows(root: &Path, file: &Path, since: f64) -> Option<BoardRows> {
     with_hermes_database(root, file, |db| {
@@ -304,7 +305,14 @@ fn board_rows(root: &Path, file: &Path, since: f64) -> Option<BoardRows> {
         } else {
             vec![]
         };
-        Ok(Some((tasks, runs)))
+        // A card's history: what happened and when, never the event's payload.
+        let e = db.columns("task_events");
+        let events = if ["task_id", "kind", "created_at"].iter().all(|k| e.contains(*k)) {
+            db.all("SELECT task_id, kind, created_at FROM task_events WHERE created_at > ? ORDER BY id DESC LIMIT 5000", [since])?
+        } else {
+            vec![]
+        };
+        Ok(Some((tasks, runs, events)))
     })
     .ok()
     .flatten()
@@ -319,7 +327,7 @@ fn board(root: &Path, profiles: &[ProfileTarget], now_s: f64) -> Value {
     }
     // Worker sessions of each profile that ran a card, to pair with each run by its start.
     let mut workers: HashMap<String, Vec<Session>> = HashMap::new();
-    for (_, (_, runs)) in &read {
+    for (_, (_, runs, _)) in &read {
         for run in runs {
             if let Some(name) = token(run.get("profile")) {
                 if workers.contains_key(&name) {
@@ -343,7 +351,16 @@ fn board(root: &Path, profiles: &[ProfileTarget], now_s: f64) -> Value {
         }
     }
     let mut cards: Vec<(f64, Value)> = Vec::new();
-    for (slug, (tasks, runs)) in read {
+    for (slug, (tasks, runs, events)) in read {
+        let mut events_by_task: HashMap<String, Vec<Value>> = HashMap::new();
+        for event in events {
+            if let (Some(id), Some(kind)) = (event.get("task_id").and_then(Value::as_str), token(event.get("kind"))) {
+                let list = events_by_task.entry(id.to_string()).or_default();
+                if list.len() < EVENTS_SHOWN {
+                    list.push(json!({ "kind": kind, "at": iso(event.get("created_at")) }));
+                }
+            }
+        }
         let mut runs_by_task: HashMap<String, Vec<Map<String, Value>>> = HashMap::new();
         for run in runs {
             if let Some(id) = run.get("task_id").and_then(Value::as_str) {
@@ -414,12 +431,19 @@ fn board(root: &Path, profiles: &[ProfileTarget], now_s: f64) -> Value {
                     "seconds": total,
                     "tokens": if paired { usage.json() } else { Value::Null },
                     "totals": totals(&measured, now_s),
+                    "events": events_by_task.remove(id).unwrap_or_default(),
                 }),
             ));
         }
     }
     cards.sort_by(|a, b| b.0.total_cmp(&a.0));
     json!({ "cards": cards.into_iter().map(|(_, card)| card).collect::<Vec<_>>() })
+}
+
+/// Whether the gateway picks up new kanban cards: on unless the root config says `kanban.dispatch_in_gateway: false`.
+fn dispatcher_enabled(root: &Path) -> bool {
+    let config = read_metadata(root, &root.join("config.yaml")).unwrap_or_default();
+    config.get("kanban").and_then(|kanban| kanban.get("dispatch_in_gateway")).and_then(Value::as_bool).unwrap_or(true)
 }
 
 /// The work of every profile and of every kanban board, read-only.
@@ -429,5 +453,5 @@ pub fn read_work(root: &Path, profiles: &[ProfileTarget], now_ms: i64) -> Value 
     for profile in profiles {
         by_profile.insert(profile.id.clone(), json!({ "name": profile.name, "tasks": task_list(root, profile, now_s) }));
     }
-    json!({ "schema": 1, "readAt": iso_ms(now_ms), "profiles": by_profile, "board": board(root, profiles, now_s) })
+    json!({ "schema": 1, "readAt": iso_ms(now_ms), "profiles": by_profile, "board": board(root, profiles, now_s), "dispatcher": dispatcher_enabled(root) })
 }

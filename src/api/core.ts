@@ -268,6 +268,11 @@ export type DueAlert = { key: string; title: string; body: string; kind: AlertIt
 export const getDueAlerts = () => core<{ notifications: DueAlert[] }>('/alerts/due');
 export const ackAlerts = (keys: string[]) => core<{ ok: true }>('/alerts/ack', { keys });
 
+/** Trabajos: the central bot (a Hermes profile name; «default» is the root profile), default recipient of a commission. */
+export type JobsSettings = { central: string };
+export const getJobsSettings = () => core<JobsSettings>('/jobs/settings');
+export const putJobsSettings = (changes: JobsSettings) => core<JobsSettings>('/jobs/settings', changes, 'PUT');
+
 /** Replying: a prefilled reply, a body drafted by Watson (normal mail only), the sealed preview and the send. */
 export type MailDraft = { accountId: number; to: string; cc: string; subject: string; body: string; replyTo: number | null };
 export type MailPreview = { draft: { accountId: number; to: string[]; cc: string[]; subject: string; body: string; replyTo: number | null };
