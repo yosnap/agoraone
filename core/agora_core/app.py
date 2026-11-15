@@ -28,6 +28,7 @@ from .entity_worker import ExtractHealth, entity_worker
 from .engines import AnthropicApiEngine, ClaudeCodeEngine
 from .routes_index import EmbedHealth, embed_worker, index_router
 from .routes_mail import mail_router, mail_worker
+from .routes_mail_send import mail_send_router
 from .mail_summarizer import SummaryHealth, summary_worker
 from .routes_inbox import inbox_router
 from .routes_fiscal import fiscal_router
@@ -58,7 +59,7 @@ _DEFAULT = object()
 
 def create_app(
     settings: Settings, store: KeyStore | None = None, scheduler: bool = True, embedder: Embedder | None | object = _DEFAULT,
-    secrets=None, engines=default_engines, calendar=None, contacts=None, call_reader=None,
+    secrets=None, engines=default_engines, calendar=None, contacts=None, call_reader=None, drafter=None,
 ) -> FastAPI:
     """`scheduler` starts the background work (daily backups, embeddings); tests turn it off. `embedder`
     defaults to the local ollama; None disables search by meaning."""
@@ -167,6 +168,7 @@ def create_app(
     app.include_router(summary_router(settings, time.time()))
     app.include_router(assistant_router(settings, embedder, cache, secrets, engines))
     app.include_router(mail_router(settings, secrets))
+    app.include_router(mail_send_router(settings, secrets, drafter))
     app.include_router(inbox_router(settings, summary_health))
     app.include_router(fiscal_router(settings, secrets))
     app.include_router(central_router(settings, central_health))

@@ -267,3 +267,12 @@ export const openFullDiskAccess = () => core<{ ok: true }>('/alerts/full-disk-ac
 export type DueAlert = { key: string; title: string; body: string; kind: AlertItem['kind'] };
 export const getDueAlerts = () => core<{ notifications: DueAlert[] }>('/alerts/due');
 export const ackAlerts = (keys: string[]) => core<{ ok: true }>('/alerts/ack', { keys });
+
+/** Replying: a prefilled reply, a body drafted by Watson (normal mail only), the sealed preview and the send. */
+export type MailDraft = { accountId: number; to: string; cc: string; subject: string; body: string; replyTo: number | null };
+export type MailPreview = { draft: { accountId: number; to: string[]; cc: string[]; subject: string; body: string; replyTo: number | null };
+  from: string; digest: string; attachments: string[] };
+export const getReplyDraft = (messageId: number) => core<MailDraft>(`/mail/messages/${messageId}/reply`);
+export const composeReply = (messageId: number, instructions: string) => core<{ body: string }>(`/mail/messages/${messageId}/compose`, { instructions });
+export const previewMail = (draft: MailDraft) => core<MailPreview>('/mail/drafts/preview', draft);
+export const sendMail = (draft: MailDraft, digest: string) => core<{ sent: boolean; savedToSent: boolean; refused: string[] }>('/mail/send', { draft, digest });

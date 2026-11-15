@@ -1,6 +1,13 @@
 # Estado de continuidad — 14/11/2026
 
 ## Resultado
+Versión 1.1.0-alpha.11 · Responder y enviar correos tras confirmar (fase 8).
+- **Bandeja › «Responder…»:** borrador con la misma cuenta, el remitente, «Re:» y el original citado; «Redactar con Watson» con indicaciones (solo correos normales; el correo va como dato entre marcas). Vista previa exacta y «Enviar»: el servidor solo envía el borrador sellado de esa vista previa y cada sello una sola vez.
+- **Envío:** SMTP de la cuenta, siempre cifrado (465 o STARTTLS con saludo de nuevo), contraseña de aplicación o XOAUTH2 de Microsoft; copia en «Enviados» por IMAP salvo Gmail y Outlook; destinatarios rechazados avisados; todo en el registro de acciones.
+- **Revisión** (plans/reports/code-review-261115-0300-enviar-correo.md) aplicada: A1, M1–M4, B1–B6. Sin inyección de cabeceras posible (lo comprobó la revisión).
+- **Verificado:** 215 pruebas del núcleo, 14 de la interfaz y build. **Pendiente:** un envío real a una dirección del usuario (solo cuando lo pida), confirmar si iCloud guarda solo lo enviado (si es así, la copia por IMAP lo duplica), adjuntos y responder al `Reply-To`.
+- **Siguiente:** fase 9, cierre de la 1.1 (permisos de la app, documentación y paquete).
+
 Versión 1.1.0-alpha.10 · Llamadas y avisos proactivos (fase 7).
 - **Avisos:** llamadas perdidas sin devolver (tres días, con el nombre de Contactos), reuniones 15 minutos antes, plazos de correos de hoy o mañana y resumen de la mañana (8:30 por defecto, hasta mediodía). Notificaciones de macOS desde AgoraOne (tauri-plugin-notification) o, con la ventana delante, dentro de la app; cada aviso se confirma solo cuando se ha mostrado y nunca sale en horas de silencio (22:00–8:00). Nada va a Telegram.
 - **Llamadas:** historial de CallHistory en solo lectura sobre una copia (necesita Acceso total al disco; errores por causa: permiso, sin historial, ilegible). Por defecto «solo en este Mac»: no llegan a Watson salvo que se marquen normales; lo privado sale sin nombres ni títulos en los avisos.
@@ -8,7 +15,6 @@ Versión 1.1.0-alpha.10 · Llamadas y avisos proactivos (fase 7).
 - **App firmada:** NSContactsUsageDescription y derecho de Contactos; el empaquetado comprueba que Contacts carga (migración 0019).
 - **Revisión** (plans/reports/code-review-261115-0230-avisos.md) aplicada: A1, M1–M5, B1, B3–B6. Las llamadas rechazadas siguen contando como perdidas (no se distinguen sin ver la base real).
 - **Verificado:** 210 pruebas del núcleo, 14 de la interfaz, 99 de Rust y build. **Pendiente:** probar llamadas, Contactos y notificaciones reales en la app empaquetada.
-- **Siguiente:** fase 8, enviar y responder correos tras confirmar.
 
 Versión 1.1.0-alpha.9 · Agenda con los calendarios de macOS (fase 6).
 - **Agenda** (sección nueva): hoy, mañana o la semana con los calendarios de macOS (EventKit por PyObjC) y los recordatorios pendientes, con los solapes marcados. «Nuevo evento o recordatorio» y «Crear el evento» de la Bandeja crean solo al pulsar; si choca con otros eventos, los enseña y pide un segundo sí. Nunca se borra nada.
