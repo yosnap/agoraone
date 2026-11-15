@@ -22,7 +22,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   assert.equal(await page.locator('.rail-pending', { hasText: 'Bandeja' }).count(), 0, 'la Bandeja ya no está marcada como pendiente');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'sin desplazamiento horizontal');
   if (shots) await page.screenshot({ path: `${shots}/inbox-${viewport.width}.png` });
-  await page.goto(appUrl(5173, 'ajustes'));
+  await page.goto(appUrl(5173, 'ajustes&pestana=correo'));
   const rules = page.locator('article', { has: page.getByRole('heading', { name: 'Reglas del correo' }) });
   await rules.waitFor({ timeout: 60_000 });
   await rules.getByRole('button', { name: 'Añadir regla' }).click();
@@ -32,10 +32,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   assert.equal(await page.getByRole('listbox').count(), 0, 'el desplegable se cierra al elegir');
   assert.equal(await page.locator('.page select').count(), 0, 'ningún select nativo');
   if (shots) await rules.screenshot({ path: `${shots}/mail-rules-${viewport.width}.png` });
-  const fiscalCard = page.locator('article', { has: page.getByRole('heading', { name: 'Carpetas fiscales' }) });
-  await fiscalCard.waitFor();
-  console.log(`${viewport.width}px · carpetas fiscales: ${await fiscalCard.locator('.mail-accounts > li code').count()}`);
   await rules.getByRole('button', { name: 'Cancelar' }).click();
+  // The fiscal folders live in their own tab of Settings.
+  await page.getByRole('tab', { name: 'Fiscal' }).click();
+  const fiscalCard = page.locator('article', { has: page.getByRole('heading', { name: 'Carpetas fiscales' }) });
+  await fiscalCard.locator('.mail-accounts').waitFor();
+  console.log(`${viewport.width}px · carpetas fiscales: ${await fiscalCard.locator('.mail-accounts > li:not(.muted) .compact-name').count()}`);
   assert.deepEqual(writes, [], 'no se escribió nada');
   assert.deepEqual(errors, [], 'sin errores JS');
   await page.close();

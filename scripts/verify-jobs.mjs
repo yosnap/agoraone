@@ -22,9 +22,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   assert.equal(await page.locator('.page select').count(), 0, 'ningún select nativo');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'sin desplazamiento horizontal');
   if (shots) await page.screenshot({ path: `${shots}/jobs-${viewport.width}.png`, fullPage: true });
-  await page.goto(appUrl(5173, 'ajustes'));
+  await page.goto(appUrl(5173, 'ajustes&pestana=trabajos'));
   const jobsCard = page.locator('article', { has: page.getByRole('heading', { name: 'Trabajos', exact: true }) });
-  await jobsCard.getByText('Bot central').waitFor({ timeout: 60_000 });
+  await jobsCard.locator('label.field', { hasText: 'Bot central' }).waitFor({ timeout: 60_000 });
   assert.deepEqual(writes, [], 'no se escribió nada');
   assert.deepEqual(errors, [], 'sin errores JS');
   await page.close();
