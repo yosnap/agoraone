@@ -52,6 +52,6 @@ animaciones de conversación o trabajo para no sugerir actividad real de Hermes.
 
 ## Añadir o cambiar recursos
 Optimizar modelos antes de copiarlos, sin añadir dependencias al proyecto:
-`npx @gltf-transform/cli@4.5.1 optimize in.gltf out.glb --compress meshopt
+`pnpm dlx @gltf-transform/cli@4.5.1 optimize in.gltf out.glb --compress meshopt
 --texture-compress webp --texture-size 1024 --simplify-ratio 0.02 --simplify-error 0.02`.
 No usar compresión Draco: su decodificador se descargaría de un CDN.

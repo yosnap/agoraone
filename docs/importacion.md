@@ -42,7 +42,7 @@ El backend valida propietario, formato y archivo autorizado antes de ambas opera
 pypdf recibe los bytes en memoria y rechaza los PDF cifrados o de más de 100 páginas. Para DOCX se valida antes el ZIP: hasta 1000 entradas, 16 MiB descomprimidos declarados y reales, sin entradas cifradas ni nombres repetidos; después se lee `word/document.xml` con el analizador de python-docx, que nunca resuelve entidades. No se ejecutan macros, scripts ni enlaces del documento, no hay OCR y los binarios no se guardan en disco (`core/agora_core/extract.py`).
 
 ## Pruebas
-`npm test` cubre importación, persistencia, permisos 0600/0700, propietarios, validación, cuota, CSRF y rechazo de lectura/chat ajenos. Las pruebas de API usan almacenamiento temporal.
+`pnpm test` cubre importación, persistencia, permisos 0600/0700, propietarios, validación, cuota, CSRF y rechazo de lectura/chat ajenos. Las pruebas de API usan almacenamiento temporal.
 
 Con build y backend arrancados:
 

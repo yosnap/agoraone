@@ -2,6 +2,7 @@
 
 import os
 import re
+from contextlib import contextmanager
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -18,6 +19,18 @@ class MigrationError(RuntimeError):
 
 def now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@contextmanager
+def transaction(connection: sqlite3.Connection):
+    """One write transaction (connections run in autocommit, so `with connection` alone is not atomic)."""
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        yield connection
+    except BaseException:
+        connection.execute("ROLLBACK")
+        raise
+    connection.execute("COMMIT")
 
 
 def private_dir(path: Path) -> Path:

@@ -42,6 +42,20 @@ def pdf_text(data: bytes) -> str:
     return content
 
 
+def _invoice_text(data: bytes) -> str:
+    _check(data.startswith(b"%PDF-"))
+    from pypdf import PdfReader
+
+    reader = PdfReader(io.BytesIO(data))
+    _check(not reader.is_encrypted)
+    content = ""
+    for page in reader.pages[:10]:  # the figures of an invoice are on its first pages
+        content += (page.extract_text() or "") + "\n"
+        if len(content) > MAX_TEXT:
+            break
+    return content
+
+
 def validate_docx(data: bytes) -> None:
     """The ZIP limits, counting what is really unpacked, not what the entries declare."""
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
@@ -74,6 +88,13 @@ def docx_text(data: bytes) -> str:
 
 
 def extract(kind: str, data: bytes) -> str:
+    if kind == "invoice":
+        # An invoice for the fiscal register: control characters some generators leave in the text are dropped
+        # (the library refuses them), and only what fits is kept.
+        _check(0 < len(data) <= MAX_INPUT)
+        content = CONTROLS.sub(" ", _invoice_text(data)).strip()
+        _check(bool(content))
+        return content[:MAX_TEXT]
     _check(0 < len(data) <= MAX_INPUT)
     content = (pdf_text(data) if kind == "pdf" else docx_text(data)).strip()
     _check(bool(content) and len(content.encode()) <= MAX_TEXT and not CONTROLS.search(content))
@@ -82,7 +103,7 @@ def extract(kind: str, data: bytes) -> str:
 
 def main() -> int:
     kind = sys.argv[1] if len(sys.argv) > 1 else ""
-    if kind not in ("pdf", "docx"):
+    if kind not in ("pdf", "docx", "invoice"):
         return 1
     data = sys.stdin.buffer.read(MAX_INPUT + 1)
     try:

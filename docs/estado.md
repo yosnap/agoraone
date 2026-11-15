@@ -1,6 +1,148 @@
-# Estado de continuidad — 14/11/2026
+# Estado de continuidad — 15/11/2026
 
 ## Resultado
+Versión 1.2.0 · Publicada el 15/11/2026, con toda la 1.1 (correo, Bandeja, fiscal, agenda, llamadas y avisos) y la 1.2 (Trabajos, encargos, proyectos de clientes, recibos por el bot de Hermes y Ajustes por pestañas). La 1.1 no se publicó por separado.
+- **Siguiente:** que Watson cree reglas de correo con propuesta y confirmación; después, el backlog de mejoras (plans/backlog-mejoras.md) y Reuniones (1.3).
+
+Versión 1.2.0-alpha.5 · Proyectos de clientes con su consumo (fase 4 de la 1.2).
+- **Trabajos › Proyectos de clientes:** los proyectos de Central por cliente (por defecto activos y en mantenimiento) con los tokens de los agentes de código (CostGuard, sin caché) en el periodo y los de Hermes en 30 días (con caché). Se asocian solo por nombre igual (sin tildes, mayúsculas ni signos) y si ningún otro proyecto se llama así; las carpetas sin letras latinas o el cubo sin nombre nunca se asignan; lo que no coincide sale aparte. Núcleo `GET /jobs/projects` (`work_projects.py`).
+- **Watson:** `consultar_trabajos` (solo Claude; en `PRIVATE_TOOLS`).
+- **Revisión** (plans/reports/code-review-261115-1000-proyectos.md) aplicada: A1, M1–M3, B1–B5.
+- **Verificado:** 220 pruebas del núcleo, 17 de la interfaz, build y verify-jobs. En la app del usuario CostGuard no está configurado (columna de agentes vacía hasta conectarlo).
+- **Siguiente:** fase 5, cierre de la 1.2 (guía `docs/trabajos.md`, verificaciones, paquete).
+
+Versión 1.2.0-alpha.4 · Ajustes por pestañas y recibos en Fiscal, también por el bot de Hermes.
+- **Ajustes:** una pestaña por apartado (General, Asistente, Correo, Agenda y avisos, Fiscal, Trabajos, Privacidad y copias), con lo que va junto en la misma; `?pestana=` abre una y se recuerda la última.
+- **Recibos en Fiscal** (antes en la Bandeja): el QR «Subir desde el móvil» y los recibos pendientes. **Bot de Hermes:** «Prepararlo» crea, tras pulsar «Crear la skill», `agoraone/guardar-facturas` en el perfil elegido; el bot guarda lo que le envíes en «Recibos por revisar» de la carpeta fiscal (sin leerlo, nombre oculto y luego «recibo fecha hora») y AgoraOne lo trae como recibo pendiente (migración 0020). Al archivar, el original sale de la carpeta; al descartar o si repite uno archivado, pasa a «Descartados»; reenviado tras descartarlo, vuelve.
+- **Revisión** (plans/reports/code-review-261115-0915-recibos-bot.md) aplicada: A1 (lectura fuera de bloqueos, una vez por archivo y con tope), A2 (descartados y repetidos apartados, los más nuevos primero), M1 (10 s de reposo), M2 (la skill no lee ni renombra por el contenido), M3–M5 y bajas.
+- **Verificado:** 34 pruebas de recibos y fiscal (218 del núcleo), 16 de la interfaz, build, verify-fiscal, verify-inbox, verify-mail-settings (pestañas), verify-agenda y verify-jobs. Pendiente: probar con el bot real (necesita permiso de escritura de archivos en su perfil).
+- **Siguiente:** fase 4 de Trabajos (proyectos de clientes con su consumo; Watson `consultar_trabajos`).
+
+Versión 1.2.0-alpha.3 · Encargos (fase 3 de la 1.2).
+- **Trabajos › «Nuevo encargo»:** una tarjeta del kanban de Hermes para el bot central (por defecto el perfil raíz, elegible en Ajustes › Trabajos; núcleo `GET/PUT /jobs/settings`) o para otro perfil, creada con las funciones de Hermes solo al pulsar «Crear encargo». Avisa si el gateway está parado o si la config raíz desactiva el despachador (`kanban.dispatch_in_gateway`, leído como Hermes). Un bot central que ya no existe obliga a elegir.
+- **Historia de cada tarjeta:** los eventos de Hermes (creada, recogida, bloqueada, completada…) sin su contenido y sin los latidos de cada minuto.
+- **Revisión** (plans/reports/code-review-261115-0830-encargos.md) aplicada: A1, M1–M3, B2, B3.
+- **Verificado:** 106 pruebas de Rust, 216 del núcleo, 16 de la interfaz, build, verify-jobs (con encargo de ejemplo) y verify-profile-tasks.
+- **Siguiente:** fase 4, proyectos de clientes de Central con su consumo, y Watson con `consultar_trabajos`.
+
+Versión 1.2.0-alpha.2 · Trabajos (fases 1 y 2 de la 1.2) y compatibilidad con la Hermes del 14/11/2026.
+- **Trabajos** (sección nueva): las tareas programadas de todos los perfiles con sus últimas ejecuciones (duración, tokens y coste estimado reales de la sesión que abrió cada una) y el kanban de todos los tableros en columnas, con totales de 24 h, 7 y 30 días, filtro por perfil, modo discreto y las mismas acciones que la ficha del perfil (solo en el tablero `default`). Lector `GET /api/hermes/work` (`desktop/server/src/hermes/work.rs`), solo metadatos.
+- **Hermes nueva** (actualizada por el usuario el 15/11): AgoraOne usa su Python propio y su arranque con `HERMES_DISABLE_LAZY_INSTALLS=1`; con una actualización o reparación a medias se niega y dice cómo terminarla (decisión del usuario). Únicas escrituras aceptadas en Hermes: su bloqueo y sus arrendamientos. Ver docs/integracion-hermes.md.
+- **Ajustes:** calendarios ocultos plegados; el nombre del asistente sigue al personaje elegido.
+- **Revisiones** aplicadas: lectura de trabajos (plans/reports/code-review-261115-0730-lectura-trabajos.md), compatibilidad (…-0800-hermes-noviembre.md) y pantalla (…-0815-pantalla-trabajos.md).
+- **Verificado:** 105 pruebas de Rust (puentes contra la Hermes real con modelo falso), 215 del núcleo, 16 de la interfaz, build, verify-jobs, verify-profile-tasks y verify-browser; lectura real: 24 ejecuciones en 30 días, todas con tokens.
+- **Siguiente:** fase 3, encargos al bot central (perfil raíz) como tarjetas del kanban. En paralelo, backlog de mejoras a partir de proyectos similares (plans/backlog-mejoras.md).
+
+Versión 1.1.0-alpha.12 · Cierre de la 1.1 sin empaquetar (fase 9, primera parte).
+- **Documentación:** guías nuevas `docs/correo-bandeja.md`, `docs/fiscal.md` y `docs/agenda-avisos.md` (con los permisos de macOS y cómo dar el Acceso total al disco); arquitectura, README, arranque y app de escritorio al día.
+- **Verificaciones de navegador nuevas:** `verify-agenda.mjs` (solapes con segundo sí, aviso dentro de la app confirmado una vez, Ajustes de Calendarios y Avisos), `verify-mail-reply.mjs` (respuesta sellada, correo privado sin Watson, nota del proyecto en la carpeta del cliente) y `verify-fiscal.mjs` (solo lectura).
+- **Empaquetado:** comprueba todos los textos de permisos del Info.plist (Calendarios, Recordatorios y Contactos), no solo el de Calendarios.
+- **Verificado:** las tres nuevas, verify-inbox, verify-mail-settings y verify-browser (falló una vez recién arrancado el entorno, mientras Vite preparaba la escena; tres pasadas seguidas después), 14 pruebas de la interfaz, build y lockfiles.
+- **Siguiente:** que el usuario pruebe en desarrollo; después empaquetar y probar en la app los permisos reales (calendario, llamadas, Contactos, notificaciones) y las migraciones 0017–0019, notarizar y publicar la 1.1.0 con su permiso.
+
+Versión 1.1.0-alpha.11 · Responder y enviar correos tras confirmar (fase 8).
+- **Bandeja › «Responder…»:** borrador con la misma cuenta, el remitente, «Re:» y el original citado; «Redactar con Watson» con indicaciones (solo correos normales; el correo va como dato entre marcas). Vista previa exacta y «Enviar»: el servidor solo envía el borrador sellado de esa vista previa y cada sello una sola vez.
+- **Envío:** SMTP de la cuenta, siempre cifrado (465 o STARTTLS con saludo de nuevo), contraseña de aplicación o XOAUTH2 de Microsoft; copia en «Enviados» por IMAP salvo Gmail y Outlook; destinatarios rechazados avisados; todo en el registro de acciones.
+- **Revisión** (plans/reports/code-review-261115-0300-enviar-correo.md) aplicada: A1, M1–M4, B1–B6. Sin inyección de cabeceras posible (lo comprobó la revisión).
+- **Verificado:** 215 pruebas del núcleo, 14 de la interfaz y build. **Pendiente:** un envío real a una dirección del usuario (solo cuando lo pida), confirmar si iCloud guarda solo lo enviado (si es así, la copia por IMAP lo duplica), adjuntos y responder al `Reply-To`.
+- **Siguiente:** fase 9, cierre de la 1.1 (permisos de la app, documentación y paquete).
+
+Versión 1.1.0-alpha.10 · Llamadas y avisos proactivos (fase 7).
+- **Avisos:** llamadas perdidas sin devolver (tres días, con el nombre de Contactos), reuniones 15 minutos antes, plazos de correos de hoy o mañana y resumen de la mañana (8:30 por defecto, hasta mediodía). Notificaciones de macOS desde AgoraOne (tauri-plugin-notification) o, con la ventana delante, dentro de la app; cada aviso se confirma solo cuando se ha mostrado y nunca sale en horas de silencio (22:00–8:00). Nada va a Telegram.
+- **Llamadas:** historial de CallHistory en solo lectura sobre una copia (necesita Acceso total al disco; errores por causa: permiso, sin historial, ilegible). Por defecto «solo en este Mac»: no llegan a Watson salvo que se marquen normales; lo privado sale sin nombres ni títulos en los avisos.
+- **Ajustes › Avisos:** interruptores, horas, confidencialidad de las llamadas y permisos de Contactos y Acceso total al disco. La Agenda muestra arriba el resumen y los avisos de ahora. Watson: `resumen_del_dia`.
+- **App firmada:** NSContactsUsageDescription y derecho de Contactos; el empaquetado comprueba que Contacts carga (migración 0019).
+- **Revisión** (plans/reports/code-review-261115-0230-avisos.md) aplicada: A1, M1–M5, B1, B3–B6. Las llamadas rechazadas siguen contando como perdidas (no se distinguen sin ver la base real).
+- **Verificado:** 210 pruebas del núcleo, 14 de la interfaz, 99 de Rust y build. **Pendiente:** probar llamadas, Contactos y notificaciones reales en la app empaquetada.
+
+Versión 1.1.0-alpha.9 · Agenda con los calendarios de macOS (fase 6).
+- **Agenda** (sección nueva): hoy, mañana o la semana con los calendarios de macOS (EventKit por PyObjC) y los recordatorios pendientes, con los solapes marcados. «Nuevo evento o recordatorio» y «Crear el evento» de la Bandeja crean solo al pulsar; si choca con otros eventos, los enseña y pide un segundo sí. Nunca se borra nada.
+- **Ajustes › Calendarios:** permiso, y ámbito, confidencialidad (normal por defecto) y ocultar por calendario (migración 0018).
+- **Watson:** `consultar_agenda` («¿qué tengo hoy/mañana/esta semana?»), solo calendarios normales, en la hora del usuario y nunca por el proveedor compatible.
+- **App firmada:** textos de permiso en `desktop/app/Info.plist` (Tauri los combina), derecho de calendarios en la app y en su Python; el empaquetado comprueba los tres y que EventKit carga. En macOS 13 se usa la API de permisos anterior.
+- **Revisión** (plans/reports/code-review-261115-0200-calendario.md) aplicada: un id por repetición, recordatorios sin fecha, permiso concedido fuera de la app sin reiniciar, fechas locales y días de cambio de hora, alarma en los recordatorios con fecha, fallos de macOS avisados.
+- **Verificado:** 207 pruebas del núcleo, 14 de la interfaz y build. **Pendiente:** probarlo con los calendarios reales en la app empaquetada (permiso de macOS); que Watson cree o cambie eventos desde el chat; usar el ámbito de cada calendario y el aviso de solapes del resumen de la mañana (fase 7).
+
+Versión 1.1.0-alpha.8 · Correos de clientes en su nota del vault (fase 5), datos a mano en Fiscal y revisiones de código aplicadas.
+- **Bandeja › «Añadir a la nota del proyecto»** (tarjetas de cliente): crea una nota NUEVA por correo en la carpeta del cliente del vault (`- Clientes/Proyectos/<Cliente>/<Cliente> - <asunto> DD-MM-AAAA.md`), con cliente, proyecto, carpeta, título y texto editables; nada se escribe hasta «Crear la nota» y ninguna nota existente se modifica. La carpeta de un cliente nuevo se crea con su primera nota (solo un nivel dentro de una carpeta existente, nunca en la raíz ni por un enlace). La nota de un correo privado o «solo en este Mac» lleva esa confidencialidad en sus propiedades, y Watson no la lee. En modo discreto no se abre.
+- **Watson:** «¿qué me ha pedido X?» (por remitente o cliente, también lo ya hecho) y «¿qué incidencias tengo abiertas?».
+- **Revisión de la alpha.8** (plans/reports/code-review-261115-0020-alpha8.md): Qonto ya no da por presente una cuota igual de otro cliente (fecha y base solo sin número leído, y una a una); los datos a mano se completan y deben sumar el total; con Claude activado, solo fotos que Claude ya intentó leer; las emitidas en imagen salen en el aviso y en Ingresos se marca lo escrito a mano; carpeta del cliente solo por nombre igual (sin «S.L.»).
+- **Verificado:** 203 pruebas del núcleo, 14 de la interfaz, 99 de Rust y build. Pendiente de verlo en la app empaquetada (migración 0017).
+- **Pendiente menor:** en la descarga de Qonto, la lista se pide por cada factura y no escribe en temporal; una carpeta de cliente nueva queda vacía si falla su primera nota; la nota no enlaza al correo (la tarjeta no guarda su identificador).
+
+Revisión de código de la alpha.7 aplicada (informe en plans/reports/code-review-261114-2252-fiscal-alpha7.md).
+- **Lectura en segundo plano:** ningún archivo se queda en bucle. Lo que no se puede convertir o leer se da por intentado; un fallo del modelo se reintenta en las siguientes cargas y al tercero se queda con las reglas locales. Se prueba la sesión de Claude Code y después la clave de API. Lo ilegible queda en caché.
+- **Desactivar Claude** en Ajustes para la lectura en curso: no sale ningún lote más, no se graba lo que responda y el trimestre deja de usar lo que Claude ya leyó.
+- **Excel:** el IRPF y el total de Ingresos vuelven a ser fórmulas (antes eran texto y sumaban 0; fallo de la alpha.5).
+- **Euros:** las facturas emitidas en otra moneda pasan a euros con el cambio del BCE (la cifra original queda en el concepto, con aviso). El BCE no se vuelve a consultar en 10 minutos tras un fallo, gasta como mucho 5 s por carga y distingue «sin conexión» de «moneda que no publica».
+- **Qonto:** no descarga una factura emitida que ya está en la carpeta (mismo número, o misma fecha y base); descarga por partes, con límite y redirecciones solo a https.
+- **Otros:** un tipo del 1 % ya no se lee como 100 %; el modo discreto oculta los importes del detalle de los avisos; cada archivo repetido dice de qué otro es copia; Ajustes explica la clave de API y lo que sigue consultando Fiscal.
+- **No aplicado:** la duda «Claude y las reglas no coinciden en el total» (B2), porque las reglas fallan el total a menudo y avisaría en facturas buenas.
+- **Datos a mano (decisión del usuario, 14/11/2026):** solo las facturas que no hay manera de leer (ilegibles, o en imagen o escaneadas que Claude no ha podido leer) admiten escribir sus datos desde el detalle del aviso; el servidor rechaza cualquier otra. Todo lo que se lee entra tal cual, y si no coincide se corrige en la lectura, nunca a mano. Lo escrito vive en `fiscal_manual` (migración 0017), no toca el archivo, deja de valer si el archivo cambia y sale con la nota «Datos escritos a mano». Verificado: 200 pruebas del núcleo, 10 de la interfaz y build; pendiente de verlo en la app empaquetada.
+
+Versión 1.1.0-alpha.7 · Facturas leídas con Claude y Fiscal más usable.
+- **Lectura de facturas.** Claude Haiku lee el texto de cada factura de la carpeta fiscal (y las fotos y los PDF escaneados, como imagen), con las reglas locales de respaldo y una comprobación de coherencia (base + IVA − IRPF = total). Se puede desactivar en Ajustes y entonces nada sale del Mac.
+  - Medido contra los registros trimestrales del usuario (2T y 3T de 2026): 102 de 104 facturas exactas en todos los campos.
+  - La evaluación es privada, fuera del repositorio, y se repite antes de cambiar la lectura.
+- **Moneda extranjera:** se convierte a euros con el cambio del BCE de su fecha (migración 0016, columna «Total EUR» del Excel).
+- **Pantalla Fiscal:**
+  - cliente sacado del texto;
+  - cada factura se abre con iconos de archivo y carpeta (macOS, Windows y Linux) y lleva su tipo de archivo;
+  - barra de progreso de la lectura, que además se actualiza sola;
+  - cada aviso abre su detalle con la lista de documentos;
+  - las facturas emitidas que Qonto tiene y la carpeta no se descargan una a una con progreso.
+- **Verificado:** 196 pruebas del núcleo, interfaz, build y la app abierta (descarga desde Qonto probada por el usuario).
+- **Pendiente:**
+  - Revisión de código por agente de esta tanda (lectura con Claude, fotos, detalle de avisos, descarga de Qonto, progreso).
+  - Ballenoil sin nombre en su factura.
+  - Fase 5: indicaciones de clientes a la nota de su proyecto.
+  - Fases 6 a 9 del plan.
+
+Versión 1.1.0-alpha.6 · Trimestre leído de la carpeta y clientes de Central (primera parte de la fase 5).
+- **Fiscal:** el trimestre se lee de las facturas que ya están en la carpeta, ordenadas o no.
+  - Facturas Salientes son los ingresos y Facturas Entrantes los gastos.
+  - Cada PDF se lee una vez en segundo plano con el extractor aislado y queda en caché (migración 0015).
+  - Saca base, IVA, IRPF, número y el NIF de la otra parte; el propio se deduce de las facturas emitidas.
+  - Los ilegibles, repetidos o fuera de una carpeta de trimestre se avisan.
+  - Qonto solo avisa si tiene más facturas emitidas que la carpeta.
+  - El Excel se abre o se muestra en el Finder desde la app.
+- **Central:** sus clientes, proyectos, webs y servidores se leen en solo lectura con su servidor MCP (solo herramientas de lectura), cada media hora o con «Actualizar».
+  - El Resumen enseña servidores y clientes activos.
+  - La Bandeja marca el cliente de un remitente.
+  - Watson tiene `consultar_clientes`, que, igual que la Bandeja, nunca llega al proveedor compatible.
+- **Verificado:**
+  - Con la carpeta real del 3T de 2026: 10 facturas emitidas con IVA, IRPF y NIF del cliente, y 58 recibidas.
+  - Con Central real: 20 clientes, 200 proyectos, 7 servidores.
+  - 190 pruebas del núcleo, interfaz, build y revisión de código aplicada.
+- **Pendiente:**
+  - Completar correo y web de los clientes en Central, para que el correo se asocie solo.
+  - Añadir las indicaciones de un correo de cliente a la nota de su proyecto en el vault, tras confirmar.
+
+Versión 1.1.0-alpha.5 · Qonto y Excel trimestral (fase 4 de la 1.1), y Ajustes renovados.
+- **Sección Fiscal.** Por cada carpeta de tipo autónomo o empresa, y por año y trimestre, muestra lo facturado (facturas emitidas de Qonto en solo lectura, una fila por tipo de IVA, con IRPF y rectificativas en negativo) y lo gastado (las facturas archivadas), con avisos: sin NIF, otra moneda, sin IVA desglosado, facturas de Qonto ilegibles.
+- **Excel del gestor.** «Generar el Excel» escribe `Registro-NT-AAAA-<carpeta>.xlsx` en la carpeta con el formato del registro real del usuario: Resumen, Ingresos y Gastos con fórmulas, cifras del 303 e IRPF, gastos en USD aparte. Nunca sobrescribe, y el texto de terceros nunca se convierte en fórmula.
+- **Ajustes.**
+  - Qonto: identificador y clave, que va al Llavero, y «Probar».
+  - Titular de cada carpeta profesional, para la segunda fila del Excel.
+  - Cuentas de correo y carpetas en filas compactas con logo y estado de color.
+  - Nueva tarjeta de Apariencia: seis paletas predefinidas que también cambian la barra lateral (los colores de aviso, error y conexión no cambian), cuatro tamaños de interfaz que agrandan también la barra y tipos de letra del Mac.
+- **Verificado:**
+  - 183 pruebas del núcleo, entre ellas el formato y las fórmulas del Excel, la forma documentada de la API de Qonto, la inyección de fórmulas y la paginación.
+  - 10 pruebas de la interfaz, build, revisión de código aplicada y la app abierta.
+- **Pendiente:**
+  - Probar Qonto con la clave real del usuario (si `total_amount` descuenta el IRPF en España, se ve con una factura real).
+  - Decidir si incluir las facturas importadas a Qonto (ahora se incluyen).
+
+Siguiente: fase 5, clientes y proyectos.
+
+Versión 1.1.0-alpha.4 · Varias carpetas fiscales y recibos desde el móvil. En Ajustes, las carpetas fiscales se eligen con el selector de macOS, cada una con nombre, tipo (autónomo, empresa o personal) y ámbito (migraciones 0012 y 0013). Las facturas se proponen en la carpeta del ámbito de la regla o de la cuenta, y en las personales van a Gastos o Compras por año. La Bandeja tiene «Archivar todo lo que hay ahora» (desde entonces solo se resume lo que llega) y «Subir desde el móvil»: un QR con un enlace de un solo uso a un servidor que se abre 10 minutos en la red de casa, con un máximo de cuatro conexiones, sin VPN y que se cierra al recibir. Es la única excepción a escuchar solo en loopback (decisión del usuario, 14/11/2026). Los recibos esperan en la Bandeja hasta archivarlos. Verificado: 176 pruebas del núcleo (subida real, cierre del puerto, conexiones lentas, carpeta propuesta), interfaz, build y revisión de código aplicada; abierta en la app. Pendiente: leer los datos de las fotos (sin OCR todavía), renombrar o cambiar el tipo de una carpeta desde Ajustes, y probar la subida con el móvil real. Siguiente: fase 4, Qonto y Excel trimestral (alpha.5).
+
+Versión 1.1.0-alpha.3 · Facturas de proveedores y carpeta fiscal (fase 3 de la 1.1). En Ajustes › Carpeta fiscal se elige la subcarpeta de la actividad. Nunca puede ser la carpeta personal, la raíz de iCloud Drive ni una carpeta que las contenga, y toda ruta se comprueba dentro de ella. La tarjeta de un aviso de pago en la Bandeja prepara su factura: vuelve a leer el correo en solo lectura, lee el PDF adjunto con el extractor aislado y reglas locales (NIF, fecha, total) y lo coteja con el aviso. Las dudas que muestra son: falta NIF, el total no cuadra, fecha ambigua, otra moneda. Si la factura solo viene enlazada, se descarga al archivar, desde https público, sin redirecciones, solo PDF y con límite de tamaño y tiempo. Al pulsar «Archivar», la factura va a `Facturas Entrantes/año/NT/fecha proveedor total.pdf`, sin sobrescribir nada, y queda en el registro (migración 0011); la misma factura no se archiva dos veces. En el aviso de Watson, un «sí» archiva lo que se ve en pantalla, y solo si viene adjunta y sin dudas. «Proponer cómo ordenarla» deduce año y trimestre de los nombres de carpeta, deja lo dudoso donde está y mueve la lista exacta confirmada, con copia previa y sin sobrescribir. Sobre la carpeta real, en simulacro y sin mover nada, propone 265 movimientos y deja 80 archivos sin decidir. Verificado: 168 pruebas del núcleo (rutas que escapan, carpetas prohibidas, PDF real en el aislamiento, reordenación con fallo a mitad, duplicados), 9 de la interfaz, Rust, build y verify-inbox, y revisión de código aplicada. Pendiente: probarlo con un aviso real de PayPal cuando estén las cuentas; aplicar la reordenación cuando el usuario la revise; enlaces de correos solo en HTML (hoy se pierden al pasar a texto); avisar si el NIF es el del propio usuario. Siguiente: fase 4, Qonto y Excel trimestral.
+
+Versión 1.1.0-alpha.2 · Reglas, resúmenes y Bandeja (fase 2 de la 1.1). La Bandeja deja de estar pendiente. Agrupa por ámbito los correos que piden atención, con su resumen, lo que piden, importes y fechas; cada tarjeta se marca como hecha o se descarta. Las acciones que propone (archivar la factura, añadir a la nota del proyecto, crear el evento) se ven como pendientes hasta sus fases. Las reglas del correo se gestionan en Ajustes (remitente o dominio, cuenta, asunto o palabras → factura de proveedor, cliente o proyecto, personal, importante o ignorar; solo endurecen la confidencialidad) y se crean en un clic desde una tarjeta. Sin regla, Claude Haiku clasifica y resume en cualquier idioma lo de nivel normal, como dato entre marcas aleatorias, con un tope de 40 llamadas por hora. Lo de solo este Mac o privado se clasifica en local, sin resumen. El nivel que cuenta se recalcula en cada consulta. Watson consulta la Bandeja con una herramienta de solo lectura (no con el proveedor compatible) y anuncia lo pendiente al abrir el chat; un «sí» o «no» lo decide sin pasar por un modelo. Verificado: 153 pruebas del núcleo (aislamiento: inyección de instrucciones, cuentas que pasan a privadas, reglas creadas durante un resumen, sin motor), 9 de la interfaz, las de Rust, build, verify-inbox y verify-mail-settings, y revisión de código aplicada. Pendiente: resúmenes reales revisados por el usuario cuando conecte sus cuentas; conservar las decisiones si el servidor renumera el buzón (UIDVALIDITY). Siguiente: fase 3, facturas de proveedores y carpeta fiscal.
+
+Versión 1.1.0-alpha.1 · Cuentas de correo (fase 1 de la 1.1). En Ajustes › Cuentas de correo se conectan cuentas de Gmail, iCloud, Microsoft (Outlook, Hotmail, Microsoft 365) y cualquier otro servidor IMAP (Namecheap, Hostinger…), cada una con su ámbito, su nivel de confidencialidad y su antigüedad máxima. Las contraseñas de aplicación van al Llavero desde un campo que solo guarda o borra; Microsoft entra con OAuth por código de dispositivo con el registro de aplicación del propio usuario y solo guarda en el Llavero el permiso de renovación. El núcleo lee el correo cada cinco minutos y bajo demanda en solo lectura (EXAMINE y BODY.PEEK: nunca marca como leído, mueve ni borra), de forma incremental por UIDVALIDITY y UID, y guarda cabeceras, texto saneado y la lista de adjuntos (migraciones 0008 y 0009). AGENTS.md recoge las autorizaciones del 14/11/2026. Además en esta versión: pnpm sustituye a npm, el grafo del Cerebro se mueve y conecta las notas al buscar, y el desplegable de toda la app se cierra al elegir dentro de la app de escritorio. Verificado: 138 pruebas del núcleo (con un IMAP y un Microsoft simulados: el buzón no se modifica, correos malformados, cancelaciones y cortes de red), las pruebas de Rust, 8 de la interfaz, build, revisión de código aplicada en las dos tandas y la verificación de Ajustes. Pendiente: conectar las cuentas reales del usuario y comprobar su sincronización (recuentos y estados, nunca contenido), y probar Microsoft con un registro de Entra real. Siguiente: fase 2, reglas, resúmenes y Bandeja.
+
 Versión 1.0.0 · Cerebro, asistente y app de escritorio. Cierra las doce fases del plan de la 1.0.0 (alfas 1 a 13): núcleo Python con base de datos y copias cifradas, índice del vault con confidencialidad, Watson con la sesión local de Claude Code y reserva a la API, MCP del cerebro, registro de complementos, interfaz con Cerebro, Asistente, Oficina 3D, Conectores y Ajustes, resumen, grafo enriquecido, oficina de agentes con sonido y la app de macOS autocontenida, firmada y notarizada, con el servidor en Rust. Publicada en GitHub con `main`, `develop`, el tag `v1.0.0` y la release con la app notarizada para Apple Silicon. El hotfix 0.29.1 queda integrado en la historia (su corrección ya la tiene el servidor de Rust). Pendiente para la 1.0.1: icono definitivo y `verify-formats` (envía mensajes reales a Luma). Siguiente: 1.1, fiscal, correo y calendario (Bandeja).
 
 Versión 1.0.0-alpha.13 · Pendientes de la app de escritorio. El extractor de PDF/DOCX ya no puede leer el contenido de carpetas personales, otros discos ni carpetas temporales (solo su Python y la carpeta del núcleo). Una lectura de Hermes o del vault que agota su tiempo conserva su plaza hasta terminar, y las escrituras del vault tienen turno y límite de 30 s (si vence, pide recargar). Si un puente de chat muere por su cuenta, se detiene lo que dejó en su grupo de procesos. La migración de primer arranque copia las bases SQLite con una instantánea coherente (incluido lo que está en su WAL), sin tocar el original, y si SQLite no puede leer alguna la copia tal cual. La notarización solo admite un perfil de `notarytool store-credentials`: la contraseña ya no pasa por la línea de órdenes. Verificado: 99 pruebas de Rust, 123 del núcleo, 6 de la interfaz, build, revisión de código aplicada, extracción con el Python empaquetado dentro del nuevo aislamiento y la app firmada abierta y cerrada sin dejar procesos ni puertos. Pendiente: que el usuario cree el perfil de notarización para notarizar esta versión, y el icono definitivo. Siguiente: cerrar la 1.0.0.

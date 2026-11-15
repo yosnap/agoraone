@@ -1,21 +1,21 @@
 # Arranque reproducible
 
-Requisitos: macOS, Rust estable con `cargo` (el servidor de AgoraOne), Node >=22.12 (verificado 22.23.1) y npm para la interfaz, [uv](https://docs.astral.sh/uv/) (instala por sí mismo Python 3.13 para el núcleo), Hermes en el commit documentado y su entorno Python. No instalar paquetes ni actualizar Hermes. La app empaquetada no necesita nada de esto: ver docs/app-escritorio.md.
+Requisitos: macOS, Rust estable con `cargo` (el servidor de AgoraOne), Node >=22.12 (verificado 22.23.1) y pnpm para la interfaz, [uv](https://docs.astral.sh/uv/) (instala por sí mismo Python 3.13 para el núcleo), Hermes en el commit documentado y su entorno Python. No instalar paquetes ni actualizar Hermes. La app empaquetada no necesita nada de esto: ver docs/app-escritorio.md.
 
 Desde esta carpeta:
 
 ```sh
-npm ci
+pnpm install --frozen-lockfile
 (cd core && uv sync --frozen)
-npm run check:hermes
-npm run dev
+pnpm check:hermes
+pnpm dev
 ```
 
 Para la búsqueda por significado hace falta [ollama](https://ollama.com) con el modelo de embeddings (`ollama pull qwen3-embedding:0.6b`); sin él, el cerebro busca solo por palabras.
 
-`npm run dev` compila y arranca el binario `agoraone` (el servidor, en Rust: `desktop/server`) junto a Vite. El servidor escucha solo en 127.0.0.1:4317 (si el puerto está ocupado lo dice y no arranca), lee `.env` sin pisar variables ya definidas, arranca el núcleo Python en 127.0.0.1:4318 y, al cerrarse (Ctrl+C o SIGTERM), detiene el núcleo y los puentes de Hermes; si el servidor muere de golpe, el núcleo termina solo en unos segundos. El puerto es fijo: si está ocupado, el núcleo lo dice y no arranca, y `/api/core/*` responde 503 mientras el resto de AgoraOne funciona igual. Para comprobar quién lo ocupa: `lsof -iTCP:4318 -sTCP:LISTEN`. Pruebas del núcleo: `npm run test:core`. A los pocos segundos de arrancar, el backend indexa las notas de tus vaults de Obsidian en el núcleo y repite cada 5 minutos; para que una nota no salga nunca hacia modelos externos, añade en sus propiedades `confidencialidad: solo-local` (o `privado` para que tampoco salga por Telegram ni MCP).
+`pnpm dev` compila y arranca el binario `agoraone` (el servidor, en Rust: `desktop/server`) junto a Vite. El servidor escucha solo en 127.0.0.1:4317 (si el puerto está ocupado lo dice y no arranca), lee `.env` sin pisar variables ya definidas, arranca el núcleo Python en 127.0.0.1:4318 y, al cerrarse (Ctrl+C o SIGTERM), detiene el núcleo y los puentes de Hermes; si el servidor muere de golpe, el núcleo termina solo en unos segundos. El puerto es fijo: si está ocupado, el núcleo lo dice y no arranca, y `/api/core/*` responde 503 mientras el resto de AgoraOne funciona igual. Para comprobar quién lo ocupa: `lsof -iTCP:4318 -sTCP:LISTEN`. Pruebas del núcleo: `pnpm test:core`. A los pocos segundos de arrancar, el backend indexa las notas de tus vaults de Obsidian en el núcleo y repite cada 5 minutos; para que una nota no salga nunca hacia modelos externos, añade en sus propiedades `confidencialidad: solo-local` (o `privado` para que tampoco salga por Telegram ni MCP).
 
-Abrir el enlace de acceso que muestra la terminal (`http://127.0.0.1:5173/#acceso=…`) o ejecutar `npm run open` (`agoraone abrir`; usar esta dirección, no otra interfaz de red). El navegador canjea el token por una cookie y lo borra de la barra de direcciones; las siguientes veces basta con http://127.0.0.1:5173. Sin esa cookie la API responde 401 y la página explica cómo entrar. Seleccionar Luma o Biblioteca, escribir y pulsar **Enviar a Hermes**. Configuración actual guardada en `.env` privado. `check:hermes` (`agoraone comprobar-hermes`) instancia el agente y comprueba cero herramientas sin pedir inferencia; no confirma la conexión al proveedor.
+Abrir el enlace de acceso que muestra la terminal (`http://127.0.0.1:5173/#acceso=…`) o ejecutar `pnpm open` (`agoraone abrir`; usar esta dirección, no otra interfaz de red). El navegador canjea el token por una cookie y lo borra de la barra de direcciones; las siguientes veces basta con http://127.0.0.1:5173. Sin esa cookie la API responde 401 y la página explica cómo entrar. Seleccionar Luma o Biblioteca, escribir y pulsar **Enviar a Hermes**. Configuración actual guardada en `.env` privado. `check:hermes` (`agoraone comprobar-hermes`) instancia el agente y comprueba cero herramientas sin pedir inferencia; no confirma la conexión al proveedor.
 
 La ciudad detecta además los perfiles y espacios de tu Hermes y actualiza el catálogo automáticamente cada 30 s. Seleccionar un perfil permite leer su identidad/memoria; **Conversar con <nombre> → escribir → Enviar a Hermes** inicia una conversación aislada con esa identidad. El envío transmite SOUL/MEMORY/USER al proveedor de AgoraOne, sin herramientas ni escritura en memoria original; detalles en docs/conversaciones-perfiles.md. Luma sigue siendo la biblioteca de AgoraOne. Para datos en ubicación no estándar, definir AGORA_HERMES_HOME en el backend; para código/intérprete distintos, AGORA_HERMES_PATH/AGORA_HERMES_PYTHON. Ver docs/catalogo-hermes.md.
 
@@ -36,22 +36,35 @@ Se niega a sobrescribir un `.env` existente. No modifica la configuración de He
 ## Build local
 ```sh
 cargo test --manifest-path desktop/Cargo.toml
-npm run test:core
-npm test
-npm run build
-npm start
+pnpm test:core
+pnpm test
+pnpm build
+pnpm start
 ```
 
-`cargo test` prueba el servidor (incluidos los puentes reales contra el Hermes instalado, con un modelo falso local, si Hermes está), `npm run test:core` el núcleo y `npm test` la interfaz. `npm start` compila el servidor en modo optimizado y sirve `dist` y la API desde 127.0.0.1:4317; el enlace que imprime ya apunta a ese puerto. No ejecutar a la vez dos servidores en 4317. Ctrl+C detiene el arranque de desarrollo.
+`cargo test` prueba el servidor (incluidos los puentes reales contra el Hermes instalado, con un modelo falso local, si Hermes está), `pnpm test:core` el núcleo y `pnpm test` la interfaz. `pnpm start` compila el servidor en modo optimizado y sirve `dist` y la API desde 127.0.0.1:4317; el enlace que imprime ya apunta a ese puerto. No ejecutar a la vez dos servidores en 4317. Ctrl+C detiene el arranque de desarrollo.
 
 ## Verificación de navegador
-Requiere Chromium de Playwright (`npx playwright install chromium` si falta). Con `npm run dev` en marcha (las verificaciones usan 127.0.0.1:5173):
+Requiere Chromium de Playwright (`pnpm exec playwright install chromium` si falta). Con `pnpm dev` en marcha (las verificaciones usan 127.0.0.1:5173):
 
 ```sh
 node scripts/verify-browser.mjs
 # Opcional: dos peticiones reales con coste de inferencia
 node scripts/verify-browser.mjs --live
 ```
+
+Correo, Fiscal, Agenda (1.1) y Trabajos (1.2), cada una en solo lectura contra los datos reales y con tarjetas, agenda y avisos de ejemplo que sirve la propia prueba (nada se envía ni se escribe):
+
+```sh
+node scripts/verify-inbox.mjs
+node scripts/verify-mail-settings.mjs
+node scripts/verify-mail-reply.mjs
+node scripts/verify-agenda.mjs
+node scripts/verify-fiscal.mjs   # al abrir Fiscal se leen las facturas nuevas de la carpeta, como en la app
+node scripts/verify-jobs.mjs     # Trabajos: tareas, kanban, encargos y proyectos (con datos de ejemplo para lo que escribe)
+```
+
+Para comprobar la interfaz contra la app empaquetada abierta, sin cerrarla: `pnpm dev:web` y cada script con `AGORA_ACCESS_TOKEN_FILE="$HOME/Library/Application Support/AgoraOne/access-token"` (el token se lee del archivo y nunca se imprime).
 
 La comprobación normal no llama a modelos. La variante live verifica dos turnos, continuidad, recarga, selección, primera persona y móvil. Capturas locales en `.agora/`.
 

@@ -38,7 +38,7 @@ Aplicación web local en macOS: entorno digital como ciudad 3D navegable. Vista 
 - Carpeta local vacía al iniciar el 17/10/2026. No se encontró repositorio del prototipo. El lector web no pudo abrir las URLs; no se afirma fidelidad visual ni importación del código.
 
 ## Hermes
-Instalación Git ~/.hermes/hermes-agent. Verificados en código/entorno: v0.21.4, fecha 2026.9.21, HEAD 28aceb3451, Python 3.11.15, OpenAI SDK 2.24.0. Intérprete en venv/bin/python. No se autoriza actualización.
+Instalación Git ~/.hermes/hermes-agent. Verificado el 15/11/2026: HEAD d1b46d718f (el usuario la actualizó; antes 28aceb3451), con su propio Python 3.14 en ~/.hermes/tools y dependencias elegidas por hermes_bootstrap (ver docs/integracion-hermes.md). AgoraOne no actualiza Hermes ni instala nada en él.
 Existe API de gateway y clase Python AIAgent. Decisión y evidencias: docs/integracion-hermes.md.
 Usuario confirma arranque desde Hermes Desktop y proveedor privado OpenAI compatible. Se selecciona un modelo del proveedor configurado en Hermes; el modelo global de Hermes no se cambió. Se importaron únicamente parámetros de inferencia a `.env` privado del proyecto (0600), nunca al frontend.
 

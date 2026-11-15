@@ -5,6 +5,10 @@ import { Loading } from '../ui/load-state';
 import { NoteReader, type NoteRef } from '../brain/note-reader';
 import { ShellNav } from './shell-nav';
 import { PendingView } from './pending-view';
+import { InboxView } from '../inbox/inbox-view';
+import { FiscalView } from '../fiscal/fiscal-view';
+import { AgendaView } from '../calendar/agenda-view';
+import { AlertToasts } from './alert-toasts';
 import { readShell, writeShell, type Section } from './shell-state';
 import './shell.css';
 import './page.css';
@@ -13,6 +17,7 @@ const BrainView = lazy(() => import('../brain/brain-view').then(module => ({ def
 const SummaryView = lazy(() => import('../summary/summary-view').then(module => ({ default: module.SummaryView })));
 const AssistantView = lazy(() => import('../assistant/assistant-view').then(module => ({ default: module.AssistantView })));
 const ConnectorsView = lazy(() => import('../connectors/connectors-view').then(module => ({ default: module.ConnectorsView })));
+const JobsView = lazy(() => import('../jobs/jobs-view').then(module => ({ default: module.JobsView })));
 const SettingsView = lazy(() => import('../settings/settings-view').then(module => ({ default: module.SettingsView })));
 
 /** AgoraOne's frame: the rail with the sections and the section on screen. The office (the city) stays
@@ -27,7 +32,7 @@ export function Shell() {
   const [waiting, setWaiting] = useState<string | null>(null);
   useEffect(() => {
     getStatus().then(setStatus).catch(error => setStatus(error instanceof ApiError && error.status === 401
-      ? { state: 'locked', csrf: '', detail: error.message } : { state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con npm run dev.' }));
+      ? { state: 'locked', csrf: '', detail: error.message } : { state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con pnpm dev.' }));
   }, []);
   useEffect(() => writeShell({ section, discreet }), [section, discreet]);
   const go = useCallback((next: Section) => { if (next === 'office') setOfficeVisited(true); setShell(previous => ({ ...previous, section: next })); }, []);
@@ -36,14 +41,19 @@ export function Shell() {
   const ready = status?.csrf;
   return <div className="shell">
     <ShellNav section={section} onSection={go} discreet={discreet} onDiscreet={setDiscreet} waiting={waiting}/>
+    {ready && <AlertToasts discreet={discreet}/>}
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting} onWatson={() => go('brain')}/>}
       {ready && section !== 'office' && <main className="shell-page"><Suspense fallback={<div className="page"><Loading label="Cargando la sección"/></div>}>
         {section === 'brain' ? <BrainView discreet={discreet} focus={focus} onFocus={setFocus} onRead={setReading} onSummary={() => go('summary')}/>
           : section === 'summary' ? <SummaryView discreet={discreet} onRead={setReading}/>
-          : section === 'assistant' ? <AssistantView onRead={setReading} onShowOnGraph={showOnGraph}/>
+          : section === 'assistant' ? <AssistantView onRead={setReading} onShowOnGraph={showOnGraph} discreet={discreet}/>
           : section === 'connectors' ? <ConnectorsView/>
           : section === 'settings' ? <SettingsView/>
+          : section === 'inbox' ? <InboxView discreet={discreet}/>
+          : section === 'fiscal' ? <FiscalView discreet={discreet}/>
+          : section === 'agenda' ? <AgendaView discreet={discreet}/>
+          : section === 'jobs' ? <JobsView discreet={discreet}/>
           : <PendingView section={section}/>}
       </Suspense></main>}
       {status?.state === 'offline' && <section className="page" role="alert"><h1>Sin conexión</h1><p>{status.detail}</p></section>}
@@ -51,7 +61,7 @@ export function Shell() {
       {status?.state === 'locked' && <section className="access-lock" role="alertdialog" aria-label="Acceso a AgoraOne">
         <h2>Falta el enlace de acceso</h2>
         <p>Para que ninguna otra app ni otro usuario de este ordenador pueda usar AgoraOne con tus credenciales, la primera vez hay que entrar con un enlace privado. Después este navegador lo recuerda.</p>
-        <p>Ábrelo desde la terminal: <code>npm run dev</code> lo muestra al arrancar («Abre AgoraOne con este enlace…»), o ejecuta <code>npm run open</code>.</p>
+        <p>Ábrelo desde la terminal: <code>pnpm dev</code> lo muestra al arrancar («Abre AgoraOne con este enlace…»), o ejecuta <code>pnpm open</code>.</p>
       </section>}
     </div>
     {reading && <NoteReader note={reading} onClose={() => setReading(null)}/>}

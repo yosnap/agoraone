@@ -33,7 +33,7 @@ fi
 step() { printf '\n== %s\n' "$1"; }
 
 step "Interfaz web"
-(cd "$ROOT" && npm run build >/dev/null)
+(cd "$ROOT" && pnpm build >/dev/null)
 
 step "Python independiente $PY_VERSION ($PY_RELEASE)"
 mkdir -p "$WORK/descargas"
@@ -83,6 +83,18 @@ step "App de Tauri"
 codesign --verify --deep --strict "$APP"
 codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/dev/null | grep -q allow-unsigned-executable-memory \
   || { echo "Python perdió sus permisos de firma dentro de la app." >&2; exit 1; }
+# The calendar: the core's Python reads EventKit, which macOS allows only with this entitlement and the
+# app's own permission texts.
+codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/dev/null | grep -q personal-information.calendars \
+  || { echo "Python no tiene el permiso de calendarios en su firma." >&2; exit 1; }
+for key in NSCalendarsFullAccessUsageDescription NSCalendarsUsageDescription NSRemindersFullAccessUsageDescription NSRemindersUsageDescription NSContactsUsageDescription; do
+  /usr/libexec/PlistBuddy -c "Print :$key" "$APP/Contents/Info.plist" >/dev/null \
+    || { echo "El Info.plist de la app no lleva $key (el texto de un permiso)." >&2; exit 1; }
+done
+"$APP/Contents/Resources/python/bin/python3.13" -I -c "import EventKit, Contacts" \
+  || { echo "El Python de la app no carga EventKit o Contacts." >&2; exit 1; }
+codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/dev/null | grep -q personal-information.addressbook \
+  || { echo "Python no tiene el permiso de Contactos en su firma." >&2; exit 1; }
 # The finished app next to the other packaging files, where it is notarized and picked up.
 rm -rf "$WORK/AgoraOne.app"
 ditto "$APP" "$WORK/AgoraOne.app"

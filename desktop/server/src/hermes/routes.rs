@@ -13,6 +13,7 @@ use serde_json::Value;
 use tokio::sync::Semaphore;
 
 use super::activity::read_activity;
+use super::work::read_work;
 use super::resources::obsidian_vaults;
 use super::summary::read_hermes_summary;
 use crate::AppState;
@@ -66,6 +67,16 @@ pub async fn activity(State(state): State<Arc<AppState>>) -> Response {
     })
     .await;
     answer(value, StatusCode::SERVICE_UNAVAILABLE, "No se pudo leer la actividad de Hermes.")
+}
+
+/// Every profile's scheduled tasks and the kanban board with their runs, time and tokens: metadata only.
+pub async fn work(State(state): State<Arc<AppState>>) -> Response {
+    let value = background(move || {
+        let (root, profiles) = state.hermes.activity_targets()?;
+        Ok(read_work(&root, &profiles, now_ms()))
+    })
+    .await;
+    answer(value, StatusCode::SERVICE_UNAVAILABLE, "No se pudieron leer los trabajos de Hermes.")
 }
 
 /// Tokens per profile and project and the user's most used words, for the summary: counts only.

@@ -2,10 +2,8 @@ import type { Section } from './shell-state';
 import { sectionLabel } from './shell-nav';
 
 const plans: Partial<Record<Section, { version: string; text: string }>> = {
-  inbox: { version: '1.1', text: 'El correo y el calendario llegarán al cerebro en la versión 1.1.' },
   jobs: { version: '1.2', text: 'Los trabajos de tus agentes y del bot central llegarán en la versión 1.2.' },
   meetings: { version: '1.3', text: 'Las reuniones grabadas y resumidas llegarán en la versión 1.3.' },
-  fiscal: { version: '1.1', text: 'El módulo fiscal, con Qonto y el Excel trimestral, llegará en la versión 1.1.' },
 };
 
 /** A section that does not exist yet: said plainly, with nothing simulated. */
