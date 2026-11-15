@@ -54,7 +54,8 @@ function Card({ card, label, discreet, action }: { card: WorkCard; label: string
 export function JobsView({ discreet }: { discreet: boolean }) {
   const [work, setWork] = useState<HermesWork | null>(null);
   const [profileList, setProfileList] = useState<ProfileChoice[]>([]);
-  const [central, setCentral] = useState('default');
+  // Known only once both the catalog and the setting have been read: until then there is no «Nuevo encargo».
+  const [central, setCentral] = useState<string | null>(null);
   const [commissioning, setCommissioning] = useState(false);
   const labels: Record<string, string> = Object.fromEntries(profileList.map(p => [p.id, p.label]));
   // Unknown until read: no «not running» warning on a guess.
@@ -81,7 +82,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
     started.current = true;
     void load();
     getHermesCatalog().then(catalog => setProfileList(catalog.profiles.map(p => ({ id: p.id, name: p.name, label: p.label || p.name })))).catch(() => undefined);
-    getJobsSettings().then(found => setCentral(found.central)).catch(() => undefined);
+    getJobsSettings().then(found => setCentral(found.central)).catch(() => setCentral('default'));
     const tick = () => {
       // Not while a comment, block reason or task is being written: a card moving column would lose it.
       if (document.visibilityState === 'visible' && !document.querySelector('section.jobs .task-form')) void load();
@@ -103,7 +104,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
   for (const card of cards) if (card.totals) add(card.totals[period]);
   const partial = sum.measured > 0 && sum.measured < sum.runs;
   // Whether a new commission will be picked up: the gateway runs Hermes' kanban dispatcher unless its config turns it off.
-  const ready = work && !work.dispatcher ? { ok: false, why: 'El despachador del kanban está desactivado en la configuración de Hermes (kanban.dispatch_in_gateway): nadie recogerá el encargo hasta activarlo.' }
+  const ready = work && !work.dispatcher ? { ok: false, why: 'La configuración del perfil raíz de Hermes desactiva el despachador del kanban en su gateway (kanban.dispatch_in_gateway): puede que nadie recoja el encargo, salvo que el gateway de otro perfil lo tenga activo.' }
     : ['stopped', 'stale', 'missing'].includes(gateway) ? { ok: false, why: 'El gateway de Hermes no está en marcha: el encargo esperará en el kanban hasta que arranque.' }
     : { ok: true, why: '' };
   return <section className="page jobs" aria-labelledby="jobs-title" ref={holder}>
@@ -134,8 +135,8 @@ export function JobsView({ discreet }: { discreet: boolean }) {
             : <JobManager profileId={id} jobs={entry.tasks} gateway={gateway} onChanged={() => void load()} extra={task => <TaskRuns task={task} period={period} discreet={discreet}/>}/>}
         </article>)}
       <div className="jobs-heading"><h2>Kanban y encargos</h2>
-        {!commissioning && !discreet && <button type="button" className="button primary" onClick={() => { setCommissioning(true); action.say(''); }}>Nuevo encargo</button>}</div>
-      {commissioning && !discreet && <CommissionForm profiles={profileList} central={central} ready={ready} onCancel={() => setCommissioning(false)}
+        {!commissioning && !discreet && central !== null && profileList.length > 0 && <button type="button" className="button primary" onClick={() => { setCommissioning(true); action.say(''); }}>Nuevo encargo</button>}</div>
+      {commissioning && !discreet && central !== null && <CommissionForm profiles={profileList} central={central} ready={ready} onCancel={() => setCommissioning(false)}
         onDone={note => { setCommissioning(false); action.say(note); void load(); }}/>}
       {action.error && <p role="alert" className="error">{action.error}</p>}
       {action.done && !discreet && <p role="status" className="task-done">{action.done}</p>}

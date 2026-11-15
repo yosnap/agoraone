@@ -13,10 +13,10 @@ export function JobsSettingsCard() {
   const asked = useRef(false);
   if (!asked.current) {
     asked.current = true;
-    Promise.all([getJobsSettings(), getHermesCatalog()]).then(([settings, catalog]) => {
-      setCentral(settings.central);
-      setProfiles(catalog.profiles.map(p => ({ value: p.name, label: p.name === 'default' ? `${p.label || 'Hermes principal'} (perfil raíz)` : p.label || p.name })));
-    }).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer los ajustes de Trabajos.'));
+    // Each on its own: an unreadable Hermes catalog does not hide the saved choice.
+    getJobsSettings().then(settings => setCentral(settings.central)).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer los ajustes de Trabajos.'));
+    getHermesCatalog().then(catalog => setProfiles(catalog.profiles.map(p => ({ value: p.name, label: p.name === 'default' ? `${p.label || 'Hermes principal'} (perfil raíz)` : p.label || p.name }))))
+      .catch(() => setError('No se pudo leer la lista de perfiles de Hermes.'));
   }
   const change = async (value: string) => {
     setError(''); setSaved('');

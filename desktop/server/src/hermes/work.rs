@@ -305,10 +305,17 @@ fn board_rows(root: &Path, file: &Path, since: f64) -> Option<BoardRows> {
         } else {
             vec![]
         };
-        // A card's history: what happened and when, never the event's payload.
+        // A card's history: what happened and when, never the event's payload. Without the heartbeats Hermes
+        // records every minute while a worker runs, and the latest few per card, whatever the card's age.
         let e = db.columns("task_events");
-        let events = if ["task_id", "kind", "created_at"].iter().all(|k| e.contains(*k)) {
-            db.all("SELECT task_id, kind, created_at FROM task_events WHERE created_at > ? ORDER BY id DESC LIMIT 5000", [since])?
+        let events = if ["id", "task_id", "kind", "created_at"].iter().all(|k| e.contains(*k)) {
+            db.all(
+                &format!(
+                    "SELECT task_id, kind, created_at FROM (SELECT task_id, kind, created_at, ROW_NUMBER() OVER (PARTITION BY task_id ORDER BY id DESC) AS n \
+                     FROM task_events WHERE kind != 'heartbeat') WHERE n <= {EVENTS_SHOWN} ORDER BY task_id, n"
+                ),
+                [],
+            )?
         } else {
             vec![]
         };
@@ -440,10 +447,20 @@ fn board(root: &Path, profiles: &[ProfileTarget], now_s: f64) -> Value {
     json!({ "cards": cards.into_iter().map(|(_, card)| card).collect::<Vec<_>>() })
 }
 
-/// Whether the gateway picks up new kanban cards: on unless the root config says `kanban.dispatch_in_gateway: false`.
+/// Whether the root gateway picks up new kanban cards: on unless the root config turns
+/// `kanban.dispatch_in_gateway` off, read as Hermes does (YAML 1.1 truthiness: off, no, false, 0 or empty are
+/// off). Only the root profile's config is checked; another profile's gateway may still dispatch.
 fn dispatcher_enabled(root: &Path) -> bool {
     let config = read_metadata(root, &root.join("config.yaml")).unwrap_or_default();
-    config.get("kanban").and_then(|kanban| kanban.get("dispatch_in_gateway")).and_then(Value::as_bool).unwrap_or(true)
+    let Some(kanban) = config.get("kanban").and_then(Value::as_object) else { return true };
+    match kanban.get("dispatch_in_gateway") {
+        None => true,
+        Some(Value::Bool(on)) => *on,
+        Some(Value::Number(n)) => n.as_f64().is_some_and(|v| v != 0.0),
+        Some(Value::String(text)) => !matches!(text.trim().to_lowercase().as_str(), "" | "off" | "no" | "false"),
+        Some(Value::Null) => false,
+        Some(_) => true,
+    }
 }
 
 /// The work of every profile and of every kanban board, read-only.

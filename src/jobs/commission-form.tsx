@@ -11,8 +11,9 @@ export type ProfileChoice = { id: string; name: string; label: string };
 export function CommissionForm({ profiles, central, ready, onDone, onCancel }: {
   profiles: ProfileChoice[]; central: string; ready: { ok: boolean; why: string }; onDone: (note: string) => void; onCancel: () => void;
 }) {
-  const start = profiles.some(p => p.name === central) ? central : profiles[0]?.name ?? '';
-  const [to, setTo] = useState(start);
+  // A central bot that no longer exists is not swapped silently for another profile: the user picks one.
+  const centralExists = profiles.some(p => p.name === central);
+  const [to, setTo] = useState(centralExists ? central : '');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
@@ -28,7 +29,8 @@ export function CommissionForm({ profiles, central, ready, onDone, onCancel }: {
   };
   return <form className="card task-form commission-form" aria-label="Nuevo encargo" onSubmit={event => { event.preventDefault(); void send(); }}>
     <label className="field">Para<ModernSelect value={to} onChange={setTo}
-      options={profiles.map(p => ({ value: p.name, label: p.name === central ? `${p.label} (bot central)` : p.label }))}/></label>
+      options={[...(to === '' ? [{ value: '', label: 'Elige un perfil' }] : []), ...profiles.map(p => ({ value: p.name, label: p.name === central ? `${p.label} (bot central)` : p.label }))]}/></label>
+    {!centralExists && <p className="fiscal-warning">El bot central de Ajustes («{central}») ya no existe en Hermes: elige a quién va el encargo o cámbialo en Ajustes › Trabajos.</p>}
     <label className="field">Qué quieres que haga<input autoFocus value={title} maxLength={200} required onChange={event => setTitle(event.target.value)}
       placeholder="Por ejemplo: revisa las facturas pendientes de Qonto"/></label>
     <div className="task-field"><span>Instrucciones (opcional)</span><MarkdownField label="Instrucciones (opcional)" value={body} onChange={setBody} minHeight={110} disabled={busy}/></div>

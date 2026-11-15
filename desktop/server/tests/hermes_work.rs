@@ -83,6 +83,10 @@ fn fixture() -> Fixture {
     kanban.execute(run, params!["t2", "work", "running", t("2026-11-15T06:50:00+01:00"), None::<i64>, None::<String>, "", ""]).unwrap();
     let event = "INSERT INTO task_events (task_id, kind, payload, created_at) VALUES (?, ?, ?, ?)";
     kanban.execute(event, params!["t1", "created", "CANARY_PAYLOAD", t("2026-11-14T09:50:00+01:00")]).unwrap();
+    // Hermes' heartbeats while the worker ran: never part of the history.
+    for minute in 0..40 {
+        kanban.execute(event, params!["t1", "heartbeat", "", t("2026-11-14T10:00:00+01:00") + minute]).unwrap();
+    }
     kanban.execute(event, params!["t1", "completed", "CANARY_PAYLOAD", t("2026-11-14T10:10:00+01:00")]).unwrap();
     drop(kanban);
     fs::write(root.join("config.yaml"), "kanban:\n  dispatch_in_gateway: false\n").unwrap();
@@ -162,6 +166,17 @@ fn totals_count_every_run_in_the_window() {
     let daily = &work["profiles"]["work"]["tasks"][0];
     assert_eq!(daily["runs"].as_array().unwrap().len(), 20, "the list shows the latest 20");
     assert_eq!(daily["totals"]["30d"]["runs"], 30, "the totals count all of them");
+}
+
+#[test]
+fn reads_the_dispatcher_switch_as_hermes_does() {
+    let fixture = fixture();
+    for (value, on) in [("false", false), ("off", false), ("no", false), ("0", false), ("true", true), ("on", true), ("1", true)] {
+        fs::write(fixture.root.join("config.yaml"), format!("kanban:\n  dispatch_in_gateway: {value}\n")).unwrap();
+        assert_eq!(read(&fixture)["dispatcher"], on, "dispatch_in_gateway: {value}");
+    }
+    fs::write(fixture.root.join("config.yaml"), "kanban:\n  otra: 1\n").unwrap();
+    assert_eq!(read(&fixture)["dispatcher"], true, "without the key, Hermes' default");
 }
 
 #[test]
