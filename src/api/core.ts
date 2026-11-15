@@ -254,3 +254,16 @@ export const getAgenda = (when: 'hoy' | 'mañana' | 'semana') => core<Agenda>(`/
 export const createEvent = (event: NewEvent) => core<{ id: string; clashes: number }>('/calendar/events', event);
 export const createReminder = (reminder: { calendarId?: string | null; title: string; due?: string | null; notes?: string | null; inboxId?: number | null }) =>
   core<{ id: string }>('/calendar/reminders', reminder);
+
+/** Reminders: missed calls, meetings about to start, mail deadlines and the morning summary. */
+export type AlertItem = { key: string; kind: 'call' | 'meeting' | 'commitment' | 'summary'; title: string; body: string; at: string };
+export type AlertSettings = { morning: string; quietFrom: string; quietTo: string; missedCalls: boolean; meetings: boolean; commitments: boolean;
+  summary: boolean; callsLevel: Level };
+export type AlertsView = { alerts: AlertItem[]; morning: AlertItem | null; problems: string[]; callsProblem: 'permission' | 'missing' | 'unreadable' | null; settings: AlertSettings; contacts: string };
+export const getAlerts = () => core<AlertsView>('/alerts');
+export const putAlertSettings = (changes: Partial<AlertSettings>) => core<AlertSettings>('/alerts/settings', changes, 'PUT');
+export const askContactsAccess = () => core<{ contacts: string }>('/alerts/contacts', {});
+export const openFullDiskAccess = () => core<{ ok: true }>('/alerts/full-disk-access', {});
+export type DueAlert = { key: string; title: string; body: string; kind: AlertItem['kind'] };
+export const getDueAlerts = () => core<{ notifications: DueAlert[] }>('/alerts/due');
+export const ackAlerts = (keys: string[]) => core<{ ok: true }>('/alerts/ack', { keys });

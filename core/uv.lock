@@ -4,7 +4,7 @@ requires-python = "==3.13.*"
 
 [[package]]
 name = "agora-core"
-version = "1.1.0a9"
+version = "1.1.0a10"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
@@ -16,6 +16,7 @@ dependencies = [
     { name = "mcp" },
     { name = "numpy" },
     { name = "openpyxl" },
+    { name = "pyobjc-framework-contacts" },
     { name = "pyobjc-framework-eventkit" },
     { name = "pypdf" },
     { name = "python-docx" },
@@ -40,6 +41,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=2.3,<3" },
     { name = "numpy", specifier = ">=2.1" },
     { name = "openpyxl", specifier = ">=3.1.5" },
+    { name = "pyobjc-framework-contacts", specifier = ">=11" },
     { name = "pyobjc-framework-eventkit", specifier = ">=11" },
     { name = "pypdf", specifier = ">=7.1.0" },
     { name = "python-docx", specifier = ">=1.2.0" },
@@ -704,6 +706,20 @@ sdist = { url = "https://files.pythonhosted.org/packages/30/50/55a8779d35f1f86d7
 wheels = [
     { url = "https://files.pythonhosted.org/packages/01/b0/cb28ff4474a2f07bb9b64751112b3b40c421755297749c70810f4cadfc24/pyobjc_framework_cocoa-13.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:bb0bcba2e4e9d05af875306e0e055cfc2f152fd602d5f2f1a54490adebebcd34", size = 391670, upload-time = "2026-10-30T10:35:17.336Z" },
     { url = "https://files.pythonhosted.org/packages/54/e6/53aeaa92fd8261ba32d7faca85bef4aa210740f4f4462d0e727be6769731/pyobjc_framework_cocoa-13.0-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:d6fa11ea29d85d46e65ed1c9fdba3a5131ad26971bf24bb7d16aa55f06bcdc1e", size = 395676, upload-time = "2026-10-30T10:35:18.813Z" },
+]
+
+[[package]]
+name = "pyobjc-framework-contacts"
+version = "13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyobjc-core" },
+    { name = "pyobjc-framework-cocoa" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c5/16/3869302d6c83183a86183b9c7df4e2b4ddcae32d636582881416886c777b/pyobjc_framework_contacts-13.0.tar.gz", hash = "sha256:06b6f722c1328797ce52505a8f2dbb7028bc422404c745981be798002f900eb7", size = 47608, upload-time = "2026-10-30T10:46:07.844Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/28/6c/639f10cde31e2efc2a73319a6cc5b078fb6542a15c76bd5d16331028b378/pyobjc_framework_contacts-13.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:8dda60cb071096e191e6a504852c26fd9b531fc045394655dfc466d82a9fd883", size = 12215, upload-time = "2026-10-30T10:35:30.562Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/e2/915c3b65a13eb4dd817077c0bf47b253d9595a9d1eca7c23223299b6cea9/pyobjc_framework_contacts-13.0-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:616ccf8d153c44b43c83c1045c61c7c7d1e4a184e066c25415b10e13e39edb49", size = 12381, upload-time = "2026-10-30T10:35:31.473Z" },
 ]
 
 [[package]]

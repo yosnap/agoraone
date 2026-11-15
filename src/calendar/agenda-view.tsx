@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { askCalendarAccess, getAgenda, getCalendarStatus, type Agenda, type CalendarStatus } from '../api/core';
+import { askCalendarAccess, getAgenda, getAlerts, getCalendarStatus, type Agenda, type AlertsView, type CalendarStatus } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { EventForm, hourMinute } from './event-form';
 import './calendar.css';
@@ -16,6 +16,7 @@ export function AgendaView({ discreet }: { discreet: boolean }) {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [adding, setAdding] = useState(false);
+  const [reminders, setReminders] = useState<AlertsView | null>(null);
   const asked = useRef(false);
   const request = useRef(0);
   const load = async (which: When = when) => {
@@ -24,13 +25,14 @@ export function AgendaView({ discreet }: { discreet: boolean }) {
     try {
       const found = await getAgenda(which);
       if (mine === request.current) setAgenda(found);
+      void getAlerts().then(setReminders).catch(() => undefined);
     } catch (failure) { if (mine === request.current) setError(failure instanceof Error ? failure.message : 'No se pudo leer la agenda.'); }
   };
   const start = async () => {
     try { const found = await getCalendarStatus(); setStatus(found); if (found.events === 'granted') void load(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo leer el calendario.'); }
   };
-  if (!asked.current) { asked.current = true; void start(); }
+  if (!asked.current) { asked.current = true; void start(); void getAlerts().then(setReminders).catch(() => undefined); }
   const allow = async () => {
     setError('');
     try { const found = await askCalendarAccess(); setStatus(found); if (found.events === 'granted') void load(); else setError(found.events === 'undetermined' ? 'Responde al aviso de macOS y vuelve a pulsar «Dar permiso».'
@@ -44,6 +46,10 @@ export function AgendaView({ discreet }: { discreet: boolean }) {
     <div className="eyebrow">AGENDA{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="agenda-title">Agenda</h1>
     <p className="page-lead">Tus calendarios y recordatorios de macOS (iCloud, Google, Exchange…), con los solapes marcados. Los eventos y recordatorios se crean solo cuando lo confirmas; AgoraOne nunca borra ninguno.</p>
+    {reminders && (reminders.morning || reminders.alerts.length > 0) && <div className="agenda-alerts" aria-label="Avisos de ahora">
+      {reminders.morning && <p className="ok-note">{reminders.morning.body}</p>}
+      {reminders.alerts.map(alert => <p key={alert.key} className="fiscal-warning"><strong>{discreet ? 'Aviso' : alert.title}</strong>{discreet ? '' : ` · ${alert.body}`}</p>)}
+    </div>}
     {status === null && !error ? <Loading label="Leyendo el calendario"/> : status && status.events !== 'granted' ? <article className="card">
       <p>{status.events === 'unavailable' ? 'El calendario de macOS no está disponible aquí.' : 'AgoraOne necesita tu permiso para leer los calendarios y los recordatorios. macOS te lo preguntará una vez.'}</p>
       {status.events !== 'unavailable' && <p><button type="button" className="button primary" onClick={() => void allow()}>Dar permiso</button></p>}

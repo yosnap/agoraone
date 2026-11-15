@@ -31,7 +31,8 @@ from .routes_mail import mail_router, mail_worker
 from .mail_summarizer import SummaryHealth, summary_worker
 from .routes_inbox import inbox_router
 from .routes_fiscal import fiscal_router
-from . import calendar_store
+from . import calendar_store, calls
+from .routes_alerts import alerts_router
 from .routes_calendar import calendar_router
 from .routes_central import CentralHealth, central_router, central_worker
 from .routes_summary import summary_router
@@ -57,7 +58,7 @@ _DEFAULT = object()
 
 def create_app(
     settings: Settings, store: KeyStore | None = None, scheduler: bool = True, embedder: Embedder | None | object = _DEFAULT,
-    secrets=None, engines=default_engines, calendar=None,
+    secrets=None, engines=default_engines, calendar=None, contacts=None, call_reader=None,
 ) -> FastAPI:
     """`scheduler` starts the background work (daily backups, embeddings); tests turn it off. `embedder`
     defaults to the local ollama; None disables search by meaning."""
@@ -172,4 +173,7 @@ def create_app(
     if calendar is not None:
         calendar_store.use(calendar)
     app.include_router(calendar_router(settings))
+    if contacts is not None:
+        calls.use_contacts(contacts)
+    app.include_router(alerts_router(settings, **({'call_reader': call_reader} if call_reader else {})))
     return app
