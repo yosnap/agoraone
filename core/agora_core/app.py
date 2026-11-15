@@ -35,6 +35,7 @@ from .routes_fiscal import fiscal_router
 from . import calendar_store, calls
 from .routes_alerts import alerts_router
 from .routes_jobs import jobs_router
+from .routes_voice import voice_router
 from .routes_calendar import calendar_router
 from .routes_central import CentralHealth, central_router, central_worker
 from .routes_summary import summary_router
@@ -180,4 +181,5 @@ def create_app(
         calls.use_contacts(contacts)
     app.include_router(alerts_router(settings, **({'call_reader': call_reader} if call_reader else {})))
     app.include_router(jobs_router(settings))
+    app.include_router(voice_router(settings))
     return app

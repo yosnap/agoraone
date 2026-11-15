@@ -288,6 +288,13 @@ export type ClientProjects = {
 };
 export const getClientProjects = () => core<ClientProjects>('/jobs/projects');
 
+/** Local speech to text (whisper.cpp): what is installed and chosen, and transcribing a short clip. */
+export type VoiceSettings = { binary: string | null; ffmpeg: string | null; model: string | null; language: string };
+export type VoiceStatus = VoiceSettings & { chosen: VoiceSettings; binaries: string[]; ffmpegs: string[];
+  models: { name: string; path: string; bytes: number }[]; ready: boolean; platform: string };
+export const getVoiceStatus = () => core<VoiceStatus>('/voice/status');
+export const putVoiceSettings = (changes: Partial<VoiceSettings>) => core<VoiceSettings>('/voice/settings', changes, 'PUT');
+
 /** Replying: a prefilled reply, a body drafted by Watson (normal mail only), the sealed preview and the send. */
 export type MailDraft = { accountId: number; to: string; cc: string; subject: string; body: string; replyTo: number | null };
 export type MailPreview = { draft: { accountId: number; to: string[]; cc: string[]; subject: string; body: string; replyTo: number | null };
