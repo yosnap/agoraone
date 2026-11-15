@@ -1,6 +1,15 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
+En curso · 1.3 «Reuniones y voz» (plan: plans/261115-1110-reuniones-voz/plan.md). Rama integradora `integracion/v1.3` (desde `integracion/v1.2`, que lleva además el tipo corto IMG/XLS en Fiscal, sin publicar); rama de trabajo `feat/1.3.0-alpha.1-transcripcion` con las fases 1 y 2 sin integrar.
+- **Hecho (fases 1 y 2):** transcripción local con whisper.cpp y ffmpeg detectados en macOS, Linux o Windows y elegibles en Ajustes › Voz (`transcribe.py`, `routes_voice.py`; probada de verdad en el Mac del usuario: whisper-cli de Homebrew y large-v3-turbo); botón «Dictar» en el chat de Watson y de los bots (rellena la caja, nunca envía); permiso de micrófono en la app y en el empaquetado. 224 pruebas del núcleo, 17 de la interfaz y build.
+- **Pendiente para retomar:**
+  1. Leer y aplicar la revisión de código de las fases 1 y 2: plans/reports/code-review-261115-1145-voz.md (lanzada al cerrar la sesión).
+  2. Pasar `scripts/verify-voice.mjs` con `pnpm dev` (hay que cerrar la app empaquetada antes; pedir permiso), versión 1.3.0-alpha.2, estado, integrar en `integracion/v1.3` y empaquetar para que el usuario pruebe el dictado (permiso de micrófono de macOS).
+  3. Fase 3: grabar reuniones (micrófono por la interfaz y audio del sistema detrás de una interfaz común: macOS ScreenCaptureKit primero; Linux monitor de PipeWire/PulseAudio vía ffmpeg; Windows WASAPI loopback después; sin adaptador, solo micrófono con aviso).
+  4. Fase 4: transcripción en dos pistas, resumen según confidencialidad (normal → Claude; local → LM Studio u Ollama; si no hay, solo transcripción), nota en el vault y tareas como recordatorios o encargos tras confirmar. Fase 5: cierre.
+- **Decisiones vigentes:** AgoraOne multiplataforma (macOS, Linux, Windows); la ciudad por eventos (agentes trabajando de verdad) es la 1.4; gestión de proyectos de Central al integrar Central (backlog).
+
 Versión 1.2.1 · Watson propone reglas del correo.
 - **`proponer_regla`** (solo Claude): Watson comprueba la regla con las validaciones de Ajustes y la enseña tal cual en el chat; se crea solo con «Crear regla» o un «sí» justo después (nunca para «ignorar» ni en modo discreto); escribir otra cosa la caduca. Propuesta en el núcleo, ligada al acceso, de un solo uso y de una hora; aceptar sin carreras. Solo la propone si lo pide el usuario, nunca un correo.
 - **Registro de acciones:** las consultas de agenda, día y trabajos de Watson ya se registran bien (caían en la rama de leer nota).
