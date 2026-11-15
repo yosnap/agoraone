@@ -81,3 +81,5 @@ section.assistant { display:grid; grid-template-columns:260px minmax(0,1fr); gri
 .assistant.embedded .assistant-form { flex-direction:row; flex-wrap:nowrap }
 .assistant.embedded .assistant-form textarea { width:auto; min-width:0; flex:1 1 auto }
 .assistant.embedded .assistant-form .actions { flex-wrap:nowrap; flex:none }
+.watson-hush { padding:4px 10px; font-size:11px; background:var(--c-8e3d2a); border-color:var(--c-8e3d2a); color:#fff }
+.assistant.embedded .assistant-head > .watson-hush { grid-column:3; grid-row:2; justify-self:end }

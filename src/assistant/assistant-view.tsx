@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import { RuleProposals, useProposals } from './rule-proposals';
 import { DictationButton } from '../ui/dictation-button';
 import { isYes, quickCommand, type QuickResult } from './quick-commands';
-import { speak, stopSpeaking } from './speech';
+import { speak, stopSpeaking, useSpeaking } from './speech';
+
+// The conversation last open (its number only, in this browser), opened again when coming back to the chat.
+const LAST = 'agora-watson-conversation';
+const readLast = () => { try { const n = Number(localStorage.getItem(LAST)); return Number.isInteger(n) && n > 0 ? n : null; } catch { return null; } };
+const writeLast = (id: number | null) => { try { if (id === null) localStorage.removeItem(LAST); else localStorage.setItem(LAST, String(id)); } catch { /* not remembered this time */ } };
 import {
   askAssistant, createAssistantConversation, getAssistantConversation, getAssistantSettings, getEngines, getPersonas, listAssistantConversations,
   type AssistantMessage, type ConversationSummary, type Persona, type Source, type Stage,
@@ -62,17 +67,24 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [refreshList]);
   const open = useCallback(async (id: number) => {
     abort.current?.abort();
-    setCurrent(id); setLive(null); setError(''); setLoading(true); proposals.clear();
+    setCurrent(id); setLive(null); setError(''); setLoading(true); proposals.clear(); writeLast(id); shownId.current = id;
     if (embedded) setListOpen(false);
     try { const found = (await getAssistantConversation(id)).messages; setMessages(found); onSources?.(lastSources(found)); }
-    catch (failure) { setMessages([]); setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.'); }
+    catch (failure) { setMessages([]); setCurrent(null); writeLast(null); setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.'); }
     finally { setLoading(false); }
   }, []);
+  // Coming back to the chat opens the last conversation; only «Nueva» starts another. Leaving stops Watson's voice.
+  useEffect(() => {
+    const last = readLast();
+    if (last !== null) void open(last);
+    return () => stopSpeaking();
+  }, [open]);
+  const talking = useSpeaking();
   const send = useCallback(async (text: string, into: number | null) => {
     let id = into;
     setError('');
     try {
-      if (id === null) { id = (await createAssistantConversation()).id; shownId.current = id; setCurrent(id); setMessages([]); }
+      if (id === null) { id = (await createAssistantConversation()).id; shownId.current = id; setCurrent(id); writeLast(id); setMessages([]); }
       const controller = new AbortController();
       abort.current = controller;
       setLive({ question: text, stage: null, sources: [], text: '', steps: [] });
@@ -142,7 +154,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
-  const fresh = () => { abort.current?.abort(); setCurrent(null); setMessages([]); setLive(null); setError(''); proposals.clear(); onSources?.([]); if (embedded) setListOpen(false); };
+  const fresh = () => { abort.current?.abort(); stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setLive(null); setError(''); proposals.clear(); onSources?.([]); if (embedded) setListOpen(false); };
   const sourceList = (sources: Source[]) => sources.length > 0 && <div className="sources">
     <span className="muted">Fuentes</span>
     <ol>{sources.map(source => <li key={source.n} value={source.n}><button onClick={() => onRead({ vault: source.source, note: source.ref })}>{source.title}</button><small>{source.folder || 'Raíz'}</small></li>)}</ol>
@@ -166,6 +178,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
             : live ? (live.stage ? stageLabels[live.stage] : 'Enviando…') : 'Listo · escribe o pulsa el micrófono'}</p>
             : persona && <p className="muted">{persona.conveys}. Inspirado en {persona.origin}.</p>}</div>
         {embedded && <div className="actions"><button className="button" aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)}>Conversaciones</button><button className="button" onClick={fresh}>Nueva</button></div>}
+        {talking && <button type="button" className="button watson-hush" onClick={stopSpeaking} aria-label="Callar a Watson">■ Callar</button>}
         <span className={`chip ${engine?.active ? 'good' : engine ? 'bad' : ''}`} role="status">
           {!engine ? 'Comprobando motor…' : engine.active ? `${engineName(engine.active)} · ${modelName(engine.model)}` : 'Sin motor disponible'}</span>
       </header>
@@ -204,7 +217,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <textarea id="assistant-input" value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={keys} maxLength={8000}
           placeholder={embedded ? 'Escribe o habla…' : `Pregunta a ${name}…`} aria-keyshortcuts="Enter" rows={embedded ? 1 : undefined}/>
         <div className="actions">
-          <DictationButton disabled={Boolean(live)} onText={spoken => submit(undefined, spoken)} onPhase={setHearing} big={embedded}/>
+          <DictationButton disabled={Boolean(live)} onText={spoken => submit(undefined, spoken)} onPhase={phase => { if (phase === 'starting') stopSpeaking(); setHearing(phase); }} big={embedded}/>
           {live ? <button type="button" className="button" onClick={() => abort.current?.abort()}>Detener</button>
             : !embedded && <button className="button primary" disabled={!draft.trim()}>Enviar</button>}
           {!embedded && <small className="muted">Enter envía · Mayús + Enter, nueva línea</small>}
