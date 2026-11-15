@@ -44,6 +44,16 @@ class EventKitStore:
         self.kit = EventKit
         self.store = EventKit.EKEventStore.alloc().init()
         self.lock = threading.Lock()
+        self.seen = self.status()  # what the store was created with: a permission granted later needs a new one
+
+    def _fresh(self):
+        """The store, renewed when the permission changed since it was made (granted in System Settings, or a
+        prompt answered after the wait): an old store keeps seeing nothing."""
+        now = self.status()
+        with self.lock:
+            if now != self.seen:
+                self.store, self.seen = self.kit.EKEventStore.alloc().init(), now
+            return self.store
 
     def status(self) -> dict:
         kit = self.kit
@@ -52,18 +62,23 @@ class EventKitStore:
 
     def request(self) -> dict:
         """Asks macOS for full access to calendars and reminders (the prompt shows the app's own wording)."""
-        for ask in (self.store.requestFullAccessToEventsWithCompletion_, self.store.requestFullAccessToRemindersWithCompletion_):
+        kit, store = self.kit, self.store
+        if hasattr(store, "requestFullAccessToEventsWithCompletion_"):  # macOS 14 and later
+            asks = [store.requestFullAccessToEventsWithCompletion_, store.requestFullAccessToRemindersWithCompletion_]
+        else:  # macOS 13
+            asks = [lambda done: store.requestAccessToEntityType_completion_(kit.EKEntityTypeEvent, done),
+                    lambda done: store.requestAccessToEntityType_completion_(kit.EKEntityTypeReminder, done)]
+        for ask in asks:
             done = threading.Event()
             ask(lambda granted, error: done.set())
             done.wait(WAIT)
-        with self.lock:
-            self.store = self.kit.EKEventStore.alloc().init()  # a new store sees the permission just granted
+        self._fresh()
         return self.status()
 
     def calendars(self) -> list[dict]:
         kit, found = self.kit, []
         for kind, entity in (("event", kit.EKEntityTypeEvent), ("reminder", kit.EKEntityTypeReminder)):
-            for calendar in self.store.calendarsForEntityType_(entity) or []:
+            for calendar in self._fresh().calendarsForEntityType_(entity) or []:
                 source = calendar.source()
                 found.append({"id": str(calendar.calendarIdentifier()), "title": str(calendar.title() or ""), "kind": kind,
                               "account": str(source.title()) if source else "", "writable": bool(calendar.allowsContentModifications())})
@@ -72,44 +87,52 @@ class EventKitStore:
     def events(self, start: datetime, end: datetime) -> list[dict]:
         from Foundation import NSDate
 
-        predicate = self.store.predicateForEventsWithStartDate_endDate_calendars_(
+        store = self._fresh()
+        predicate = store.predicateForEventsWithStartDate_endDate_calendars_(
             NSDate.dateWithTimeIntervalSince1970_(start.timestamp()), NSDate.dateWithTimeIntervalSince1970_(end.timestamp()), None)
         found = []
-        for event in self.store.eventsMatchingPredicate_(predicate) or []:
-            found.append({"id": str(event.eventIdentifier() or event.calendarItemIdentifier()), "calendarId": str(event.calendar().calendarIdentifier()),
-                          "title": str(event.title() or ""), "start": _iso(datetime.fromtimestamp(event.startDate().timeIntervalSince1970(), timezone.utc)),
+        for event in store.eventsMatchingPredicate_(predicate) or []:
+            begins = _iso(datetime.fromtimestamp(event.startDate().timeIntervalSince1970(), timezone.utc))
+            # Every occurrence of a repeating event shares its identifier: one id per occurrence.
+            found.append({"id": f"{event.eventIdentifier() or event.calendarItemIdentifier()}@{begins}", "calendarId": str(event.calendar().calendarIdentifier()),
+                          "title": str(event.title() or ""), "start": begins,
                           "end": _iso(datetime.fromtimestamp(event.endDate().timeIntervalSince1970(), timezone.utc)),
                           "allDay": bool(event.isAllDay()), "location": str(event.location() or "") or None})
         return found
 
     def reminders(self, until: datetime) -> list[dict]:
         """Reminders not done yet that are due before `until` or have no due date."""
-        from Foundation import NSCalendar, NSDate
+        from Foundation import NSCalendar
 
-        predicate = self.store.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars_(
-            None, NSDate.dateWithTimeIntervalSince1970_(until.timestamp()), None)
+        store = self._fresh()
+        # With an end date EventKit leaves out the reminders that have none: ask for all, filter here.
+        predicate = store.predicateForIncompleteRemindersWithDueDateStarting_ending_calendars_(None, None, None)
         box, done = {}, threading.Event()
 
         def got(items):
             box["items"] = list(items or [])
             done.set()
-        self.store.fetchRemindersMatchingPredicate_completion_(predicate, got)
+        store.fetchRemindersMatchingPredicate_completion_(predicate, got)
         if not done.wait(WAIT):
             raise CalendarError("Recordatorios no respondió a tiempo.")
         found = []
         for reminder in box["items"]:
             components = reminder.dueDateComponents()
             day = NSCalendar.currentCalendar().dateFromComponents_(components) if components else None
-            found.append({"id": str(reminder.calendarItemIdentifier()), "calendarId": str(reminder.calendar().calendarIdentifier()),
-                          "title": str(reminder.title() or ""),
-                          "due": _iso(datetime.fromtimestamp(day.timeIntervalSince1970(), timezone.utc)) if day else None})
+            due = _iso(datetime.fromtimestamp(day.timeIntervalSince1970(), timezone.utc)) if day else None
+            if due is None or due <= _iso(until):
+                found.append({"id": str(reminder.calendarItemIdentifier()), "calendarId": str(reminder.calendar().calendarIdentifier()),
+                              "title": str(reminder.title() or ""), "due": due})
         return found
 
     def _calendar(self, calendar_id: str | None, entity):
-        calendar = self.store.calendarWithIdentifier_(calendar_id) if calendar_id else None
+        store = self._fresh()
+        calendar = store.calendarWithIdentifier_(calendar_id) if calendar_id else None
+        if calendar_id and calendar is None:
+            raise CalendarError("Ese calendario ya no existe en macOS.")
         if calendar is None:
-            calendar = (self.store.defaultCalendarForNewEvents() if entity == self.kit.EKEntityTypeEvent
-                        else self.store.defaultCalendarForNewReminders())
+            calendar = (store.defaultCalendarForNewEvents() if entity == self.kit.EKEntityTypeEvent
+                        else store.defaultCalendarForNewReminders())
         if calendar is None or not calendar.allowsContentModifications():
             raise CalendarError("Ese calendario no admite cambios.")
         return calendar
@@ -119,7 +142,7 @@ class EventKitStore:
         from Foundation import NSDate
 
         kit = self.kit
-        event = kit.EKEvent.eventWithEventStore_(self.store)
+        event = kit.EKEvent.eventWithEventStore_(self._fresh())
         event.setCalendar_(self._calendar(calendar_id, kit.EKEntityTypeEvent))
         event.setTitle_(title)
         event.setStartDate_(NSDate.dateWithTimeIntervalSince1970_(start.timestamp()))
@@ -129,7 +152,7 @@ class EventKitStore:
             event.setLocation_(location)
         if notes:
             event.setNotes_(notes)
-        ok, error = self.store.saveEvent_span_commit_error_(event, kit.EKSpanThisEvent, True, None)
+        ok, error = self._fresh().saveEvent_span_commit_error_(event, kit.EKSpanThisEvent, True, None)
         if not ok:
             raise CalendarError("macOS no dejó guardar el evento.")
         return str(event.eventIdentifier())
@@ -138,15 +161,17 @@ class EventKitStore:
         from Foundation import NSCalendar, NSDate
 
         kit = self.kit
-        reminder = kit.EKReminder.reminderWithEventStore_(self.store)
+        reminder = kit.EKReminder.reminderWithEventStore_(self._fresh())
         reminder.setCalendar_(self._calendar(calendar_id, kit.EKEntityTypeReminder))
         reminder.setTitle_(title)
         if due:
             units = 4 | 8 | 16 | 32 | 64  # year, month, day, hour, minute
-            reminder.setDueDateComponents_(NSCalendar.currentCalendar().components_fromDate_(units, NSDate.dateWithTimeIntervalSince1970_(due.timestamp())))
+            moment = NSDate.dateWithTimeIntervalSince1970_(due.timestamp())
+            reminder.setDueDateComponents_(NSCalendar.currentCalendar().components_fromDate_(units, moment))
+            reminder.addAlarm_(kit.EKAlarm.alarmWithAbsoluteDate_(moment))  # without an alarm, a due date does not notify
         if notes:
             reminder.setNotes_(notes)
-        ok, error = self.store.saveReminder_commit_error_(reminder, True, None)
+        ok, error = self._fresh().saveReminder_commit_error_(reminder, True, None)
         if not ok:
             raise CalendarError("macOS no dejó guardar el recordatorio.")
         return str(reminder.calendarItemIdentifier())
@@ -200,10 +225,12 @@ def default_store():
 
 def day_range(when: str, now: datetime | None = None) -> tuple[datetime, datetime]:
     """«hoy», «mañana» or «semana» in local time, as (start, end)."""
-    now = (now or datetime.now()).astimezone()
-    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    start = today + timedelta(days=1) if when == "mañana" else today
-    return start, start + timedelta(days=7 if when == "semana" else 1)
+    today = (now or datetime.now()).astimezone().date()
+    first = today + timedelta(days=1) if when == "mañana" else today
+    last = first + timedelta(days=7 if when == "semana" else 1)
+    # Midnight of each day in local time, so a day with a clock change still runs from midnight to midnight.
+    midnight = lambda day: datetime(day.year, day.month, day.day).astimezone()  # noqa: E731
+    return midnight(first), midnight(last)
 
 
 _SHARED = None
@@ -241,6 +268,11 @@ def agenda(connection, store, start: datetime, end: datetime, audience: str = "o
         if setting.get("hidden"):
             return False
         return audience == "owner" or setting.get("confidentiality", "normal") == "normal"
-    events = sorted((e for e in store.events(start, end) if shown(e)), key=lambda e: e["start"])
-    reminders = [r for r in store.reminders(end) if shown(r)]
+    try:
+        events = sorted((e for e in store.events(start, end) if shown(e)), key=lambda e: e["start"])
+        reminders = [r for r in store.reminders(end) if shown(r)] if store.status()["reminders"] == "granted" else []
+    except CalendarError:
+        raise
+    except Exception as error:  # noqa: BLE001 - EventKit or PyObjC failing says so instead of breaking the page
+        raise CalendarError("No se pudo leer el calendario de macOS.") from error
     return {"events": events, "reminders": reminders, "overlaps": overlaps(events)}

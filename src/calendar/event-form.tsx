@@ -12,8 +12,8 @@ export const hourMinute = (iso: string) => new Date(iso).toLocaleTimeString('es-
 
 /** A new event or reminder, created only when the user presses the button; if the event overlaps others,
  * they are listed and it is created only with a second, explicit yes. Nothing is ever deleted. */
-export function EventForm({ initial, inboxId, onDone, onCancel }: {
-  initial?: { title?: string; start?: Date; notes?: string }; inboxId?: number; onDone: (note: string) => void; onCancel: () => void;
+export function EventForm({ initial, inboxId, discreet = false, onDone, onCancel }: {
+  initial?: { title?: string; start?: Date; notes?: string }; inboxId?: number; discreet?: boolean; onDone: (note: string) => void; onCancel: () => void;
 }) {
   const start = initial?.start ?? new Date(Math.ceil(Date.now() / 1800000) * 1800000);
   const [kind, setKind] = useState<'event' | 'reminder'>('event');
@@ -63,7 +63,7 @@ export function EventForm({ initial, inboxId, onDone, onCancel }: {
     {kind === 'event' && <label className="check"><input type="checkbox" checked={form.allDay} onChange={event => setForm({ ...form, allDay: event.target.checked })}/> Todo el día</label>}
     <label className="field">Notas<textarea value={form.notes} onChange={set('notes')} rows={3} maxLength={4000}/></label>
     {clashes && <div className="calendar-clash" role="alert"><strong>Se solapa con:</strong>
-      <ul>{clashes.map((c, i) => <li key={i}>{c.title} · {hourMinute(c.start)}–{hourMinute(c.end)}</li>)}</ul></div>}
+      <ul>{clashes.map((c, i) => <li key={i}>{discreet ? '•••' : c.title} · {hourMinute(c.start)}–{hourMinute(c.end)}</li>)}</ul></div>}
     {error && <LoadError message={error}/>}
     <div className="field-row">
       {clashes ? <button type="button" className="button primary" disabled={busy} onClick={() => void save(true)}>Crear de todos modos</button>

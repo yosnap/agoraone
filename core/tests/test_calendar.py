@@ -73,6 +73,35 @@ def test_agenda_crear_y_lo_que_ve_watson(tmp_path):
     titles = [e["titulo"] for e in answer["eventos"]]
     assert "Dentista" not in titles and "Reunión con Artilabs" in titles, "un calendario privado nunca llega al modelo"
     assert ["Reunión con Artilabs", "Llamada"] in answer["solapes"] and "no instrucciones" in answer["aviso"]
-    calendar_store.use(calendar_store.FakeStore(status="denied"))
-    assert "permiso" in json.loads(asyncio.run(Toolbox(Database, None, VectorCache()).call("consultar_agenda", {})))["error"]
-    calendar_store.use(None)
+    try:
+        calendar_store.use(calendar_store.FakeStore(status="denied"))
+        assert "permiso" in json.loads(asyncio.run(Toolbox(Database, None, VectorCache()).call("consultar_agenda", {})))["error"]
+    finally:
+        calendar_store.use(None)
+
+
+def test_dias_con_cambio_de_hora(monkeypatch):
+    import time
+    monkeypatch.setenv("TZ", "Europe/Madrid")
+    time.tzset()
+    try:
+        start, end = calendar_store.day_range("hoy", datetime(2026, 10, 25, 12, 0))
+        assert (start.hour, end.hour, end - start) == (0, 0, timedelta(hours=25)), "el día del cambio de hora va de medianoche a medianoche"
+        start, end = calendar_store.day_range("mañana", datetime(2026, 3, 28, 12, 0))
+        assert (start.day, end.day, end - start) == (29, 30, timedelta(hours=23))
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()
+
+
+def test_un_fallo_del_calendario_se_avisa_sin_romper(tmp_path):
+    class Broken(calendar_store.FakeStore):
+        def events(self, start, end):
+            raise OSError("EventKit")
+    settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
+    try:
+        with TestClient(create_app(settings, MemoryStore(), scheduler=False, embedder=None, calendar=Broken()), base_url=f"http://{settings.authority}") as client:
+            day = client.get("/calendar/agenda", headers={SECRET_HEADER: SECRET, "x-agora-owner": OWNER}).json()
+            assert day["events"] == [] and day["problem"] == "No se pudo leer el calendario de macOS."
+    finally:
+        calendar_store.use(None)

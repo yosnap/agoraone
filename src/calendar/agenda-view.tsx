@@ -54,7 +54,7 @@ export function AgendaView({ discreet }: { discreet: boolean }) {
         <button type="button" className="button primary" onClick={() => { setAdding(true); setNote(''); }}>Nuevo evento o recordatorio</button>
       </div>
       {note && <p className="ok-note" role="status">{note}</p>}
-      {adding && <EventForm onCancel={() => setAdding(false)} onDone={done => { setAdding(false); setNote(done); void load(); }}/>}
+      {adding && <EventForm discreet={discreet} onCancel={() => setAdding(false)} onDone={done => { setAdding(false); setNote(done); void load(); }}/>}
       {agenda?.overlaps.length ? <p className="fiscal-warning">{agenda.overlaps.length === 1 ? 'Hay un solape' : `Hay ${agenda.overlaps.length} solapes`}: los eventos marcados coinciden en el tiempo.</p> : null}
       {agenda === null && !error ? <Loading label="Leyendo la agenda" lines={4}/> : agenda && <>
         {agenda.problem && <p className="fiscal-warning">{agenda.problem}</p>}

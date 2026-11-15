@@ -8,7 +8,11 @@ import { EventForm } from '../calendar/event-form';
 import '../calendar/calendar.css';
 
 /** The first date the mail mentions, when it reads as one (the form shows it to be checked). */
-const firstDate = (item: InboxItem) => item.details.dates?.map(d => new Date(d)).find(d => !Number.isNaN(d.getTime()) && d.getTime() > Date.now() - 86400000);
+const asDate = (text: string) => {
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text.trim());  // a day alone is the user's own day, at 9:00 (not UTC midnight)
+  return day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]), 9, 0) : new Date(text);
+};
+const firstDate = (item: InboxItem) => item.details.dates?.map(asDate).find(d => !Number.isNaN(d.getTime()) && d.getTime() > Date.now() - 86400000);
 import { ReceiptsPanel } from './receipts-panel';
 import './inbox.css';
 
@@ -116,7 +120,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
               : <p className="inbox-proposal"><button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para ver y escribir la nota' : undefined}
                 onClick={() => setNoting(item.id)}>{proposalLabels.add_to_project.label}…</button></p>)
             : item.proposal === 'create_event' && item.state === 'pending' && (scheduling === item.id && !discreet
-              ? <EventForm inboxId={item.id} initial={{ title: item.subject ?? '', start: firstDate(item), notes: item.summary ?? '' }}
+              ? <EventForm inboxId={item.id} initial={{ title: (item.subject ?? '').slice(0, 200), start: firstDate(item), notes: (item.summary ?? '').slice(0, 4000) }}
                 onCancel={() => setScheduling(null)} onDone={done => { setScheduling(null); setNote(`${done} La tarjeta pasa a «Hechos».`); void load(); }}/>
               : <p className="inbox-proposal"><button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para crear el evento' : undefined}
                 onClick={() => setScheduling(item.id)}>{proposalLabels.create_event.label}…</button></p>)}

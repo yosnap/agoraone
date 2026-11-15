@@ -110,13 +110,22 @@ def calendar_router(settings: Settings) -> APIRouter:
         if problem := ready(store):
             return {"events": [], "reminders": [], "overlaps": [], "problem": problem}
         start, end = calendar_store.day_range(when)
-        found = await db(lambda c: calendar_store.agenda(c, store, start, end))
+        try:
+            found = await db(lambda c: calendar_store.agenda(c, store, start, end))
+        except calendar_store.CalendarError as error:
+            return {"events": [], "reminders": [], "overlaps": [], "problem": str(error)}
         return {**found, "from": start.isoformat(), "to": end.isoformat(), "problem": None}
 
     def done(inbox_id: int | None) -> None:
-        if inbox_id is not None:
+        """Marks the Bandeja card done; the event already exists, so a failure here must not look like the
+        creation failed (trying again would create it twice)."""
+        if inbox_id is None:
+            return
+        try:
             with database() as connection:
                 mail_inbox.decide(connection, inbox_id, "done")
+        except Exception:  # noqa: BLE001
+            pass
 
     @router.post("/calendar/events", status_code=201)
     async def create_event(body: EventIn):
@@ -139,6 +148,8 @@ def calendar_router(settings: Settings) -> APIRouter:
             made, clash = await run_in_threadpool(check_and_create)
         except calendar_store.CalendarError as error:
             return refuse(str(error))
+        except Exception:  # noqa: BLE001 - EventKit failing says so
+            return refuse("macOS no dejó guardar el evento.")
         if made is None:
             return refuse("Se solapa con otros eventos: confírmalo si aun así lo quieres.", 409,
                           clashes=[{"title": e["title"], "start": e["start"], "end": e["end"]} for e in clash])
@@ -158,5 +169,7 @@ def calendar_router(settings: Settings) -> APIRouter:
             return {"id": await run_in_threadpool(create)}
         except calendar_store.CalendarError as error:
             return refuse(str(error))
+        except Exception:  # noqa: BLE001
+            return refuse("macOS no dejó guardar el recordatorio.")
 
     return router
