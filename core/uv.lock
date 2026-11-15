@@ -4,7 +4,7 @@ requires-python = "==3.13.*"
 
 [[package]]
 name = "agora-core"
-version = "1.1.0a8"
+version = "1.1.0a9"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
@@ -16,6 +16,7 @@ dependencies = [
     { name = "mcp" },
     { name = "numpy" },
     { name = "openpyxl" },
+    { name = "pyobjc-framework-eventkit" },
     { name = "pypdf" },
     { name = "python-docx" },
     { name = "segno" },
@@ -39,6 +40,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=2.3,<3" },
     { name = "numpy", specifier = ">=2.1" },
     { name = "openpyxl", specifier = ">=3.1.5" },
+    { name = "pyobjc-framework-eventkit", specifier = ">=11" },
     { name = "pypdf", specifier = ">=7.1.0" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "segno", specifier = ">=1.6.6" },
@@ -679,6 +681,42 @@ wheels = [
 [package.optional-dependencies]
 crypto = [
     { name = "cryptography" },
+]
+
+[[package]]
+name = "pyobjc-core"
+version = "13.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/58/7bab095330b8893e1ac58f3cf9710462c3242b600f8fa5db0d5dda795775/pyobjc_core-13.0.tar.gz", hash = "sha256:ffe154462d14aa4852f424e9116f17b5f8d44f78fc0f6c4727e721a5fa7177da", size = 1083172, upload-time = "2026-10-30T10:45:39.835Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d8/42/7b31511491d966b64183dfab325f022098e06e90c19a9cc8540de4f32588/pyobjc_core-13.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:f29f7cdb3969268716017ada9516b94f6dd1c66c2e415274b5ac1169440da1a4", size = 6734122, upload-time = "2026-10-30T10:32:50.192Z" },
+    { url = "https://files.pythonhosted.org/packages/04/54/fda17a291ecdb5186f545c9a7575d02f55815e239756567f030b555b14f3/pyobjc_core-13.0-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:1e8752b3950ceec603bf36f57083151abed15e0c2e7c5b8c3efded9c81dc732c", size = 7031547, upload-time = "2026-10-30T10:32:55.183Z" },
+]
+
+[[package]]
+name = "pyobjc-framework-cocoa"
+version = "13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyobjc-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/30/50/55a8779d35f1f86d795264cbd6fe62e35b2cf4fb8343fc888e99268c988a/pyobjc_framework_cocoa-13.0.tar.gz", hash = "sha256:bb7a23941fc8d7866578dbc84e56140efd343a1d28510f530dd1dbf80807daf4", size = 3135308, upload-time = "2026-10-30T10:46:03.982Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/01/b0/cb28ff4474a2f07bb9b64751112b3b40c421755297749c70810f4cadfc24/pyobjc_framework_cocoa-13.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:bb0bcba2e4e9d05af875306e0e055cfc2f152fd602d5f2f1a54490adebebcd34", size = 391670, upload-time = "2026-10-30T10:35:17.336Z" },
+    { url = "https://files.pythonhosted.org/packages/54/e6/53aeaa92fd8261ba32d7faca85bef4aa210740f4f4462d0e727be6769731/pyobjc_framework_cocoa-13.0-cp313-cp313t-macosx_10_13_universal2.whl", hash = "sha256:d6fa11ea29d85d46e65ed1c9fdba3a5131ad26971bf24bb7d16aa55f06bcdc1e", size = 395676, upload-time = "2026-10-30T10:35:18.813Z" },
+]
+
+[[package]]
+name = "pyobjc-framework-eventkit"
+version = "13.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyobjc-core" },
+    { name = "pyobjc-framework-cocoa" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/76/2c/c6c311619c099ae622f8c6815854888154db0439785619013ad9ba10453c/pyobjc_framework_eventkit-13.0.tar.gz", hash = "sha256:77d8cd18ff038b6e88bb54461cd769cb1e45ae36eecc780adf51fc53adc397b2", size = 33168, upload-time = "2026-10-30T10:46:28.952Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a0/2f/3e993e3b98f186e7c123cd6a8fdfacc140c8a0ea2ff41c27ec33ee7b1138/pyobjc_framework_eventkit-13.0-py2.py3-none-any.whl", hash = "sha256:c897d7054bfdaf35e11ef4b920d43ddbee241da94b19735191793ca5c9199d73", size = 6926, upload-time = "2026-10-30T10:37:40.861Z" },
 ]
 
 [[package]]

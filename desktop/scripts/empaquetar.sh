@@ -83,6 +83,14 @@ step "App de Tauri"
 codesign --verify --deep --strict "$APP"
 codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/dev/null | grep -q allow-unsigned-executable-memory \
   || { echo "Python perdió sus permisos de firma dentro de la app." >&2; exit 1; }
+# The calendar: the core's Python reads EventKit, which macOS allows only with this entitlement and the
+# app's own permission texts.
+codesign -d --entitlements - "$APP/Contents/Resources/python/bin/python3.13" 2>/dev/null | grep -q personal-information.calendars \
+  || { echo "Python no tiene el permiso de calendarios en su firma." >&2; exit 1; }
+/usr/libexec/PlistBuddy -c "Print :NSCalendarsFullAccessUsageDescription" "$APP/Contents/Info.plist" >/dev/null \
+  || { echo "El Info.plist de la app no lleva el texto del permiso de calendarios." >&2; exit 1; }
+"$APP/Contents/Resources/python/bin/python3.13" -I -c "import EventKit" \
+  || { echo "El Python de la app no carga EventKit." >&2; exit 1; }
 # The finished app next to the other packaging files, where it is notarized and picked up.
 rm -rf "$WORK/AgoraOne.app"
 ditto "$APP" "$WORK/AgoraOne.app"

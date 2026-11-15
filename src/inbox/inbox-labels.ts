@@ -18,7 +18,7 @@ export const actionLabels: Record<MailRuleAction, string> = {
 export const proposalLabels: Record<NonNullable<InboxItem['proposal']>, { label: string; question: string; arrives: string }> = {
   archive_invoice: { label: 'Descargar y archivar la factura', question: '¿la descargo y la archivo en su trimestre?', arrives: '' },
   add_to_project: { label: 'Añadir a la nota del proyecto', question: '¿lo añado a la nota de su proyecto?', arrives: '' },
-  create_event: { label: 'Crear el evento', question: '¿creo el evento en tu calendario?', arrives: 'llega con el calendario' },
+  create_event: { label: 'Crear el evento', question: '¿creo el evento en tu calendario?', arrives: '' },
 };
 
 export const sender = (item: InboxItem) => item.from.name || item.from.address || 'remitente desconocido';

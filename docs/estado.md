@@ -1,13 +1,21 @@
 # Estado de continuidad — 14/11/2026
 
 ## Resultado
+Versión 1.1.0-alpha.9 · Agenda con los calendarios de macOS (fase 6).
+- **Agenda** (sección nueva): hoy, mañana o la semana con los calendarios de macOS (EventKit por PyObjC) y los recordatorios pendientes, con los solapes marcados. «Nuevo evento o recordatorio» y «Crear el evento» de la Bandeja crean solo al pulsar; si choca con otros eventos, los enseña y pide un segundo sí. Nunca se borra nada.
+- **Ajustes › Calendarios:** permiso, y ámbito, confidencialidad (normal por defecto) y ocultar por calendario (migración 0018).
+- **Watson:** `consultar_agenda` («¿qué tengo hoy/mañana/esta semana?»), solo calendarios normales, en la hora del usuario y nunca por el proveedor compatible.
+- **App firmada:** textos de permiso en `desktop/app/Info.plist` (Tauri los combina), derecho de calendarios en la app y en su Python; el empaquetado comprueba los tres y que EventKit carga. En macOS 13 se usa la API de permisos anterior.
+- **Revisión** (plans/reports/code-review-261115-0200-calendario.md) aplicada: un id por repetición, recordatorios sin fecha, permiso concedido fuera de la app sin reiniciar, fechas locales y días de cambio de hora, alarma en los recordatorios con fecha, fallos de macOS avisados.
+- **Verificado:** 207 pruebas del núcleo, 14 de la interfaz y build. **Pendiente:** probarlo con los calendarios reales en la app empaquetada (permiso de macOS); que Watson cree o cambie eventos desde el chat; usar el ámbito de cada calendario y el aviso de solapes del resumen de la mañana (fase 7).
+- **Siguiente:** fase 7, llamadas y avisos proactivos.
+
 Versión 1.1.0-alpha.8 · Correos de clientes en su nota del vault (fase 5), datos a mano en Fiscal y revisiones de código aplicadas.
 - **Bandeja › «Añadir a la nota del proyecto»** (tarjetas de cliente): crea una nota NUEVA por correo en la carpeta del cliente del vault (`- Clientes/Proyectos/<Cliente>/<Cliente> - <asunto> DD-MM-AAAA.md`), con cliente, proyecto, carpeta, título y texto editables; nada se escribe hasta «Crear la nota» y ninguna nota existente se modifica. La carpeta de un cliente nuevo se crea con su primera nota (solo un nivel dentro de una carpeta existente, nunca en la raíz ni por un enlace). La nota de un correo privado o «solo en este Mac» lleva esa confidencialidad en sus propiedades, y Watson no la lee. En modo discreto no se abre.
 - **Watson:** «¿qué me ha pedido X?» (por remitente o cliente, también lo ya hecho) y «¿qué incidencias tengo abiertas?».
 - **Revisión de la alpha.8** (plans/reports/code-review-261115-0020-alpha8.md): Qonto ya no da por presente una cuota igual de otro cliente (fecha y base solo sin número leído, y una a una); los datos a mano se completan y deben sumar el total; con Claude activado, solo fotos que Claude ya intentó leer; las emitidas en imagen salen en el aviso y en Ingresos se marca lo escrito a mano; carpeta del cliente solo por nombre igual (sin «S.L.»).
 - **Verificado:** 203 pruebas del núcleo, 14 de la interfaz, 99 de Rust y build. Pendiente de verlo en la app empaquetada (migración 0017).
 - **Pendiente menor:** en la descarga de Qonto, la lista se pide por cada factura y no escribe en temporal; una carpeta de cliente nueva queda vacía si falla su primera nota; la nota no enlaza al correo (la tarjeta no guarda su identificador).
-- **Siguiente:** fase 6, calendario y recordatorios.
 
 Revisión de código de la alpha.7 aplicada (informe en plans/reports/code-review-261114-2252-fiscal-alpha7.md).
 - **Lectura en segundo plano:** ningún archivo se queda en bucle. Lo que no se puede convertir o leer se da por intentado; un fallo del modelo se reintenta en las siguientes cargas y al tercero se queda con las reglas locales. Se prueba la sesión de Claude Code y después la clave de API. Lo ilegible queda en caché.

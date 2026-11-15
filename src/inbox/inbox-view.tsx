@@ -4,6 +4,15 @@ import { LoadError, Loading } from '../ui/load-state';
 import { actionLabels, kindLabels, proposalLabels, sender, when } from './inbox-labels';
 import { InvoiceFiling } from './invoice-filing';
 import { ProjectNote } from './project-note';
+import { EventForm } from '../calendar/event-form';
+import '../calendar/calendar.css';
+
+/** The first date the mail mentions, when it reads as one (the form shows it to be checked). */
+const asDate = (text: string) => {
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text.trim());  // a day alone is the user's own day, at 9:00 (not UTC midnight)
+  return day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]), 9, 0) : new Date(text);
+};
+const firstDate = (item: InboxItem) => item.details.dates?.map(asDate).find(d => !Number.isNaN(d.getTime()) && d.getTime() > Date.now() - 86400000);
 import { ReceiptsPanel } from './receipts-panel';
 import './inbox.css';
 
@@ -24,6 +33,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const [note, setNote] = useState('');
   const [filing, setFiling] = useState<number | null>(null);
   const [noting, setNoting] = useState<number | null>(null);
+  const [scheduling, setScheduling] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
   const clearAll = async () => {
     setNote(''); setClearing(false);
@@ -109,8 +119,11 @@ export function InboxView({ discreet }: { discreet: boolean }) {
               ? <ProjectNote item={item} onCancel={() => setNoting(null)} onDone={done => { setNoting(null); setNote(done); void load(); }}/>
               : <p className="inbox-proposal"><button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para ver y escribir la nota' : undefined}
                 onClick={() => setNoting(item.id)}>{proposalLabels.add_to_project.label}…</button></p>)
-            : item.proposal === 'create_event' && <p className="inbox-proposal"><button type="button" className="button" disabled title="Pendiente">{proposalLabels.create_event.label}</button>
-            <span className="muted">Pendiente: {proposalLabels.create_event.arrives}.</span></p>}
+            : item.proposal === 'create_event' && item.state === 'pending' && (scheduling === item.id && !discreet
+              ? <EventForm inboxId={item.id} initial={{ title: (item.subject ?? '').slice(0, 200), start: firstDate(item), notes: (item.summary ?? '').slice(0, 4000) }}
+                onCancel={() => setScheduling(null)} onDone={done => { setScheduling(null); setNote(`${done} La tarjeta pasa a «Hechos».`); void load(); }}/>
+              : <p className="inbox-proposal"><button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para crear el evento' : undefined}
+                onClick={() => setScheduling(item.id)}>{proposalLabels.create_event.label}…</button></p>)}
           <div className="inbox-actions">
             {item.state === 'pending' ? <>
               <button type="button" className="button primary" onClick={() => void decide(item, 'done')}>Hecho</button>

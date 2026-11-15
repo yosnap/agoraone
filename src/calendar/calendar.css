@@ -1,0 +1,12 @@
+.agenda { max-width:900px }
+.agenda-day h2, .agenda h2 { margin:24px 0 10px; font-size:15px; text-transform:capitalize }
+.agenda-list { list-style:none; margin:0; padding:0; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fbfaf3) }
+.agenda-list li { display:flex; gap:12px; align-items:baseline; padding:9px 12px; border-bottom:1px solid var(--c-dfe3d6); font-size:13px }
+.agenda-list li:last-child { border-bottom:0 }
+.agenda-time { min-width:110px; color:var(--c-355a50); font-variant-numeric:tabular-nums }
+.agenda-clash { background:var(--c-f3e6c4) }
+.event-form { margin:12px 0 16px; gap:10px }
+.event-form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px }
+.event-form textarea { width:100%; font:inherit; font-size:12px; resize:vertical }
+.calendar-clash { font-size:12px; padding:9px 11px; border-radius:8px; background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.calendar-clash ul { margin:4px 0 0; padding-left:18px }

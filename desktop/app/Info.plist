@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged by Tauri into the app's Info.plist: what macOS shows when AgoraOne asks for each permission. -->
+<plist version="1.0">
+<dict>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>AgoraOne lee tus calendarios para enseñarte tu agenda, avisarte de solapes y responder «¿qué tengo hoy?». Solo crea un evento cuando tú lo confirmas, y nunca borra ninguno.</string>
+  <key>NSCalendarsUsageDescription</key>
+  <string>AgoraOne lee tus calendarios para enseñarte tu agenda, avisarte de solapes y responder «¿qué tengo hoy?». Solo crea un evento cuando tú lo confirmas, y nunca borra ninguno.</string>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>AgoraOne lee tus recordatorios pendientes para tu agenda. Solo crea un recordatorio cuando tú lo confirmas, y nunca borra ninguno.</string>
+  <key>NSRemindersUsageDescription</key>
+  <string>AgoraOne lee tus recordatorios pendientes para tu agenda. Solo crea un recordatorio cuando tú lo confirmas, y nunca borra ninguno.</string>
+</dict>
+</plist>
