@@ -7,6 +7,7 @@ Versión 1.3.0 · Reuniones y voz (plan: plans/261115-1110-reuniones-voz/plan.md
 - **De la grabación a la nota**: transcripción en dos voces (sin el eco del micrófono), resumen con decisiones y tareas por Claude (normal) o por un modelo local en loopback (solo en este Mac o privada; Ajustes › Voz), nota con su confidencialidad creada en el vault tras confirmar y tareas a recordatorio o encargo del bot central tras confirmar cada una.
 - **Verificado:** 239 pruebas del núcleo, 108 de Rust, 17 de la interfaz y build; captura real del audio del Mac transcrita exacta; reunión sintetizada de dos voces resumida de verdad por Claude Code en 11 s, con fechas relativas resueltas.
 - **Verificado también:** `scripts/verify-voice.mjs` con `pnpm dev` (dictado y reunión real grabada, parada y borrada) y la app 1.3.0 empaquetada, firmada y notarizada (`desktop/paquete/AgoraOne-1.3.0.zip`, auxiliar de audio firmado).
+- **Arreglo posterior:** el resumen local parte del servidor abierto (Ollama o LM Studio) y solo ofrece modelos de chat que se ejecutan en el equipo (fuera los «cloud» de Ollama y los de embeddings). En el Mac del usuario: `qwen3:14b` descargado y elegido; una reunión privada de prueba se resume en local en unos 20 s. App reempaquetada y notarizada.
 - **Pendiente:** que el usuario pruebe en la app firmada el permiso de micrófono y el de grabación de pantalla y audio del sistema con una reunión real de Meet; publicar con su permiso.
 - **Siguiente:** 1.4, la ciudad por eventos (agentes trabajando de verdad).
 
