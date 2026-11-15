@@ -8,6 +8,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { CardControls, JobManager, useAction, type ActionState } from '../ui/profile-tasks';
 import { cost, count, duration, tokens } from './work-format';
 import { CardHistory } from './card-history';
+import { ClientProjectsSection } from './client-projects';
 import { CommissionForm, type ProfileChoice } from './commission-form';
 import './jobs.css';
 
@@ -150,6 +151,8 @@ export function JobsView({ discreet }: { discreet: boolean }) {
             <ul>{inColumn.map((card, index) => <Card key={card.id ?? index} card={card} label={labelOf(card.profileId, card.assignee)} discreet={discreet} action={action}/>)}</ul>
           </section>;
         })}</div>}
+      <h2>Proyectos de clientes</h2>
+      <ClientProjectsSection period={period} discreet={discreet}/>
     </>}
   </section>;
 }

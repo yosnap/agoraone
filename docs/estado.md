@@ -1,6 +1,13 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
+Versión 1.2.0-alpha.5 · Proyectos de clientes con su consumo (fase 4 de la 1.2).
+- **Trabajos › Proyectos de clientes:** los proyectos de Central por cliente (por defecto activos y en mantenimiento) con los tokens de los agentes de código (CostGuard, sin caché) en el periodo y los de Hermes en 30 días (con caché). Se asocian solo por nombre igual (sin tildes, mayúsculas ni signos) y si ningún otro proyecto se llama así; las carpetas sin letras latinas o el cubo sin nombre nunca se asignan; lo que no coincide sale aparte. Núcleo `GET /jobs/projects` (`work_projects.py`).
+- **Watson:** `consultar_trabajos` (solo Claude; en `PRIVATE_TOOLS`).
+- **Revisión** (plans/reports/code-review-261115-1000-proyectos.md) aplicada: A1, M1–M3, B1–B5.
+- **Verificado:** 220 pruebas del núcleo, 17 de la interfaz, build y verify-jobs. En la app del usuario CostGuard no está configurado (columna de agentes vacía hasta conectarlo).
+- **Siguiente:** fase 5, cierre de la 1.2 (guía `docs/trabajos.md`, verificaciones, paquete).
+
 Versión 1.2.0-alpha.4 · Ajustes por pestañas y recibos en Fiscal, también por el bot de Hermes.
 - **Ajustes:** una pestaña por apartado (General, Asistente, Correo, Agenda y avisos, Fiscal, Trabajos, Privacidad y copias), con lo que va junto en la misma; `?pestana=` abre una y se recuerda la última.
 - **Recibos en Fiscal** (antes en la Bandeja): el QR «Subir desde el móvil» y los recibos pendientes. **Bot de Hermes:** «Prepararlo» crea, tras pulsar «Crear la skill», `agoraone/guardar-facturas` en el perfil elegido; el bot guarda lo que le envíes en «Recibos por revisar» de la carpeta fiscal (sin leerlo, nombre oculto y luego «recibo fecha hora») y AgoraOne lo trae como recibo pendiente (migración 0020). Al archivar, el original sale de la carpeta; al descartar o si repite uno archivado, pasa a «Descartados»; reenviado tras descartarlo, vuelve.
