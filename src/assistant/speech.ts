@@ -1,6 +1,13 @@
 /** Watson speaking its answers (1.5) with the system's own voices (the browser's speech synthesis: on this
  * computer, nothing sent anywhere). By default it speaks when it was spoken to; the choice is per viewer. */
+import { useSyncExternalStore } from 'react';
+
 export type VoiceMode = 'spoken' | 'always' | 'never';
+// Whether Watson is speaking now, so the panel can offer to stop it.
+let speaking = false;
+const listeners = new Set<() => void>();
+const setSpeaking = (now: boolean) => { if (speaking !== now) { speaking = now; listeners.forEach(listener => listener()); } };
+export const useSpeaking = () => useSyncExternalStore(cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, () => speaking);
 const KEY = 'agora-watson-voice';
 const MAX = 700;
 
@@ -32,9 +39,13 @@ export function speak(text: string, spokenTo: boolean) {
   utterance.lang = 'es-ES';
   const voice = speechSynthesis.getVoices().find(v => v.lang === 'es-ES' && v.localService) ?? speechSynthesis.getVoices().find(v => v.lang.startsWith('es'));
   if (voice) utterance.voice = voice;
+  utterance.onend = () => setSpeaking(false);
+  utterance.onerror = () => setSpeaking(false);
+  setSpeaking(true);
   speechSynthesis.speak(utterance);
 }
 
 export function stopSpeaking() {
   if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  setSpeaking(false);
 }
