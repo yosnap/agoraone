@@ -144,6 +144,26 @@ def summarize(level: str, title: str, transcript: str, engines: list[Engine], ch
         return None, "none", f"{error} Queda la transcripción." if isinstance(error, local_model.LocalModelError) else "El modelo local no devolvió un resumen válido; queda la transcripción."
 
 
+def summarizers(engines: list[Engine], chosen: dict, reachable=None) -> dict:
+    """Who would summarize a meeting now, by its confidentiality, in words for the screen. Recording and
+    transcribing are always on this machine; only the summary uses a model."""
+    claude = next((e.name for e in usable(engines) if e.name in ("claude-code", "anthropic-api")), None)
+    normal = {"by": "claude", "label": "Claude, con tu sesión de Claude Code" if claude == "claude-code" else "Claude, con tu clave de API de Anthropic"} if claude \
+        else {"by": "none", "label": "nadie: no hay sesión de Claude Code ni clave de API, así que queda solo la transcripción"}
+    if chosen["local_url"] and chosen["local_model"]:
+        server = next((k["name"] for k in local_model.KNOWN if k["url"] == chosen["local_url"]), chosen["local_url"])
+        check = reachable or (lambda: chosen["local_model"] in local_model.models(chosen["local_url"]))
+        try:
+            ready = check()
+        except local_model.LocalModelError:
+            ready = False
+        private = {"by": "local", "label": f"{chosen['local_model']} en {server}, en este Mac"} if ready \
+            else {"by": "local-off", "label": f"{chosen['local_model']} en {server}, pero ahora no responde: ábrelo antes de resumir"}
+    else:
+        private = {"by": "none", "label": "nadie: no hay un modelo local elegido en Ajustes › Voz, así que queda solo la transcripción"}
+    return {"normal": normal, "local_only": private, "private": private}
+
+
 # --- the note ------------------------------------------------------------------------------------------------
 def note(row: sqlite3.Row) -> dict:
     """The vault note of a meeting (title and Markdown), with its confidentiality in the properties so the

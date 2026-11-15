@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { getLocalModels, getMeetingSettings, putMeetingSettings, type MeetingSettings } from '../api/core';
+import { getLocalModels, getMeetingSettings, getSummarizers, levelLabels, putMeetingSettings, type Level, type MeetingSettings, type Summarizer } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 
@@ -11,9 +11,12 @@ export function MeetingSettingsCard() {
   const [models, setModels] = useState<string[] | null>(null);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
+  const [who, setWho] = useState<Record<Level, Summarizer> | null>(null);
   const asked = useRef(false);
+  const refreshWho = () => void getSummarizers().then(setWho).catch(() => setWho(null));
   if (!asked.current) {
     asked.current = true;
+    refreshWho();
     // Start from the chosen server, else the one open now, and list its models straight away.
     void getMeetingSettings().then(next => {
       setState(next);
@@ -29,12 +32,17 @@ export function MeetingSettingsCard() {
   }
   const save = async (changes: Partial<MeetingSettings>) => {
     setError(''); setSaved('');
-    try { setState({ ...state, ...(await putMeetingSettings(changes)) }); setSaved('Guardado.'); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
+    try { setState({ ...state, ...(await putMeetingSettings(changes)) }); setSaved('Guardado.'); refreshWho(); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
   };
   return <article className="card" aria-labelledby="meeting-model-title">
     <div className="card-head"><h2 id="meeting-model-title">Resumen de reuniones</h2>
       {state && <span className={`status-badge ${state.local_model ? 'good' : 'paused'}`}>{state.local_model ? 'Modelo local elegido' : 'Sin modelo local'}</span>}</div>
     <p>Las reuniones normales las resume Claude. Las marcadas «solo en este Mac» o privadas no salen del equipo: las resume un modelo que tengas aquí (LM Studio u Ollama con su servidor abierto) o, si no eliges ninguno, se quedan solo con la transcripción.</p>
+    {who && <dl className="summarizers" aria-label="Quién resume cada reunión">
+      <dt>Grabar y transcribir</dt><dd>Siempre en este Mac (whisper). Nadie más oye el audio.</dd>
+      <dt>Reuniones «{levelLabels.normal}»</dt><dd className={who.normal.by === 'claude' ? 'ok' : 'warn'}>{who.normal.label}</dd>
+      <dt>«{levelLabels.local_only}» y «{levelLabels.private}»</dt><dd className={who.private.by === 'local' ? 'ok' : 'warn'}>{who.private.label}</dd>
+    </dl>}
     {!state && !error ? <Loading label="Leyendo los ajustes" lines={1}/> : state && <>
       <form className="field-row" onSubmit={event => { event.preventDefault(); void look(url.trim()); }}>
         <label className="field">Servidor local<input value={url} onChange={event => setUrl(event.target.value)} placeholder="http://127.0.0.1:1234/v1" aria-describedby="meeting-model-hint"/></label>

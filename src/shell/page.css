@@ -47,3 +47,8 @@
 .dictation-button.recording { background:var(--c-f3e6c4); color:var(--c-7a5717); font-variant-numeric:tabular-nums }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0 }
 .dictation-error { font-size:11px; color:var(--c-7a5717); max-width:260px }
+.summarizers { display:grid; grid-template-columns:minmax(150px, max-content) 1fr; gap:6px 14px; margin:4px 0 14px; font-size:13px }
+.summarizers dt { font-weight:600; color:var(--c-173d3c) }
+.summarizers dd { margin:0; color:var(--c-355a50) }
+.summarizers dd.warn { color:var(--c-7a5717) }
+@media (max-width:560px) { .summarizers { grid-template-columns:1fr } .summarizers dd { margin-bottom:6px } }

@@ -70,7 +70,8 @@ El audio se guarda en los datos de AgoraOne, en `meetings/<id>/`, con permisos s
    - **Normal**: lo hace Claude, con la sesión de Claude Code o con la clave de API.
    - **Solo en este Mac o privada**: lo hace el modelo local elegido en **Ajustes › Voz › Resumen de reuniones**. Puede ser LM Studio (`http://127.0.0.1:1234/v1`), Ollama (`http://127.0.0.1:11434/v1`) o cualquier servidor con la API de chat de OpenAI. Solo se aceptan direcciones de este equipo y nunca se pasa por un proxy. Ajustes parte del servidor que esté abierto y solo ofrece modelos de chat que se ejecutan aquí: descarta los de búsqueda (embeddings) y los «cloud» de Ollama, que se ejecutan en sus servidores; si no queda ninguno, indica cuál descargar (por ejemplo `ollama pull qwen3:14b`). Si no hay ningún modelo elegido, la reunión se queda solo con la transcripción.
    - La transcripción va siempre como dato entre marcas, junto con la fecha de la reunión, para que «el jueves» se entienda bien. Nunca va como instrucciones. La respuesta se valida: tiene que ser JSON y las fechas tienen que ser reales.
-3. **Ver** abre el resumen, las decisiones, las tareas, la transcripción y la nota completa.
+3. **Quién resume se ve antes de empezar**: el formulario de grabar dice «Resumen: Claude…» o «Resumen: qwen3:14b en Ollama, en este Mac» según la confidencialidad elegida; cada reunión dice «Se resumirá con…» y, después, «Resumida por Claude» o «Resumida en este Mac»; Ajustes › Voz › Resumen de reuniones lo resume en tres líneas (grabar y transcribir, reuniones normales, reuniones privadas) y avisa si el modelo local elegido no responde.
+4. **Ver** abre el resumen, las decisiones, las tareas, la transcripción y la nota completa.
 
 A partir de ahí, nada se escribe sin que lo confirmes:
 
