@@ -12,6 +12,7 @@ use std::time::Duration;
 use agora_server::PORT;
 use agora_server::launch::{Paths, access_url, app_support, copy_first_run, load_dotenv, prepare, widen_path};
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
 
 /// The project folder when not packaged: `AGORA_ROOT`, or (development builds only) the repository this app
@@ -125,6 +126,16 @@ fn own(url: &Url) -> bool {
     url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(PORT)
 }
 
+/// ⌃⌥W from any app (user's choice, 15/11/2026): AgoraOne comes to the front and Watson starts listening.
+fn listen(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        let _ = window.eval("window.dispatchEvent(new CustomEvent('agora:listen'))");
+    }
+}
+
 fn main() {
     let paths = layout();
     let server = match tauri::async_runtime::block_on(prepare(&paths)) {
@@ -140,7 +151,14 @@ fn main() {
     })));
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                listen(app);
+            }
+        }).build())
         .setup(move |app| {
+            // Taken by another app: AgoraOne still opens, only without the shortcut.
+            let _ = app.global_shortcut().register(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyW));
             if let Some(link) = core_link.clone() {
                 notify_loop(app.handle().clone(), link);
             }

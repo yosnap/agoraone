@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { transcribeVoice } from '../api/core';
+import { useListenRequests } from '../assistant/listen';
 
 const LIMIT_MS = 60_000;
 const MAX_BYTES = 1024 * 1024; // what the server lets through
@@ -83,6 +84,13 @@ export function DictationButton({ onText, disabled, onPhase, big = false }: {
   };
   const stop = () => { if (recorder.current?.state === 'recording') recorder.current.stop(); };
   const press = () => { if (state === 'recording') stop(); else if (state === 'idle') void start(); };
+  // Watson's large microphone also answers ⌃⌥W and «Oye Watson»: each new request presses it.
+  const requests = useListenRequests();
+  const seen = useRef(requests);
+  if (big && seen.current !== requests) {
+    seen.current = requests;
+    window.setTimeout(() => { if (phase.current === 'recording') stop(); else if (phase.current === 'idle' && !disabled) void start(); }, 0);
+  }
   const recording = state === 'recording';
   return <span className="dictation" ref={attach}>
     <button type="button" className={`button dictation-button${recording ? ' recording' : ''}${big ? ' big' : ''}`} aria-label="Hablar y enviar"

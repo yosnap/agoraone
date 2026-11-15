@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState, useRef } from 'react';
 import { ApiError, getStatus, type Status } from '../api/client';
 import { Office } from '../app';
 import { Loading } from '../ui/load-state';
@@ -10,6 +10,7 @@ import { FiscalView } from '../fiscal/fiscal-view';
 import { AgendaView } from '../calendar/agenda-view';
 import { AlertToasts } from './alert-toasts';
 import { UploadNotice } from '../fiscal/upload-watch';
+import { requestListen } from '../assistant/listen';
 import { readShell, writeShell, type Section } from './shell-state';
 import './shell.css';
 import './page.css';
@@ -37,6 +38,12 @@ export function Shell() {
       ? { state: 'locked', csrf: '', detail: error.message } : { state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con pnpm dev.' }));
   }, []);
   useEffect(() => writeShell({ section, discreet }), [section, discreet]);
+  // ⌃⌥W (from the desktop app) or «Oye Watson»: to the brain, where Watson's microphone starts listening.
+  const listening = useRef(false);
+  if (!listening.current && typeof window !== 'undefined') {
+    listening.current = true;
+    window.addEventListener('agora:listen', () => { setShell(previous => ({ ...previous, section: 'brain' })); window.setTimeout(requestListen, 150); });
+  }
   const go = useCallback((next: Section) => { if (next === 'office') setOfficeVisited(true); setShell(previous => ({ ...previous, section: next })); }, []);
   const setDiscreet = (on: boolean) => setShell(previous => ({ ...previous, discreet: on }));
   const showOnGraph = (ids: string[]) => { setFocus(ids); go('brain'); };
