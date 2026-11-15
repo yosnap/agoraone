@@ -66,14 +66,14 @@ export function JobManager<J extends ScheduledJob>({ profileId, jobs, gateway, o
         <small>Último resultado: {statusLabel(job.lastStatus)}{job.lastRunAt ? ` (${when(job.lastRunAt)})` : ''} · próxima: {job.enabled ? when(job.nextRunAt) : 'ninguna'}</small>
         {extra?.(job)}
         {job.id && <div className="task-actions">
-          {job.enabled ? <button type="button" disabled={!!action.busy} onClick={() => action.run(`pause:${job.id}`, () => changeJob(profileId, job.id!, { action: 'pause' }))}>Pausar</button>
-            : <button type="button" disabled={!!action.busy} onClick={() => action.run(`resume:${job.id}`, () => changeJob(profileId, job.id!, { action: 'resume' }))}>Reanudar</button>}
-          <button type="button" disabled={!!action.busy} onClick={async () => { if (await action.run(`run:${job.id}`, () => changeJob(profileId, job.id!, { action: 'run' })))
+          {job.enabled ? <button type="button" className="act-pause" disabled={!!action.busy} onClick={() => action.run(`pause:${job.id}`, () => changeJob(profileId, job.id!, { action: 'pause' }))}>Pausar</button>
+            : <button type="button" className="act-run" disabled={!!action.busy} onClick={() => action.run(`resume:${job.id}`, () => changeJob(profileId, job.id!, { action: 'resume' }))}>Reanudar</button>}
+          <button type="button" className="act-run" disabled={!!action.busy} onClick={async () => { if (await action.run(`run:${job.id}`, () => changeJob(profileId, job.id!, { action: 'run' })))
             action.say(gateway === 'running' ? `«${job.name}» queda marcada: el gateway de Hermes la ejecutará en su próximo ciclo si atiende las tareas de este perfil.` : gateway === 'unknown' ? `«${job.name}» queda marcada: se ejecutará cuando el gateway de Hermes la recoja.` : `«${job.name}» queda marcada para ejecutarse, pero el gateway de Hermes no está en marcha: se ejecutará cuando arranque.`); }}>{action.busy === `run:${job.id}` ? 'Marcando…' : 'Ejecutar ahora'}</button>
-          <button type="button" disabled={!!action.busy} onClick={() => edit(job.id!)}>Editar</button>
+          <button type="button" className="act-edit" disabled={!!action.busy} onClick={() => edit(job.id!)}>Editar</button>
           {confirm === job.id ? <><button type="button" className="danger" disabled={!!action.busy} onClick={async () => { await action.run(`remove:${job.id}`, () => changeJob(profileId, job.id!, { action: 'remove' })); setConfirm(null); }}>Eliminar definitivamente</button>
             <button type="button" onClick={() => setConfirm(null)}>No</button></>
-            : <button type="button" disabled={!!action.busy} onClick={() => setConfirm(job.id)}>Eliminar</button>}
+            : <button type="button" className="act-delete" disabled={!!action.busy} onClick={() => setConfirm(job.id)}>Eliminar</button>}
         </div>}
       </li>)}</ul>}
     {action.error && <p role="alert" className="error">{action.error}</p>}

@@ -3,7 +3,7 @@
 .page h1 { font:500 clamp(28px,3vw,40px)/1.15 Manrope,sans-serif; letter-spacing:-1px; margin:10px 0 8px }
 .page h2 { font:600 17px Manrope,sans-serif; margin:0 0 4px }
 .page > p, .page-lead { font-size:13px; line-height:1.7; color:var(--c-4c6b62); max-width:70ch; margin:0 0 22px }
-.page-pending { max-width:640px }
+.page-pending > * { max-width:640px }
 .page-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr)); gap:16px; align-items:start }
 .card { background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:16px; padding:20px; display:flex; flex-direction:column; gap:12px; min-width:0 }
 .card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start }
@@ -63,3 +63,19 @@
 .install-job { display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:10px; background:var(--c-edf0e8); margin:8px 0 }
 .install-job.failed { background:var(--c-f3e6c4) }
 .install-log { margin:0; font-size:11px; white-space:pre-wrap; max-height:140px; overflow:auto }
+/* Actions told apart by colour (1.6.2): run green, pause amber, edit blue, delete red; light and dark. */
+button.act-run { background:#d9ecd8; color:#1f5a35; border-color:#b9dbb8 }
+button.act-pause { background:#f6e3c0; color:#7a4e0e; border-color:#ecd09a }
+button.act-edit { background:#d6e6f5; color:#1d4f7a; border-color:#b8d3ee }
+button.act-delete, button.danger { background:#f6d6d2; color:#8e2f24; border-color:#eebcb5 }
+button.act-run:hover:not(:disabled), button.act-pause:hover:not(:disabled), button.act-edit:hover:not(:disabled), button.act-delete:hover:not(:disabled) { filter:brightness(.96) }
+:root[data-theme="dark"] button.act-run { background:#1b3a26; color:#b5e0c0; border-color:#2c5a3b }
+:root[data-theme="dark"] button.act-pause { background:#4a3412; color:#f3d39b; border-color:#6b4c1c }
+:root[data-theme="dark"] button.act-edit { background:#16324d; color:#a9cdf0; border-color:#25507a }
+:root[data-theme="dark"] button.act-delete, :root[data-theme="dark"] button.danger { background:#4d1f1a; color:#f4b5ac; border-color:#73302a }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) button.act-run { background:#1b3a26; color:#b5e0c0; border-color:#2c5a3b }
+  :root:not([data-theme="light"]) button.act-pause { background:#4a3412; color:#f3d39b; border-color:#6b4c1c }
+  :root:not([data-theme="light"]) button.act-edit { background:#16324d; color:#a9cdf0; border-color:#25507a }
+  :root:not([data-theme="light"]) button.act-delete, :root:not([data-theme="light"]) button.danger { background:#4d1f1a; color:#f4b5ac; border-color:#73302a }
+}
