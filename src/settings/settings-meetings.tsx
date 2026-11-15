@@ -43,6 +43,8 @@ export function MeetingSettingsCard() {
       <dt>Reuniones «{levelLabels.normal}»</dt><dd className={who.normal.by === 'claude' ? 'ok' : 'warn'}>{who.normal.label}</dd>
       <dt>«{levelLabels.local_only}» y «{levelLabels.private}»</dt><dd className={who.private.by === 'local' ? 'ok' : 'warn'}>{who.private.label}</dd>
     </dl>}
+    {state && <label className="check"><input type="checkbox" checked={state.auto !== false} onChange={event => void save({ auto: event.target.checked })}/>
+      Transcribir y resumir automáticamente al terminar cada grabación (en segundo plano y con prioridad baja)</label>}
     {!state && !error ? <Loading label="Leyendo los ajustes" lines={1}/> : state && <>
       <form className="field-row" onSubmit={event => { event.preventDefault(); void look(url.trim()); }}>
         <label className="field">Servidor local<input value={url} onChange={event => setUrl(event.target.value)} placeholder="http://127.0.0.1:1234/v1" aria-describedby="meeting-model-hint"/></label>

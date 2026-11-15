@@ -23,12 +23,16 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
     let writer: AVAssetWriter
     let input: AVAssetWriterInput
     let queue = DispatchQueue(label: "agora.system-audio")
+    let control = DispatchQueue(label: "agora.system-audio.control")
     var started = false
     var stream: SCStream?
     var finishing = false
 
     init(url: URL) throws {
-        writer = try AVAssetWriter(outputURL: url, fileType: .m4a)
+        // Fragmented MPEG-4: every few seconds the file is readable on its own, so a recording cut short
+        // (the process killed, the Mac asleep) still keeps everything up to the last fragment.
+        writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        writer.movieFragmentInterval = CMTime(seconds: 5, preferredTimescale: 600)
         input = AVAssetWriterInput(mediaType: .audio, outputSettings: [
             AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2, AVEncoderBitRateKey: 96_000,
         ])
@@ -52,12 +56,14 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     func finish(code: Int32 = 0, message: String? = nil) {
-        queue.async {
+        // On its own queue: waiting here never blocks the queue that delivers the audio.
+        control.async {
             if self.finishing { return }
-            self.finishing = true
+            self.queue.sync { self.finishing = true }
             let done = DispatchGroup()
             if let stream = self.stream { done.enter(); stream.stopCapture { _ in done.leave() } }
-            done.wait()
+            _ = done.wait(timeout: .now() + 3)
+            self.queue.sync {}
             if let message { FileHandle.standardError.write("error:\(message)\n".data(using: .utf8)!) }
             guard self.started else { try? FileManager.default.removeItem(at: output); exit(code) }
             self.input.markAsFinished()

@@ -39,6 +39,7 @@ class Recorder:
         self.lock = threading.Lock()
         self.live: dict[int, dict] = {}
         self.watch: threading.Thread | None = None
+        self.on_recorded = None  # called with (meeting id) when a recording ends, e.g. to transcribe it at once
 
     def folder(self, meeting_id: int) -> Path:
         return self.root / str(int(meeting_id))
@@ -136,6 +137,11 @@ class Recorder:
         with transaction(connection):
             connection.execute("UPDATE meeting SET status = 'recorded', ended_at = ?, system_bytes = ?, note = COALESCE(?, note) WHERE id = ?",
                                (now(), system_bytes, note, meeting_id))
+        if self.on_recorded:
+            try:
+                self.on_recorded(connection, meeting_id)
+            except Exception:  # noqa: BLE001 - the recording is safe; processing can be started by hand
+                pass
         return self.view(self.owned(connection, owner, meeting_id))
 
     def stop_all(self) -> None:

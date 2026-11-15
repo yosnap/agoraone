@@ -44,6 +44,7 @@
 .status-badge.paused, .status-badge.neutral { background:var(--c-e7ece2); color:var(--c-355a50) }
 .status-badge.neutral::before { display:none }
 .dictation { display:inline-flex; flex-direction:column; gap:4px; min-width:0 }
+.dictation-button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-width:40px }
 .dictation-button.recording { background:var(--c-f3e6c4); color:var(--c-7a5717); font-variant-numeric:tabular-nums }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0 }
 .dictation-error { font-size:11px; color:var(--c-7a5717); max-width:260px }

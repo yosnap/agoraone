@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { appUrl } from './verify-targets.mjs';
 // Voice. Settings › Voz read live (what whisper.cpp, ffmpeg and model were found; prints only whether it is
 // ready). Then dictation in Watson's chat with a generated tone instead of the microphone and the
-// transcription served by the test: recording, stopping, and the words landing in the text box, unsent.
+// transcription served by the test: recording, stopping, and the words sent at once after what was typed.
 // Last, a meeting recorded for real against the core with the generated microphone (system audio off, so
 // nothing of the Mac is recorded): the rail's indicator, the pieces reaching the core, stopping and deleting.
 const shots = process.env.SHOTS;
@@ -21,23 +21,24 @@ assert.equal(await page.locator('.page select').count(), 0, 'ningún select nati
 if (shots) await card.screenshot({ path: `${shots}/voice-settings.png` });
 
 await page.route('**/api/core/voice/transcribe', route => { uploads.push(route.request().headers()['content-type']); return route.fulfill({ json: { text: '¿Qué tengo mañana?', language: 'es', seconds: 2 } }); });
-await page.route('**/api/core/assistant/conversations/*/messages', route => { sent.push(1); return route.abort(); });
+const sentBody = [];
+await page.route('**/api/core/assistant/**', route => { if (route.request().method() === 'POST') { sent.push(1); sentBody.push(route.request().postData() ?? ''); } return route.abort(); });
 await page.goto(appUrl(5173, 'asistente'));
 const input = page.locator('#assistant-input');
 await input.waitFor({ timeout: 60_000 });
 await input.fill('Oye,');
-const dictate = page.getByRole('button', { name: /Dictar/ });
+const dictate = page.getByRole('button', { name: 'Hablar y enviar' });
 await dictate.click();
 const recording = page.locator('.dictation-button[aria-pressed="true"]');
 await recording.waitFor();
 await page.waitForTimeout(1500);
 await recording.click();
 await page.locator('.dictation-button[aria-pressed="false"]:not([aria-busy="true"])').waitFor({ timeout: 20_000 });
-await page.waitForFunction(() => document.querySelector('#assistant-input')?.value.includes('mañana'), null, { timeout: 20_000 });
-assert.equal(await input.inputValue(), 'Oye, ¿Qué tengo mañana?', 'lo dictado se añade a lo escrito');
+await page.waitForTimeout(1500);
 assert.equal(uploads.length, 1, 'se transcribe una vez');
 assert.match(uploads[0], /^audio\//, 'se sube el audio grabado');
-assert.equal(sent.length, 0, 'dictar no envía nada');
+assert.ok(sent.length >= 1, 'al parar, lo dicho se envía');
+assert.equal(await input.inputValue(), '', 'la caja queda vacía: lo escrito y lo dicho se enviaron juntos');
 if (shots) await page.screenshot({ path: `${shots}/voice-dictation.png` });
 assert.deepEqual(errors, [], 'sin errores JS');
 console.log('dictado en el chat: correcto');

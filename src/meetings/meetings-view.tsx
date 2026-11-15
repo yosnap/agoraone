@@ -3,7 +3,7 @@ import { deleteMeeting, getMeetings, getSummarizers, levelLabels, processMeeting
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { MeetingDetailPanel } from './meeting-detail';
-import { startRecording, stopRecording, useMeetingRecorder } from './meeting-recorder';
+import { lastChoice, rememberChoice, startRecording, stopRecording, useMeetingRecorder } from './meeting-recorder';
 import './meetings.css';
 
 const levels: { value: Level; label: string }[] = (Object.keys(levelLabels) as Level[]).map(value => ({ value, label: levelLabels[value] }));
@@ -39,6 +39,8 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned }: 
       <small>{when(meeting.started_at)} · {clock(meeting.seconds)} · {levelLabels[meeting.confidentiality]}</small>
       <small className="muted">Tu micrófono: {meeting.mic_bytes ? size(meeting.mic_bytes) : 'vacío'} · Audio del sistema: {meeting.system_source ? (meeting.system_bytes ? size(meeting.system_bytes) : meeting.status === 'recording' ? 'grabando' : 'vacío') : 'no grabado'}</small>
       {meeting.note && !hidden && <small className="muted">{meeting.note}</small>}
+      {meeting.work_error && !hidden && <small className={meeting.work === 'failed' ? 'dictation-error' : 'muted'} role={meeting.work === 'failed' ? 'alert' : undefined}>
+        {meeting.work === 'failed' ? 'Error: ' : ''}{meeting.work_error}</small>}
       <small className="meeting-engine">{meeting.summary_by ? madeBy[meeting.summary_by] : planned ? `Se resumirá con: ${planned.label}` : ''}</small>
     </div>
     <span className={`status-badge ${meeting.status === 'recorded' ? 'good' : 'paused'}`}>{statusText[meeting.status]}</span>
@@ -47,7 +49,7 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned }: 
       Parar (se grababa desde otra pantalla)</button>}
     {idle && !hidden && <span className="meeting-actions">
       {meeting.has_transcript && <button type="button" className="button" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Cerrar' : 'Ver'}</button>}
-      {!meeting.has_transcript && <button type="button" className="button primary" onClick={() => void process(false)}>Transcribir y resumir</button>}
+      {!meeting.has_transcript && <button type="button" className="button primary" onClick={() => void process(false)}>{meeting.work === 'failed' ? 'Reintentar' : 'Transcribir y resumir'}</button>}
       {meeting.has_transcript && (meeting.work === 'failed' || (meeting.summary_by !== 'claude' && meeting.summary_by !== 'local')) &&
         <button type="button" className="button" onClick={() => void process(true)}>Volver a resumir</button>}
     </span>}
@@ -70,8 +72,8 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
   const [list, setList] = useState<MeetingList | null>(null);
   const [error, setError] = useState('');
   const [title, setTitle] = useState('');
-  const [level, setLevel] = useState<Level>('normal');
-  const [system, setSystem] = useState(true);
+  const [level, setLevel] = useState<Level>(() => lastChoice().confidentiality);
+  const [system, setSystem] = useState(() => lastChoice().system);
   const loaded = useRef<string | null>(null);
   const [who, setWho] = useState<Record<Level, Summarizer> | null>(null);
   const askedWho = useRef(false);
@@ -99,7 +101,7 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
         {recorder.note && <p className="fiscal-warning">{recorder.note}</p>}
         <p className="muted">Puedes cambiar de sección: la grabación sigue y la barra lateral lo indica. Con altavoces, tu micrófono también recoge a los demás; con auriculares las pistas salen limpias.</p>
         <button type="button" className="button primary" onClick={stopRecording} disabled={recorder.phase === 'stopping'}>{recorder.phase === 'stopping' ? 'Cerrando…' : 'Parar la grabación'}</button>
-      </> : <form onSubmit={event => { event.preventDefault(); void startRecording(title, level, system).then(() => setTitle('')); }}>
+      </> : <form onSubmit={event => { event.preventDefault(); rememberChoice({ confidentiality: level, system }); void startRecording(title, level, system).then(() => setTitle('')); }}>
         <label className="field">Título<input value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder="Reunión del equipo (opcional)"/></label>
         <label className="field">Confidencialidad<ModernSelect value={level} options={levels} onChange={value => setLevel(value as Level)}/></label>
         <p className="meeting-engine" role="note">La grabación y la transcripción se hacen en este Mac. Resumen: <strong>{who ? who[level].label : '…'}</strong>.</p>

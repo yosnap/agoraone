@@ -36,6 +36,7 @@ def client(tmp_path, monkeypatch):
     app = create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets())
     with TestClient(app, base_url=f"http://{settings.authority}") as test:
         test.data = tmp_path / "data"
+        test.put("/meetings/settings", json={"auto": False}, headers=h())
         yield test
 
 

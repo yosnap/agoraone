@@ -21,7 +21,7 @@ from .db import now, transaction
 from .engines import Engine, Turn, usable
 
 SETTING = "meetings"
-DEFAULTS = {"local_url": None, "local_model": None}
+DEFAULTS = {"local_url": None, "local_model": None, "auto": True}
 CLAUDE_MODEL = "sonnet"
 MAX_TRANSCRIPT = {"claude": 150_000, "local": 40_000}  # characters sent to summarize
 SPEAKERS = {"mic": "Tú", "system": "Los demás"}
@@ -50,6 +50,8 @@ def save_settings(connection: sqlite3.Connection, changes: dict) -> dict:
         if url and not local_model.loopback(url):
             raise local_model.LocalModelError("El modelo local tiene que estar en este equipo (127.0.0.1 o localhost).")
         current["local_url"] = local_model.loopback(url) if url else None
+    if "auto" in changes:
+        current["auto"] = bool(changes["auto"])
     if "local_model" in changes:
         name = (changes["local_model"] or "").strip()
         if len(name) > 200 or any(c in name for c in "\n\r\0"):
@@ -139,7 +141,10 @@ def summarize(level: str, title: str, transcript: str, engines: list[Engine], ch
     if not (chosen["local_url"] and chosen["local_model"]):
         return None, "none", "Es una reunión que no sale de este equipo y no hay un modelo local elegido (Ajustes › Voz): queda solo la transcripción."
     try:
-        return parse_summary(ask_local(chosen["local_url"], chosen["local_model"], SYSTEM, _prompt(title, transcript, MAX_TRANSCRIPT["local"]))), "local", None
+        reply = ask_local(chosen["local_url"], chosen["local_model"], SYSTEM, _prompt(title, transcript, MAX_TRANSCRIPT["local"]))
+        if ask_local is local_model.ask:
+            local_model.release(chosen["local_url"], chosen["local_model"])
+        return parse_summary(reply), "local", None
     except (local_model.LocalModelError, ValueError) as error:
         return None, "none", f"{error} Queda la transcripción." if isinstance(error, local_model.LocalModelError) else "El modelo local no devolvió un resumen válido; queda la transcripción."
 
@@ -199,6 +204,11 @@ class Worker:
         with transaction(connection):
             connection.execute("UPDATE meeting SET work = 'failed', work_error = 'AgoraOne se cerró mientras la procesaba; vuelve a intentarlo.' WHERE work IN ('transcribing', 'summarizing')")
 
+    def after_recording(self, connection: sqlite3.Connection, meeting_id: int) -> None:
+        """Transcribe and summarize as soon as a recording ends, unless the user turned it off in Settings."""
+        if settings(connection)["auto"]:
+            self.begin(connection, connection.execute("SELECT * FROM meeting WHERE id = ?", (meeting_id,)).fetchone())
+
     def begin(self, connection: sqlite3.Connection, row: sqlite3.Row, again_summary: bool = False) -> None:
         if row["status"] == "recording":
             raise ValueError("Para la grabación antes de transcribirla.")
@@ -220,12 +230,15 @@ class Worker:
         connection = self.connect()
         try:
             row = connection.execute("SELECT * FROM meeting WHERE id = ?", (meeting_id,)).fetchone()
-            lines = json.loads(row["transcript"]) if summary_only else self._transcribe(connection, row)
+            lost: list[str] = []
+            lines = json.loads(row["transcript"]) if summary_only else self._transcribe(connection, row, lost)
             with transaction(connection):
                 connection.execute("UPDATE meeting SET transcript = ?, work = 'summarizing' WHERE id = ?", (json.dumps(lines, ensure_ascii=False), meeting_id))
             day = _parse(row["started_at"]).astimezone()
             heading = f"{row['title']} (celebrada el {WEEKDAYS[day.weekday()]} {day.strftime('%Y-%m-%d')}; usa esa fecha para entender «el jueves», «mañana»…)"
             made, by, why = summarize(row["confidentiality"], heading, as_text(lines), self.make_engines(), settings(connection))
+            if lost:
+                why = " ".join(filter(None, [f"No se pudo leer {' ni '.join(lost)}; se ha usado el resto.", why]))
             with transaction(connection):
                 connection.execute("UPDATE meeting SET summary = ?, summary_by = ?, work = 'done', work_error = ? WHERE id = ?",
                                    (json.dumps(made, ensure_ascii=False) if made else None, by, why, meeting_id))
@@ -238,10 +251,12 @@ class Worker:
             with self.lock:
                 self.busy = None
 
-    def _transcribe(self, connection: sqlite3.Connection, row: sqlite3.Row) -> list[dict]:
+    def _transcribe(self, connection: sqlite3.Connection, row: sqlite3.Row, lost: list[str]) -> list[dict]:
+        """Both tracks; one that cannot be read is left out and named in `lost`, the other still counts.
+        Only when neither can be read does the meeting fail."""
         folder: Path = self.folder_of(row["id"])
         tracks = {"mic": folder / f"microfono.{row['mic_type']}", "system": folder / row["system_file"] if row["system_file"] else None}
-        heard = {}
+        heard, failure = {}, None
         for track, path in tracks.items():
             if not path or not path.is_file() or path.stat().st_size < 1000:
                 heard[track] = []
@@ -249,12 +264,19 @@ class Worker:
             seconds = max(60.0, (_parse(row["ended_at"] or now()) - _parse(row["started_at"])).total_seconds())
             for attempt in range(600):  # a dictation running now ends in a minute at most
                 try:
-                    heard[track] = transcribe.transcribe(connection, path.read_bytes(), timeout=120 + seconds * 2, max_seconds=None)["segments"]
+                    heard[track] = transcribe.transcribe(connection, path.read_bytes(), timeout=120 + seconds * 2, max_seconds=None, background=True)["segments"]
                     break
                 except transcribe.VoiceBusy:
                     threading.Event().wait(1)
+                except transcribe.VoiceError as error:
+                    heard[track] = []
+                    lost.append("tu micrófono" if track == "mic" else "el audio del sistema")
+                    failure = error
+                    break
             else:
                 raise transcribe.VoiceError("Whisper lleva demasiado tiempo ocupado con otra transcripción; vuelve a intentarlo.")
+        if len(lost) == sum(1 for p in tracks.values() if p and p.is_file() and p.stat().st_size >= 1000) and lost:
+            raise failure
         return merge(heard["mic"], heard["system"])
 
 
