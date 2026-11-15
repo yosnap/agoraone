@@ -76,6 +76,8 @@ def _logged(event: dict) -> tuple[str, str]:
         return "clientes", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
     if event["tool"] == "inbox":
         return "bandeja", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
+    if event["tool"] == "note_proposal":  # that a note was proposed and where, not what it says
+        return "proponer_nota", json.dumps({"carpeta": event["note"].get("folder") or ""}, ensure_ascii=False)
     if event["tool"] == "rule_proposal":  # what kind of rule, not its sender or words
         return "proponer_regla", json.dumps({"action": event["rule"].get("action")}, ensure_ascii=False)
     if event["tool"] in ("projects", "agenda", "day"):
@@ -178,6 +180,8 @@ def assistant_router(
         found = proposals.get(proposal_id)
         if not owner or found is None or found["owner"] != owner or found["expires"] < time.time():
             return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        if "rule" not in found:  # a note is created by the vault's own route, never here
+            return JSONResponse({"error": "Esa propuesta no es una regla."}, status_code=409)
         proposals.pop(proposal_id, None)  # taken before any wait: a double click or a click and a «sí» create one rule
         def work(connection):
             rule_id = mail_rules.create_rule(connection, found["rule"])
