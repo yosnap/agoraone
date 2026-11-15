@@ -325,7 +325,7 @@ export type MeetingDetail = Meeting & { transcript: { start: number; end: number
 export const getMeeting = (id: number) => core<MeetingDetail>(`/meetings/${id}`);
 export const processMeeting = (id: number, summaryOnly = false) => core<Meeting>(`/meetings/${id}/process`, { summary_only: summaryOnly });
 export const markMeetingSaved = (id: number, vault: string, note: string) => core<Meeting>(`/meetings/${id}/saved`, { vault, note });
-export type MeetingSettings = { local_url: string | null; local_model: string | null; known?: { name: string; url: string }[]; detected?: string | null };
+export type MeetingSettings = { local_url: string | null; local_model: string | null; auto?: boolean; known?: { name: string; url: string }[]; detected?: string | null };
 export const getMeetingSettings = () => core<MeetingSettings>('/meetings/settings');
 export const putMeetingSettings = (changes: Partial<MeetingSettings>) => core<MeetingSettings>('/meetings/settings', changes, 'PUT');
 export type Summarizer = { by: 'claude' | 'local' | 'local-off' | 'none'; label: string };

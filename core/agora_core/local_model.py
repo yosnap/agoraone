@@ -91,3 +91,18 @@ def ask(url: str, model: str, system: str, text: str, timeout: float = 900) -> s
         return str(data["choices"][0]["message"]["content"] or "")
     except (KeyError, IndexError, TypeError) as error:
         raise LocalModelError("El modelo local devolvió algo que no se entiende.") from error
+
+
+def release(url: str, model: str) -> None:
+    """Ollama keeps a model in memory for minutes after answering; a meeting summary is a one-off, so it is
+    let go at once (several GB of memory back). Other servers manage their own memory."""
+    base = loopback(url)
+    if not base or not base.endswith("/v1"):
+        return
+    request = urllib.request.Request(base[:-3] + "/api/generate", data=json.dumps({"model": model, "keep_alive": 0}).encode(),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with _DIRECT.open(request, timeout=5) as response:
+            response.read(MAX_REPLY)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        pass  # not Ollama, or already gone: nothing to free

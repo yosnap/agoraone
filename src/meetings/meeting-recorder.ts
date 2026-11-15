@@ -72,3 +72,23 @@ export async function startRecording(title: string, confidentiality: Level, syst
 export function stopRecording() {
   if (media?.state === 'recording') media.stop();
 }
+
+// The last choices of the form, so the rail's button records the same way with one press (per viewer only).
+const CHOICE = 'agora-meeting-choice';
+type Choice = { confidentiality: Level; system: boolean };
+export function lastChoice(): Choice {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHOICE) || '{}');
+    return { confidentiality: ['normal', 'local_only', 'private'].includes(saved.confidentiality) ? saved.confidentiality : 'normal', system: saved.system !== false };
+  } catch { return { confidentiality: 'normal', system: true }; }
+}
+export function rememberChoice(choice: Choice) {
+  try { localStorage.setItem(CHOICE, JSON.stringify(choice)); } catch { /* private window: nothing to remember */ }
+}
+/** One press from anywhere: start with the last choices, or stop what is recording. */
+export function toggleQuickRecording() {
+  if (state.phase === 'recording') { stopRecording(); return; }
+  if (state.phase !== 'idle') return;
+  const choice = lastChoice();
+  void startRecording('', choice.confidentiality, choice.system);
+}

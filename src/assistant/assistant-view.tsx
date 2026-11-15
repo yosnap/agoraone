@@ -100,8 +100,11 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   useEffect(() => { if (question) { onQuestionTaken?.(); void send(question, null); } }, [question, onQuestionTaken, send]);
   // Only the message list scrolls (scrollIntoView would also move the page around it).
   useEffect(() => { const list = end.current?.parentElement; if (list) list.scrollTop = list.scrollHeight; }, [messages, live?.text, live?.stage, live?.steps.length]);
-  const submit = (event?: FormEvent) => {
-    event?.preventDefault(); const text = draft.trim(); if (!text || live) return; setDraft('');
+  // `spoken`: what the microphone heard, added to what was typed and sent at once.
+  const submit = (event?: FormEvent, spoken?: string) => {
+    event?.preventDefault();
+    const text = (spoken === undefined ? draft : (draft.trim() ? `${draft.trimEnd()} ${spoken}` : spoken)).trim();
+    if (!text || live) return; setDraft('');
     if (proposals.answer(text, discreet)) return;  // a plain «sí» / «no» answers the rule Watson just proposed, without a model
     proposals.expire();
     if (!announced.answer(text, messages.length > 0 || current !== null)) void send(text, current);  // a plain «sí» / «no» answers the open announcement, without a model
@@ -162,7 +165,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <textarea id="assistant-input" value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={keys} maxLength={8000}
           placeholder={`Pregunta a ${name}…`} aria-keyshortcuts="Enter"/>
         <div className="actions">
-          <DictationButton disabled={Boolean(live)} onText={text => setDraft(current => current.trim() ? `${current.trimEnd()} ${text}` : text)}/>
+          <DictationButton disabled={Boolean(live)} onText={spoken => submit(undefined, spoken)}/>
           {live ? <button type="button" className="button" onClick={() => abort.current?.abort()}>Detener</button>
             : <button className="button primary" disabled={!draft.trim()}>Enviar</button>}
           <small className="muted">Enter envía · Mayús + Enter, nueva línea</small>

@@ -31,6 +31,7 @@ class Saved(BaseModel):
 class LocalSettings(BaseModel):
     local_url: str | None = None
     local_model: str | None = None
+    auto: bool | None = None
 
 
 class NewMeeting(BaseModel):

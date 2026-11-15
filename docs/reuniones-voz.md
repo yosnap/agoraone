@@ -21,11 +21,11 @@ En desarrollo, `pnpm dev` compila primero el programa de audio del sistema del M
 
 ## Dictar
 
-Junto a la caja de texto del chat de Watson y de cada bot está el botón **Dictar**:
+Junto a la caja de texto del chat de Watson y de cada bot está el botón del **micrófono** (decisión del usuario, 15/11/2026):
 
-1. Pulsa **Dictar** para empezar a grabar, hasta un minuto.
+1. Pulsa el micrófono para empezar a hablar, hasta un minuto.
 2. Pulsa otra vez para parar.
-3. Lo transcrito se añade a la caja. Nunca se envía solo: lo revisas y lo envías tú.
+3. Lo transcrito se envía en ese momento como mensaje, detrás de lo que ya hubieras escrito.
 
 Cómo se comporta:
 
@@ -51,6 +51,8 @@ Las pistas son dos:
   - En Linux, con ffmpeg sobre el *monitor* de la salida por defecto.
   - Sin adaptador, o sin permiso, la reunión sigue solo con el micrófono, y se dice.
 
+También se puede grabar desde cualquier pantalla con el botón **Grabar** de la barra lateral: empieza con las opciones de la última vez (confidencialidad y audio del sistema) y, pulsado otra vez, para.
+
 Mientras graba:
 
 - La barra lateral muestra un punto rojo en Reuniones todo el tiempo, y puedes cambiar de sección sin que la grabación se corte.
@@ -63,7 +65,7 @@ El audio se guarda en los datos de AgoraOne, en `meetings/<id>/`, con permisos s
 
 ## De la grabación a la nota
 
-**Transcribir y resumir** trabaja en segundo plano y la lista enseña cómo avanza:
+Al parar, la reunión se transcribe y se resume sola (se puede desactivar en Ajustes › Voz › Resumen de reuniones; entonces está el botón **Transcribir y resumir**). Trabaja en segundo plano, con prioridad baja y la mitad de los núcleos para que el equipo siga usable; con Ollama, el modelo se descarga de la memoria al terminar. La lista enseña cómo avanza y, si algo falla, el error exacto y **Reintentar**. Si una de las dos pistas no se puede leer, se usa la otra y se avisa. El audio del sistema se escribe por fragmentos de 5 s, así que sigue siendo legible aunque la grabación se corte de golpe:
 
 1. **Transcripción.** Cada pista se transcribe con whisper.cpp y las dos se unen por tiempo, como «Tú» y «Los demás».
 2. **Resumen** (con decisiones y tareas), según la confidencialidad de la reunión:

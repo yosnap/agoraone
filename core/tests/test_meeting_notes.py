@@ -90,6 +90,8 @@ def client(tmp_path, monkeypatch):
     app = create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets())
     with TestClient(app, base_url=f"http://{settings.authority}") as test:
         assert test.put("/voice/settings", json={"binary": whisper, "ffmpeg": ffmpeg, "model": str(model)}, headers=H).status_code == 200
+        test.put("/meetings/settings", json={"auto": False}, headers=H)
+        test.data = tmp_path / "data"
         yield test
     transcribe.forget_search()
 
@@ -117,7 +119,7 @@ def test_de_la_grabacion_a_la_nota(client, monkeypatch):
 def test_ajustes_del_modelo_local(client):
     assert client.put("/meetings/settings", json={"local_url": "http://10.0.0.2:1234/v1"}, headers=H).status_code == 422
     saved = client.put("/meetings/settings", json={"local_url": "http://127.0.0.1:1234/v1/", "local_model": "qwen3"}, headers=H).json()
-    assert saved == {"local_url": "http://127.0.0.1:1234/v1", "local_model": "qwen3"}
+    assert saved == {"local_url": "http://127.0.0.1:1234/v1", "local_model": "qwen3", "auto": False}
     assert client.get("/meetings/settings", headers=H).json()["known"][0]["name"] == "LM Studio"
 
 
@@ -140,3 +142,25 @@ def test_quien_resume_cada_reunion():
     assert meeting_notes.summarizers([], local, reachable=lambda: False)["private"]["by"] == "local-off"
     assert meeting_notes.summarizers([], meeting_notes.DEFAULTS)["normal"]["by"] == "none"
     assert meeting_notes.summarizers([], meeting_notes.DEFAULTS)["private"]["by"] == "none"
+
+
+def _wait(client, meeting_id):
+    for _ in range(100):
+        detail = client.get(f"/meetings/{meeting_id}", headers=H).json()
+        if detail["work"] in ("done", "failed"):
+            return detail
+        time.sleep(0.05)
+    return detail
+
+
+def test_al_parar_se_procesa_sola_y_una_pista_rota_no_lo_impide(client, monkeypatch):
+    monkeypatch.setattr(meeting_notes, "summarize", lambda *a: (None, "none", None))
+    client.put("/meetings/settings", json={"auto": True}, headers=H)
+    started = client.post("/meetings", json={"mic_type": "audio/webm"}, headers=H).json()
+    client.post(f"/meetings/{started['id']}/mic", content=b"m" * 2000, headers=H)
+    # The system track comes out unreadable: ffmpeg fails on it alone.
+    _program(client.data.parent / "ffmpeg", FFMPEG.replace('cat "$2" > "$last"', 'tr -d "\\000" < "$2" | grep -q . || exit 1\ncat "$2" > "$last"'))
+    assert client.post(f"/meetings/{started['id']}/stop", headers=H).json()["work"] in ("transcribing", "summarizing", "done")
+    detail = _wait(client, started["id"])
+    assert detail["work"] == "done" and [s["speaker"] for s in detail["transcript"]] == ["Tú"]
+    assert "No se pudo leer el audio del sistema" in detail["work_error"]

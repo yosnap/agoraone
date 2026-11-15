@@ -82,6 +82,7 @@ def create_app(
     # Summaries of normal meetings (Claude, like the rest of the core); the others use a local model.
     meeting_engines = lambda: [ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)]  # noqa: E731
     meeting_worker = Worker(recorder.folder, lambda: connect(settings.data_dir / DB_NAME), meeting_engines)
+    recorder.on_recorded = meeting_worker.after_recording
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

@@ -269,8 +269,15 @@ def _segments(data) -> tuple[list[dict], str | None]:
     return segments, (data.get("result") or {}).get("language")
 
 
+def _gentle() -> dict:
+    """Background work (meetings) at low priority and with half the cores, so the computer stays usable."""
+    if sys.platform == "win32":
+        return {"creationflags": subprocess.CREATE_NO_WINDOW | subprocess.BELOW_NORMAL_PRIORITY_CLASS}
+    return {"preexec_fn": lambda: os.nice(10)}
+
+
 def transcribe(connection: sqlite3.Connection, audio: bytes, language: str | None = None, timeout: float | None = None,
-               max_seconds: int | None = DICTATION_SECONDS) -> dict:
+               max_seconds: int | None = DICTATION_SECONDS, background: bool = False) -> dict:
     """The words in an audio clip (a recording ffmpeg reads), with their times. Local only, one at a time:
     a second call while one runs gets `VoiceBusy`. Dictation keeps the first `max_seconds` and finishes
     before the server stops waiting; longer work (meetings) passes its own limits."""
@@ -291,12 +298,14 @@ def transcribe(connection: sqlite3.Connection, audio: bytes, language: str | Non
     if not _busy.acquire(blocking=False):
         raise VoiceBusy("Ya hay una transcripción en curso. Espera a que termine.")
     try:
-        return _run(use, audio, language, timeout, max_seconds)
+        return _run(use, audio, language, timeout, max_seconds, background)
     finally:
         _busy.release()
 
 
-def _run(use: dict, audio: bytes, language: str, timeout: float | None, max_seconds: int | None) -> dict:
+def _run(use: dict, audio: bytes, language: str, timeout: float | None, max_seconds: int | None, background: bool = False) -> dict:
+    spawn = _gentle() if background else _hidden()
+    threads = ["-t", str(max(2, (os.cpu_count() or 4) // 2))] if background else []
     with tempfile.TemporaryDirectory(prefix="agora-voz-", ignore_cleanup_errors=True) as work:
         source, wav, out = Path(work) / "entrada", Path(work) / "audio.wav", Path(work) / "salida"
         source.write_bytes(audio)
@@ -304,7 +313,7 @@ def _run(use: dict, audio: bytes, language: str, timeout: float | None, max_seco
         try:
             converted = subprocess.run([use["ffmpeg"], "-nostdin", "-loglevel", "error", "-y", "-format_whitelist", FORMATS, "-protocol_whitelist", "file",
                                         "-i", str(source), *limit, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", str(wav)],
-                                       capture_output=True, timeout=FFMPEG_TIMEOUT if max_seconds else None, check=False, stdin=subprocess.DEVNULL, **_hidden())
+                                       capture_output=True, timeout=FFMPEG_TIMEOUT if max_seconds else None, check=False, stdin=subprocess.DEVNULL, **spawn)
         except subprocess.TimeoutExpired as error:
             raise VoiceError("ffmpeg tardó demasiado en leer el audio.") from error
         except OSError as error:
@@ -314,8 +323,8 @@ def _run(use: dict, audio: bytes, language: str, timeout: float | None, max_seco
         seconds = max(1.0, (wav.stat().st_size - 44) / 32000)
         wait = timeout or min(60 + seconds * 3, WHISPER_CAP)
         try:
-            done = subprocess.run([use["binary"], "-m", use["model"], "-f", str(wav), "-l", language, "-oj", "-of", str(out), "-np"],
-                                  capture_output=True, timeout=wait, check=False, stdin=subprocess.DEVNULL, **_hidden())
+            done = subprocess.run([use["binary"], "-m", use["model"], "-f", str(wav), "-l", language, "-oj", "-of", str(out), "-np", *threads],
+                                  capture_output=True, timeout=wait, check=False, stdin=subprocess.DEVNULL, **spawn)
         except subprocess.TimeoutExpired as error:
             raise VoiceError("La transcripción tardó demasiado. Prueba con un modelo más pequeño (turbo o base).") from error
         except OSError as error:
