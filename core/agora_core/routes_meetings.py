@@ -78,7 +78,7 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
     # Before /meetings/{meeting_id}, so these names are not taken for an id.
     @router.get("/meetings/settings")
     async def get_local(request: Request):
-        return await run(request, lambda c, o: {**meeting_notes.settings(c), "known": local_model.KNOWN})
+        return await run(request, lambda c, o: {**meeting_notes.settings(c), "known": local_model.KNOWN, "detected": local_model.detect()})
 
     @router.put("/meetings/settings")
     async def put_local(request: Request, body: LocalSettings):
