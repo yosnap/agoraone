@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState, useRef } from 'react';
 import { ApiError, getStatus, type Status } from '../api/client';
 import { Office } from '../app';
 import { Loading } from '../ui/load-state';
@@ -9,6 +9,8 @@ import { InboxView } from '../inbox/inbox-view';
 import { FiscalView } from '../fiscal/fiscal-view';
 import { AgendaView } from '../calendar/agenda-view';
 import { AlertToasts } from './alert-toasts';
+import { UploadNotice } from '../fiscal/upload-watch';
+import { requestListen } from '../assistant/listen';
 import { readShell, writeShell, type Section } from './shell-state';
 import './shell.css';
 import './page.css';
@@ -18,6 +20,7 @@ const SummaryView = lazy(() => import('../summary/summary-view').then(module => 
 const AssistantView = lazy(() => import('../assistant/assistant-view').then(module => ({ default: module.AssistantView })));
 const ConnectorsView = lazy(() => import('../connectors/connectors-view').then(module => ({ default: module.ConnectorsView })));
 const JobsView = lazy(() => import('../jobs/jobs-view').then(module => ({ default: module.JobsView })));
+const MeetingsView = lazy(() => import('../meetings/meetings-view').then(module => ({ default: module.MeetingsView })));
 const SettingsView = lazy(() => import('../settings/settings-view').then(module => ({ default: module.SettingsView })));
 
 /** AgoraOne's frame: the rail with the sections and the section on screen. The office (the city) stays
@@ -35,6 +38,12 @@ export function Shell() {
       ? { state: 'locked', csrf: '', detail: error.message } : { state: 'offline', csrf: '', detail: 'Backend sin conexión. Arráncalo con pnpm dev.' }));
   }, []);
   useEffect(() => writeShell({ section, discreet }), [section, discreet]);
+  // ⌃⌥W (from the desktop app) or «Oye Watson»: to the brain, where Watson's microphone starts listening.
+  const listening = useRef(false);
+  if (!listening.current && typeof window !== 'undefined') {
+    listening.current = true;
+    window.addEventListener('agora:listen', () => { setShell(previous => ({ ...previous, section: 'brain' })); window.setTimeout(requestListen, 150); });
+  }
   const go = useCallback((next: Section) => { if (next === 'office') setOfficeVisited(true); setShell(previous => ({ ...previous, section: next })); }, []);
   const setDiscreet = (on: boolean) => setShell(previous => ({ ...previous, discreet: on }));
   const showOnGraph = (ids: string[]) => { setFocus(ids); go('brain'); };
@@ -42,6 +51,7 @@ export function Shell() {
   return <div className="shell">
     <ShellNav section={section} onSection={go} discreet={discreet} onDiscreet={setDiscreet} waiting={waiting}/>
     {ready && <AlertToasts discreet={discreet}/>}
+    <UploadNotice onOpen={() => go('fiscal')}/>
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting} onWatson={() => go('brain')}/>}
       {ready && section !== 'office' && <main className="shell-page"><Suspense fallback={<div className="page"><Loading label="Cargando la sección"/></div>}>
@@ -54,6 +64,7 @@ export function Shell() {
           : section === 'fiscal' ? <FiscalView discreet={discreet}/>
           : section === 'agenda' ? <AgendaView discreet={discreet}/>
           : section === 'jobs' ? <JobsView discreet={discreet}/>
+          : section === 'meetings' ? <MeetingsView discreet={discreet}/>
           : <PendingView section={section}/>}
       </Suspense></main>}
       {status?.state === 'offline' && <section className="page" role="alert"><h1>Sin conexión</h1><p>{status.detail}</p></section>}

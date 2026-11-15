@@ -27,6 +27,12 @@ const FORWARDED_RESPONSE: [&str; 2] = ["content-type", "content-disposition"];
 const INHERITED: [&str; 12] = [
     "PATH", "HOME", "LANG", "TMPDIR", "USER", "LOGNAME", "UV_CACHE_DIR", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE", "CLAUDE_CONFIG_DIR",
 ];
+// On Windows, Python finds the home folder by USERPROFILE (not HOME), the temporary folder by TEMP/TMP, and
+// native programs (ffmpeg, whisper.cpp) need SystemRoot to start; still no keys or tokens.
+#[cfg(windows)]
+const INHERITED_WINDOWS: &[&str] = &["USERPROFILE", "LOCALAPPDATA", "APPDATA", "TEMP", "TMP", "SystemRoot", "ProgramFiles", "PATHEXT", "ComSpec"];
+#[cfg(not(windows))]
+const INHERITED_WINDOWS: &[&str] = &[];
 
 #[derive(Clone, Debug)]
 pub struct CoreLink {
@@ -49,7 +55,7 @@ pub fn environment(secret: &str, server_pid: u32, data: &Path, from: impl Fn(&st
         ("AGORA_CORE_DATA".into(), data.display().to_string()),
         ("PYTHONUNBUFFERED".into(), "1".into()),
     ];
-    env.extend(INHERITED.iter().filter_map(|name| from(name).map(|value| ((*name).to_string(), value))));
+    env.extend(INHERITED.iter().chain(INHERITED_WINDOWS).filter_map(|name| from(name).map(|value| ((*name).to_string(), value))));
     env
 }
 
@@ -181,6 +187,19 @@ mod tests {
         });
         let names: Vec<_> = env.iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(names, ["AGORA_CORE_SECRET", "AGORA_BACKEND_PID", "AGORA_CORE_DATA", "PYTHONUNBUFFERED", "PATH"]);
+    }
+
+    #[test]
+    fn entorno_de_windows_solo_en_windows() {
+        let env = environment("s", 7, Path::new("/datos"), |name| match name {
+            "USERPROFILE" => Some("C:\\Users\\u".into()),
+            "TEMP" => Some("C:\\Temp".into()),
+            "GITHUB_TOKEN" => Some("no".into()),
+            _ => None,
+        });
+        let names: Vec<_> = env.iter().map(|(k, _)| k.as_str()).collect();
+        assert!(!names.contains(&"GITHUB_TOKEN"));
+        assert_eq!(names.contains(&"USERPROFILE") && names.contains(&"TEMP"), cfg!(windows));
     }
 
     #[test]

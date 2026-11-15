@@ -3,7 +3,7 @@
 // tokens of src/theme-tokens.css: the green and teal brand colours change hue or lose their colour, while
 // reds, ambers and yellows keep theirs, so warnings and errors always look like warnings and errors.
 
-export type Palette = 'natural' | 'grafito' | 'oceano' | 'ciruela' | 'arena' | 'bosque';
+export type Palette = 'natural' | 'grafito' | 'oceano' | 'ciruela' | 'arena' | 'bosque' | 'laboratorio';
 export type Size = 'small' | 'normal' | 'large' | 'larger';
 export type Typeface = 'original' | 'system' | 'avenir' | 'helvetica' | 'serif' | 'rounded';
 export type Appearance = { palette: Palette; size: Size; typeface: Typeface };
@@ -15,6 +15,8 @@ export const palettes: Record<Palette, { label: string; hue?: number; saturation
   ciruela: { label: 'Ciruela', hue: 282, swatch: ['#35204a', '#4b2f66', '#e8dcf2', '#faf7fb'] },
   arena: { label: 'Arena', hue: 32, saturation: 0.7, swatch: ['#4a3420', '#6b4b2c', '#f1e6d6', '#fbf8f2'] },
   bosque: { label: 'Bosque', hue: 128, swatch: ['#1c3d22', '#2c5432', '#dcefdc', '#f7faf5'] },
+  // Like CROW: night blue with the amber accents, best with the dark theme (1.4).
+  laboratorio: { label: 'Laboratorio (mejor en oscuro)', hue: 222, saturation: 1.15, swatch: ['#0d1626', '#1b2c4a', '#e0663a', '#e7edf5'] },
 };
 export const sizes: Record<Size, { label: string; zoom: number }> = {
   small: { label: 'Pequeño', zoom: 0.9 }, normal: { label: 'Normal', zoom: 1 }, large: { label: 'Grande', zoom: 1.12 }, larger: { label: 'Muy grande', zoom: 1.25 },

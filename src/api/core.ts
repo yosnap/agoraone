@@ -1,4 +1,4 @@
-import { csrfToken, request } from './client';
+import { ApiError, csrfToken, request } from './client';
 
 // The Python core, reached through the backend at /api/core/* (cookie, CSRF and origin checked there).
 const core = <T>(path: string, body?: unknown, method?: string) => request<T>(`/core${path}`, body, method);
@@ -12,6 +12,9 @@ export type GraphNode = { id: string; type: NodeType; source?: string; sourceNam
 export type GraphEdge = { a: string; b: string; kind: 'link' | 'near' | 'mention' | 'in' };
 export type GraphLayers = { entities: boolean; tags: boolean; folders: boolean };
 export type BrainGraph = { nodes: GraphNode[]; edges: GraphEdge[]; total: number; truncated: boolean; semantic: boolean };
+export type BrainArea = { name: string; notes: number; subfolders: number; changed: string | null; description: string | null; written: boolean };
+export type LatelyEntry = { kind: 'nota' | 'reunión'; text: string; detail: string | null; when: string; id: number; key?: string };
+export const getBrainHome = (discreet: boolean) => core<{ areas: BrainArea[]; lately: { today: LatelyEntry[]; yesterday: LatelyEntry[] } }>(`/brain/home?discreet=${+discreet}`);
 export const getBrainGraph = (discreet: boolean, near: boolean, layers: GraphLayers) =>
   core<BrainGraph>(`/graph?discreet=${+discreet}&near=${+near}&entities=${+layers.entities}&tags=${+layers.tags}&folders=${+layers.folders}`);
 
@@ -202,7 +205,16 @@ export type FolderPlan = { moves: { from: string; to: string }[]; undecided: str
 export const getFolderPlan = (id: number) => core<FolderPlan>(`/fiscal/folders/${id}/plan`);
 export const applyFolderPlan = (id: number, moves: { from: string; to: string }[]) =>
   core<{ moved: { from: string; to: string }[]; backup: string; error: string | null }>(`/fiscal/folders/${id}/apply`, { moves });
-export type UploadState = { open: boolean; url?: string; qr?: string; expiresAt?: number; received?: number | null };
+export type UploadState = { open: boolean; url?: string; qr?: string; expiresAt?: number; received?: number | null; receiving?: boolean };
+/** A receipt to look at (photos as JPEG, PDFs as they are) and its data read by Claude Haiku to fill the form. */
+/** The receipt as an image in memory (a blob: URL): the core asks for the CSRF header even on reads, which an
+ * <img> cannot send, so it is fetched here. The caller revokes the URL when done. */
+export async function receiptPreview(id: number): Promise<string> {
+  const response = await fetch(`/api/core/fiscal/receipts/${id}/preview`, { headers: csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {} });
+  if (!response.ok) throw new ApiError('No se puede enseñar este recibo.', response.status, {});
+  return URL.createObjectURL(await response.blob());
+}
+export const readReceipt = (id: number) => core<InvoiceFields>(`/fiscal/receipts/${id}/read`, {});
 export type Receipt = { id: number; name: string | null; mediaType: string; bytes: number; fields: Partial<InvoiceFields>; uploadedAt: string;
   source: 'qr' | 'inbox'; inboxFolder: number | null };
 export const openUpload = () => core<UploadState>('/fiscal/receipts/upload', {});
@@ -288,6 +300,23 @@ export type ClientProjects = {
 };
 export const getClientProjects = () => core<ClientProjects>('/jobs/projects');
 
+/** Local speech to text (whisper.cpp): what is installed and chosen, and transcribing a short clip. */
+export type VoiceSettings = { binary: string | null; ffmpeg: string | null; model: string | null; language: string };
+export type VoiceStatus = VoiceSettings & { chosen: VoiceSettings; binaries: string[]; ffmpegs: string[];
+  models: { name: string; path: string; bytes: number }[]; ready: boolean; platform: string; missing: ('binary' | 'ffmpeg' | 'model')[] };
+export const getVoiceStatus = () => core<VoiceStatus>('/voice/status');
+export const putVoiceSettings = (changes: Partial<VoiceSettings>) => core<VoiceSettings>('/voice/settings', changes, 'PUT');
+/** A short recorded clip to text, on this machine (the audio goes to the core only). */
+export async function transcribeVoice(audio: Blob): Promise<{ text: string; language: string | null; seconds: number }> {
+  const response = await fetch('/api/core/voice/transcribe', {
+    method: 'POST', body: audio,
+    headers: { 'Content-Type': audio.type || 'application/octet-stream', ...(csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {}) },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new ApiError(data.error || 'No se pudo transcribir.', response.status, data);
+  return data;
+}
+
 /** Replying: a prefilled reply, a body drafted by Watson (normal mail only), the sealed preview and the send. */
 export type MailDraft = { accountId: number; to: string; cc: string; subject: string; body: string; replyTo: number | null };
 export type MailPreview = { draft: { accountId: number; to: string[]; cc: string[]; subject: string; body: string; replyTo: number | null };
@@ -296,3 +325,69 @@ export const getReplyDraft = (messageId: number) => core<MailDraft>(`/mail/messa
 export const composeReply = (messageId: number, instructions: string) => core<{ body: string }>(`/mail/messages/${messageId}/compose`, { instructions });
 export const previewMail = (draft: MailDraft) => core<MailPreview>('/mail/drafts/preview', draft);
 export const sendMail = (draft: MailDraft, digest: string) => core<{ sent: boolean; savedToSent: boolean; refused: string[] }>('/mail/send', { draft, digest });
+
+/** Recorded meetings: your microphone (sent here in pieces) and the system's audio (recorded by the core). */
+export type Meeting = { id: number; title: string; confidentiality: Level; status: 'recording' | 'recorded' | 'interrupted';
+  started_at: string; ended_at: string | null; seconds: number; mic_bytes: number; system_source: string | null; system_bytes: number; note: string | null;
+  work: 'none' | 'transcribing' | 'summarizing' | 'done' | 'failed'; work_error: string | null; summary_by: 'claude' | 'local' | 'none' | null;
+  has_transcript: boolean; saved_note: { vault: string; note: string } | null };
+export type MeetingTask = { title: string; who: string | null; due: string | null };
+export type MeetingDetail = Meeting & { transcript: { start: number; end: number; text: string; speaker: string }[];
+  summary: { summary: string; decisions: string[]; tasks: MeetingTask[] } | null; draft: { title: string; content: string } | null };
+export const getMeeting = (id: number) => core<MeetingDetail>(`/meetings/${id}`);
+export const processMeeting = (id: number, summaryOnly = false) => core<Meeting>(`/meetings/${id}/process`, { summary_only: summaryOnly });
+export const markMeetingSaved = (id: number, vault: string, note: string) => core<Meeting>(`/meetings/${id}/saved`, { vault, note });
+export type MeetingSettings = { local_url: string | null; local_model: string | null; auto?: boolean; known?: { name: string; url: string }[]; detected?: string | null };
+export const getMeetingSettings = () => core<MeetingSettings>('/meetings/settings');
+export const putMeetingSettings = (changes: Partial<MeetingSettings>) => core<MeetingSettings>('/meetings/settings', changes, 'PUT');
+export type Summarizer = { by: 'claude' | 'local' | 'local-off' | 'none'; label: string };
+export const getSummarizers = () => core<Record<Level, Summarizer>>('/meetings/summarizers');
+export const getLocalModels = (url: string) => core<{ models: string[] }>(`/meetings/local-models?url=${encodeURIComponent(url)}`);
+export type MeetingList = { meetings: Meeting[]; system: string | null; recording: number | null };
+export const getMeetings = () => core<MeetingList>('/meetings');
+export const startMeeting = (body: { title: string; confidentiality: Level; mic_type: string; system: boolean }) => core<Meeting>('/meetings', body);
+export const stopMeeting = (id: number) => core<Meeting>(`/meetings/${id}/stop`, {});
+export const deleteMeeting = (id: number) => core<{ deleted: boolean }>(`/meetings/${id}`, undefined, 'DELETE');
+/** One piece of the microphone, in order. */
+export async function sendMeetingPiece(id: number, piece: Blob): Promise<void> {
+  const response = await fetch(`/api/core/meetings/${id}/mic`, {
+    method: 'POST', body: piece,
+    headers: { 'Content-Type': 'application/octet-stream', ...(csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {}) },
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new ApiError(data.error || 'No se pudo guardar el audio.', response.status, data);
+  }
+}
+
+/** Music (1.5): what Apple Music or Spotify plays, its controls and «pon …». */
+export type MusicPlayer = { player: string; name: string; state: string; title?: string; artist?: string; album?: string;
+  duration?: number | null; position?: number | null; volume?: number | null; problem?: string };
+export type MusicState = { players: MusicPlayer[]; note: string | null };
+export type MusicAction = 'toggle' | 'play' | 'pause' | 'next' | 'previous' | 'louder' | 'quieter';
+export const getMusic = () => core<MusicState>('/music/status');
+export const controlMusic = (player: string, action: MusicAction) => core<MusicState>('/music/control', { player, action });
+export const playMusic = (player: string, query: string) => core<MusicState & { done: string }>('/music/play', { player, query });
+
+/** Opening apps (1.5): the installed ones, those Watson may open without asking, and opening one. */
+export type InstalledApp = { id: string; name: string; aliases?: string[] };
+export const getApps = () => core<{ apps: InstalledApp[]; allowed: string[] }>('/apps');
+export const putAllowedApps = (allowed: string[]) => core<{ allowed: string[] }>('/apps/allowed', { allowed }, 'PUT');
+export const openApp = (id: string, confirmed = false) => core<{ done: string }>('/apps/open', { id, confirmed });
+
+/** «Oye Watson» (1.5): off by default; the desktop app starts its on-device listener while it is on. */
+export const getWake = () => core<{ enabled: boolean }>('/wake/settings');
+export const putWake = (enabled: boolean) => core<{ enabled: boolean }>('/wake/settings', { enabled }, 'PUT');
+
+/** The user's own music (1.5): folders, search, a track to play (fetched with the CSRF header, played from
+ * memory) and a YouTube search opened in the browser. */
+export type LibraryTrack = { id: string; title: string; artist: string | null; album: string | null };
+export const getLibrary = (q = '') => core<{ folders: string[]; tracks: LibraryTrack[]; total: number }>(`/music/library?q=${encodeURIComponent(q)}`);
+export const putLibraryFolders = (folders: string[]) => core<{ folders: string[] }>('/music/library/folders', { folders }, 'PUT');
+export const chooseLibraryFolder = () => core<{ path: string | null }>('/music/library/choose', {});
+export const openYouTube = (query: string) => core<{ done: string }>('/music/youtube', { query });
+export async function trackUrl(id: string): Promise<string> {
+  const response = await fetch(`/api/core/music/library/${encodeURIComponent(id)}/file`, { headers: csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {} });
+  if (!response.ok) throw new ApiError('No se pudo abrir esa canción.', response.status, {});
+  return URL.createObjectURL(await response.blob());
+}

@@ -21,3 +21,5 @@ skills-lock.json
 /desktop/target
 # Staging and downloads of the packaged app (desktop/scripts/empaquetar.sh).
 /desktop/paquete
+# The meetings' system-audio helper, compiled from core/helpers/*.swift (pnpm helpers).
+/core/helpers/bin

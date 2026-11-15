@@ -143,9 +143,13 @@ function Focus({ focus, distance, still }: { focus: [number, number, number]; di
  * reads) the found notes travel into a constellation with the best match at its centre, the rest step aside,
  * and synapses with running sparks join them; clearing it brings everything back. It turns slowly by itself,
  * and nothing moves when the system asks to reduce motion. */
-export default function BrainGraphScene({ graph, positions, lit, colors, typeColors, reading, onPick, still }: {
+export type AreaLabel = { name: string; count: number; color: string; at: [number, number, number] };
+
+export default function BrainGraphScene({ graph, positions, lit, colors, typeColors, reading, onPick, still, areas = [], picked = null, onArea }: {
   graph: BrainGraph; positions: Float32Array; lit: Set<string> | null; colors: Map<string, string>; typeColors: Partial<Record<string, string>>;
   reading: string[] | null; onPick: (index: number) => void; still: boolean;
+  /** The areas' names at the centre of their notes (1.4); pressing one lights its notes up. */
+  areas?: AreaLabel[]; picked?: string | null; onArea?: (name: string) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const resolved = useResolvedTheme();
@@ -208,6 +212,12 @@ export default function BrainGraphScene({ graph, positions, lit, colors, typeCol
         Labels sit where their sphere is heading, which it reaches in about a second. */}
     {labelled.map(position => <WorldLabel key={graph.nodes[position].id} position={at(position)} distanceFactor={radius * 2}>
       <span className={`graph-label${reading?.includes(graph.nodes[position].id) ? ' reading' : ''}${rank.get(position) === 0 ? ' best' : ''}`}>{graph.nodes[position].title}</span>
+    </WorldLabel>)}
+    {(!active || picked) && areas.map(area => <WorldLabel key={`area:${area.name}`} position={area.at} distanceFactor={radius * 2}>
+      <button type="button" className={`graph-area${picked === area.name ? ' picked' : ''}`} style={{ borderColor: area.color }}
+        onClick={() => onArea?.(area.name)} aria-pressed={picked === area.name} title={`${area.name || 'Raíz'}: ${area.count} notas`}>
+        <span style={{ background: area.color }} aria-hidden="true"/>{area.name || 'Raíz'} <small>{area.count}</small>
+      </button>
     </WorldLabel>)}
     <OrbitControls makeDefault enableDamping autoRotate={!still && hover === null} autoRotateSpeed={active ? 0.6 : 0.35} minDistance={4} maxDistance={radius * 5}/>
   </Canvas>;

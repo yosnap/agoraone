@@ -13,7 +13,7 @@ function money(value: number | string | null | undefined, currency = 'EUR') {
 }
 const day = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
-const TYPES: Record<string, string> = { pdf: 'PDF', png: 'Imagen', jpg: 'Imagen', jpeg: 'Imagen', heic: 'Imagen', html: 'HTML', htm: 'HTML', xlsx: 'Excel', xls: 'Excel', zip: 'ZIP' };
+const TYPES: Record<string, string> = { pdf: 'PDF', png: 'IMG', jpg: 'IMG', jpeg: 'IMG', heic: 'IMG', html: 'HTML', htm: 'HTML', xlsx: 'XLS', xls: 'XLS', zip: 'ZIP' };
 const fileType = (path: string) => TYPES[(path.split('.').pop() ?? '').toLowerCase()] ?? (path.split('.').pop() ?? '').toUpperCase();
 const FILE_ICON = <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" d="M6 2h8l5 5v15H6zM14 2v5h5M9 13h6M9 17h6"/></svg>;
 const FOLDER_ICON = <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" d="M3 6h6l2 2h10v11H3z"/></svg>;
