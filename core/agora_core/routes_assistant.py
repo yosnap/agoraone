@@ -77,6 +77,10 @@ def _logged(event: dict) -> tuple[str, str]:
         return "clientes", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
     if event["tool"] == "inbox":
         return "bandeja", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
+    if event["tool"] == "reorg_proposal":  # how many changes, never titles or folders
+        return "proponer_reorganizacion", json.dumps({"cambios": len(event["moves"]), "renombrados": sum(1 for m in event["moves"] if m["toTitle"])}, ensure_ascii=False)
+    if event["tool"] == "vault_outline":
+        return "revisar_vault", json.dumps({"notas": event["notes"], "carpetas": event["folders"]}, ensure_ascii=False)
     if event["tool"] == "cleanup_proposal":  # how many and what to do, never senders or subjects
         return "proponer_limpieza", json.dumps({"accion": event["action"], "correos": len(event["messages"])}, ensure_ascii=False)
     if event["tool"] == "quote_proposal":  # for whom and how many lines, not the prices

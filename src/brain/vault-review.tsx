@@ -15,9 +15,11 @@ function Section({ title, count, why, children }: { title: string; count: number
   </details>;
 }
 
-/** The vault's review (1.7): what makes things hard to find, read from the brain's index; nothing changes. The
- * next step, a reorganisation Watson proposes and the user approves, builds on this. */
-export function VaultReviewPanel({ discreet, onRead, onClose }: { discreet: boolean; onRead: (key: string) => void; onClose: () => void }) {
+const ASK = 'Revisa cómo está ordenado mi vault y propón un primer lote de cambios para ordenarlo: mover notas sueltas o mal archivadas a su carpeta y, solo si hace falta, un título más claro.';
+
+/** The vault's review (1.7): what makes things hard to find, read from the brain's index; nothing changes. From here
+ * Watson can be asked for a reorganisation, which it proposes as a batch the user approves change by change. */
+export function VaultReviewPanel({ discreet, onRead, onClose, onAsk }: { discreet: boolean; onRead: (key: string) => void; onClose: () => void; onAsk?: (question: string) => void }) {
   const [found, setFound] = useState<VaultReview | null>(null);
   const [error, setError] = useState('');
   const asked = useRef(false);
@@ -26,7 +28,8 @@ export function VaultReviewPanel({ discreet, onRead, onClose }: { discreet: bool
     <div className="first-run-panel review-panel">
       <div className="first-run-head"><span className="eyebrow">CEREBRO · REVISIÓN</span><button type="button" className="button" onClick={onClose}>Cerrar</button></div>
       <h1 id="review-title">Revisar el vault</h1>
-      <p className="muted">Lo que hace difícil encontrar las cosas, sacado del índice del cerebro. No cambia nada: el siguiente paso es que Watson proponga cómo reordenarlo y tú lo apruebes.</p>
+      <p className="muted">Lo que hace difícil encontrar las cosas, sacado del índice del cerebro. No cambia nada: Watson puede proponer cómo reordenarlo y tú apruebas cada cambio.</p>
+      {onAsk && <div className="inbox-actions"><button type="button" className="button primary" onClick={() => onAsk(ASK)}>Pedir a Watson que lo ordene</button></div>}
       {error && <LoadError message={error}/>}
       {!found && !error ? <Loading label="Revisando el vault" lines={4}/> : found && <div className="review-grid">
         <p className="review-total">{found.notes} notas en {found.folders} carpetas.</p>

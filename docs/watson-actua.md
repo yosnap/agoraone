@@ -12,6 +12,7 @@ botón de la tarjeta. Watson solo lo usa cuando el usuario se lo pide, nunca por
 | `proponer_evento` | Título, fecha, lugar y calendario | El evento se crea en el calendario elegido; si se solapa con otro, avisa y pide «Crear igualmente». |
 | `proponer_presupuesto` | Cliente, partidas, base, IVA y total | Se crea en Central como borrador con `create_quote`, la única escritura permitida en Central. Se envía desde Central. |
 | `proponer_limpieza` | La lista de correos de la bandeja de entrada, cada uno con su casilla | Solo los marcados se mueven al archivo o a la Papelera de su cuenta. |
+| `proponer_reorganizacion` | Un lote de hasta 40 notas para mover o renombrar, cada una con su casilla, su motivo y el aviso de enlaces que se romperían | Solo los cambios marcados, uno a uno, por la ruta de mover del vault. |
 | `proponer_regla` (1.2) | La regla del correo tal cual | Se crea la regla. |
 
 Además, si se le pide una **ficha de cliente**, Watson reúne lo que sabe por Central, la Bandeja y el cerebro, y
@@ -44,6 +45,22 @@ El botón «Revisar el vault», junto a las Áreas del Cerebro, abre un informe 
 - carpetas con una sola nota, demasiado llenas o demasiado profundas;
 - notas con credenciales ocultas. De estas solo se ve el título: el índice ya guarda esas líneas como
   «[credencial omitida]» y nunca llegan a un modelo.
+
+## Reordenar el vault
+
+Desde «Revisar el vault», el botón «Pedir a Watson que lo ordene» le pide un primer lote; también se le puede
+pedir en el chat. Watson mira el vault con `revisar_vault` (carpetas con su recuento y las notas sueltas,
+huérfanas, repetidas o casi vacías) y propone con `proponer_reorganizacion` (`core/agora_core/vault_reorg.py`):
+
+- Solo ve y puede nombrar notas normales, por el número que se le dio; lo privado y lo de solo en este Mac no
+  entra nunca en la propuesta.
+- El destino es una carpeta que ya existe, la raíz o una carpeta nueva dentro de una que exista (nunca una nueva
+  en la raíz). No se aceptan dos cambios de la misma nota ni un destino donde ya hay otra con ese título.
+- Si renombra una nota que otras enlazan por su título, la tarjeta avisa de cuántos enlaces dejarán de funcionar:
+  AgoraOne no reescribe enlaces.
+- Al pulsar «Aplicar», cada nota marcada se vuelve a leer para su revisión y se mueve con la ruta del vault: copia
+  previa, mismo archivo (Obsidian conserva su fecha), nunca pisa otra nota y nunca borra. La tarjeta muestra el
+  resultado de cada una; un fallo no detiene las demás.
 
 ## Rutas del núcleo
 

@@ -91,3 +91,5 @@ section.assistant { display:grid; grid-template-columns:260px minmax(0,1fr); gri
 .cleanup-text { display:flex; flex-direction:column; min-width:0; font-size:12.5px }
 .cleanup-text strong { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .cleanup-text small { color:var(--c-6f8379); font-size:11px }
+.cleanup-text .reorg-warn { color:var(--c-7a5717) }
+.cleanup-text .ok-note { color:var(--c-24563a); background:none; padding:0 }

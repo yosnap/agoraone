@@ -175,6 +175,29 @@ SPECS.append({
         "mas_antiguos_que_dias": {"type": "integer", "description": "Solo los de hace más de estos días."},
         "cuenta": {"type": "string", "description": "Nombre de la cuenta de correo, si lo dice."}}},
 })
+SPECS.append({
+    "name": "revisar_vault",
+    "description": ("Revisa cómo está ordenado el vault de Obsidian del usuario (solo lectura): sus carpetas con cuántas notas tiene "
+                    "cada una, y las notas sueltas en la raíz, huérfanas, con el título repetido o casi vacías, cada una con su número "
+                    "(n). Úsala antes de proponer_reorganizacion; para encontrar notas de un tema, buscar_en_cerebro."),
+    "schema": {"type": "object", "properties": {}},
+})
+SPECS.append({
+    "name": "proponer_reorganizacion",
+    "description": ("Propone al usuario un lote de cambios para ordenar su vault (no cambia nada): mover notas a otra carpeta y, si "
+                    "hace falta, darles un título más claro. Cada cambio aparece en su pantalla con su casilla y solo se aplican los "
+                    "que él apruebe. Nunca se borra nada ni se sobrescribe otra nota. Solo notas con número (n) de revisar_vault o "
+                    "buscar_en_cerebro. La carpeta de destino debe existir o ser una nueva dentro de una que exista (nunca una "
+                    "nueva en la raíz). Renombrar rompe los enlaces [[...]] a esa nota: renombra solo si aporta. Como mucho 40 "
+                    "cambios por lote. Solo si lo pide el usuario. Después di que lo tiene en pantalla; nunca que ya está hecho."),
+    "schema": {"type": "object", "required": ["cambios"], "properties": {
+        "resumen": {"type": "string", "description": "En una frase, qué orden propones."},
+        "cambios": {"type": "array", "items": {"type": "object", "required": ["n"], "properties": {
+            "n": {"type": "integer", "description": "Número de la nota."},
+            "carpeta": {"type": "string", "description": "Carpeta de destino, por ejemplo «Clientes/Acme» (vacía, la raíz; sin ella, la misma)."},
+            "titulo": {"type": "string", "description": "Título nuevo, solo si cambia."},
+            "motivo": {"type": "string", "description": "Por qué, en pocas palabras."}}}}}},
+})
 NOTE_TEXT = 20000
 SECRET_LINE = re.compile(r"(?i)(contrase(n|ñ)a|password|passwd|api[_ -]?key|token|secret|clave)\s*[:=]\s*\S{6,}")
 _ACTION_OF_ACCION = {"factura": "invoice", "cliente": "client", "personal": "personal", "importante": "important", "ignorar": "ignore"}
@@ -213,21 +236,30 @@ class Toolbox:
         self.calls = 0
         self.mail = True  # whether this answer's engine may read the Bandeja (not the compatible provider)
         self.sources: list[dict] = []
+        # Notes only listed by title (revisar_vault): numbered like the sources, but not sources until found or read.
+        self.listed: list[dict] = []
         self.events: list[dict] = []
         self.history: list[dict] = []  # every event of this answer, for the action log
         # Rules proposed to the user, waiting for their confirmation: shared by the router, keyed by a one-time id.
         self.proposals: dict[str, dict] = {}
         self.owner: str | None = None
 
-    def register(self, results: list[dict]) -> list[dict]:
-        """Numbers the notes found (a note found again keeps its number)."""
+    def register(self, results: list[dict], listed: bool = False) -> list[dict]:
+        """Numbers the notes found (a note found again keeps its number). `listed` notes were only seen by title in
+        the vault's outline: they keep a number Watson can name, but are no source of the answer until found or read."""
         numbered = []
         for result in results:
-            known = next((s for s in self.sources if s["source"] == result["source"] and s["ref"] == result["ref"]), None)
+            same = lambda s: s["source"] == result["source"] and s["ref"] == result["ref"]  # noqa: E731
+            known = next((s for s in self.sources if same(s)), None)
             if known is None:
-                known = {"n": len(self.sources) + 1, "title": result["title"], "folder": result["folder"],
+                known = next((s for s in self.listed if same(s)), None)
+                if known is not None and not listed:
+                    self.listed.remove(known)
+                    self.sources.append(known)
+            if known is None:
+                known = {"n": len(self.sources) + len(self.listed) + 1, "title": result["title"], "folder": result["folder"],
                          "source": result["source"], "ref": result["ref"]}
-                self.sources.append(known)
+                (self.listed if listed else self.sources).append(known)
             numbered.append({**known, "snippet": result.get("snippet", "")})
         return numbered
 
@@ -265,6 +297,10 @@ class Toolbox:
                 return self._propose_quote(args)
             if name == "proponer_limpieza":
                 return self._propose_cleanup(args)
+            if name == "revisar_vault":
+                return await self._outline()
+            if name == "proponer_reorganizacion":
+                return await self._propose_reorg(args)
             if name == "consultar_trabajos":
                 return await self._projects(str(args.get("periodo") or "7d"), str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
@@ -290,6 +326,9 @@ class Toolbox:
 
     async def _read(self, n, part) -> str:
         source = next((s for s in self.sources if s["n"] == int(n)), None)
+        if source is None and (source := next((s for s in self.listed if s["n"] == int(n)), None)) is not None:
+            self.listed.remove(source)  # read now: it becomes a source of the answer
+            self.sources.append(source)
         if source is None:
             return json.dumps({"error": "No hay ninguna nota con ese número: búscala primero."}, ensure_ascii=False)
 
@@ -486,6 +525,61 @@ class Toolbox:
         self.proposals[proposal_id] = {"owner": self.owner, "note": note, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "note_proposal", "id": proposal_id, "note": note})
         return json.dumps({"propuesta": {"titulo": title, "carpeta": folder or "(raíz)"}, "estado": "En la pantalla del usuario, esperando que pulse «Crear la nota». No está creada."}, ensure_ascii=False)
+
+    async def _outline(self) -> str:
+        """The vault's order as Watson may see it (normal notes only); the notes it names get their numbers."""
+        from . import vault_reorg
+
+        def run():
+            with self.database() as connection:
+                return vault_reorg.outline(connection)
+        found = await run_in_threadpool(run)
+        def numbered(items: list[dict]) -> list[dict]:
+            return self.register([{"source": i["key"].split("/", 1)[0], "ref": i["key"].split("/", 1)[1], "title": i["title"], "folder": i["folder"]} for i in items], listed=True)
+        listed = {section: numbered(found[section]) for section in ("root", "orphans", "tiny")}
+        repeated = [{"titulo": d["title"], "notas": [s["n"] for s in numbered(d["notes"])]} for d in found["duplicates"]]
+        self._record({"tool": "vault_outline", "notes": found["notes"], "folders": found["folders"]})
+        short = lambda items: [{"n": s["n"], "titulo": s["title"], "carpeta": s["folder"]} for s in items]  # noqa: E731
+        return json.dumps({
+            "notas": found["notes"], "carpetas": [{"carpeta": f["folder"], "notas": f["notes"]} for f in found["folderList"]], "raiz": "carpeta vacía",
+            "sueltas_en_la_raiz": short(listed["root"]), "total_sueltas": found["rootCount"],
+            "huerfanas": short(listed["orphans"]), "total_huerfanas": found["orphanCount"],
+            "casi_vacias": short(listed["tiny"]), "titulos_repetidos": repeated,
+            "carpetas_con_una_nota": found["lonelyFolders"], "carpetas_demasiado_profundas": found["deepFolders"],
+            "aviso": DATA_NOTICE,
+        }, ensure_ascii=False)
+
+    async def _propose_reorg(self, args: dict) -> str:
+        """Checks a batch of moves and renames and keeps it as a proposal; the screen shows every change with its box
+        and applies only the approved ones through the vault's move route. Nothing moves here."""
+        import secrets as random
+        import time
+
+        from . import vault_reorg
+
+        if self.owner is None:
+            return json.dumps({"error": "Reorganizar el vault no está disponible ahora."}, ensure_ascii=False)
+        shown = {s["n"]: s for s in self.sources + self.listed}
+
+        def run():
+            with self.database() as connection:
+                return vault_reorg.check(connection, shown, args.get("cambios"))
+        try:
+            moves, rejected = await run_in_threadpool(run)
+        except vault_reorg.ReorgError as error:
+            return json.dumps({"error": str(error)}, ensure_ascii=False)
+        if not moves:
+            return json.dumps({"error": "Ningún cambio es válido.", "rechazados": rejected}, ensure_ascii=False)
+        summary = " ".join(str(args.get("resumen") or "").split())[:300]
+        now = time.time()
+        for key in [k for k, v in self.proposals.items() if v["expires"] < now]:
+            del self.proposals[key]
+        proposal_id = random.token_urlsafe(12)
+        self.proposals[proposal_id] = {"owner": self.owner, "reorg": moves, "expires": now + PROPOSAL_SECONDS}
+        self._record({"tool": "reorg_proposal", "id": proposal_id, "summary": summary, "moves": moves})
+        return json.dumps({"propuesta": {"cambios": len(moves), "renombrados": sum(1 for m in moves if m["toTitle"])},
+                           "rechazados": rejected,
+                           "estado": "En la pantalla del usuario, esperando que apruebe los cambios. No se ha movido nada."}, ensure_ascii=False)
 
     def _propose_event(self, args: dict) -> str:
         """Checks an event Watson wants to add and keeps it as a proposal; the screen creates it with «Crear el
