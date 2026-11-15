@@ -17,4 +17,5 @@ pub mod routes;
 pub mod safe_read;
 pub mod skills;
 pub mod summary;
+pub mod work;
 pub mod write_routes;

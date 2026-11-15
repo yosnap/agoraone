@@ -301,7 +301,8 @@ fn tool_records(root: &Path, home: &Path, declared_names: &[String], now: i64) -
     Ok(value)
 }
 
-fn raw_jobs(root: &Path, home: &Path) -> Option<Vec<Map<String, Value>>> {
+/// A profile's scheduled tasks as Hermes stores them (the first `limit`); callers pick which fields leave.
+pub(crate) fn raw_jobs(root: &Path, home: &Path, limit: usize) -> Option<Vec<Map<String, Value>>> {
     let data = json_file(root, &home.join("cron").join("jobs.json"), 1024 * 1024)?;
     let list = match &data {
         Value::Array(items) => items.clone(),
@@ -309,7 +310,7 @@ fn raw_jobs(root: &Path, home: &Path) -> Option<Vec<Map<String, Value>>> {
     };
     Some(
         list.into_iter()
-            .take(20)
+            .take(limit)
             .filter_map(|job| match job {
                 Value::Object(map) => Some(map),
                 Value::Array(_) => Some(Map::new()),
@@ -317,6 +318,11 @@ fn raw_jobs(root: &Path, home: &Path) -> Option<Vec<Map<String, Value>>> {
             })
             .collect(),
     )
+}
+
+/// A Hermes identifier safe to send to the interface (tasks, cards).
+pub(crate) fn valid_id(id: &str) -> bool {
+    ID.is_match(id)
 }
 
 fn jobs(list: Option<&Vec<Map<String, Value>>>) -> Value {
@@ -377,7 +383,7 @@ pub fn read_activity(root: &Path, profiles: &[ProfileTarget], now: i64) -> Value
     for profile in profiles {
         let recorded = sessions(root, &profile.home, now).ok().flatten();
         let tools = tool_records(root, &profile.home, &profile.mcp, now).ok().flatten();
-        let job_list = raw_jobs(root, &profile.home);
+        let job_list = raw_jobs(root, &profile.home, 20);
         let links = platforms(live.state.as_ref(), live.fresh, &profile.name);
         let link_events =
             links.iter().filter_map(|l| Some(Event { at: l.updated_at.clone()?, body: EventBody::Link { name: l.name.clone(), state: l.state } })).collect();
