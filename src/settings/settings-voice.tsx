@@ -54,7 +54,8 @@ export function VoiceSettingsCard() {
       <PathChoice label="Modelo" value={state.chosen.model} describe="/ruta/a/ggml-large-v3-turbo.bin"
         found={state.models.map(m => ({ path: m.path, text: `${m.name} · ${size(m.bytes)} · ${fileName(m.path)}` }))} onSave={path => void save({ model: path })}/>
       <label className="field">Idioma<ModernSelect value={state.chosen.language} options={languages} onChange={value => void save({ language: value })}/></label>
-      {!state.ready && <p className="fiscal-warning">{!state.binary ? 'No se encuentra whisper-cli: instala whisper.cpp (Homebrew, el gestor de paquetes de tu Linux o la versión para Windows) o indica dónde está.'
+      {!state.ready && <p className="fiscal-warning">{state.missing.length ? `Lo elegido ya no está (${state.missing.map(k => k === 'binary' ? 'whisper-cli' : k === 'model' ? 'el modelo' : 'ffmpeg').join(', ')}): ¿se desinstaló o actualizó? Elígelo de nuevo.`
+        : !state.binary ? 'No se encuentra whisper-cli: instala whisper.cpp (Homebrew, el gestor de paquetes de tu Linux o la versión para Windows) o indica dónde está.'
         : !state.ffmpeg ? 'No se encuentra ffmpeg: instálalo o indica dónde está.'
         : 'Falta un modelo: descarga uno de whisper.cpp (por ejemplo ggml-large-v3-turbo.bin) e indica dónde está.'}</p>}
       {state.ready && <p className="muted">Se usa {fileName(state.binary ?? '')} con el modelo {fileName(state.model ?? '')}.</p>}

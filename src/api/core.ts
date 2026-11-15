@@ -291,7 +291,7 @@ export const getClientProjects = () => core<ClientProjects>('/jobs/projects');
 /** Local speech to text (whisper.cpp): what is installed and chosen, and transcribing a short clip. */
 export type VoiceSettings = { binary: string | null; ffmpeg: string | null; model: string | null; language: string };
 export type VoiceStatus = VoiceSettings & { chosen: VoiceSettings; binaries: string[]; ffmpegs: string[];
-  models: { name: string; path: string; bytes: number }[]; ready: boolean; platform: string };
+  models: { name: string; path: string; bytes: number }[]; ready: boolean; platform: string; missing: ('binary' | 'ffmpeg' | 'model')[] };
 export const getVoiceStatus = () => core<VoiceStatus>('/voice/status');
 export const putVoiceSettings = (changes: Partial<VoiceSettings>) => core<VoiceSettings>('/voice/settings', changes, 'PUT');
 /** A short recorded clip to text, on this machine (the audio goes to the core only). */
@@ -300,7 +300,7 @@ export async function transcribeVoice(audio: Blob): Promise<{ text: string; lang
     method: 'POST', body: audio,
     headers: { 'Content-Type': audio.type || 'application/octet-stream', ...(csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {}) },
   });
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new ApiError(data.error || 'No se pudo transcribir.', response.status, data);
   return data;
 }

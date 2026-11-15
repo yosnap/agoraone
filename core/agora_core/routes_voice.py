@@ -58,12 +58,13 @@ def voice_router(settings: Settings) -> APIRouter:
         audio = await request.body()
         if len(audio) > DICTATION_BYTES:
             return refuse(transcribe.VoiceError("El audio es demasiado largo para dictar: como mucho un minuto."), 413)
-        language = request.query_params.get("idioma")
         def work():
             with database() as connection:
-                return transcribe.transcribe(connection, audio, language)
+                return transcribe.transcribe(connection, audio)
         try:
             return await run_in_threadpool(work)
+        except transcribe.VoiceBusy as error:
+            return refuse(error, 409)
         except transcribe.VoiceError as error:
             return refuse(error)
 
