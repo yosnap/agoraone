@@ -55,7 +55,9 @@ await page.route('**/api/core/calendar/agenda?*', route => route.fulfill({ json:
 await page.route('**/api/core/alerts', route => route.fulfill({ json: view }));
 await page.route('**/api/core/calendar/calendars', route => route.fulfill({ json: { problem: null, calendars: [
   { id: 'c1', title: 'Trabajo', kind: 'event', account: 'iCloud', writable: true, scopeId: null, confidentiality: 'normal', hidden: false },
-  { id: 'c2', title: 'Tareas', kind: 'reminder', account: 'iCloud', writable: true, scopeId: null, confidentiality: 'normal', hidden: false }] } }));
+  { id: 'c2', title: 'Tareas', kind: 'reminder', account: 'iCloud', writable: true, scopeId: null, confidentiality: 'normal', hidden: false },
+  { id: 'c3', title: 'Festivos', kind: 'event', account: 'iCloud', writable: false, scopeId: null, confidentiality: 'normal', hidden: true }] } }));
+await page.route('**/api/core/calendar/calendars/*', route => route.fulfill({ json: { ok: true } }));
 await page.route('**/api/core/calendar/events', route => {
   const body = route.request().postDataJSON();
   created.push(body);
@@ -86,6 +88,16 @@ assert.deepEqual(acked, ['event:e1'], 'el aviso mostrado se confirma una vez');
 if (shots) await page.screenshot({ path: `${shots}/agenda-sample.png` });
 await page.locator('.alert-toast').getByRole('button', { name: 'Cerrar el aviso' }).click();
 assert.equal(await page.locator('.alert-toast').count(), 0);
+// Settings › Calendarios: hidden calendars stay out of the list until asked for.
+await page.goto(appUrl(5173, 'ajustes'));
+const calendarsCard = page.locator('article', { has: page.getByRole('heading', { name: 'Calendarios', exact: true }) });
+await calendarsCard.locator('.calendar-settings li').first().waitFor({ timeout: 60_000 });
+assert.equal(await calendarsCard.locator('.calendar-settings li').count(), 2, 'el oculto no se ve');
+await calendarsCard.getByRole('button', { name: 'Mostrar el calendario oculto' }).click();
+assert.equal(await calendarsCard.locator('.calendar-settings li').count(), 3, 'se ve al pedirlo');
+await calendarsCard.getByRole('button', { name: 'Esconder los ocultos' }).click();
+await calendarsCard.locator('li', { hasText: 'Trabajo' }).getByLabel('Ocultar').check();
+assert.equal(await calendarsCard.locator('.calendar-settings li').count(), 2, 'el recién ocultado sigue a la vista para deshacerlo');
 assert.deepEqual(errors, [], 'sin errores JS');
 console.log('agenda de ejemplo, solape confirmado y aviso dentro de la app: correctos');
 await browser.close();
