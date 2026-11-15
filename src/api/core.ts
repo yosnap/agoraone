@@ -391,3 +391,17 @@ export async function trackUrl(id: string): Promise<string> {
   if (!response.ok) throw new ApiError('No se pudo abrir esa canción.', response.status, {});
   return URL.createObjectURL(await response.blob());
 }
+
+/** «Qué tengo instalado» (1.6): every piece, whether it is here, which modules use it and how to get it. */
+export type DoctorHow = { kind: 'brew' | 'command' | 'page' | 'model' | 'none'; package?: string; command?: string; url?: string; model?: string; bytes?: number };
+export type DoctorPiece = { id: string; name: string; state: 'ok' | 'missing' | 'optional'; modules: string[]; detail: string | null; how: DoctorHow };
+export const getDoctor = () => core<{ pieces: DoctorPiece[]; platform: string; missing: number; summary: string }>('/doctor');
+export type InstallJob = { id: string; name: string; state: 'running' | 'done' | 'failed'; lines: string[]; done: number; total: number; error: string | null };
+export const getInstallJob = () => core<{ job: InstallJob | null }>('/doctor/install');
+export const installPiece = (id: string) => core<{ job: InstallJob }>('/doctor/install', { id });
+/** Modules (1.6): which are on; one off disappears, stops its background work and Watson loses its tools. */
+export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'conectores';
+export const getModules = () => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules');
+export const putModules = (modules: Partial<Record<ModuleName, boolean>>) => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules', { modules }, 'PUT');
+export const getFirstRun = () => core<{ done: boolean }>('/setup/first-run');
+export const putFirstRun = (done: boolean) => core<{ done: boolean }>('/setup/first-run', { done }, 'PUT');

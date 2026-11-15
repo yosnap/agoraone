@@ -3,6 +3,11 @@ import type { Section } from './shell-state';
 import { applyTheme, readTheme, themeLabels, type ThemeChoice } from './theme';
 import { setSound, useSoundOn } from '../sound/sound';
 import { useMeetingRecorder } from '../meetings/meeting-recorder';
+import { moduleOn, useModules } from './modules';
+import type { ModuleName } from '../api/core';
+
+// The sections that belong to a module that can be turned off (1.6).
+const moduleOf: Partial<Record<Section, ModuleName>> = { inbox: 'correo', agenda: 'agenda', fiscal: 'fiscal', jobs: 'trabajos', meetings: 'reuniones', office: 'oficina', connectors: 'conectores' };
 
 const themeOrder: ThemeChoice[] = ['system', 'light', 'dark'];
 const themeIcons: Record<ThemeChoice, string> = { system: '◑', light: '☀', dark: '☾' };
@@ -35,6 +40,8 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
   const [theme, setTheme] = useState(readTheme);
   const sound = useSoundOn();
   const recording = useMeetingRecorder().phase === 'recording';
+  const modules = useModules();
+  const shown = (item: Item) => !moduleOf[item.id] || moduleOn(modules, moduleOf[item.id]!);
   const nextTheme = () => { const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length]; applyTheme(next); setTheme(next); };
   const button = (item: Item) => <li key={item.id}><button className={`rail-item${item.pending ? ' rail-pending' : ''}`}
     aria-current={section === item.id ? 'page' : undefined} onClick={() => onSection(item.id)} title={item.pending ? `${item.label}: pendiente` : item.label}>
@@ -45,7 +52,7 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
   </button></li>;
   return <nav className="rail" aria-label="Secciones de AgoraOne">
     <a className="rail-brand" href="/" aria-label="AgoraOne">a</a>
-    <ul className="rail-list">{main.map(button)}</ul>
+    <ul className="rail-list">{main.filter(shown).map(button)}</ul>
     {later.length > 0 && <ul className="rail-list rail-later" aria-label="Próximamente">{later.map(button)}</ul>}
     <div className="rail-foot">
       <button className="rail-item rail-discreet" aria-pressed={discreet} onClick={() => onDiscreet(!discreet)}

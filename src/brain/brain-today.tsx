@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { getAgenda, getInbox, type Agenda, type InboxCounts, type InboxItem } from '../api/core';
+import { moduleOn, useModules } from '../shell/modules';
 
 const time = (stamp: string) => new Date(stamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
@@ -15,10 +16,11 @@ export function BrainToday({ discreet }: { discreet: boolean }) {
     void getAgenda('hoy').then(setAgenda).catch(() => setAgenda(null));
     void getInbox('pending').then(setInbox).catch(() => setInbox(null));
   }
+  const modules = useModules();
   const now = Date.now();
-  const next = (agenda?.events ?? []).filter(event => event.allDay || new Date(event.end).getTime() > now).slice(0, 3);
-  const reminders = agenda?.reminders ?? [];
-  const waiting = (inbox?.items ?? []).filter(item => !discreet || item.confidentiality === 'normal');
+  const next = (moduleOn(modules, 'agenda') ? agenda?.events ?? [] : []).filter(event => event.allDay || new Date(event.end).getTime() > now).slice(0, 3);
+  const reminders = moduleOn(modules, 'agenda') ? agenda?.reminders ?? [] : [];
+  const waiting = (moduleOn(modules, 'correo') ? inbox?.items ?? [] : []).filter(item => !discreet || item.confidentiality === 'normal');
   if (!next.length && !reminders.length && !waiting.length) return null;
   return <div className="brain-today">
     <h2>Hoy</h2>

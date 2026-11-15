@@ -13,6 +13,7 @@ const page = await context.newPage();
 const errors = [], uploads = [], sent = [];
 page.on('pageerror', e => errors.push(e.message));
 await page.route('**/api/core/alerts/due', route => route.fulfill({ json: { notifications: [] } }));
+await page.route('**/api/core/setup/first-run', route => route.fulfill({ json: { done: true } })); // the first start's guide would cover the page
 await page.goto(appUrl(5173, 'ajustes&pestana=voz'));
 const card = page.locator('article', { has: page.getByRole('heading', { name: 'Voz', exact: true }) });
 await card.locator('.status-badge').waitFor({ timeout: 60_000 });

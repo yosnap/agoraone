@@ -49,3 +49,9 @@ body { background:var(--c-eef0e6) }
 .alert-toast p { margin:3px 0 0; color:var(--c-6f8379) }
 .alert-toast .icon-button { display:inline-grid; place-items:center; width:26px; height:26px; flex:none; border:1px solid var(--c-c9d3c4); border-radius:8px; background:transparent; color:inherit; cursor:pointer }
 
+.first-run { position:fixed; inset:0; z-index:50; display:grid; place-items:center; padding:24px; background:rgba(13,22,38,.45) }
+.first-run-panel { width:min(860px,100%); max-height:calc(100vh - 48px); overflow:auto; background:var(--c-fbfaf3); color:var(--c-173d3c); border-radius:18px; padding:24px 28px; display:flex; flex-direction:column; gap:12px; box-shadow:0 24px 60px rgba(0,0,0,.25) }
+.first-run-head { display:flex; justify-content:space-between; align-items:center }
+.first-run-panel h1 { font:500 28px/1.15 Manrope,sans-serif; margin:0 }
+.first-run-body .card { box-shadow:none; border:0; padding:0; background:transparent }
+.first-run-foot { display:flex; justify-content:flex-end; gap:8px; padding-top:8px }

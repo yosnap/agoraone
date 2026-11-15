@@ -234,12 +234,16 @@ class CompatibleEngine:
 PRIVATE_TOOLS = {"consultar_bandeja", "consultar_clientes", "consultar_agenda", "resumen_del_dia", "consultar_trabajos", "proponer_regla"}  # mail, clients and calendar: Claude only
 
 
+HIDDEN_TOOLS: set[str] = set()  # tools of the modules turned off in Settings (modules.apply keeps it)
+
+
 def _specs(mail: bool = True) -> list[dict]:
     from .brain_tools import SPECS
 
+    shown = [spec for spec in SPECS if spec["name"] not in HIDDEN_TOOLS]
     if not mail:  # normal mail is read by Claude only (plan of 1.1, 14/11/2026), never by the compatible provider
-        return [spec for spec in SPECS if spec["name"] not in PRIVATE_TOOLS]
-    return SPECS
+        return [spec for spec in shown if spec["name"] not in PRIVATE_TOOLS]
+    return shown
 
 
 def _sdk_server(toolbox):

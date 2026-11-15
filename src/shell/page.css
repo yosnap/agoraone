@@ -54,3 +54,12 @@
 .summarizers dd.warn { color:var(--c-7a5717) }
 @media (max-width:560px) { .summarizers { grid-template-columns:1fr } .summarizers dd { margin-bottom:6px } }
 .apps-list { list-style:none; margin:6px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:4px 12px }
+.install-group h3 { font:600 12px Manrope,sans-serif; letter-spacing:.4px; text-transform:uppercase; color:var(--c-4c6b62); margin:14px 0 6px }
+.install-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px }
+.install-row { display:grid; grid-template-columns:96px minmax(0,1fr); gap:10px; align-items:start; padding:8px 0; border-bottom:1px solid var(--c-edf0e8) }
+.install-text { display:flex; flex-direction:column; gap:2px; font-size:12px; min-width:0 }
+.install-text strong { font-size:13px }
+.install-command { font-size:11px; padding:3px 6px; border-radius:6px; background:var(--c-edf0e8); width:fit-content; max-width:100%; overflow-x:auto; white-space:nowrap }
+.install-job { display:flex; flex-direction:column; gap:6px; padding:10px 12px; border-radius:10px; background:var(--c-edf0e8); margin:8px 0 }
+.install-job.failed { background:var(--c-f3e6c4) }
+.install-log { margin:0; font-size:11px; white-space:pre-wrap; max-height:140px; overflow:auto }
