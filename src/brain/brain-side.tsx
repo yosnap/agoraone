@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { getBrainHome, type BrainArea, type GraphNode, type LatelyEntry } from '../api/core';
+import { getBrainHome, type BrainArea, type LatelyEntry } from '../api/core';
 
 const ago = (stamp: string | null) => {
   if (!stamp) return '';
@@ -11,19 +11,14 @@ const hour = (stamp: string) => new Date(stamp).toLocaleTimeString('es-ES', { ho
 /** The brain's side (1.4): the areas of the vault, as CROW lists its catalogue (what each holds, how many
  * notes, when it changed; pressing one lights its notes up on the graph), and what changed today and
  * yesterday, as gbrain's «Lately». Real data only; discreet mode shows only normal notes. */
-export function BrainSide({ discreet, nodes, colors, onFocus, onRead }: {
-  discreet: boolean; nodes: GraphNode[]; colors: Map<string, string>; onFocus: (ids: string[]) => void; onRead: (key: string) => void;
+export function BrainSide({ discreet, colors, picked, onPick, onRead }: {
+  discreet: boolean; colors: Map<string, string>; picked: string | null; onPick: (area: string) => void; onRead: (key: string) => void;
 }) {
   const [home, setHome] = useState<{ areas: BrainArea[]; lately: { today: LatelyEntry[]; yesterday: LatelyEntry[] } } | null>(null);
   const [failed, setFailed] = useState(false);
-  const [picked, setPicked] = useState<string | null>(null);
   const asked = useRef<boolean | null>(null);
   if (asked.current !== discreet) { asked.current = discreet; void getBrainHome(discreet).then(setHome).catch(() => setFailed(true)); }
-  const pick = (area: string) => {
-    if (picked === area) { setPicked(null); onFocus([]); return; }
-    setPicked(area);
-    onFocus(nodes.filter(n => n.type === 'note' && ((n.folder ?? '').split('/')[0].trim() === area)).map(n => n.id));
-  };
+  const pick = onPick;
   if (failed) return null;
   if (!home) return <p className="brain-stats">Leyendo las áreas…</p>;
   const day = (title: string, entries: LatelyEntry[]) => entries.length > 0 && <>

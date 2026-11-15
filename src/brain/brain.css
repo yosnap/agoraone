@@ -98,3 +98,8 @@
 .lately span:not(.lately-tag) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .lately small { font-size:10.5px; color:var(--c-6f8379) }
 .brain-hubs summary { cursor:pointer; font:600 11px Manrope,sans-serif; color:var(--c-4c6b62); margin-top:10px }
+/* An area's name over its notes (1.4): a pill that can be pressed, unlike the plain labels. */
+.graph-area { pointer-events:auto; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; transform:translateY(-50%); padding:5px 11px; border-radius:999px; border:1.5px solid; background:var(--c-fbfaf3); color:var(--c-173d3c); font:600 13px Manrope,sans-serif; box-shadow:0 4px 14px rgba(23,61,60,.12); cursor:pointer }
+.graph-area span { width:9px; height:9px; border-radius:50% }
+.graph-area small { font-weight:500; font-size:11px; color:var(--c-6f8379) }
+.graph-area.picked { background:var(--c-f3e6c4) }

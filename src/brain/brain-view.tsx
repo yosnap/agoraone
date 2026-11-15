@@ -39,6 +39,13 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
   const [question, setQuestion] = useState<string | null>(null);
   // Whether the graph's highlight comes from an area picked at the side (not from Watson's sources).
   const [fromArea, setFromArea] = useState(false);
+  const [pickedArea, setPickedArea] = useState<string | null>(null);
+  // Pressing an area (at the side or on the graph) lights its notes up; pressing it again lets go.
+  const pickArea = (area: string) => {
+    const next = pickedArea === area ? null : area;
+    setPickedArea(next); setFromArea(next !== null);
+    onFocus(next === null ? [] : (graph?.nodes ?? []).filter(node => node.type === 'note' && topFolder(node).trim() === area).map(node => node.id));
+  };
   const [near, setNear] = useState(true);
   const [layers, setLayers] = useState<GraphLayers>({ entities: true, tags: true, folders: false });
   const [picked, setPicked] = useState<string | null>(null);
@@ -87,6 +94,19 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
     const ranked = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'));
     return { folders: ranked, colors: new Map(ranked.slice(0, graphPalette.length).map(([folder], rank) => [folder, graphPalette[rank]])) };
   }, [graph]);
+  // Each big area's name at the centre of its notes, as CROW draws its folders.
+  const areaLabels = useMemo(() => {
+    if (!graph || !positions) return [];
+    const sums = new Map<string, [number, number, number, number]>();
+    graph.nodes.forEach((node, index) => {
+      if (node.type !== 'note') return;
+      const area = topFolder(node).trim(), sum = sums.get(area) ?? [0, 0, 0, 0];
+      sum[0] += positions[index * 3]; sum[1] += positions[index * 3 + 1]; sum[2] += positions[index * 3 + 2]; sum[3] += 1;
+      sums.set(area, sum);
+    });
+    return [...sums].filter(([, sum]) => sum[3] >= 3).sort((a, b) => b[1][3] - a[1][3]).slice(0, 12)
+      .map(([name, sum]) => ({ name, count: sum[3], color: colors.get(name) ?? '#9a93a8', at: [sum[0] / sum[3], sum[1] / sum[3] + 2, sum[2] / sum[3]] as [number, number, number] }));
+  }, [graph, positions, colors]);
   const hubs = useMemo(() => [...(graph?.nodes ?? [])].filter(node => node.type === 'note').sort((a, b) => b.degree - a.degree).filter(node => node.degree > 0).slice(0, 8), [graph]);
   const titles = useMemo(() => new Map(graph?.nodes.map(node => [node.id, node]) ?? []), [graph]);
   return <section className="brain" aria-labelledby="brain-title">
@@ -95,7 +115,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
         : !graph ? <div className="brain-message"><Loading label="Leyendo el cerebro"/></div>
         : !graph.nodes.length ? <div className="brain-message"><p>{discreet ? 'En modo discreto no hay notas normales que mostrar.' : 'El cerebro aún no tiene notas. AgoraOne indexa tus vaults de Obsidian al arrancar y cada 5 minutos.'}</p></div>
         : <Suspense fallback={<div className="brain-message"><Loading label="Preparando el grafo"/></div>}>
-          <BrainGraphScene graph={graph} positions={positions} lit={lit} colors={colors} typeColors={typeColors} reading={thinking?.reading ?? null} still={reducedMotion()} onPick={pick}/>
+          <BrainGraphScene graph={graph} positions={positions} lit={lit} colors={colors} typeColors={typeColors} reading={thinking?.reading ?? null} still={reducedMotion()} onPick={pick} areas={areaLabels} picked={pickedArea} onArea={pickArea}/>
         </Suspense>}
     </div>
     <div className={`brain-panel${explorer ? '' : ' folded'}`} aria-label="Explorar el cerebro" role="region">
@@ -124,7 +144,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
         </button></li>)}</ul>
       </div> : focus.length > 0 && !fromArea ? <div className="brain-list"><h2>Fuentes de la respuesta</h2>
         <ul>{focus.map(id => <li key={id}><button onClick={() => read(id)}><strong>{titles.get(id)?.title ?? 'Nota no visible ahora'}</strong><small>{titles.get(id)?.folder || ''}</small></button></li>)}</ul>
-      </div> : <BrainSide discreet={discreet} nodes={graph?.nodes ?? []} colors={colors} onFocus={ids => { setFromArea(ids.length > 0); onFocus(ids); }} onRead={read}/>}
+      </div> : <BrainSide discreet={discreet} colors={colors} picked={pickedArea} onPick={pickArea} onRead={read}/>}
       {!shown && !pickedNode && hubs.length > 0 && <details className="brain-hubs"><summary>Notas más conectadas</summary><div className="brain-list">
         <ul>{hubs.map(node => <li key={node.id}><button onClick={() => read(node.id)}><strong>{node.title}</strong><small>{node.degree} conexiones · {node.folder || 'Raíz'}</small></button></li>)}</ul>
       </div></details>}
@@ -141,6 +161,6 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
       <ol>{steps.map(([id, label]) => <li key={id} className={stepState(thinking.stage, id)}>{label}</li>)}</ol>
       <span>{thinking.label}</span>
     </div>}
-    <AssistantView embedded question={question} onQuestionTaken={() => setQuestion(null)} onRead={onRead} onSources={ids => { setFromArea(false); onFocus(ids); }} onThinking={setThinking} discreet={discreet}/>
+    <AssistantView embedded question={question} onQuestionTaken={() => setQuestion(null)} onRead={onRead} onSources={ids => { setFromArea(false); setPickedArea(null); onFocus(ids); }} onThinking={setThinking} discreet={discreet}/>
   </section>;
 }

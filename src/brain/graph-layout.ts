@@ -28,11 +28,12 @@ export function layoutGraph(nodes: { id: string; folder: string }[], edges: Layo
   if (!count) return position;
   const groups = [...new Set(nodes.map(node => node.folder.split('/')[0]))].sort();
   const spread = Math.max(8, Math.cbrt(count) * IDEAL * 1.4);
-  const centres = sphere(groups.length, groups.length > 1 ? spread : 0);
+  // Areas apart and compact, like planets with their notes around (1.4): wider centres, a firmer pull home.
+  const centres = sphere(groups.length, groups.length > 1 ? spread * 1.5 : 0);
   const home = nodes.map(node => centres[groups.indexOf(node.folder.split('/')[0])]);
   nodes.forEach((node, index) => {
     const random = seeded(node.id);
-    for (let axis = 0; axis < 3; axis++) position[index * 3 + axis] = home[index][axis] + (random() - 0.5) * spread * 0.5;
+    for (let axis = 0; axis < 3; axis++) position[index * 3 + axis] = home[index][axis] + (random() - 0.5) * spread * 0.35;
   });
   const shift = new Float32Array(count * 3);
   let temperature = spread * 0.2;
@@ -67,7 +68,7 @@ export function layoutGraph(nodes: { id: string; folder: string }[], edges: Layo
       shift[b * 3] += x * force; shift[b * 3 + 1] += y * force; shift[b * 3 + 2] += z * force;
     }
     for (let index = 0; index < count; index++) {
-      for (let axis = 0; axis < 3; axis++) shift[index * 3 + axis] += (home[index][axis] - position[index * 3 + axis]) * 0.03;
+      for (let axis = 0; axis < 3; axis++) shift[index * 3 + axis] += (home[index][axis] - position[index * 3 + axis]) * 0.07;
       const length = Math.hypot(shift[index * 3], shift[index * 3 + 1], shift[index * 3 + 2]);
       const scale = length > temperature ? temperature / length : 1;
       for (let axis = 0; axis < 3; axis++) position[index * 3 + axis] += shift[index * 3 + axis] * scale;
