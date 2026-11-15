@@ -205,7 +205,10 @@ export type FolderPlan = { moves: { from: string; to: string }[]; undecided: str
 export const getFolderPlan = (id: number) => core<FolderPlan>(`/fiscal/folders/${id}/plan`);
 export const applyFolderPlan = (id: number, moves: { from: string; to: string }[]) =>
   core<{ moved: { from: string; to: string }[]; backup: string; error: string | null }>(`/fiscal/folders/${id}/apply`, { moves });
-export type UploadState = { open: boolean; url?: string; qr?: string; expiresAt?: number; received?: number | null };
+export type UploadState = { open: boolean; url?: string; qr?: string; expiresAt?: number; received?: number | null; receiving?: boolean };
+/** A receipt to look at (photos as JPEG, PDFs as they are) and its data read by Claude Haiku to fill the form. */
+export const receiptPreviewUrl = (id: number) => `/api/core/fiscal/receipts/${id}/preview`;
+export const readReceipt = (id: number) => core<InvoiceFields>(`/fiscal/receipts/${id}/read`, {});
 export type Receipt = { id: number; name: string | null; mediaType: string; bytes: number; fields: Partial<InvoiceFields>; uploadedAt: string;
   source: 'qr' | 'inbox'; inboxFolder: number | null };
 export const openUpload = () => core<UploadState>('/fiscal/receipts/upload', {});
