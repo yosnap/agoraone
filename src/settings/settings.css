@@ -1,4 +1,4 @@
-.settings { max-width:1640px }
+.settings > * { max-width:1640px }
 .settings-tabs { display:flex; gap:4px; margin:4px 0 18px; padding:3px; background:var(--c-e7ece2); border-radius:12px; flex-wrap:wrap; max-width:100% }
 .settings-tabs::-webkit-scrollbar { display:none }
 .settings-tabs button { flex:1 1 auto; border:0; background:none; border-radius:9px; padding:8px 14px; font-size:12px; color:var(--c-355a50); white-space:nowrap; cursor:pointer }

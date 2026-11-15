@@ -1,8 +1,8 @@
-.inbox { max-width:980px }
+.inbox > * { max-width:1640px }
 .inbox-bar { margin:0 0 14px; align-items:center }
 .inbox-group { margin:18px 0 0 }
 .inbox-group h2 { margin:0 0 10px }
-.inbox-cards { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:12px }
+.inbox-cards { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(min(460px, 100%), 1fr)); gap:12px; align-items:start }
 .inbox-card { gap:8px }
 .inbox-chips { display:flex; flex-wrap:wrap; gap:6px }
 .inbox-from, .inbox-subject { overflow-wrap:anywhere }
@@ -30,3 +30,29 @@
 .receipt-thumb img { display:block; width:100%; height:auto }
 .receipt-thumb.zoomed { width:min(100%, 640px); max-height:none; cursor:zoom-out }
 .receipt-read { display:flex; flex-direction:column; gap:4px; flex:1 1 200px }
+
+/* Scopes as tabs and a colour for each kind of mail (1.6.2): light and dark, no side stripes. */
+.inbox-scopes { margin:8px 0 4px; flex-wrap:wrap }
+.inbox-scopes button { display:inline-flex; align-items:center; gap:6px }
+.scope-dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; vertical-align:middle }
+.chip.kind-invoice, .chip.kind-payment { background:#f6e3c0; color:#7a4e0e }
+.chip.kind-client { background:#d6e6f5; color:#1d4f7a }
+.chip.kind-job { background:#e3dcf3; color:#4b3486 }
+.chip.kind-incident, .chip.kind-important { background:#f6d6d2; color:#8e2f24 }
+.chip.kind-appointment { background:#ead9f1; color:#6a2f84 }
+.chip.kind-personal { background:#d9ecd8; color:#24563a }
+.chip.kind-advertising, .chip.kind-other { background:var(--c-e6eadf); color:var(--c-4c6b62) }
+:root[data-theme="dark"] .chip.kind-invoice, :root[data-theme="dark"] .chip.kind-payment { background:#4a3412; color:#f3d39b }
+:root[data-theme="dark"] .chip.kind-client { background:#16324d; color:#a9cdf0 }
+:root[data-theme="dark"] .chip.kind-job { background:#2d2550; color:#cbbcf3 }
+:root[data-theme="dark"] .chip.kind-incident, :root[data-theme="dark"] .chip.kind-important { background:#4d1f1a; color:#f4b5ac }
+:root[data-theme="dark"] .chip.kind-appointment { background:#3b2148; color:#e2bdf2 }
+:root[data-theme="dark"] .chip.kind-personal { background:#1b3a26; color:#b5e0c0 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .chip.kind-invoice, :root:not([data-theme="light"]) .chip.kind-payment { background:#4a3412; color:#f3d39b }
+  :root:not([data-theme="light"]) .chip.kind-client { background:#16324d; color:#a9cdf0 }
+  :root:not([data-theme="light"]) .chip.kind-job { background:#2d2550; color:#cbbcf3 }
+  :root:not([data-theme="light"]) .chip.kind-incident, :root:not([data-theme="light"]) .chip.kind-important { background:#4d1f1a; color:#f4b5ac }
+  :root:not([data-theme="light"]) .chip.kind-appointment { background:#3b2148; color:#e2bdf2 }
+  :root:not([data-theme="light"]) .chip.kind-personal { background:#1b3a26; color:#b5e0c0 }
+}

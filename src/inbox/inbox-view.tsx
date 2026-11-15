@@ -19,13 +19,16 @@ import './inbox.css';
 const tabs: { state: InboxState; label: string }[] = [
   { state: 'pending', label: 'Pendientes' }, { state: 'done', label: 'Hechos' }, { state: 'dismissed', label: 'Descartados' },
 ];
-const tone: Partial<Record<InboxItem['kind'], string>> = { invoice: 'warn', payment: 'warn', client: 'good', incident: 'bad', appointment: 'good', important: 'bad' };
 const levelNotes = { normal: null, local_only: 'Solo en este Mac: sin resumen de modelo', private: 'Privado: sin resumen de modelo' } as const;
 
 /** The Bandeja: summaries of incoming mail that need attention, grouped by scope. It only proposes; each
  * card is marked done or dismissed by the user, and no message triggers anything by itself. */
+const ALL = '__todas__';
+const scopeColors = ['#3d7ea6', '#d9822b', '#5b8c5a', '#8a6bb8', '#c0504d', '#4f9d9a'];
+
 export function InboxView({ discreet }: { discreet: boolean }) {
   const [state, setState] = useState<InboxState>('pending');
+  const [scopeTab, setScopeTab] = useState<string>(ALL);
   const [items, setItems] = useState<InboxItem[] | null>(null);
   const [counts, setCounts] = useState<InboxCounts | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -66,6 +69,10 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   };
   const groups = new Map<string, InboxItem[]>();
   for (const item of items ?? []) groups.set(item.scope?.name ?? 'Sin ámbito', [...(groups.get(item.scope?.name ?? 'Sin ámbito') ?? []), item]);
+  // One tab per scope (Profesional, Personal y profesional, Personal…), each with its own colour (1.6.2).
+  const scopes = [...groups.keys()];
+  const shownScope = scopeTab !== ALL && groups.has(scopeTab) ? scopeTab : ALL;
+  const colorOf = (scope: string) => scopeColors[scopes.indexOf(scope) % scopeColors.length];
   return <section className="page inbox" aria-labelledby="inbox-title">
     <div className="eyebrow">BANDEJA{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="inbox-title">Bandeja</h1>
@@ -84,6 +91,11 @@ export function InboxView({ discreet }: { discreet: boolean }) {
       <div className="inbox-actions"><button type="button" className="button primary" onClick={() => void clearAll()}>Archivar {counts?.pending} tarjetas</button>
         <button type="button" className="button" onClick={() => setClearing(false)}>Cancelar</button></div>
     </div>}
+    {scopes.length > 1 && <div className="segmented inbox-scopes" role="group" aria-label="Ámbito">
+      <button type="button" aria-pressed={shownScope === ALL} onClick={() => setScopeTab(ALL)}>Todas · {items?.length ?? 0}</button>
+      {scopes.map(scope => <button key={scope} type="button" aria-pressed={shownScope === scope} onClick={() => setScopeTab(scope)}>
+        <span className="scope-dot" style={{ background: colorOf(scope) }} aria-hidden="true"/>{scope} · {groups.get(scope)!.length}</button>)}
+    </div>}
     {counts?.since && <p className="muted">Bandeja desde el {new Date(counts.since).toLocaleString('es-ES', { dateStyle: 'long', timeStyle: 'short' })}: lo anterior no se resume.</p>}
     {counts && counts.unread > 0 && <p className="muted" role="status">{counts.unread} correos recientes esperan su resumen; se leen en segundo plano.</p>}
     {problem && <LoadError message={problem}/>}
@@ -91,11 +103,11 @@ export function InboxView({ discreet }: { discreet: boolean }) {
     {note && <p className="ok-note" role="status">{note}</p>}
     {items === null ? <Loading label="Leyendo la Bandeja" lines={4}/>
       : items.length === 0 ? <p className="muted">{state === 'pending' ? 'No hay nada pendiente. Si acabas de conectar una cuenta, los resúmenes llegan en unos minutos.' : 'Nada por aquí.'}</p>
-      : [...groups].map(([scope, cards]) => <div key={scope} className="inbox-group">
-        <h2>{scope} <span className="muted">· {cards.length}</span></h2>
+      : [...groups].filter(([scope]) => shownScope === ALL || scope === shownScope).map(([scope, cards]) => <div key={scope} className="inbox-group">
+        <h2><span className="scope-dot" style={{ background: colorOf(scope) }} aria-hidden="true"/>{scope} <span className="muted">· {cards.length}</span></h2>
         <ul className="inbox-cards">{cards.map(item => <li key={item.id} className="card inbox-card">
           <div className="card-head">
-            <div className="inbox-chips"><span className={`chip ${tone[item.kind] ?? ''}`}>{kindLabels[item.kind]}</span>
+            <div className="inbox-chips"><span className={`chip kind-${item.kind}`}>{kindLabels[item.kind]}</span>
               {item.source === 'rule' && item.ruleName && <span className="chip">Regla: {item.ruleName}</span>}
               {item.client && <span className="chip good" title={!discreet && item.client.projects.length ? `Proyectos activos: ${item.client.projects.join(', ')}` : undefined}>
                 {discreet ? 'Cliente de Central' : `Cliente: ${item.client.name}`}{!discreet && item.client.projects.length ? ` · ${item.client.projects.length} proyecto${item.client.projects.length > 1 ? 's' : ''}` : ''}</span>}
