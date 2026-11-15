@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { getVoiceStatus, putVoiceSettings, type VoiceSettings, type VoiceStatus } from '../api/core';
+import { getVoiceStatus, getWake, putVoiceSettings, putWake, type VoiceSettings, type VoiceStatus } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { setVoiceMode, voiceMode, type VoiceMode } from '../assistant/speech';
@@ -55,6 +55,7 @@ export function VoiceSettingsCard() {
       <PathChoice label="Modelo" value={state.chosen.model} describe="/ruta/a/ggml-large-v3-turbo.bin"
         found={state.models.map(m => ({ path: m.path, text: `${m.name} · ${size(m.bytes)} · ${fileName(m.path)}` }))} onSave={path => void save({ model: path })}/>
       <WatsonVoice/>
+      <WakeWord/>
       <label className="field">Idioma<ModernSelect value={state.chosen.language} options={languages} onChange={value => void save({ language: value })}/></label>
       {!state.ready && <p className="fiscal-warning">{state.missing.length ? `Lo elegido ya no está (${state.missing.map(k => k === 'binary' ? 'whisper-cli' : k === 'model' ? 'el modelo' : 'ffmpeg').join(', ')}): ¿se desinstaló o actualizó? Elígelo de nuevo.`
         : !state.binary ? 'No se encuentra whisper-cli: instala whisper.cpp (Homebrew, el gestor de paquetes de tu Linux o la versión para Windows) o indica dónde está.'
@@ -72,4 +73,21 @@ function WatsonVoice() {
   const [mode, setMode] = useState<VoiceMode>(voiceMode);
   return <label className="field">Watson responde hablando<ModernSelect value={mode} onChange={value => { setVoiceMode(value as VoiceMode); setMode(value as VoiceMode); }}
     options={[{ value: 'spoken', label: 'Cuando le hablas con el micrófono' }, { value: 'always', label: 'Siempre' }, { value: 'never', label: 'Nunca' }]}/></label>;
+}
+
+/** «Oye Watson» from any app, heard on this Mac (Apple's on-device recognition): off unless turned on here. */
+function WakeWord() {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [error, setError] = useState('');
+  const asked = useRef(false);
+  if (!asked.current) { asked.current = true; void getWake().then(state => setOn(state.enabled)).catch(() => setOn(false)); }
+  const change = async (next: boolean) => {
+    setError('');
+    try { setOn((await putWake(next)).enabled); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
+  };
+  return <div className="field">
+    <label className="check"><input type="checkbox" checked={on === true} disabled={on === null} onChange={event => void change(event.target.checked)}/> Escuchar «Oye Watson»</label>
+    <small className="muted">Di «Oye Watson» desde cualquier app y Watson empieza a escuchar, como con ⌃⌥W. Se reconoce en este Mac (sin internet) y no se guarda ni se envía nada de lo que oye. Mientras esté activo, el micrófono queda abierto y macOS enseña su punto naranja. Solo en la app de escritorio del Mac; la primera vez macOS pide los permisos de micrófono y reconocimiento de voz.</small>
+    {error && <small className="dictation-error" role="alert">{error}</small>}
+  </div>;
 }

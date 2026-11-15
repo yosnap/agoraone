@@ -31,3 +31,16 @@ def test_abrir_solo_lo_instalado_y_lo_permitido(setup):
     with pytest.raises(apps.AppsError) as missing:
         apps.open_app(c, "; rm -rf ~", confirmed=True)
     assert missing.value.status == 404 and len(opened) == 2
+
+
+def test_oye_watson_apagado_por_defecto(tmp_path):
+    from fastapi.testclient import TestClient
+    from agora_core.app import SECRET_HEADER, create_app
+    from agora_core.keystore import MemoryStore
+    from agora_core.settings import load_settings
+    from tests.test_fiscal_excel import MemorySecrets
+    settings = load_settings({"AGORA_CORE_SECRET": "a" * 64, "AGORA_CORE_DATA": str(tmp_path / "data")})
+    with TestClient(create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets()), base_url=f"http://{settings.authority}") as client:
+        h = {SECRET_HEADER: "a" * 64}
+        assert client.get("/wake/settings", headers=h).json() == {"enabled": False}
+        assert client.put("/wake/settings", json={"enabled": True}, headers=h).json() == {"enabled": True}

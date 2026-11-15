@@ -1,5 +1,6 @@
 """HTTP routes for opening applications: the installed ones, the list Watson may open, and opening one."""
 
+import json
 from contextlib import contextmanager
 
 from fastapi import APIRouter
@@ -8,12 +9,16 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import apps
-from .db import DB_NAME, connect
+from .db import DB_NAME, connect, transaction
 from .settings import Settings
 
 
 class Allowed(BaseModel):
     allowed: list[str]
+
+
+class Wake(BaseModel):
+    enabled: bool
 
 
 class Open(BaseModel):
@@ -52,5 +57,24 @@ def apps_router(settings: Settings) -> APIRouter:
     @router.post("/apps/open")
     async def open_one(body: Open):
         return await run(lambda c: {"done": apps.open_app(c, body.id, body.confirmed)})
+
+    # «Oye Watson» (1.5): off unless the user turns it on, since it keeps the microphone open. The desktop app
+    # reads this to start or stop its on-device listener.
+    def wake(connection) -> dict:
+        row = connection.execute("SELECT value FROM setting WHERE key = 'wake'").fetchone()
+        return {"enabled": bool(row and json.loads(row["value"]).get("enabled"))}
+
+    @router.get("/wake/settings")
+    async def wake_settings():
+        return await run(wake)
+
+    @router.put("/wake/settings")
+    async def change_wake(body: Wake):
+        def work(connection):
+            with transaction(connection):
+                connection.execute("INSERT INTO setting (key, value) VALUES ('wake', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                                   (json.dumps({"enabled": body.enabled}),))
+            return wake(connection)
+        return await run(work)
 
     return router

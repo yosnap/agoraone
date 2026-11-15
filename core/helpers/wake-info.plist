@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>ai.agoraone.wake</string>
+	<key>CFBundleName</key>
+	<string>AgoraOne · Oye Watson</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>AgoraOne escucha «Oye Watson» con el reconocimiento de voz de este Mac, sin enviar nada a internet.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>AgoraOne escucha «Oye Watson» para que Watson te atienda sin tocar el teclado.</string>
+</dict>
+</plist>

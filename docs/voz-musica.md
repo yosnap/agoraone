@@ -54,15 +54,31 @@ español si la hay. Lee la respuesta sin el formato Markdown y sin las citas, co
 700 caracteres. En Ajustes › Voz se elige cuándo: cuando le hablas con el micrófono (por defecto), siempre o
 nunca.
 
+## Llamar a Watson
+
+- ⌃⌥W desde cualquier app (lo registra la app de escritorio con el plugin de atajos globales de Tauri): AgoraOne
+  pasa delante, abre el Cerebro y el micrófono de Watson empieza a escuchar. Otra pulsación, o el botón, para
+  y envía. Si otra app ya usa ese atajo, AgoraOne arranca igual, sin él.
+- «Oye Watson», que se enciende en Ajustes › Voz y está apagado por defecto:
+  - Lo escucha `agora-wake` (`core/helpers/wake-macos.swift`), con el reconocimiento de voz de Apple en este
+    Mac. Si el Mac no puede reconocer sin red, el auxiliar no arranca.
+  - Solo escribe «wake» cuando oye la frase. No guarda ni envía nada de lo que oye, y reinicia la sesión cada
+    50 s.
+  - La app de escritorio lo arranca y lo para según el ajuste, y cada «wake» funciona como pulsar ⌃⌥W.
+  - Mientras esté activo, el micrófono queda abierto y macOS enseña su punto naranja.
+  - El auxiliar lleva dentro su Info.plist con los motivos de los permisos de micrófono y de reconocimiento
+    de voz.
+
 ## Rutas del núcleo
 
 | Ruta | Para qué |
 |---|---|
 | `GET /music/status`, `POST /music/control`, `POST /music/play` | lo que suena, los controles y «pon…» |
 | `GET /apps`, `PUT /apps/allowed`, `POST /apps/open` | apps instaladas, las permitidas y abrir una (409 si hace falta confirmar) |
+| `GET/PUT /wake/settings` | «Oye Watson» encendido o apagado |
 
 ## Pendiente
 
-- Atajo global para pulsar y hablar, y «Oye Watson».
+- Probar ⌃⌥W y «Oye Watson» en la app firmada (permisos de micrófono y de reconocimiento de voz).
 - La biblioteca local y YouTube.
 - Probar Música y Spotify de verdad con la app firmada, por el permiso de Automatización.
