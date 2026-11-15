@@ -12,6 +12,9 @@ export type GraphNode = { id: string; type: NodeType; source?: string; sourceNam
 export type GraphEdge = { a: string; b: string; kind: 'link' | 'near' | 'mention' | 'in' };
 export type GraphLayers = { entities: boolean; tags: boolean; folders: boolean };
 export type BrainGraph = { nodes: GraphNode[]; edges: GraphEdge[]; total: number; truncated: boolean; semantic: boolean };
+export type BrainArea = { name: string; notes: number; subfolders: number; changed: string | null; description: string | null; written: boolean };
+export type LatelyEntry = { kind: 'nota' | 'reunión'; text: string; detail: string | null; when: string; id: number; key?: string };
+export const getBrainHome = (discreet: boolean) => core<{ areas: BrainArea[]; lately: { today: LatelyEntry[]; yesterday: LatelyEntry[] } }>(`/brain/home?discreet=${+discreet}`);
 export const getBrainGraph = (discreet: boolean, near: boolean, layers: GraphLayers) =>
   core<BrainGraph>(`/graph?discreet=${+discreet}&near=${+near}&entities=${+layers.entities}&tags=${+layers.tags}&folders=${+layers.folders}`);
 

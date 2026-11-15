@@ -1,6 +1,14 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
+Versión 1.4.0 · Centro de mando en el Cerebro (plan: plans/261115-1455-centro-mando/plan.md; guía: docs/centro-mando.md). Rama `feat/1.4.0-alpha.1-centro-mando` sobre `integracion/v1.4` (que sale de `integracion/v1.3`); sin publicar.
+- Barra de mando arriba del Cerebro (preguntar o hablar con Watson, Grabar reunión, Música pendiente de la 1.5); tarjeta de grabación con el volumen real del micrófono; el botón de grabar sale de la barra lateral.
+- Áreas del vault a la izquierda (descripción de su nota índice o sus subcarpetas, recuento y actividad) y «Últimamente» (hoy y ayer); grafo agrupado por áreas con su nombre; pulsar un área la resalta. Ruta `GET /brain/home`.
+- Paleta Laboratorio (azul noche y ámbar) para el tema oscuro.
+- Verificado: 243 pruebas del núcleo, 108 de Rust, 17 de la interfaz y build; capturas con la interfaz contra la app 1.3 abierta (las áreas necesitan el núcleo nuevo).
+- Pendiente: integrar en `integracion/v1.4`, empaquetar (cerrar la app con permiso) y que el usuario lo pruebe; publicar 1.3 y 1.4 con su permiso.
+- Siguiente: 1.5, voz y música (V-01 a V-06 del backlog), y el instalador (C-01).
+
 Versión 1.3.0 · Reuniones y voz (plan: plans/261115-1110-reuniones-voz/plan.md; guía: docs/reuniones-voz.md). Rama de trabajo `feat/1.3.0-alpha.1-transcripcion`, integrada en `integracion/v1.3`; sin publicar.
 - **Dictado** en el chat de Watson y de cada bot, transcrito en el equipo con whisper.cpp; la revisión de las fases 1 y 2 está aplicada entera (plans/reports/code-review-261115-1145-voz.md): errores claros, micrófono que se cierra al salir, programas validados por nombre y sonda (solo .exe en Windows), entorno mínimo de Windows para el núcleo, plazos por debajo del proxy, listas blancas de ffmpeg y una transcripción a la vez.
 - **Reuniones**: dos pistas (micrófono desde la interfaz a trozos de 5 s; audio del sistema con `agora-system-audio`, ScreenCaptureKit solo audio, en macOS y ffmpeg sobre el monitor de PulseAudio/PipeWire en Linux; Windows solo micrófono). Indicador permanente en la barra lateral; se detiene sola si la pantalla deja de enviar 45 s o a las 4 h. Migraciones 0021 y 0022.

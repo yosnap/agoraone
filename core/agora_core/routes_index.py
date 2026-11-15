@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from .db import DB_NAME, connect
 from .embed import Embedder, VectorCache, embed_pending
+from . import brain_home
 from .graph import graph
 from . import entities as entity_index
 from .index import Note, RuleError, remove_notes, replace_folder_rules, state, status, upsert_notes
@@ -156,6 +157,11 @@ def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCac
         audience: Literal["owner", "external"] = Query(),
     ):
         return await run(lambda c: search(c, q, embedder, cache, audience, limit))
+
+    @router.get("/brain/home")
+    async def brain_home_side(discreet: bool = Query(False)):
+        """The brain's side for the owner's screen: areas and what changed lately. Never sent to a model."""
+        return await run(lambda c: {"areas": brain_home.areas(c, discreet), "lately": brain_home.lately(c, discreet)})
 
     @router.get("/graph")
     async def brain_graph(discreet: bool = Query(False), near: bool = Query(True), entities: bool = Query(False),
