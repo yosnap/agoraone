@@ -657,9 +657,22 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             upload["window"].close()
         return upload_state()
 
+    def inbox_folders(connection) -> list:
+        found = []
+        for folder in fiscal.folders(connection):
+            try:
+                found.append((folder["id"], fiscal.folder_root(connection, folder["id"])[1]))
+            except fiscal.FiscalError:
+                continue  # a folder moved or deleted since: nothing to bring in from it
+        return found
+
     @router.get("/fiscal/receipts")
     async def list_receipts():
-        return {"receipts": await db(receipts.receipts)}
+        def work(connection):
+            with transaction(connection):
+                receipts.import_inbox(connection, receipt_dir, inbox_folders(connection))
+            return receipts.receipts(connection)
+        return {"receipts": await db(work), "inbox": receipts.INBOX}
 
     @router.put("/fiscal/receipts/{receipt_id}")
     async def change_receipt(receipt_id: int, body: ReceiptChange):
@@ -680,6 +693,12 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             with transaction(connection):
                 filed = fiscal.file_invoice(connection, folder, root, data, body.fields.model_dump(), None, [], body.category, receipt_id)
                 connection.execute("UPDATE receipt SET state = 'filed', decided_at = ? WHERE id = ?", (now(), receipt_id))
+            if row["source"] == "inbox" and row["inbox_folder"] is not None:
+                try:
+                    _, inbox_root = fiscal.folder_root(connection, row["inbox_folder"])
+                    receipts.remove_from_inbox(inbox_root, row["inbox_name"] or "", row["sha256"])
+                except fiscal.FiscalError:
+                    pass  # the folder is gone: nothing to tidy up
             return filed
         try:
             return await db(work)

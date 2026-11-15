@@ -12,7 +12,11 @@ La sección Fiscal reúne las facturas de tus carpetas fiscales por trimestre, a
 2. Ves proveedor, NIF, fecha y total, editables, y las dudas (falta el NIF, el total no cuadra, fecha ambigua, otra moneda).
 3. «Archivar» la guarda en `Facturas Entrantes/año/NT/fecha proveedor total.pdf`. La misma factura no se archiva dos veces.
 
-**Recibos desde el móvil:** «Subir desde el móvil» enseña un QR con un enlace de un solo uso. Abre durante 10 minutos un puerto en la red de casa que solo acepta un recibo (imagen o PDF de tamaño acotado) y se cierra al recibirlo o al caducar. Es la única excepción a escuchar solo en este Mac. El recibo espera en la Bandeja hasta archivarlo.
+## Recibos que no llegan por correo (arriba en Fiscal)
+Facturas y tickets que tienes en papel o en el móvil. Esperan en «Recibos», arriba en la sección Fiscal, hasta que eliges su carpeta, revisas sus datos y los archivas en su trimestre (`Facturas Entrantes/año/NT/…`); también se pueden descartar.
+- **Desde el móvil:** «Subir desde el móvil» enseña un QR con un enlace de un solo uso. Abre durante 10 minutos un puerto en la red de casa que solo acepta un recibo (imagen o PDF de tamaño acotado) y se cierra al recibirlo o al caducar. Es la única excepción a escuchar solo en este Mac.
+- **Desde tu bot de Hermes** (Telegram u otro canal): «Prepararlo» crea, al pulsar «Crear la skill», una skill `agoraone/guardar-facturas` en el perfil que elijas, con su texto exacto a la vista. Le dice que guarde lo que le envíes, sin tocarlo, en la carpeta **«Recibos por revisar»** dentro de la carpeta fiscal elegida. AgoraOne trae de ahí cada foto o PDF (sin enlaces ni archivos ocultos, hasta 15 MB) como recibo pendiente, con una copia en sus datos; al archivarlo, el original sale de «Recibos por revisar». Un recibo descartado no vuelve. No se cambia nada más de Hermes, y «Recibos por revisar» no cuenta en el trimestre.
+- De las fotos aún no se leen los datos al recibirlas: se escriben mirando el recibo.
 
 **Reordenar una carpeta:** «Proponer cómo ordenarla» deduce año y trimestre de los nombres de carpeta, deja lo dudoso donde está y mueve solo la lista exacta que confirmas, con copia previa.
 

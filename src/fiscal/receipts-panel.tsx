@@ -4,23 +4,27 @@ import {
   type Category, type FiscalFolder, type InvoiceFields, type Receipt, type UploadState,
 } from '../api/core';
 import { LoadError } from '../ui/load-state';
-import { DocumentFields, FolderChoice, place } from './filing-fields';
+import { DocumentFields, FolderChoice, place } from '../inbox/filing-fields';
+import { BotInbox } from './bot-inbox';
+import '../inbox/inbox.css';
 
 const suffixes: Record<string, string> = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/heic': '.heic' };
 const today = () => new Date().toLocaleDateString('sv-SE');
 
-/** Receipts from the phone: a QR opens a one-time upload on the home network for 10 minutes; what arrives
- * waits here until the user picks its folder, checks its data and files it. */
+/** Invoices and tickets that do not come by mail: from the phone (a QR opens a one-time upload on the home
+ * network for 10 minutes) or from the user's Hermes bot (it saves them in «Recibos por revisar» inside a fiscal
+ * folder). They wait here until the user picks the folder, checks the data and files them. */
 export function ReceiptsPanel({ onNote }: { onNote: (note: string) => void }) {
   const [upload, setUpload] = useState<UploadState | null>(null);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [folders, setFolders] = useState<FiscalFolder[]>([]);
   const [error, setError] = useState('');
+  const [inboxName, setInboxName] = useState('Recibos por revisar');
   const asked = useRef(false);
   const timer = useRef<number | undefined>(undefined);
   const live = useRef(true);
   const holder = useRef((node: HTMLDivElement | null) => { live.current = node !== null; if (!node) window.clearTimeout(timer.current); }).current;
-  const load = () => Promise.all([getReceipts(), getFiscalFolders()]).then(([found, known]) => { if (live.current) { setReceipts(found.receipts); setFolders(known.folders); } })
+  const load = () => Promise.all([getReceipts(), getFiscalFolders()]).then(([found, known]) => { if (live.current) { setReceipts(found.receipts); setFolders(known.folders); if (found.inbox) setInboxName(found.inbox); } })
     .catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer los recibos.'));
   if (!asked.current) {
     asked.current = true;
@@ -58,7 +62,9 @@ export function ReceiptsPanel({ onNote }: { onNote: (note: string) => void }) {
         <p className="muted">El enlace sirve para una sola subida y se cierra solo en unos {minutes} minutos. Mientras esté abierto, solo esa página es accesible desde la red de casa. Si macOS pregunta si permites conexiones entrantes, acéptalo para esta subida.</p>
       </div>
     </div>}
+    <BotInbox folders={folders} inbox={inboxName}/>
     {error && <LoadError message={error}/>}
+    {receipts.length === 0 && !upload?.open && <p className="muted">No hay recibos esperando.</p>}
     {receipts.length > 0 && <ul className="inbox-cards">{receipts.map(receipt =>
       <ReceiptCard key={receipt.id} receipt={receipt} folders={folders} onDone={note => { onNote(note); void load(); }}/>)}</ul>}
   </div>;
@@ -67,7 +73,8 @@ export function ReceiptsPanel({ onNote }: { onNote: (note: string) => void }) {
 function ReceiptCard({ receipt, folders, onDone }: { receipt: Receipt; folders: FiscalFolder[]; onDone: (note: string) => void }) {
   const [fields, setFields] = useState<InvoiceFields>({ supplier: receipt.fields.supplier ?? '', taxId: receipt.fields.taxId ?? null,
     issuedOn: receipt.fields.issuedOn ?? today(), total: receipt.fields.total ?? '', currency: receipt.fields.currency ?? 'EUR' });
-  const [picked, setFolderId] = useState<number | null>(null);
+  // One that came through a folder's «Recibos por revisar» starts in that folder.
+  const [picked, setFolderId] = useState<number | null>(receipt.inboxFolder);
   const folderId = picked ?? (folders.length === 1 ? folders[0].id : null);
   const [category, setCategory] = useState<Category | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,7 +87,8 @@ function ReceiptCard({ receipt, folders, onDone }: { receipt: Receipt; folders: 
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo archivar.'); } finally { setBusy(false); }
   };
   return <li className="card inbox-card">
-    <div className="card-head"><div className="inbox-chips"><span className="chip warn">Recibo</span><span className="chip">{receipt.mediaType === 'application/pdf' ? 'PDF' : 'Foto'}</span></div>
+    <div className="card-head"><div className="inbox-chips"><span className="chip warn">Recibo</span><span className="chip">{receipt.mediaType === 'application/pdf' ? 'PDF' : 'Foto'}</span>
+      <span className="chip">{receipt.source === 'inbox' ? 'De tu bot' : 'Desde el móvil'}</span></div>
       <span className="muted">{new Date(receipt.uploadedAt).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></div>
     {receipt.name && <p className="inbox-subject">{receipt.name}</p>}
     {receipt.mediaType !== 'application/pdf' && <p className="muted">De las fotos aún no se leen los datos: escríbelos mirando el recibo.</p>}

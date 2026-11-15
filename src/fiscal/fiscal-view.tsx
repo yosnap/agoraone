@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { downloadFromQonto, getFiscalFolders, getQuarter, makeQuarterExcel, openFiscalFile, type FiscalIssue, type FiscalFolder, type ManualSaved, type QuarterView } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
+import { ReceiptsPanel } from './receipts-panel';
 import { ModernSelect } from '../ui/modern-select';
 import { ManualForm } from './manual-form';
 import './fiscal.css';
@@ -140,6 +141,7 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
     <div className="eyebrow">FISCAL{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="fiscal-title">Fiscal</h1>
     <p className="page-lead">El trimestre de cada carpeta profesional, leído de las facturas que ya tienes en ella (Facturas Salientes y Entrantes, estén ordenadas o no) y de las que archiva AgoraOne: lo que conviene revisar y el Excel para el gestor con su formato.</p>
+    <ReceiptsPanel onNote={setNote}/>
     {folders === null && !error ? <Loading label="Leyendo las carpetas fiscales"/> : folders?.length === 0 ? <p className="muted">Añade una carpeta de tipo autónomo o empresa en Ajustes › Carpetas fiscales.</p> : <>
       <div className="fiscal-bar">
         <label className="field">Carpeta<ModernSelect value={folderId ? String(folderId) : ''} options={(folders ?? []).map(f => ({ value: String(f.id), label: f.name }))} onChange={value => choose(Number(value))}/></label>

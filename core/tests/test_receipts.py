@@ -116,3 +116,32 @@ def test_carpeta_propuesta_por_ambito(db):
     rule = mail_rules.create_rule(db, {"name": "HK", "action": "invoice", "sender": "p.com", "scopeId": humanitek})
     db.execute("INSERT INTO mail_summary (message_id, kind, source, rule_id, confidentiality, created_at) VALUES (?, 'invoice', 'rule', ?, 'normal', 'x')", (personal, rule))
     assert fiscal.suggested_folder(db, personal) == empresa, "la regla manda sobre la cuenta"
+
+
+def test_carpeta_de_entrada_del_bot(db, tmp_path):
+    """What the user's Hermes bot leaves in «Recibos por revisar» becomes a pending receipt; links, hidden or
+    unknown files are left alone, a dismissed one does not come back, and the original leaves once filed."""
+    root = tmp_path / "Autonomo"
+    inbox = root / receipts.INBOX
+    inbox.mkdir(parents=True)
+    (inbox / "ticket.jpg").write_bytes(JPEG)
+    (inbox / ".oculto.jpg").write_bytes(JPEG + b"1")
+    (inbox / "notas.txt").write_text("no es un recibo")
+    (tmp_path / "fuera.jpg").write_bytes(JPEG + b"2")
+    (inbox / "enlace.jpg").symlink_to(tmp_path / "fuera.jpg")
+    db.execute("INSERT INTO fiscal_folder (name, kind, path, created_at) VALUES ('Autónomo', 'autonomo', ?, '2026-11-15')", (str(root),))
+    folder_id = db.execute("SELECT id FROM fiscal_folder").fetchone()[0]
+    assert receipts.import_inbox(db, tmp_path / "r", [(folder_id, root)]) == 1
+    found = receipts.receipts(db)
+    assert [(r["name"], r["source"], r["inboxFolder"]) for r in found] == [("ticket.jpg", "inbox", folder_id)]
+    assert receipts.import_inbox(db, tmp_path / "r", [(folder_id, root)]) == 0, "una vez traído no se repite"
+    db.execute("UPDATE receipt SET state = 'dismissed'")
+    assert receipts.import_inbox(db, tmp_path / "r", [(folder_id, root)]) == 0
+    assert receipts.receipts(db) == [], "un recibo descartado no vuelve desde la carpeta"
+    row = db.execute("SELECT inbox_name, sha256 FROM receipt").fetchone()
+    (inbox / "ticket.jpg").write_bytes(JPEG + b" cambiado")
+    assert not receipts.remove_from_inbox(root, row["inbox_name"], row["sha256"]), "un archivo cambiado se queda"
+    (inbox / "ticket.jpg").write_bytes(JPEG)
+    assert not receipts.remove_from_inbox(root, "../fuera.jpg", row["sha256"]), "nada fuera de la carpeta de entrada"
+    assert receipts.remove_from_inbox(root, row["inbox_name"], row["sha256"])
+    assert not (inbox / "ticket.jpg").exists() and (tmp_path / "fuera.jpg").exists()

@@ -23,6 +23,8 @@ from pathlib import Path
 from .db import now
 from .fiscal import MAX_FILE, SUFFIXES, media_type
 
+INBOX = "Recibos por revisar"
+
 OPEN_SECONDS = 600
 PAGE = """<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Subir recibo · AgoraOne</title><style>body{{font:16px system-ui;margin:24px;color:#173d3c;background:#f4f2ea}}
@@ -257,5 +259,58 @@ def qr_svg(url: str) -> str:
 
 def receipts(connection: sqlite3.Connection, state: str = "pending") -> list[dict]:
     return [{"id": r["id"], "name": r["original_name"], "mediaType": r["media_type"], "bytes": r["bytes"],
-             "fields": json.loads(r["fields"]), "uploadedAt": r["uploaded_at"]}
+             "fields": json.loads(r["fields"]), "uploadedAt": r["uploaded_at"], "source": r["source"], "inboxFolder": r["inbox_folder"]}
             for r in connection.execute("SELECT * FROM receipt WHERE state = ? ORDER BY uploaded_at DESC", (state,))]
+
+
+def import_inbox(connection: sqlite3.Connection, folder: Path, folders: list[tuple[int, Path]]) -> int:
+    """Brings the files waiting in each fiscal folder's «Recibos por revisar» in as pending receipts: a copy
+    in AgoraOne's data (the original stays until it is filed), only photos and PDFs of bounded size, never a
+    link or a hidden file. A receipt already known keeps its state: one dismissed does not come back."""
+    added = 0
+    for folder_id, root in folders:
+        inbox = root / INBOX
+        try:
+            if inbox.is_symlink() or not inbox.is_dir() or root not in inbox.resolve().parents:
+                continue
+            entries = sorted(inbox.iterdir())
+        except OSError:
+            continue
+        for path in entries[:200]:
+            try:
+                if path.is_symlink() or not path.is_file() or path.name.startswith(".") or path.stat().st_size > MAX_FILE:
+                    continue
+                data = path.read_bytes()
+            except OSError:
+                continue
+            kind = media_type(data)
+            if kind is None:
+                continue
+            digest = hashlib.sha256(data).hexdigest()
+            if connection.execute("SELECT 1 FROM receipt WHERE sha256 = ?", (digest,)).fetchone():
+                continue
+            folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+            file = f"{digest[:24]}{SUFFIXES[kind]}"
+            (folder / file).write_bytes(data)
+            (folder / file).chmod(0o600)
+            connection.execute(
+                "INSERT INTO receipt (file, original_name, media_type, bytes, sha256, uploaded_at, source, inbox_folder, inbox_name) "
+                "VALUES (?, ?, ?, ?, ?, ?, 'inbox', ?, ?)",
+                (file, path.name[:200], kind, len(data), digest, now(), folder_id, path.name[:255]))
+            added += 1
+    return added
+
+
+def remove_from_inbox(root: Path, name: str, digest: str) -> bool:
+    """Once filed, the original leaves «Recibos por revisar» (a copy stays in AgoraOne's data and the filed
+    one in its quarter). Only the very same file: a changed or replaced one is left where it is."""
+    path = root / INBOX / name
+    try:
+        if path.is_symlink() or not path.is_file() or path.parent.resolve() != (root / INBOX).resolve():
+            return False
+        if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            return False
+        path.unlink()
+        return True
+    except OSError:
+        return False

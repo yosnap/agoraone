@@ -33,3 +33,7 @@
 .fiscal-manual h2 { margin:0 !important }
 .fiscal-manual-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px }
 .fiscal-edit { padding:4px 9px; font-size:11px; white-space:nowrap }
+.bot-inbox { margin:6px 0 4px }
+.bot-inbox-line { display:flex; flex-wrap:wrap; align-items:center; gap:8px }
+.bot-inbox .card { gap:10px }
+.bot-inbox h3 { margin:0; font-size:14px }
