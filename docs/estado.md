@@ -1,6 +1,9 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
+Versión 1.2.0 · Publicada el 15/11/2026, con toda la 1.1 (correo, Bandeja, fiscal, agenda, llamadas y avisos) y la 1.2 (Trabajos, encargos, proyectos de clientes, recibos por el bot de Hermes y Ajustes por pestañas). La 1.1 no se publicó por separado.
+- **Siguiente:** que Watson cree reglas de correo con propuesta y confirmación; después, el backlog de mejoras (plans/backlog-mejoras.md) y Reuniones (1.3).
+
 Versión 1.2.0-alpha.5 · Proyectos de clientes con su consumo (fase 4 de la 1.2).
 - **Trabajos › Proyectos de clientes:** los proyectos de Central por cliente (por defecto activos y en mantenimiento) con los tokens de los agentes de código (CostGuard, sin caché) en el periodo y los de Hermes en 30 días (con caché). Se asocian solo por nombre igual (sin tildes, mayúsculas ni signos) y si ningún otro proyecto se llama así; las carpetas sin letras latinas o el cubo sin nombre nunca se asignan; lo que no coincide sale aparte. Núcleo `GET /jobs/projects` (`work_projects.py`).
 - **Watson:** `consultar_trabajos` (solo Claude; en `PRIVATE_TOOLS`).
