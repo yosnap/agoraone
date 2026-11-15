@@ -8,6 +8,11 @@ const ago = (stamp: string | null) => {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(stamp).getTime()) / 60000));
   return minutes < 60 ? `hace ${minutes} min` : minutes < 1440 ? `hace ${Math.round(minutes / 60)} h` : `hace ${Math.round(minutes / 1440)} d`;
 };
+const until = (stamp: string) => {
+  const minutes = Math.round((new Date(stamp).getTime() - Date.now()) / 60000);
+  if (minutes <= 0) return 'ahora';
+  return minutes < 60 ? `en ${minutes} min` : minutes < 1440 ? `en ${Math.round(minutes / 60)} h` : new Date(stamp).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric' });
+};
 const RUNNING = new Set(['claimed', 'running', 'review']);
 const BLOCKED = new Set(['blocked', 'failed', 'crashed', 'timed_out']);
 const sourceLabel: Record<string, string> = { telegram: 'Telegram', desktop: 'Desktop', cron: 'tarea programada', cli: 'terminal', api: 'API' };
@@ -43,7 +48,11 @@ export function BrainAgents() {
     // A platform staying connected is not news; one that drops is.
     .filter(event => event.kind !== 'link' || event.state !== 'connected').map(event => describe(event, name(id))))
     .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);
-  if (!running.length && !blocked && !lines.length) return null;
+  // Routines: the profiles' scheduled tasks that are on, the next ones first (gbrain's skills shelf).
+  const routines = Object.entries(activity?.profiles ?? {}).flatMap(([id, profile]) => (profile.jobs ?? [])
+    .filter(job => job.enabled && job.nextRunAt).map(job => ({ ...job, who: name(id) })))
+    .sort((a, b) => a.nextRunAt!.localeCompare(b.nextRunAt!)).slice(0, 3);
+  if (!running.length && !blocked && !lines.length && !routines.length) return null;
   return <div className="brain-agents">
     <h2>Agentes</h2>
     {running.length > 0 && <ul className="today-list" aria-label="Encargos en curso">{running.map(card => <li key={card.id ?? card.title}>
@@ -51,6 +60,9 @@ export function BrainAgents() {
       <span title={card.title}>{card.title} · <em>{name(card.profileId ?? card.assignee)}</em> {ago(card.startedAt ?? card.createdAt)}</span>
     </li>)}</ul>}
     {blocked > 0 && <p className="today-line"><span className="lately-tag">bloqueadas</span> {blocked} {blocked === 1 ? 'tarjeta necesita' : 'tarjetas necesitan'} atención en Trabajos</p>}
+    {routines.length > 0 && <ul className="today-list" aria-label="Próximas rutinas">{routines.map(job => <li key={`${job.who}-${job.id ?? job.name}`}>
+      <span className="today-time">{until(job.nextRunAt!)}</span><span title={job.schedule}>{job.name} · <em>{job.who}</em></span>
+    </li>)}</ul>}
     {lines.length > 0 && <ul className="agent-log" aria-label="Actividad de las últimas 24 horas">{lines.map((line, index) => <li key={index}>
       <span className={`agent-outcome ${line.outcome ?? 'none'}`}>{line.outcome === 'hecho' ? 'Hecho' : line.outcome === 'falló' ? 'Falló' : '·'}</span>
       <span><strong>{line.who}</strong> {line.text}</span><small>{ago(line.at)}</small>
