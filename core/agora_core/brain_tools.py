@@ -145,6 +145,22 @@ SPECS.append({
         "todo_el_dia": {"type": "boolean"}, "lugar": {"type": "string"}, "notas": {"type": "string"},
         "calendario": {"type": "string", "description": "Nombre o cuenta del calendario, si lo dice (opcional)."}}},
 })
+SPECS.append({
+    "name": "proponer_presupuesto",
+    "description": ("Propone al usuario un presupuesto para crear en Central como borrador (no lo crea): aparece en la pantalla con "
+                    "sus partidas, base, IVA y total, y solo se crea si pulsa «Crear en Central». El cliente debe existir en Central "
+                    "(compruébalo con consultar_clientes). Partidas por fases o paquetes con precio fijo sin IVA, o un rango con "
+                    "precio_max; nunca por horas. Solo si lo pide el usuario."),
+    "schema": {"type": "object", "required": ["cliente", "titulo", "partidas"], "properties": {
+        "cliente": {"type": "string", "description": "Nombre exacto del cliente en Central."},
+        "titulo": {"type": "string"},
+        "partidas": {"type": "array", "items": {"type": "object", "required": ["concepto", "precio"], "properties": {
+            "concepto": {"type": "string"}, "detalle": {"type": "string"}, "precio": {"type": "number", "description": "Sin IVA, en euros."},
+            "precio_max": {"type": "number"}, "cantidad": {"type": "number"}, "unidad": {"type": "string"}}}},
+        "hitos": {"type": "array", "items": {"type": "object", "required": ["nombre"], "properties": {"nombre": {"type": "string"}, "porcentaje": {"type": "number"}}}},
+        "iva": {"type": "number", "description": "IVA en % (opcional: el de Central)."},
+        "validez_dias": {"type": "integer"}}},
+})
 NOTE_TEXT = 20000
 SECRET_LINE = re.compile(r"(?i)(contrase(n|ñ)a|password|passwd|api[_ -]?key|token|secret|clave)\s*[:=]\s*\S{6,}")
 _ACTION_OF_ACCION = {"factura": "invoice", "cliente": "client", "personal": "personal", "importante": "important", "ignorar": "ignore"}
@@ -231,6 +247,8 @@ class Toolbox:
                 return self._propose_note(args)
             if name == "proponer_evento":
                 return self._propose_event(args)
+            if name == "proponer_presupuesto":
+                return self._propose_quote(args)
             if name == "consultar_trabajos":
                 return await self._projects(str(args.get("periodo") or "7d"), str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
@@ -479,3 +497,50 @@ class Toolbox:
         self.proposals[proposal_id] = {"owner": self.owner, "event": event, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "event_proposal", "id": proposal_id, "event": event})
         return json.dumps({"propuesta": {"titulo": title, "inicio": event["start"]}, "estado": "En la pantalla del usuario, esperando «Crear el evento». No está creado."}, ensure_ascii=False)
+
+    def _propose_quote(self, args: dict) -> str:
+        """Checks a quote Watson prepared in Central's own terms and keeps it as a proposal; «Crear en Central»
+        creates it as a draft (POST /assistant/proposals/<id>/quote). Nothing is written here."""
+        import secrets as random
+        import time
+
+        from . import central
+
+        if not self.mail or self.owner is None:
+            return json.dumps({"error": "Los presupuestos no están disponibles con este motor."}, ensure_ascii=False)
+        client = " ".join(str(args.get("cliente") or "").split())[:200]
+        with self.database() as connection:
+            known = {str(c.get("name") or "").lower(): c.get("name") for c in ((central.snapshot(connection) or {}).get("clients") or [])}
+        if client.lower() not in known:
+            return json.dumps({"error": f"«{client}» no es un cliente de Central: usa consultar_clientes para el nombre exacto."}, ensure_ascii=False)
+        items = []
+        for item in (args.get("partidas") or [])[:40]:
+            try:
+                price = float(item.get("precio"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            line = {"description": str(item.get("concepto") or "")[:500], "unitPrice": round(price, 2), "quantity": float(item.get("cantidad") or 1)}
+            if item.get("detalle"):
+                line["details"] = str(item["detalle"])[:3000]
+            if item.get("precio_max") not in (None, ""):
+                line["priceMax"] = round(float(item["precio_max"]), 2)
+            if item.get("unidad"):
+                line["unit"] = str(item["unidad"])[:30]
+            if line["description"] and price >= 0:
+                items.append(line)
+        title = " ".join(str(args.get("titulo") or "").split())[:200]
+        if not title or not items:
+            return json.dumps({"error": "El presupuesto necesita título y al menos una partida con precio."}, ensure_ascii=False)
+        quote = {"client": known[client.lower()], "title": title, "items": items}
+        phases = [{"name": str(p.get("nombre"))[:200], **({"percent": float(p["porcentaje"])} if p.get("porcentaje") is not None else {})}
+                  for p in (args.get("hitos") or [])[:10] if isinstance(p, dict) and p.get("nombre")]
+        if phases:
+            quote["phases"] = phases
+        if args.get("iva") is not None:
+            quote["vat"] = max(0.0, min(100.0, float(args["iva"])))
+        if args.get("validez_dias"):
+            quote["validDays"] = max(1, min(365, int(args["validez_dias"])))
+        proposal_id = random.token_urlsafe(12)
+        self.proposals[proposal_id] = {"owner": self.owner, "quote": quote, "expires": time.time() + PROPOSAL_SECONDS}
+        self._record({"tool": "quote_proposal", "id": proposal_id, "quote": quote})
+        return json.dumps({"propuesta": {"cliente": quote["client"], "titulo": title, "partidas": len(items)}, "estado": "En la pantalla del usuario, esperando «Crear en Central». No está creado."}, ensure_ascii=False)

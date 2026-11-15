@@ -5,6 +5,7 @@ import re
 import sqlite3
 import sys
 import time
+from pathlib import Path
 from collections.abc import Callable
 from contextlib import aclosing, contextmanager
 from typing import Literal
@@ -76,6 +77,8 @@ def _logged(event: dict) -> tuple[str, str]:
         return "clientes", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
     if event["tool"] == "inbox":
         return "bandeja", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
+    if event["tool"] == "quote_proposal":  # for whom and how many lines, not the prices
+        return "proponer_presupuesto", json.dumps({"cliente": event["quote"].get("client"), "partidas": len(event["quote"].get("items") or [])}, ensure_ascii=False)
     if event["tool"] == "event_proposal":  # that an event was proposed and when, not its title or notes
         return "proponer_evento", json.dumps({"inicio": event["event"].get("start")}, ensure_ascii=False)
     if event["tool"] == "note_proposal":  # that a note was proposed and where, not what it says
@@ -197,6 +200,27 @@ def assistant_router(
             message = str(error) if isinstance(error, mail_rules.RuleError) else "La regla no se pudo guardar tal cual: pídesela otra vez a Watson."
             return JSONResponse({"error": message}, status_code=422)
         return {"id": rule_id, "name": found["rule"]["name"]}
+
+    @router.post("/proposals/{proposal_id}/quote", status_code=201)
+    async def create_quote(proposal_id: str, request: Request):
+        """Creates in Central, as a draft, the very quote Watson proposed, once, for the owner it was proposed to."""
+        from . import addons, central
+        owner = owner_of(request)
+        found = proposals.get(proposal_id)
+        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "quote" not in found:
+            return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        proposals.pop(proposal_id, None)  # taken before any wait: a double click creates one quote
+        def work():
+            with database() as connection:
+                path = addons.config(connection, "central").get("path")
+            if not path or not addons.recognised("central", Path(path)):
+                raise central.CentralError("Central no está configurado en Conectores.")
+            return central.create_quote(Path(path), found["quote"])
+        try:
+            made = await run_in_threadpool(work)
+        except (central.CentralError, Exception) as error:  # noqa: BLE001 - Central's own message, or that it failed
+            return JSONResponse({"error": str(error) if isinstance(error, central.CentralError) else "Central no pudo crear el presupuesto."}, status_code=422)
+        return {"created": made}
 
     @router.post("/proposals/{proposal_id}/dismiss")
     async def dismiss_proposal(proposal_id: str, request: Request):

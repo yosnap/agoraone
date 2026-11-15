@@ -1,4 +1,5 @@
-"""Central (the user's CRM: clients, projects, websites and servers), read-only through its own MCP server.
+"""Central (the user's CRM: clients, projects, websites and servers), read through its own MCP server; the only
+thing ever written is a draft quote the user confirmed (`create_quote`, decision of 15/11/2026).
 
 AgoraOne starts Central's MCP server over stdio in Central's folder (the one in the add-on registry) and
 calls only reading tools; it never creates quotes or changes phases. The result is kept as a snapshot in
@@ -156,3 +157,31 @@ def client_for(connection: sqlite3.Connection, address: str | None) -> dict | No
     if exact or not domain or domain in _FREE_MAIL:
         return exact
     return next((c for c in data["clients"] if domain in c["domains"] or any(domain.endswith("." + d) for d in c["domains"])), None)
+
+
+WRITE_TOOL = "create_quote"  # the only writing tool AgoraOne may call, and only for a quote the user confirmed
+
+
+def create_quote(folder: Path, quote: dict) -> dict:
+    """Creates in Central the draft quote the user confirmed (Central gives it the next number of the year);
+    never sends it nor changes a phase. Returns its id and number."""
+    async def run():
+        from mcp.client.session import ClientSession
+        from mcp.client.stdio import StdioServerParameters, stdio_client
+
+        bun = _bun()
+        if not bun:
+            raise CentralError("No se encuentra bun, que Central necesita para su servidor MCP.")
+        env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG") if k in os.environ}
+        async with stdio_client(StdioServerParameters(command=bun, args=["src/mcp/server.ts"], cwd=str(folder), env=env)) as (read, write):
+            async with ClientSession(read, write) as session:
+                await asyncio.wait_for(session.initialize(), CALL_SECONDS)
+                result = await asyncio.wait_for(session.call_tool(WRITE_TOOL, quote), CALL_SECONDS)
+                text = "".join(getattr(part, "text", "") for part in result.content)
+                if getattr(result, "isError", False):
+                    raise CentralError(text[:300] or "Central no pudo crear el presupuesto.")
+                try:
+                    return json.loads(text)
+                except ValueError:
+                    return {"text": text[:300]}
+    return asyncio.run(asyncio.wait_for(run(), TOTAL_SECONDS))
