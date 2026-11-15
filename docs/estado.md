@@ -1,6 +1,10 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
+En curso · 1.5 «Voz y música» (plan: plans/261115-1600-voz-musica/plan.md; guía: docs/voz-musica.md). Rama `feat/1.5.0-alpha.1-musica` integrada en `integracion/v1.5` (sale de `integracion/v1.4`); sin publicar ni empaquetar.
+- Hecho: música en la tarjeta del Cerebro (Apple Music y Spotify por AppleScript, Linux por playerctl; permiso de Automatización declarado y comprobado al empaquetar), órdenes rápidas sin modelo (pon, pausa, siguiente, anterior, volumen, abre), abrir apps (lista permitida en Ajustes › Voz; nombres en español leídos de InfoPlist.loctable) y Watson responde hablando (voces del sistema; por defecto cuando se le habla). 246 pruebas del núcleo, 20 de la interfaz y build.
+- Pendiente: probar Música/Spotify y abrir apps con la app firmada (permiso de Automatización); fase 5 (atajo global con el plugin de Tauri y «Oye Watson» con openWakeWord, micrófono permanente desactivable); fase 6 (biblioteca local, YouTube y cierre).
+
 Versión 1.4.2 · Centro de mando en el Cerebro, fiel a la maqueta (1.4.1: sin barra arriba, grabar y música en el pie, columna fija con Hoy —agenda, recordatorios, Bandeja—, áreas y novedades, franja de lado a lado, Watson con estado, lo que oye, pasos y micrófono grande; 1.4.2: Agentes con encargos en curso, próximas rutinas y actividad de 24 h con su resultado). La app instalada es la 1.4.1; la 1.4.2 está integrada en `integracion/v1.4` y se empaqueta en la próxima tanda.
 
 Antes, 1.4.0 (plan: plans/261115-1455-centro-mando/plan.md; guía: docs/centro-mando.md). Rama `feat/1.4.0-alpha.1-centro-mando` sobre `integracion/v1.4` (que sale de `integracion/v1.3`); sin publicar.
