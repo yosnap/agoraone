@@ -62,6 +62,15 @@ await page.route('**/api/hermes/catalog', async route => {
   return route.fulfill({ json: { ...real, profiles: [{ ...base, id: 'alfa', name: 'default', label: 'Hermes principal' }, { ...base, id: 'beta', name: 'pro', label: 'Pro' }] } });
 });
 await page.route('**/api/core/jobs/settings', route => route.fulfill({ json: { central: 'default' } }));
+const usage = (day, week, month) => ({ '24h': { tokens: day, turns: 1 }, '7d': { tokens: week, turns: 2 }, '30d': { tokens: month, turns: 3 } });
+await page.route('**/api/core/jobs/projects', route => route.fulfill({ json: { costguard: true, problem: null, fetchedAt: null,
+  clients: [{ name: 'Cliente de ejemplo', company: null, projects: [
+    { name: 'Café Web', status: 'ACTIVE', phase: 'Diseño', usage: usage(1200, 1800, 5000) },
+    { name: 'Sin carpeta', status: 'MAINTENANCE', phase: null, usage: null },
+    { name: 'Proyecto viejo', status: 'ARCHIVED', phase: null, usage: null }] }],
+  unmatched: [{ name: 'otra-cosa', usage: usage(0, 55, 55) }] } }));
+await page.route('**/api/hermes/summary', route => route.fulfill({ json: { readAt: '', days: 30, messagesCounted: 0, profiles: [], words: [],
+  projects: [{ project: 'cafe_web', tokens: 9000, costUsd: 0.1, sessions: 2 }] } }));
 await page.route(/\/api\/hermes\/profiles\/[^/]+\/cards$/, route => { created.push({ url: new URL(route.request().url()).pathname, body: route.request().postDataJSON() }); return route.fulfill({ status: 201, json: { card: 't9' } }); });
 await page.route(/\/api\/hermes\/profiles\/[^/]+\/cards\/[^/]+$/, route => { changed.push(route.request().postDataJSON()); return route.fulfill({ json: { card: 't1' } }); });
 await page.goto(appUrl(5173, 'trabajos'));
@@ -91,6 +100,18 @@ assert.equal(created.length, 0, 'abrir y rellenar no crea nada');
 await form.getByRole('button', { name: 'Crear encargo' }).click();
 await jobs.getByText(/^Encargo «Revisa las facturas de prueba» creado para Pro\./).waitFor();
 assert.deepEqual(created, [{ url: '/api/hermes/profiles/beta/cards', body: { title: 'Revisa las facturas de prueba' } }]);
+// Clients' projects: matched by the same name only; archived ones hidden by default; the rest apart.
+const projects = jobs.locator('.projects-table');
+await projects.getByText('Café Web').waitFor();
+const web = projects.locator('tr', { hasText: 'Café Web' });
+assert.match(await web.innerText(), /1,2 mil tokens · 1 turno\b/, 'consumo del periodo elegido (24 h)');
+assert.match(await web.innerText(), /9 mil tokens/, 'Hermes por el mismo nombre');
+assert.match(await projects.locator('tr', { hasText: 'Sin carpeta' }).innerText(), /sin carpeta/);
+assert.equal(await projects.getByText('Proyecto viejo').count(), 0, 'los archivados no salen por defecto');
+assert.equal(await jobs.getByText(/Otras carpetas con consumo/).count(), 0, 'en 24 h esa carpeta no gastó nada');
+await jobs.getByRole('button', { name: '7 días', exact: true }).click();
+await jobs.getByText(/Otras carpetas con consumo en 7 días/).click();
+await jobs.getByText('otra-cosa · 55 tokens').waitFor();
 if (shots) await page.screenshot({ path: `${shots}/jobs-sample.png`, fullPage: true });
 assert.equal(changed.length, 0, 'mirar no cambia nada');
 const running = jobs.locator('.work-card', { hasText: 'Tarjeta en curso' });
@@ -103,6 +124,7 @@ await page.getByRole('button', { name: /discreto/i }).first().click();
 await jobs.getByText('TRABAJOS · MODO DISCRETO').waitFor();
 assert.equal(await jobs.getByText('Tarjeta en curso').count(), 0, 'títulos ocultos');
 assert.equal(await jobs.getByText('Resumen de ejemplo').count(), 0, 'nombres ocultos');
+assert.equal(await jobs.getByText('Cliente de ejemplo').count(), 0, 'clientes ocultos');
 await page.getByRole('button', { name: /discreto/i }).first().click();
 assert.deepEqual(errors, [], 'sin errores JS');
 console.log('trabajos de ejemplo, totales, kanban, acciones y modo discreto: correctos');

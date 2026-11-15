@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
+from . import work_projects
 from .db import DB_NAME, connect, transaction
 from .settings import Settings
 
@@ -61,6 +62,13 @@ def jobs_router(settings: Settings) -> APIRouter:
                 connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
                                    (KEY, json.dumps(merged)))
                 return merged
+        return await run_in_threadpool(work)
+
+    @router.get("/jobs/projects")
+    async def client_projects():
+        def work():
+            with database() as connection:
+                return work_projects.projects(connection)
         return await run_in_threadpool(work)
 
     return router

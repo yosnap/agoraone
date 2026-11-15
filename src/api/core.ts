@@ -274,6 +274,14 @@ export type JobsSettings = { central: string };
 export const getJobsSettings = () => core<JobsSettings>('/jobs/settings');
 export const putJobsSettings = (changes: JobsSettings) => core<JobsSettings>('/jobs/settings', changes, 'PUT');
 
+/** Clients' projects (Central) with CostGuard's tokens per period, matched only by the same folder name. */
+export type ProjectUsage = Record<'24h' | '7d' | '30d', { tokens: number; turns: number }>;
+export type ClientProjects = {
+  clients: { name: string; company: string | null; projects: { name: string; status: string | null; phase: string | null; usage: ProjectUsage | null }[] }[];
+  unmatched: { name: string; usage: ProjectUsage }[]; costguard: boolean; problem: string | null; fetchedAt: string | null;
+};
+export const getClientProjects = () => core<ClientProjects>('/jobs/projects');
+
 /** Replying: a prefilled reply, a body drafted by Watson (normal mail only), the sealed preview and the send. */
 export type MailDraft = { accountId: number; to: string; cc: string; subject: string; body: string; replyTo: number | null };
 export type MailPreview = { draft: { accountId: number; to: string[]; cc: string[]; subject: string; body: string; replyTo: number | null };

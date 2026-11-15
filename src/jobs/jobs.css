@@ -24,3 +24,7 @@
 .commission-form { margin-bottom:12px }
 .card-history summary { cursor:pointer; font-size:11px; color:var(--c-355a50) }
 .card-history ol { margin:4px 0 0; padding-left:18px; font-size:11px }
+.projects-table td:first-child { min-width:180px }
+.projects-unmatched { margin-top:8px; font-size:12px }
+.projects-unmatched ul { margin:4px 0 0; padding-left:18px }
+.client-projects .fiscal-bar { flex-wrap:wrap; gap:10px }
