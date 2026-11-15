@@ -1,7 +1,9 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
-Versión 1.5.0 · «Voz y música», completa: además de lo de abajo, ⌃⌥W, «Oye Watson» (reconocimiento de Apple en el equipo, apagado por defecto), callar a Watson, la conversación se recuerda, recibos del móvil visibles y legibles con Claude, y biblioteca local y YouTube. Antes, en curso: (plan: plans/261115-1600-voz-musica/plan.md; guía: docs/voz-musica.md). Rama `feat/1.5.0-alpha.1-musica` integrada en `integracion/v1.5` (sale de `integracion/v1.4`); sin publicar ni empaquetar.
+Siguiente: el instalador y diagnóstico (C-01) y los módulos que se pueden apagar (C-02) del backlog; después, más información de las referencias en el Cerebro (topes de tokens, guardar respuestas como nota, fichas de persona).
+
+Versión 1.5.0 · publicada el 15/11/2026 en GitHub (main, develop, tag v1.5.0 y release con la app notarizada; incluye la 1.3 y la 1.4). «Voz y música», completa: además de lo de abajo, ⌃⌥W, «Oye Watson» (reconocimiento de Apple en el equipo, apagado por defecto), callar a Watson, la conversación se recuerda, recibos del móvil visibles y legibles con Claude, y biblioteca local y YouTube. Antes, en curso: (plan: plans/261115-1600-voz-musica/plan.md; guía: docs/voz-musica.md). Rama `feat/1.5.0-alpha.1-musica` integrada en `integracion/v1.5` (sale de `integracion/v1.4`); sin publicar ni empaquetar.
 - Hecho: música en la tarjeta del Cerebro (Apple Music y Spotify por AppleScript, Linux por playerctl; permiso de Automatización declarado y comprobado al empaquetar), órdenes rápidas sin modelo (pon, pausa, siguiente, anterior, volumen, abre), abrir apps (lista permitida en Ajustes › Voz; nombres en español leídos de InfoPlist.loctable) y Watson responde hablando (voces del sistema; por defecto cuando se le habla). 246 pruebas del núcleo, 20 de la interfaz y build.
 - Pendiente: probar Música/Spotify y abrir apps con la app firmada (permiso de Automatización); fase 5 (atajo global con el plugin de Tauri y «Oye Watson» con openWakeWord, micrófono permanente desactivable); fase 6 (biblioteca local, YouTube y cierre).
 
