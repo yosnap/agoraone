@@ -231,7 +231,7 @@ class CompatibleEngine:
             raise EngineError(f"El proveedor no responde ({type(error).__name__}).") from error
 
 
-PRIVATE_TOOLS = {"consultar_bandeja", "consultar_clientes", "consultar_agenda", "resumen_del_dia", "consultar_trabajos", "proponer_regla"}  # mail, clients and calendar: Claude only
+PRIVATE_TOOLS = {"consultar_bandeja", "consultar_clientes", "consultar_agenda", "resumen_del_dia", "consultar_trabajos", "proponer_regla", "proponer_evento"}  # mail, clients and calendar: Claude only
 
 
 HIDDEN_TOOLS: set[str] = set()  # tools of the modules turned off in Settings (modules.apply keeps it)

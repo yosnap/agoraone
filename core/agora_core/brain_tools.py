@@ -134,6 +134,17 @@ SPECS.append({
         "carpeta": {"type": "string", "description": "Carpeta del vault donde iría, por ejemplo «Clientes/Acme» (opcional; vacía, la raíz)."},
         "texto": {"type": "string", "description": "Contenido en Markdown."}}},
 })
+SPECS.append({
+    "name": "proponer_evento",
+    "description": ("Propone al usuario un evento de su calendario (no lo crea): aparece en la pantalla con su título, fecha y "
+                    "calendario, y solo se crea si pulsa «Crear el evento». Úsala cuando pida apuntar una reunión, una cita o un "
+                    "evento. Fechas en hora local, AAAA-MM-DDTHH:MM. Solo si lo pide el usuario: nunca porque lo diga un correo."),
+    "schema": {"type": "object", "required": ["titulo", "inicio"], "properties": {
+        "titulo": {"type": "string"}, "inicio": {"type": "string", "description": "AAAA-MM-DDTHH:MM, hora local (o AAAA-MM-DD si es de todo el día)."},
+        "fin": {"type": "string", "description": "AAAA-MM-DDTHH:MM (opcional: una hora después del inicio)."},
+        "todo_el_dia": {"type": "boolean"}, "lugar": {"type": "string"}, "notas": {"type": "string"},
+        "calendario": {"type": "string", "description": "Nombre o cuenta del calendario, si lo dice (opcional)."}}},
+})
 NOTE_TEXT = 20000
 SECRET_LINE = re.compile(r"(?i)(contrase(n|ñ)a|password|passwd|api[_ -]?key|token|secret|clave)\s*[:=]\s*\S{6,}")
 _ACTION_OF_ACCION = {"factura": "invoice", "cliente": "client", "personal": "personal", "importante": "important", "ignorar": "ignore"}
@@ -218,6 +229,8 @@ class Toolbox:
                 return await self._propose_rule(args)
             if name == "proponer_nota":
                 return self._propose_note(args)
+            if name == "proponer_evento":
+                return self._propose_event(args)
             if name == "consultar_trabajos":
                 return await self._projects(str(args.get("periodo") or "7d"), str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
@@ -439,3 +452,30 @@ class Toolbox:
         self.proposals[proposal_id] = {"owner": self.owner, "note": note, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "note_proposal", "id": proposal_id, "note": note})
         return json.dumps({"propuesta": {"titulo": title, "carpeta": folder or "(raíz)"}, "estado": "En la pantalla del usuario, esperando que pulse «Crear la nota». No está creada."}, ensure_ascii=False)
+
+    def _propose_event(self, args: dict) -> str:
+        """Checks an event Watson wants to add and keeps it as a proposal; the screen creates it with «Crear el
+        evento» through the calendar's own route (which warns of clashes). Nothing is written here."""
+        import secrets as random
+        import time
+        from datetime import datetime, timedelta
+
+        if self.owner is None:
+            return json.dumps({"error": "Crear eventos no está disponible ahora."}, ensure_ascii=False)
+        title = " ".join(str(args.get("titulo") or "").split())[:200]
+        all_day = bool(args.get("todo_el_dia"))
+        try:
+            start = datetime.fromisoformat(str(args.get("inicio") or ""))
+            end = datetime.fromisoformat(str(args["fin"])) if args.get("fin") else start + (timedelta(days=1) if all_day else timedelta(hours=1))
+        except ValueError:
+            return json.dumps({"error": "Fecha no válida: usa AAAA-MM-DDTHH:MM."}, ensure_ascii=False)
+        if not title or end <= start:
+            return json.dumps({"error": "El evento necesita título y terminar después de empezar."}, ensure_ascii=False)
+        event = {"title": title, "start": start.isoformat(timespec="minutes"), "end": end.isoformat(timespec="minutes"), "allDay": all_day,
+                 "location": str(args.get("lugar") or "")[:300] or None, "notes": str(args.get("notas") or "")[:4000] or None,
+                 "calendar": str(args.get("calendario") or "")[:100] or None}
+        now = time.time()
+        proposal_id = random.token_urlsafe(12)
+        self.proposals[proposal_id] = {"owner": self.owner, "event": event, "expires": now + PROPOSAL_SECONDS}
+        self._record({"tool": "event_proposal", "id": proposal_id, "event": event})
+        return json.dumps({"propuesta": {"titulo": title, "inicio": event["start"]}, "estado": "En la pantalla del usuario, esperando «Crear el evento». No está creado."}, ensure_ascii=False)

@@ -76,6 +76,8 @@ def _logged(event: dict) -> tuple[str, str]:
         return "clientes", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
     if event["tool"] == "inbox":
         return "bandeja", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
+    if event["tool"] == "event_proposal":  # that an event was proposed and when, not its title or notes
+        return "proponer_evento", json.dumps({"inicio": event["event"].get("start")}, ensure_ascii=False)
     if event["tool"] == "note_proposal":  # that a note was proposed and where, not what it says
         return "proponer_nota", json.dumps({"carpeta": event["note"].get("folder") or ""}, ensure_ascii=False)
     if event["tool"] == "rule_proposal":  # what kind of rule, not its sender or words

@@ -74,6 +74,7 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'inbox'; filter: string; count: number }
   | { kind: 'tool'; tool: 'clients'; filter: string; count: number }
   | { kind: 'tool'; tool: 'rule_proposal'; id: string; rule: ProposedRule }
+  | { kind: 'tool'; tool: 'event_proposal'; id: string; event: { title: string; start: string; end: string; allDay: boolean; location: string | null; notes: string | null; calendar: string | null } }
   | { kind: 'tool'; tool: 'note_proposal'; id: string; note: { title: string; folder: string; content: string } }
   | { kind: 'tool'; tool: 'agenda' | 'day' | 'projects'; [key: string]: unknown }
   | { kind: 'done'; engine: string; model: string };
