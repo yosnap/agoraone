@@ -6,13 +6,17 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import doctor, installer, modules
-from .db import DB_NAME, connect
+from .db import DB_NAME, connect, transaction
 from .engines import SECRET_ACCOUNTS
 from .settings import Settings
 
 
 class Install(BaseModel):
     id: str
+
+
+class FirstRun(BaseModel):
+    done: bool
 
 
 class Modules(BaseModel):
@@ -48,6 +52,22 @@ def doctor_router(settings: Settings, secrets) -> APIRouter:
     @router.put("/modules")
     async def change_modules(body: Modules):
         return await run_in_threadpool(lambda: {"modules": with_db(lambda c: modules.save(c, body.modules)), "labels": modules.MODULES})
+
+    # The first start's guide is shown until finished or skipped once, in any browser (1.6).
+    @router.get("/setup/first-run")
+    async def first_run():
+        return await run_in_threadpool(lambda: {"done": with_db(lambda c: bool(c.execute("SELECT 1 FROM setting WHERE key = 'setup.firstRun'").fetchone()))})
+
+    @router.put("/setup/first-run")
+    async def first_run_done(body: FirstRun):
+        def work(connection):
+            with transaction(connection):
+                if body.done:
+                    connection.execute("INSERT INTO setting (key, value) VALUES ('setup.firstRun', 'true') ON CONFLICT (key) DO NOTHING")
+                else:
+                    connection.execute("DELETE FROM setting WHERE key = 'setup.firstRun'")
+            return {"done": body.done}
+        return await run_in_threadpool(lambda: with_db(work))
 
     @router.get("/doctor/install")
     async def install_state():

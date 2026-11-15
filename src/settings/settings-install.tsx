@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { getDoctor, getInstallJob, installPiece, type DoctorPiece, type InstallJob } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
+import { showFirstRunAgain } from '../shell/first-run';
 
 const labels: Record<DoctorPiece['state'], string> = { ok: 'Instalado', missing: 'Falta', optional: 'Opcional' };
 const COMPATIBLE = new Set(['codex', 'gemini', 'opencode', 'cursor']);
@@ -71,7 +72,8 @@ export function InstallSettingsCard() {
       {found && <span className={`status-badge ${found.missing ? 'bad' : 'good'}`}>{found.missing ? `Faltan ${found.missing}` : 'Todo listo'}</span>}</div>
     <p>Lo que AgoraOne puede usar en este equipo, para qué módulo sirve cada pieza y cómo conseguir lo que falta. Comprobarlo no cambia nada.</p>
     {!found && !error ? <Loading label="Comprobando lo instalado" lines={4}/> : found && <>
-      <p className="muted">{found.summary} <button type="button" className="button" onClick={() => { setFound(null); load(); }}>Volver a comprobar</button></p>
+      <p className="muted">{found.summary} <button type="button" className="button" onClick={() => { setFound(null); load(); }}>Volver a comprobar</button>
+        {' '}<button type="button" className="button" onClick={showFirstRunAgain}>Ver la guía de inicio</button></p>
       {job && <div className={`install-job ${job.state}`} role="status" aria-live="polite">
         <strong>{job.state === 'running' ? `Instalando ${job.name}…` : job.state === 'done' ? `${job.name}: instalado.` : `${job.name}: ${job.error ?? 'no se pudo instalar.'}`}</strong>
         {job.total > 0 && job.state === 'running' && <div className="music-bar" aria-hidden="true"><span style={{ width: `${Math.min(100, (job.done / job.total) * 100)}%` }}/></div>}
