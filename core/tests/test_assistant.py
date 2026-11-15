@@ -148,7 +148,7 @@ def test_eleccion_de_motor():
 def test_personajes_de_dominio_publico_y_prompt():
     assert {p["id"] for p in assistant.personas()} == {"watson", "mentor", "viernes", "passepartout", "bernardo"}
     prompt = assistant.system_prompt(assistant.DEFAULTS)
-    assert "Eres Watson" in prompt and "cifras" in prompt and "solo lees" in prompt
+    assert "Eres Watson" in prompt and "cifras" in prompt and "nunca hacer por tu cuenta" in prompt and "No puedes enviar, archivar ni borrar" in prompt
 
 
 def test_reserva_al_siguiente_motor_si_falla_antes_de_escribir(tmp_path):
