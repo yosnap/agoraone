@@ -4,6 +4,7 @@ import { LoadError, Loading } from '../ui/load-state';
 import { actionLabels, kindLabels, proposalLabels, sender, when } from './inbox-labels';
 import { InvoiceFiling } from './invoice-filing';
 import { ProjectNote } from './project-note';
+import { ReplyComposer } from './reply-composer';
 import { EventForm } from '../calendar/event-form';
 import '../calendar/calendar.css';
 
@@ -34,6 +35,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const [filing, setFiling] = useState<number | null>(null);
   const [noting, setNoting] = useState<number | null>(null);
   const [scheduling, setScheduling] = useState<number | null>(null);
+  const [replying, setReplying] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
   const clearAll = async () => {
     setNote(''); setClearing(false);
@@ -124,10 +126,14 @@ export function InboxView({ discreet }: { discreet: boolean }) {
                 onCancel={() => setScheduling(null)} onDone={done => { setScheduling(null); setNote(`${done} La tarjeta pasa a «Hechos».`); void load(); }}/>
               : <p className="inbox-proposal"><button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para crear el evento' : undefined}
                 onClick={() => setScheduling(item.id)}>{proposalLabels.create_event.label}…</button></p>)}
+          {replying === item.id && !discreet && <ReplyComposer item={item} onCancel={() => setReplying(null)}
+            onDone={done => { setReplying(null); setNote(done); void load(); }}/>}
           <div className="inbox-actions">
             {item.state === 'pending' ? <>
               <button type="button" className="button primary" onClick={() => void decide(item, 'done')}>Hecho</button>
               <button type="button" className="button" onClick={() => void decide(item, 'dismissed')}>Descartar</button>
+              {replying !== item.id && <button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para responder' : undefined}
+                onClick={() => setReplying(item.id)}>Responder…</button>}
             </> : <button type="button" className="button" onClick={() => void decide(item, 'pending')}>Volver a Pendientes</button>}
             {item.suggestion && <button type="button" className="button" onClick={() => void makeRule(item)}
               title={`${actionLabels[item.suggestion.action]} para todo lo que venga de ${item.suggestion.sender}`}>Crear regla «{item.suggestion.name}»</button>}

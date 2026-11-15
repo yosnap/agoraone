@@ -70,18 +70,31 @@ def _slug(name: str) -> str:
     return slug[:40] or "ambito"
 
 
-def microsoft_login(connection, secrets):
-    """How Microsoft accounts sign in (XOAUTH2 with a token renewed from the Keychain), or None without a client id."""
+def microsoft_token(connection, secrets):
+    """`token(account, refresh)`: a Microsoft access token renewed from the Keychain (IMAP and SMTP), or None
+    without a client id. Raises mail.LoginError with the reason."""
     client = mail_oauth.client_id(connection)
     if not client:
         return None
 
-    def login(imap, account, refresh):
+    def token(account, refresh):
         account_id = account["id"]
         try:
-            token = mail_oauth.access_token(FLOWS, account_id, client, refresh, lambda new: secrets.put(mail.secret_account(account_id), new))
+            return mail_oauth.access_token(FLOWS, account_id, client, refresh, lambda new: secrets.put(mail.secret_account(account_id), new))
         except mail_oauth.OAuthError as error:
             raise mail.LoginError(str(error)) from error
+    return token
+
+
+def microsoft_login(connection, secrets):
+    """How Microsoft accounts sign in (XOAUTH2 with a token renewed from the Keychain), or None without a client id."""
+    renew = microsoft_token(connection, secrets)
+    if not renew:
+        return None
+
+    def login(imap, account, refresh):
+        account_id = account["id"]
+        token = renew(account, refresh)
         try:
             imap.authenticate("XOAUTH2", lambda _: mail_oauth.xoauth2(account["username"], token))
         except imaplib.IMAP4.error as error:

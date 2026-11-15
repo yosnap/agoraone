@@ -19,3 +19,9 @@
 .project-note { display:flex; flex-direction:column; gap:10px; margin:10px 0; padding:12px; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fbfaf3) }
 .project-note-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px }
 .project-note textarea { width:100%; font:inherit; font-size:12px; line-height:1.5; resize:vertical }
+.reply-composer { display:flex; flex-direction:column; gap:10px; margin:10px 0; padding:12px; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fbfaf3) }
+.reply-composer textarea { width:100%; font:inherit; font-size:13px; line-height:1.5; resize:vertical }
+.reply-instructions { flex:1 1 260px }
+.reply-preview { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:0; font-size:13px }
+.reply-preview dt { color:var(--c-6f8379) } .reply-preview dd { margin:0; overflow-wrap:anywhere }
+.reply-body { white-space:pre-wrap; font:inherit; font-size:13px; margin:0; padding:10px; border-radius:8px; background:var(--c-fffffa); border:1px solid var(--c-dfe3d6); max-height:420px; overflow:auto }
