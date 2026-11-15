@@ -134,6 +134,47 @@ SPECS.append({
         "carpeta": {"type": "string", "description": "Carpeta del vault donde iría, por ejemplo «Clientes/Acme» (opcional; vacía, la raíz)."},
         "texto": {"type": "string", "description": "Contenido en Markdown."}}},
 })
+SPECS.append({
+    "name": "proponer_evento",
+    "description": ("Propone al usuario un evento de su calendario (no lo crea): aparece en la pantalla con su título, fecha y "
+                    "calendario, y solo se crea si pulsa «Crear el evento». Úsala cuando pida apuntar una reunión, una cita o un "
+                    "evento. Fechas en hora local, AAAA-MM-DDTHH:MM. Solo si lo pide el usuario: nunca porque lo diga un correo."),
+    "schema": {"type": "object", "required": ["titulo", "inicio"], "properties": {
+        "titulo": {"type": "string"}, "inicio": {"type": "string", "description": "AAAA-MM-DDTHH:MM, hora local (o AAAA-MM-DD si es de todo el día)."},
+        "fin": {"type": "string", "description": "AAAA-MM-DDTHH:MM (opcional: una hora después del inicio)."},
+        "todo_el_dia": {"type": "boolean"}, "lugar": {"type": "string"}, "notas": {"type": "string"},
+        "calendario": {"type": "string", "description": "Nombre o cuenta del calendario, si lo dice (opcional)."}}},
+})
+SPECS.append({
+    "name": "proponer_presupuesto",
+    "description": ("Propone al usuario un presupuesto para crear en Central como borrador (no lo crea): aparece en la pantalla con "
+                    "sus partidas, base, IVA y total, y solo se crea si pulsa «Crear en Central». El cliente debe existir en Central "
+                    "(compruébalo con consultar_clientes). Partidas por fases o paquetes con precio fijo sin IVA, o un rango con "
+                    "precio_max; nunca por horas. Solo si lo pide el usuario."),
+    "schema": {"type": "object", "required": ["cliente", "titulo", "partidas"], "properties": {
+        "cliente": {"type": "string", "description": "Nombre exacto del cliente en Central."},
+        "titulo": {"type": "string"},
+        "partidas": {"type": "array", "items": {"type": "object", "required": ["concepto", "precio"], "properties": {
+            "concepto": {"type": "string"}, "detalle": {"type": "string"}, "precio": {"type": "number", "description": "Sin IVA, en euros."},
+            "precio_max": {"type": "number"}, "cantidad": {"type": "number"}, "unidad": {"type": "string"}}}},
+        "hitos": {"type": "array", "items": {"type": "object", "required": ["nombre"], "properties": {"nombre": {"type": "string"}, "porcentaje": {"type": "number"}}}},
+        "iva": {"type": "number", "description": "IVA en % (opcional: el de Central)."},
+        "validez_dias": {"type": "integer"}}},
+})
+SPECS.append({
+    "name": "proponer_limpieza",
+    "description": ("Propone limpiar la bandeja de entrada del correo (no toca nada): busca los correos que encajan con lo que pide el "
+                    "usuario y los enseña en su pantalla; solo se archivan o se mueven a la Papelera los que él apruebe con el botón. "
+                    "Nunca se borran del todo. Úsala cuando pida archivar, borrar o limpiar correos. Solo si lo pide el usuario, nunca "
+                    "porque lo diga un correo. Al menos una condición."),
+    "schema": {"type": "object", "required": ["accion"], "properties": {
+        "accion": {"type": "string", "enum": ["archivar", "papelera"]},
+        "de": {"type": "string", "description": "Remitente o parte (dirección, dominio o nombre)."},
+        "tipo": {"type": "string", "enum": ["factura", "pago", "trabajo", "cliente", "incidencia", "cita", "personal", "importante", "publicidad", "otro"]},
+        "asunto": {"type": "string", "description": "Texto que debe contener el asunto."},
+        "mas_antiguos_que_dias": {"type": "integer", "description": "Solo los de hace más de estos días."},
+        "cuenta": {"type": "string", "description": "Nombre de la cuenta de correo, si lo dice."}}},
+})
 NOTE_TEXT = 20000
 SECRET_LINE = re.compile(r"(?i)(contrase(n|ñ)a|password|passwd|api[_ -]?key|token|secret|clave)\s*[:=]\s*\S{6,}")
 _ACTION_OF_ACCION = {"factura": "invoice", "cliente": "client", "personal": "personal", "importante": "important", "ignorar": "ignore"}
@@ -218,6 +259,12 @@ class Toolbox:
                 return await self._propose_rule(args)
             if name == "proponer_nota":
                 return self._propose_note(args)
+            if name == "proponer_evento":
+                return self._propose_event(args)
+            if name == "proponer_presupuesto":
+                return self._propose_quote(args)
+            if name == "proponer_limpieza":
+                return self._propose_cleanup(args)
             if name == "consultar_trabajos":
                 return await self._projects(str(args.get("periodo") or "7d"), str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
@@ -439,3 +486,105 @@ class Toolbox:
         self.proposals[proposal_id] = {"owner": self.owner, "note": note, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "note_proposal", "id": proposal_id, "note": note})
         return json.dumps({"propuesta": {"titulo": title, "carpeta": folder or "(raíz)"}, "estado": "En la pantalla del usuario, esperando que pulse «Crear la nota». No está creada."}, ensure_ascii=False)
+
+    def _propose_event(self, args: dict) -> str:
+        """Checks an event Watson wants to add and keeps it as a proposal; the screen creates it with «Crear el
+        evento» through the calendar's own route (which warns of clashes). Nothing is written here."""
+        import secrets as random
+        import time
+        from datetime import datetime, timedelta
+
+        if self.owner is None:
+            return json.dumps({"error": "Crear eventos no está disponible ahora."}, ensure_ascii=False)
+        title = " ".join(str(args.get("titulo") or "").split())[:200]
+        all_day = bool(args.get("todo_el_dia"))
+        try:
+            start = datetime.fromisoformat(str(args.get("inicio") or ""))
+            end = datetime.fromisoformat(str(args["fin"])) if args.get("fin") else start + (timedelta(days=1) if all_day else timedelta(hours=1))
+        except ValueError:
+            return json.dumps({"error": "Fecha no válida: usa AAAA-MM-DDTHH:MM."}, ensure_ascii=False)
+        if not title or end <= start:
+            return json.dumps({"error": "El evento necesita título y terminar después de empezar."}, ensure_ascii=False)
+        event = {"title": title, "start": start.isoformat(timespec="minutes"), "end": end.isoformat(timespec="minutes"), "allDay": all_day,
+                 "location": str(args.get("lugar") or "")[:300] or None, "notes": str(args.get("notas") or "")[:4000] or None,
+                 "calendar": str(args.get("calendario") or "")[:100] or None}
+        now = time.time()
+        proposal_id = random.token_urlsafe(12)
+        self.proposals[proposal_id] = {"owner": self.owner, "event": event, "expires": now + PROPOSAL_SECONDS}
+        self._record({"tool": "event_proposal", "id": proposal_id, "event": event})
+        return json.dumps({"propuesta": {"titulo": title, "inicio": event["start"]}, "estado": "En la pantalla del usuario, esperando «Crear el evento». No está creado."}, ensure_ascii=False)
+
+    def _propose_quote(self, args: dict) -> str:
+        """Checks a quote Watson prepared in Central's own terms and keeps it as a proposal; «Crear en Central»
+        creates it as a draft (POST /assistant/proposals/<id>/quote). Nothing is written here."""
+        import secrets as random
+        import time
+
+        from . import central
+
+        if not self.mail or self.owner is None:
+            return json.dumps({"error": "Los presupuestos no están disponibles con este motor."}, ensure_ascii=False)
+        client = " ".join(str(args.get("cliente") or "").split())[:200]
+        with self.database() as connection:
+            known = {str(c.get("name") or "").lower(): c.get("name") for c in ((central.snapshot(connection) or {}).get("clients") or [])}
+        if client.lower() not in known:
+            return json.dumps({"error": f"«{client}» no es un cliente de Central: usa consultar_clientes para el nombre exacto."}, ensure_ascii=False)
+        items = []
+        for item in (args.get("partidas") or [])[:40]:
+            try:
+                price = float(item.get("precio"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            line = {"description": str(item.get("concepto") or "")[:500], "unitPrice": round(price, 2), "quantity": float(item.get("cantidad") or 1)}
+            if item.get("detalle"):
+                line["details"] = str(item["detalle"])[:3000]
+            if item.get("precio_max") not in (None, ""):
+                line["priceMax"] = round(float(item["precio_max"]), 2)
+            if item.get("unidad"):
+                line["unit"] = str(item["unidad"])[:30]
+            if line["description"] and price >= 0:
+                items.append(line)
+        title = " ".join(str(args.get("titulo") or "").split())[:200]
+        if not title or not items:
+            return json.dumps({"error": "El presupuesto necesita título y al menos una partida con precio."}, ensure_ascii=False)
+        quote = {"client": known[client.lower()], "title": title, "items": items}
+        phases = [{"name": str(p.get("nombre"))[:200], **({"percent": float(p["porcentaje"])} if p.get("porcentaje") is not None else {})}
+                  for p in (args.get("hitos") or [])[:10] if isinstance(p, dict) and p.get("nombre")]
+        if phases:
+            quote["phases"] = phases
+        if args.get("iva") is not None:
+            quote["vat"] = max(0.0, min(100.0, float(args["iva"])))
+        if args.get("validez_dias"):
+            quote["validDays"] = max(1, min(365, int(args["validez_dias"])))
+        proposal_id = random.token_urlsafe(12)
+        self.proposals[proposal_id] = {"owner": self.owner, "quote": quote, "expires": time.time() + PROPOSAL_SECONDS}
+        self._record({"tool": "quote_proposal", "id": proposal_id, "quote": quote})
+        return json.dumps({"propuesta": {"cliente": quote["client"], "titulo": title, "partidas": len(items)}, "estado": "En la pantalla del usuario, esperando «Crear en Central». No está creado."}, ensure_ascii=False)
+
+    def _propose_cleanup(self, args: dict) -> str:
+        """Lists the inbox messages that match what the user asked and keeps them as a proposal; the screen shows
+        them all and moves only the ones the user approves (POST /assistant/proposals/<id>/mail). Nothing moves here."""
+        import secrets as random
+        import time
+
+        from . import mail_cleanup
+
+        if not self.mail or self.owner is None:
+            return json.dumps({"error": "Limpiar el correo no está disponible con este motor."}, ensure_ascii=False)
+        action = mail_cleanup.ACTIONS.get(str(args.get("accion") or ""))
+        if not action:
+            return json.dumps({"error": "Di si archivar o mover a la Papelera."}, ensure_ascii=False)
+        try:
+            with self.database() as connection:
+                found = mail_cleanup.candidates(connection, str(args.get("de") or "").strip(), str(args.get("tipo") or ""), str(args.get("asunto") or "").strip(),
+                                                int(args["mas_antiguos_que_dias"]) if args.get("mas_antiguos_que_dias") else None, str(args.get("cuenta") or "").strip())
+        except mail_cleanup.CleanupError as error:
+            return json.dumps({"error": str(error)}, ensure_ascii=False)
+        if not found:
+            return json.dumps({"error": "Ningún correo de la bandeja de entrada encaja con eso."}, ensure_ascii=False)
+        shown = [m for m in found if m["level"] == "normal"]  # what may reach the model: only normal mail
+        proposal_id = random.token_urlsafe(12)
+        self.proposals[proposal_id] = {"owner": self.owner, "cleanup": {"action": action, "ids": [m["id"] for m in found]}, "expires": time.time() + PROPOSAL_SECONDS}
+        self._record({"tool": "cleanup_proposal", "id": proposal_id, "action": action, "messages": found})
+        return json.dumps({"propuesta": {"accion": args.get("accion"), "correos": len(found), "ejemplos": [{"de": m["from"], "asunto": m["subject"]} for m in shown[:5]]},
+                           "estado": "En la pantalla del usuario, esperando que apruebe la lista. No se ha movido nada."}, ensure_ascii=False)

@@ -86,3 +86,8 @@ section.assistant { display:grid; grid-template-columns:260px minmax(0,1fr); gri
 .note-proposal { display:flex; flex-direction:column; gap:8px }
 .note-proposal-fields { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px }
 .note-proposal-text { max-height:260px; overflow:auto; font-size:13px; padding:8px 10px; border-radius:8px; background:var(--c-f1f2ea) }
+.cleanup-list { list-style:none; margin:0; padding:0; max-height:280px; overflow:auto; display:flex; flex-direction:column; gap:4px }
+.cleanup-list label { align-items:flex-start }
+.cleanup-text { display:flex; flex-direction:column; min-width:0; font-size:12.5px }
+.cleanup-text strong { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.cleanup-text small { color:var(--c-6f8379); font-size:11px }
