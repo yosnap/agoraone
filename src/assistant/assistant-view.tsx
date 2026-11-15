@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import { RuleProposals, useProposals } from './rule-proposals';
 import { DictationButton } from '../ui/dictation-button';
 import { isYes, quickCommand, type QuickResult } from './quick-commands';
+import { NoteProposals, useNoteProposals } from './note-proposals';
 import { speak, stopSpeaking, useSpeaking } from './speech';
 
 // The conversation last open (its number only, in this browser), opened again when coming back to the chat.
@@ -52,6 +53,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const [engine, setEngine] = useState<{ active: string | null; model: string } | null>(null);
   const announced = useAnnouncements();
   const proposals = useProposals();
+  const notes = useNoteProposals();
   const abort = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
   // The conversation on screen, read by answers that finish after the user moved to another one.
@@ -97,12 +99,13 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         else if (event.kind === 'tool' && event.tool === 'clients') onThinking?.({ stage: 'busca', label: 'Consultando los clientes', reading });
         else if (event.kind === 'tool' && event.tool === 'inbox') onThinking?.({ stage: 'busca', label: 'Consultando la Bandeja', reading });
         else if (event.kind === 'tool' && event.tool === 'rule_proposal') proposals.add(event.id, event.rule);
+        else if (event.kind === 'tool' && event.tool === 'note_proposal') notes.add(event.id, event.note);
         else if (event.kind === 'tool' && event.tool === 'read') { reading.push(event.id); onThinking?.({ stage: 'lee', label: `Leyendo «${event.title}»`, reading: [...reading] }); }
         setLive(previous => previous && (
         event.kind === 'stage' ? { ...previous, stage: event.stage, engine: event.engine ?? previous.engine, model: event.model ?? previous.model }
           : event.kind === 'sources' ? (onSources?.(event.sources.map(sourceId)), { ...previous, sources: event.sources })
           : event.kind === 'delta' ? { ...previous, text: previous.text + event.text }
-          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? `Consultó la Bandeja · ${event.count} correos` : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
+          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? `Consultó la Bandeja · ${event.count} correos` : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'note_proposal' ? `Propuso la nota «${event.note.title}»` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
           : previous));
       }, controller.signal);
     } catch (failure) {
@@ -209,6 +212,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         {(hearing === 'recording' || hearing === 'transcribing') && <div className="watson-heard" aria-live="polite">
           {hearing === 'recording' ? '«…»' : 'Transcribiendo…'}<small>{hearing === 'recording' ? 'oyendo · se transcribe en este Mac' : 'en este Mac, con whisper'}</small></div>}
         <RuleProposals state={proposals} discreet={discreet}/>
+        <NoteProposals state={notes}/>
         {error && <LoadError message={error}/>}
         <div ref={end}/>
       </div>

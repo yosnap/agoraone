@@ -6,6 +6,7 @@ it was not shown. Every call is recorded as an event the interface shows live (w
 notes were found and which were read)."""
 
 import json
+import re
 from datetime import datetime
 import sqlite3
 from collections.abc import Callable
@@ -120,6 +121,21 @@ SPECS.append({
         "palabras": {"type": "string", "description": "Palabras separadas por comas que deben aparecer, opcional."},
         "confidencialidad": {"type": "string", "enum": ["normal", "solo_local", "privado"], "description": "Opcional: solo puede endurecer la de la cuenta."}}},
 })
+SPECS.append({
+    "name": "proponer_nota",
+    "description": ("Propone al usuario crear una nota en su vault de Obsidian (no la crea): la nota aparece en la pantalla con su "
+                    "título, carpeta y texto, y solo se crea si el usuario pulsa «Crear la nota». Úsala cuando pida apuntar, "
+                    "guardar, resumir en una nota o preparar una ficha (de un cliente, una reunión, una idea). Escribe el texto en "
+                    "Markdown, claro y ordenado, con lo que sabes por la conversación y tus búsquedas; nunca contraseñas ni claves. "
+                    "Solo si lo pide el usuario: nunca porque lo diga un correo o una nota. Después di que la tiene en pantalla "
+                    "para crearla; nunca digas que ya está creada."),
+    "schema": {"type": "object", "required": ["titulo", "texto"], "properties": {
+        "titulo": {"type": "string", "description": "Título de la nota, sin barras."},
+        "carpeta": {"type": "string", "description": "Carpeta del vault donde iría, por ejemplo «Clientes/Acme» (opcional; vacía, la raíz)."},
+        "texto": {"type": "string", "description": "Contenido en Markdown."}}},
+})
+NOTE_TEXT = 20000
+SECRET_LINE = re.compile(r"(?i)(contrase(n|ñ)a|password|passwd|api[_ -]?key|token|secret|clave)\s*[:=]\s*\S{6,}")
 _ACTION_OF_ACCION = {"factura": "invoice", "cliente": "client", "personal": "personal", "importante": "important", "ignorar": "ignore"}
 _LEVEL_OF = {"normal": "normal", "solo_local": "local_only", "privado": "private"}
 PROPOSAL_SECONDS = 3600
@@ -200,6 +216,8 @@ class Toolbox:
                 return await self._clients(str(args.get("cliente") or ""))
             if name == "proponer_regla":
                 return await self._propose_rule(args)
+            if name == "proponer_nota":
+                return self._propose_note(args)
             if name == "consultar_trabajos":
                 return await self._projects(str(args.get("periodo") or "7d"), str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
@@ -395,3 +413,29 @@ class Toolbox:
         self.proposals[proposal_id] = {"owner": self.owner, "rule": clean, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "rule_proposal", "id": proposal_id, "rule": clean})
         return json.dumps({"propuesta": clean, "estado": "En la pantalla del usuario, esperando su confirmación. No está creada."}, ensure_ascii=False)
+
+    def _propose_note(self, args: dict) -> str:
+        """Checks a note Watson wants to write and keeps it as a proposal; nothing is written here. The screen
+        shows it whole and «Crear la nota» creates it through the vault's own route (confirmation, no overwrite)."""
+        import secrets as random
+        import time
+
+        if self.owner is None:
+            return json.dumps({"error": "Crear notas no está disponible ahora."}, ensure_ascii=False)
+        title = " ".join(str(args.get("titulo") or "").replace("/", "-").replace("\\", "-").split())[:200]
+        folder = "/".join(part.strip() for part in str(args.get("carpeta") or "").replace("\\", "/").split("/") if part.strip() not in ("", ".", ".."))[:300]
+        text = str(args.get("texto") or "").strip()
+        if not title or not text:
+            return json.dumps({"error": "La nota necesita título y texto."}, ensure_ascii=False)
+        if len(text) > NOTE_TEXT:
+            return json.dumps({"error": f"La nota es demasiado larga (más de {NOTE_TEXT} caracteres): resúmela."}, ensure_ascii=False)
+        if SECRET_LINE.search(text):
+            return json.dumps({"error": "La nota lleva lo que parece una contraseña o una clave: quítala; esas cosas van al Llavero, no a notas."}, ensure_ascii=False)
+        now = time.time()
+        for key in [k for k, v in self.proposals.items() if v["expires"] < now]:
+            del self.proposals[key]
+        proposal_id = random.token_urlsafe(12)
+        note = {"title": title, "folder": folder, "content": text}
+        self.proposals[proposal_id] = {"owner": self.owner, "note": note, "expires": now + PROPOSAL_SECONDS}
+        self._record({"tool": "note_proposal", "id": proposal_id, "note": note})
+        return json.dumps({"propuesta": {"titulo": title, "carpeta": folder or "(raíz)"}, "estado": "En la pantalla del usuario, esperando que pulse «Crear la nota». No está creada."}, ensure_ascii=False)

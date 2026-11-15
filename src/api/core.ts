@@ -74,6 +74,7 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'inbox'; filter: string; count: number }
   | { kind: 'tool'; tool: 'clients'; filter: string; count: number }
   | { kind: 'tool'; tool: 'rule_proposal'; id: string; rule: ProposedRule }
+  | { kind: 'tool'; tool: 'note_proposal'; id: string; note: { title: string; folder: string; content: string } }
   | { kind: 'tool'; tool: 'agenda' | 'day' | 'projects'; [key: string]: unknown }
   | { kind: 'done'; engine: string; model: string };
 
@@ -405,3 +406,10 @@ export const getModules = () => core<{ modules: Record<ModuleName, boolean>; lab
 export const putModules = (modules: Partial<Record<ModuleName, boolean>>) => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules', { modules }, 'PUT');
 export const getFirstRun = () => core<{ done: boolean }>('/setup/first-run');
 export const putFirstRun = (done: boolean) => core<{ done: boolean }>('/setup/first-run', { done }, 'PUT');
+/** The vault's review (1.7): what makes things hard to find; changes nothing. */
+export type ReviewNote = { key: string; title: string; folder: string };
+export type VaultReview = { notes: number; folders: number; root: ReviewNote[]; rootCount: number; orphans: ReviewNote[]; orphanCount: number;
+  duplicates: { title: string; notes: ReviewNote[] }[]; duplicateCount: number; tiny: ReviewNote[]; tinyCount: number;
+  lonelyFolders: string[]; lonelyCount: number; crowdedFolders: { folder: string; notes: number }[]; deepFolders: string[]; deepCount: number;
+  secrets: ReviewNote[]; secretCount: number };
+export const getVaultReview = (discreet: boolean) => core<VaultReview>(`/brain/review?discreet=${+discreet}`);
