@@ -116,3 +116,85 @@ def test_carpeta_propuesta_por_ambito(db):
     rule = mail_rules.create_rule(db, {"name": "HK", "action": "invoice", "sender": "p.com", "scopeId": humanitek})
     db.execute("INSERT INTO mail_summary (message_id, kind, source, rule_id, confidentiality, created_at) VALUES (?, 'invoice', 'rule', ?, 'normal', 'x')", (personal, rule))
     assert fiscal.suggested_folder(db, personal) == empresa, "la regla manda sobre la cuenta"
+
+
+def _old(path, seconds=60):
+    """A file that has rested, as one the bot finished writing a while ago."""
+    import os
+    stamp = time.time() - seconds
+    os.utime(path, (stamp, stamp))
+
+
+def test_carpeta_de_entrada_del_bot(db, tmp_path):
+    """What the user's Hermes bot leaves in «Recibos por revisar» becomes a pending receipt; links, hidden,
+    unknown or half-written files are left alone; dismissed or repeated ones move to «Descartados» and one
+    sent again comes back; the original leaves once filed, and only if it is the very same file."""
+    receipts._seen.clear()
+    root = tmp_path / "Autonomo"
+    inbox = root / receipts.INBOX
+    inbox.mkdir(parents=True)
+    (inbox / "ticket.jpg").write_bytes(JPEG)
+    (inbox / ".oculto.jpg").write_bytes(JPEG + b"1")
+    (inbox / "notas.txt").write_text("no es un recibo")
+    (tmp_path / "fuera.jpg").write_bytes(JPEG + b"2")
+    (inbox / "enlace.jpg").symlink_to(tmp_path / "fuera.jpg")
+    for path in inbox.iterdir():
+        if not path.is_symlink():
+            _old(path)
+    (inbox / "escribiendo.jpg").write_bytes(JPEG + b"3")  # just written: not yet
+    db.execute("INSERT INTO fiscal_folder (name, kind, path, created_at) VALUES ('Autónomo', 'autonomo', ?, '2026-11-15')", (str(root),))
+    folder_id = db.execute("SELECT id FROM fiscal_folder").fetchone()[0]
+    opener = lambda: connect(tmp_path / "data" / DB_NAME)  # noqa: E731
+    folders = [(folder_id, root)]
+    assert receipts.import_inbox(opener, tmp_path / "r", folders) == 1
+    assert [(r["name"], r["source"], r["inboxFolder"]) for r in receipts.receipts(db)] == [("ticket.jpg", "inbox", folder_id)]
+    assert receipts.import_inbox(opener, tmp_path / "r", folders) == 0, "una vez traído no se repite"
+    _old(inbox / "escribiendo.jpg")
+    assert receipts.import_inbox(opener, tmp_path / "r", folders) == 1, "ya terminado, entra"
+    row = db.execute("SELECT inbox_name, sha256 FROM receipt WHERE inbox_name = 'ticket.jpg'").fetchone()
+    # Dismissed: set aside, and back if it is sent again.
+    assert receipts.set_aside(root, row["inbox_name"], row["sha256"])
+    db.execute("UPDATE receipt SET state = 'dismissed' WHERE inbox_name = 'ticket.jpg'")
+    assert (inbox / receipts.DISCARDED / "ticket.jpg").exists() and not (inbox / "ticket.jpg").exists()
+    (inbox / "otra-vez.jpg").write_bytes(JPEG)
+    _old(inbox / "otra-vez.jpg")
+    assert receipts.import_inbox(opener, tmp_path / "r", folders) == 1
+    assert db.execute("SELECT state, inbox_name FROM receipt WHERE sha256 = ?", (row["sha256"],)).fetchone()[:] == ("pending", "otra-vez.jpg")
+    # Filing removes only the very same file, never outside the inbox.
+    (inbox / "otra-vez.jpg").write_bytes(JPEG + b" cambiado")
+    assert not receipts.remove_from_inbox(root, "otra-vez.jpg", row["sha256"]), "un archivo cambiado se queda"
+    (inbox / "otra-vez.jpg").write_bytes(JPEG)
+    assert not receipts.remove_from_inbox(root, "../fuera.jpg", row["sha256"]), "nada fuera de la carpeta de entrada"
+    assert receipts.remove_from_inbox(root, "otra-vez.jpg", row["sha256"])
+    db.execute("UPDATE receipt SET state = 'filed' WHERE sha256 = ?", (row["sha256"],))
+    # A repeat of one already filed goes to «Descartados» instead of piling up.
+    (inbox / "repetido.jpg").write_bytes(JPEG)
+    _old(inbox / "repetido.jpg")
+    receipts.import_inbox(opener, tmp_path / "r", folders)
+    assert not (inbox / "repetido.jpg").exists() and (inbox / receipts.DISCARDED / "repetido.jpg").exists()
+    assert (tmp_path / "fuera.jpg").exists()
+
+
+def test_carpeta_de_entrada_con_muchos_archivos_o_como_enlace(db, tmp_path):
+    """The newest files are looked at first, whatever else the folder holds; an inbox that is a link is ignored."""
+    receipts._seen.clear()
+    root = tmp_path / "Autonomo"
+    inbox = root / receipts.INBOX
+    inbox.mkdir(parents=True)
+    for number in range(205):
+        path = inbox / f"viejo-{number}.txt"
+        path.write_text("no es un recibo")
+        _old(path, 3600)
+    (inbox / "nuevo.jpg").write_bytes(JPEG + b"nuevo")
+    _old(inbox / "nuevo.jpg", 30)
+    db.execute("INSERT INTO fiscal_folder (name, kind, path, created_at) VALUES ('A', 'autonomo', ?, '2026-11-15')", (str(root),))
+    folder_id = db.execute("SELECT id FROM fiscal_folder").fetchone()[0]
+    opener = lambda: connect(tmp_path / "data" / DB_NAME)  # noqa: E731
+    assert receipts.import_inbox(opener, tmp_path / "r", [(folder_id, root)]) == 1, "el nuevo entra aunque haya 205 archivos más"
+    other = tmp_path / "Otra"
+    other.mkdir()
+    (tmp_path / "real").mkdir()
+    (tmp_path / "real" / "x.jpg").write_bytes(JPEG + b"x")
+    _old(tmp_path / "real" / "x.jpg")
+    (other / receipts.INBOX).symlink_to(tmp_path / "real")
+    assert receipts.import_inbox(opener, tmp_path / "r", [(folder_id, other)]) == 0, "una carpeta de entrada que es un enlace no se lee"

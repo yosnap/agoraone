@@ -657,15 +657,39 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             upload["window"].close()
         return upload_state()
 
+    def inbox_folders(connection) -> list:
+        found = []
+        for folder in fiscal.folders(connection):
+            try:
+                found.append((folder["id"], fiscal.folder_root(connection, folder["id"])[1]))
+            except fiscal.FiscalError:
+                continue  # a folder moved or deleted since: nothing to bring in from it
+        return found
+
     @router.get("/fiscal/receipts")
     async def list_receipts():
-        return {"receipts": await db(receipts.receipts)}
+        def work(connection):
+            # Files are read with no database lock held; each new receipt is written in its own short transaction.
+            receipts.import_inbox(lambda: connect(settings.data_dir / DB_NAME), receipt_dir, inbox_folders(connection))
+            return receipts.receipts(connection)
+        return {"receipts": await db(work), "inbox": receipts.INBOX}
 
     @router.put("/fiscal/receipts/{receipt_id}")
     async def change_receipt(receipt_id: int, body: ReceiptChange):
-        changed = await db(lambda c: c.execute("UPDATE receipt SET state = ?, decided_at = ? WHERE id = ? AND state != 'filed'",
-                                               (body.state, now(), receipt_id)).rowcount)
-        if not changed:
+        def work(connection):
+            row = connection.execute("SELECT * FROM receipt WHERE id = ? AND state != 'filed'", (receipt_id,)).fetchone()
+            if row is None:
+                return False
+            with transaction(connection):
+                connection.execute("UPDATE receipt SET state = ?, decided_at = ? WHERE id = ?", (body.state, now(), receipt_id))
+            # A dismissed receipt from the bot: its original moves to «Descartados», out of the way.
+            if body.state == "dismissed" and row["source"] == "inbox" and row["inbox_folder"] is not None:
+                try:
+                    receipts.set_aside(fiscal.folder_root(connection, row["inbox_folder"])[1], row["inbox_name"] or "", row["sha256"])
+                except fiscal.FiscalError:
+                    pass
+            return True
+        if not await db(work):
             return refuse(fiscal.FiscalError("Ese recibo no existe o ya está archivado."), 404)
         return {"receipts": await db(receipts.receipts)}
 
@@ -680,6 +704,12 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             with transaction(connection):
                 filed = fiscal.file_invoice(connection, folder, root, data, body.fields.model_dump(), None, [], body.category, receipt_id)
                 connection.execute("UPDATE receipt SET state = 'filed', decided_at = ? WHERE id = ?", (now(), receipt_id))
+            if row["source"] == "inbox" and row["inbox_folder"] is not None:
+                try:
+                    _, inbox_root = fiscal.folder_root(connection, row["inbox_folder"])
+                    receipts.remove_from_inbox(inbox_root, row["inbox_name"] or "", row["sha256"])
+                except fiscal.FiscalError:
+                    pass  # the folder is gone: nothing to tidy up
             return filed
         try:
             return await db(work)

@@ -197,11 +197,12 @@ export const getFolderPlan = (id: number) => core<FolderPlan>(`/fiscal/folders/$
 export const applyFolderPlan = (id: number, moves: { from: string; to: string }[]) =>
   core<{ moved: { from: string; to: string }[]; backup: string; error: string | null }>(`/fiscal/folders/${id}/apply`, { moves });
 export type UploadState = { open: boolean; url?: string; qr?: string; expiresAt?: number; received?: number | null };
-export type Receipt = { id: number; name: string | null; mediaType: string; bytes: number; fields: Partial<InvoiceFields>; uploadedAt: string };
+export type Receipt = { id: number; name: string | null; mediaType: string; bytes: number; fields: Partial<InvoiceFields>; uploadedAt: string;
+  source: 'qr' | 'inbox'; inboxFolder: number | null };
 export const openUpload = () => core<UploadState>('/fiscal/receipts/upload', {});
 export const getUpload = () => core<UploadState>('/fiscal/receipts/upload');
 export const closeUpload = () => core<UploadState>('/fiscal/receipts/upload', undefined, 'DELETE');
-export const getReceipts = () => core<{ receipts: Receipt[] }>('/fiscal/receipts');
+export const getReceipts = () => core<{ receipts: Receipt[]; inbox?: string }>('/fiscal/receipts');
 export const dismissReceipt = (id: number) => core<{ receipts: Receipt[] }>(`/fiscal/receipts/${id}`, { state: 'dismissed' }, 'PUT');
 export const fileReceipt = (id: number, folderId: number, category: Category | null, fields: InvoiceFields) =>
   core<{ id: number; path: string }>(`/fiscal/receipts/${id}/file`, { folderId, category, fields });
