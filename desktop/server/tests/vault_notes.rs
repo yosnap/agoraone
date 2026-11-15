@@ -295,6 +295,15 @@ fn mover_y_renombrar_conserva_el_archivo_copia_antes_y_nunca_pisa() {
     assert_eq!(names, ["Portada.md", "jardín.md"]);
     assert_eq!(by_title(&f, "jardín").id, renamed.id);
 
+    // Into a new folder one level inside an existing one, as when creating; never a new one at the top level.
+    let rev = f.notes.read(&f.id, &renamed.id, false).unwrap().revision;
+    assert_eq!(status(f.notes.move_note(&f.id, &renamed.id, target("Nueva/Huerto", "jardín", &rev), &backups)), 404);
+    assert_eq!(status(f.notes.move_note(&f.id, &renamed.id, target("Proyectos/Vacía", "jardín", &"f".repeat(64)), &backups)), 409);
+    assert!(!f.vault.join("Proyectos/Vacía").exists(), "la carpeta creada para un movimiento fallido se retira");
+    let filed = f.notes.move_note(&f.id, &renamed.id, target("Proyectos/Huerto", "jardín", &rev), &backups).unwrap();
+    assert_eq!(read(f.vault.join("Proyectos/Huerto/jardín.md")), "Plan del jardín\nRegar las TOMATERAS cada mañana.");
+    assert_eq!(by_title(&f, "jardín").id, filed.id);
+
     // A note that became a hard link is not moved.
     let portada = by_title(&f, "Portada");
     let rev = f.notes.read(&f.id, &portada.id, false).unwrap().revision;

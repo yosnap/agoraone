@@ -147,7 +147,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
         </button></li>)}</ul>
       </div> : focus.length > 0 && !fromArea ? <div className="brain-list"><h2>Fuentes de la respuesta</h2>
         <ul>{focus.map(id => <li key={id}><button onClick={() => read(id)}><strong>{titles.get(id)?.title ?? 'Nota no visible ahora'}</strong><small>{titles.get(id)?.folder || ''}</small></button></li>)}</ul>
-      </div> : <BrainSide discreet={discreet} colors={colors} picked={pickedArea} onPick={pickArea} onRead={read}/>}
+      </div> : <BrainSide discreet={discreet} colors={colors} picked={pickedArea} onPick={pickArea} onRead={read} onAsk={setQuestion}/>}
       {!shown && !pickedNode && hubs.length > 0 && <details className="brain-hubs"><summary>Notas más conectadas</summary><div className="brain-list">
         <ul>{hubs.map(node => <li key={node.id}><button onClick={() => read(node.id)}><strong>{node.title}</strong><small>{node.degree} conexiones · {node.folder || 'Raíz'}</small></button></li>)}</ul>
       </div></details>}

@@ -75,6 +75,8 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'clients'; filter: string; count: number }
   | { kind: 'tool'; tool: 'rule_proposal'; id: string; rule: ProposedRule }
   | { kind: 'tool'; tool: 'cleanup_proposal'; id: string; action: 'archive' | 'trash'; messages: CleanupMessage[] }
+  | { kind: 'tool'; tool: 'reorg_proposal'; id: string; summary: string; moves: ReorgMove[] }
+  | { kind: 'tool'; tool: 'vault_outline'; notes: number; folders: number }
   | { kind: 'tool'; tool: 'quote_proposal'; id: string; quote: ProposedQuote }
   | { kind: 'tool'; tool: 'event_proposal'; id: string; event: { title: string; start: string; end: string; allDay: boolean; location: string | null; notes: string | null; calendar: string | null } }
   | { kind: 'tool'; tool: 'note_proposal'; id: string; note: { title: string; folder: string; content: string } }
@@ -423,3 +425,5 @@ export const createQuoteFromProposal = (id: string) => core<{ created: { id?: st
 /** Tidying the mailbox (1.7): the messages Watson listed; only the approved ones move to the archive or the trash. */
 export type CleanupMessage = { id: number; from: string; address: string; subject: string; date: string | null; account: string; level: Level };
 export const cleanMailFromProposal = (id: string, ids: number[]) => core<{ moved: number; problems: string[] }>(`/assistant/proposals/${encodeURIComponent(id)}/mail`, { ids });
+/** Reordering the vault (1.7): one move or rename Watson proposed; `toTitle` null keeps the note's own title. */
+export type ReorgMove = { n: number; source: string; ref: string; title: string; folder: string; toFolder: string; toTitle: string | null; newFolder: boolean; links: number; reason: string };
