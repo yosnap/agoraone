@@ -30,6 +30,7 @@ class FakeSMTP:
 
     def send_message(self, message):
         FakeSMTP.sent.append(message)
+        return {"rechazado@x.es": (550, b"no")} if "rechazado@x.es" in str(message["Cc"] or "") else {}
 
     def quit(self):
         pass
@@ -112,8 +113,11 @@ def test_gmail_no_duplica_enviados_y_errores_claros(tmp_path, monkeypatch):
     assert FakeIMAP.appended == [], "Gmail guarda lo enviado por sí mismo"
     assert client.post("/mail/drafts/preview", json={**draft, "to": "no-es-correo"}, headers=headers).status_code == 422
     assert client.post("/mail/drafts/preview", json={**draft, "body": "   "}, headers=headers).status_code == 422
+    again = client.post("/mail/send", json={"draft": draft, "digest": seal}, headers=headers)
+    assert again.status_code == 422 and "ya se envió" in again.json()["error"] and len(FakeSMTP.sent) == 1, "un sello, un solo envío"
+    other = {**draft, "body": "Otro texto"}
     with pytest.raises(mail_send.SendError, match="contraseña"):
-        mail_send.send(connection, draft, mail_send.digest(draft), "clave-mala")
+        mail_send.send(connection, other, mail_send.digest(other), "clave-mala")
     assert connection.execute("SELECT outcome FROM action_log ORDER BY id DESC LIMIT 1").fetchone()["outcome"] == "failed"
 
 
@@ -126,3 +130,45 @@ def test_lo_privado_no_lo_redacta_el_modelo(tmp_path, monkeypatch):
     draft = {"accountId": other, "to": "ana@cliente.es", "subject": "Re", "body": "x", "replyTo": message}
     with pytest.raises(mail_send.SendError, match="cuenta que recibió"):
         mail_send.send(connection, draft, mail_send.digest(draft), "clave-buena")
+
+
+def test_destinatarios_asunto_hostil_y_rechazos(tmp_path, monkeypatch):
+    client, connection, account, message, _ = setup(tmp_path, monkeypatch)
+    assert mail_send.recipients("a@x.es; b@y.es") == ["a@x.es", "b@y.es"], "el punto y coma también separa"
+    with pytest.raises(mail_send.SendError):
+        mail_send.recipients("sin direcciones")
+    connection.execute("UPDATE mail_message SET subject = ?, message_id = ? WHERE id = ?", ("Hola\u2028Bcc: otro@x.com", "<id\nmalo>", message))
+    draft = mail_send.reply_draft(connection, message)
+    assert "\u2028" not in draft["subject"] and draft["subject"].startswith("Re: Hola")
+    draft["cc"] = "rechazado@x.es"
+    sent = mail_send.send(connection, draft, mail_send.digest(draft), "clave-buena")
+    assert sent["refused"] == ["rechazado@x.es"] and FakeSMTP.sent[-1]["In-Reply-To"] is None, "un id mal formado no llega a nuestras cabeceras"
+
+
+def test_microsoft_saluda_tras_starttls_y_comprueba_el_acceso(monkeypatch):
+    import smtplib
+    calls = []
+
+    class Server:
+        def __init__(self, host, port, timeout):
+            calls.append("connect")
+
+        def starttls(self, context):
+            calls.append("starttls")
+
+        def ehlo(self):
+            calls.append("ehlo")
+
+        def close(self):
+            calls.append("close")
+    monkeypatch.setattr(smtplib, "SMTP", Server)
+    mail_send.open_smtp("smtp.office365.com", 587)
+    assert calls == ["connect", "starttls", "ehlo"], "sin el saludo cifrado, AUTH recibe 503"
+
+    class NoTLS(Server):
+        def starttls(self, context):
+            raise smtplib.SMTPNotSupportedError("no")
+    monkeypatch.setattr(smtplib, "SMTP", NoTLS)
+    with pytest.raises(mail_send.SendError, match="STARTTLS"):
+        mail_send.open_smtp("mail.x.es", 587)
+    assert calls[-1] == "close", "el socket se cierra"

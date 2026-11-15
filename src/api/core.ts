@@ -275,4 +275,4 @@ export type MailPreview = { draft: { accountId: number; to: string[]; cc: string
 export const getReplyDraft = (messageId: number) => core<MailDraft>(`/mail/messages/${messageId}/reply`);
 export const composeReply = (messageId: number, instructions: string) => core<{ body: string }>(`/mail/messages/${messageId}/compose`, { instructions });
 export const previewMail = (draft: MailDraft) => core<MailPreview>('/mail/drafts/preview', draft);
-export const sendMail = (draft: MailDraft, digest: string) => core<{ sent: boolean; savedToSent: boolean }>('/mail/send', { draft, digest });
+export const sendMail = (draft: MailDraft, digest: string) => core<{ sent: boolean; savedToSent: boolean; refused: string[] }>('/mail/send', { draft, digest });

@@ -10,6 +10,7 @@ import re
 import smtplib
 import sqlite3
 import ssl
+import threading
 import time
 from email.headerregistry import Address
 from email.message import EmailMessage
@@ -26,6 +27,11 @@ _ADDRESS = re.compile(r"^[^@\s<>,;\"]+@[^@\s<>,;\"]+\.[^@\s<>,;\"]+$")
 # Gmail and Outlook keep what goes through their SMTP in «Sent» by themselves; a copy would be twice.
 SAVES_ITSELF = {"gmail", "microsoft"}
 SENT_NAMES = ("Sent", "Sent Messages", "Sent Items", "Enviados", "Elementos enviados", "INBOX.Sent")
+SAVES_ITSELF_HOSTS = ("gmail.com", "googlemail.com", "office365.com", "outlook.com")  # Workspace or Exchange added as «other»
+_LINE_BREAKS = re.compile(r"[\r\n\u0085\u2028\u2029\x00-\x1f\x7f]+")
+_MESSAGE_ID = re.compile(r"^<[^<>\s]{1,250}>$")
+_SENDING: set[str] = set()  # seals being sent right now: a second press waits for nothing and is refused
+_SENDING_LOCK = threading.Lock()
 
 
 class SendError(RuntimeError):
@@ -36,7 +42,10 @@ def recipients(text: str | list[str]) -> list[str]:
     """The addresses of a To or Cc field (text, or the list a cleaned draft holds), checked; a malformed one
     stops the send."""
     text = ", ".join(text) if isinstance(text, list) else text or ""
+    text = text.replace(";", ",")  # «a@x.es; b@y.es», as many mail apps write it
     found = [address.strip() for _, address in getaddresses([text]) if address.strip()]
+    if text.strip(" ,") and not found:
+        raise SendError(f"No se entienden las direcciones «{text.strip()[:80]}».")
     for address in found:
         if not _ADDRESS.match(address):
             raise SendError(f"«{address}» no es una dirección válida.")
@@ -50,7 +59,7 @@ def clean(draft: dict) -> dict:
         raise SendError("Falta el destinatario.")
     if len(to) + len(cc) > MAX_RECIPIENTS:
         raise SendError(f"Como mucho {MAX_RECIPIENTS} destinatarios.")
-    subject = re.sub(r"[\r\n]+", " ", draft.get("subject") or "").strip()[:300]
+    subject = _LINE_BREAKS.sub(" ", draft.get("subject") or "").strip()[:300]
     body = draft.get("body") or ""
     if not body.strip():
         raise SendError("El mensaje está vacío.")
@@ -73,7 +82,15 @@ def level_of(connection: sqlite3.Connection, message_id: int) -> str:
     if message is None:
         raise SendError("Ese correo ya no está.")
     rule = mail_rules.first_match(mail_rules.enabled_rules(connection), message)
-    return mail_rules.stricter(message["account_level"], rule["confidentiality"] if rule else None)
+    level = mail_rules.stricter(message["account_level"], rule["confidentiality"] if rule else None)
+    # What the Bandeja recorded when it decided the card counts too (a rule turned off later does not loosen it).
+    stored = connection.execute("SELECT confidentiality FROM mail_summary WHERE message_id = ?", (message_id,)).fetchone()
+    return mail_rules.stricter(level, stored["confidentiality"]) if stored else level
+
+
+def _message_ids(value: str | None) -> list[str]:
+    """Only well-formed message ids from a received mail (a hostile header never reaches ours)."""
+    return [token for token in (value or "").split() if _MESSAGE_ID.match(token)]
 
 
 def reply_draft(connection: sqlite3.Connection, message_id: int) -> dict:
@@ -81,7 +98,7 @@ def reply_draft(connection: sqlite3.Connection, message_id: int) -> dict:
     row = connection.execute("SELECT * FROM mail_message WHERE id = ?", (message_id,)).fetchone()
     if row is None:
         raise SendError("Ese correo ya no está.")
-    subject = row["subject"] or ""
+    subject = _LINE_BREAKS.sub(" ", row["subject"] or "").strip()
     if not re.match(r"^\s*(re|rv)\s*:", subject, re.I):
         subject = f"Re: {subject}".strip()
     when = row["sent_at"] or row["received_at"]
@@ -102,9 +119,10 @@ def build(account: sqlite3.Row, draft: dict, original: sqlite3.Row | None) -> Em
     message["Subject"] = draft["subject"]
     message["Date"] = format_datetime(datetime.now(timezone.utc))
     message["Message-ID"] = make_msgid(domain=(address or account["address"]).split("@")[-1])
-    if original is not None and original["message_id"]:
-        message["In-Reply-To"] = original["message_id"]
-        message["References"] = original["message_id"] if not original["in_reply_to"] else f"{original['in_reply_to']} {original['message_id']}"
+    own = _message_ids(original["message_id"])[:1] if original is not None else []
+    if own:
+        message["In-Reply-To"] = own[0]
+        message["References"] = " ".join((_message_ids(original["in_reply_to"]) + own)[-10:])
     message.set_content(draft["body"])
     return message
 
@@ -112,9 +130,19 @@ def build(account: sqlite3.Row, draft: dict, original: sqlite3.Row | None) -> Em
 def open_smtp(host: str, port: int):
     context = ssl.create_default_context()
     if port == 465:
-        return smtplib.SMTP_SSL(host, port, context=context, timeout=TIMEOUT)
+        client = smtplib.SMTP_SSL(host, port, context=context, timeout=TIMEOUT)
+        client.ehlo()
+        return client
     client = smtplib.SMTP(host, port, timeout=TIMEOUT)
-    client.starttls(context=context)  # never in clear: without STARTTLS this raises and nothing is sent
+    try:
+        client.starttls(context=context)  # never in clear: without STARTTLS this raises and nothing is sent
+        client.ehlo()  # the greeting again, now encrypted: AUTH without it gets «503 send hello first»
+    except smtplib.SMTPNotSupportedError as error:
+        client.close()
+        raise SendError("El servidor de salida no admite conexión cifrada (STARTTLS): no se envía en claro.") from error
+    except BaseException:
+        client.close()
+        raise
     return client
 
 
@@ -144,6 +172,23 @@ def send(connection: sqlite3.Connection, draft: dict, sealed: str, secret: str |
     draft = clean(draft)
     if digest(draft) != sealed:
         raise SendError("El borrador cambió desde la vista previa: revísalo y confirma otra vez.")
+    with _SENDING_LOCK:  # one press, one mail: the same seal is never sent twice
+        if sealed in _SENDING or _already_sent(connection, sealed):
+            raise SendError("Este correo ya se envió. Para mandar otro, cámbialo y vuelve a la vista previa.")
+        _SENDING.add(sealed)
+    try:
+        return _send(connection, draft, sealed, secret, token, smtp_opener, imap_opener)
+    finally:
+        with _SENDING_LOCK:
+            _SENDING.discard(sealed)
+
+
+def _already_sent(connection: sqlite3.Connection, sealed: str) -> bool:
+    return connection.execute("SELECT 1 FROM action_log WHERE action = 'mail.send' AND outcome = 'done' AND json_extract(detail, '$.seal') = ?",
+                              (sealed,)).fetchone() is not None
+
+
+def _send(connection: sqlite3.Connection, draft: dict, sealed: str, secret, token, smtp_opener, imap_opener) -> dict:
     account = connection.execute("SELECT * FROM mail_account WHERE id = ?", (draft["accountId"],)).fetchone()
     if account is None or not account["enabled"]:
         raise SendError("Esa cuenta no está activa.")
@@ -156,9 +201,14 @@ def send(connection: sqlite3.Connection, draft: dict, sealed: str, secret: str |
         original = connection.execute("SELECT * FROM mail_message WHERE id = ? AND account_id = ?", (draft["replyTo"], account["id"])).fetchone()
         if original is None:
             raise SendError("Solo se responde desde la cuenta que recibió el correo.")
-    message = build(account, draft, original)
     detail = {"accountId": account["id"], "to": draft["to"], "cc": draft["cc"], "subject": draft["subject"],
-              "messageId": message["Message-ID"], "replyTo": draft["replyTo"]}
+              "replyTo": draft["replyTo"], "seal": sealed}
+    try:
+        message = build(account, draft, original)
+    except ValueError as error:  # an address or header the mail library refuses
+        _log(connection, "failed", detail)
+        raise SendError("Algún destinatario o el asunto no se pueden enviar tal cual: revísalos.") from error
+    detail["messageId"] = message["Message-ID"]
     try:
         client = smtp_opener(account["smtp_host"], account["smtp_port"])
         try:
@@ -166,10 +216,14 @@ def send(connection: sqlite3.Connection, draft: dict, sealed: str, secret: str |
                 bearer = token(account, secret) if token else None
                 if not bearer:
                     raise SendError("Falta conectar la cuenta con Microsoft.")
-                client.auth("XOAUTH2", lambda challenge=None: mail_oauth_line(account["username"], bearer), initial_response_ok=True)
+                if not client.has_extn("auth"):
+                    raise SendError("El servidor de salida no ofrece iniciar sesión.")
+                code, _ = client.auth("XOAUTH2", lambda challenge=None: mail_oauth_line(account["username"], bearer), initial_response_ok=True)
+                if code != 235:  # smtplib takes 503 as success
+                    raise SendError("Outlook rechazó el acceso al enviar: vuelve a conectar la cuenta con Microsoft.")
             else:
                 client.login(account["username"], secret)
-            client.send_message(message)
+            refused = client.send_message(message)
         finally:
             try:
                 client.quit()
@@ -178,14 +232,23 @@ def send(connection: sqlite3.Connection, draft: dict, sealed: str, secret: str |
     except SendError:
         _log(connection, "failed", detail)
         raise
-    except (smtplib.SMTPException, OSError, ssl.SSLError) as error:
+    except mail.LoginError as error:
+        _log(connection, "failed", detail)
+        raise SendError(str(error)) from error
+    except (smtplib.SMTPException, OSError, ssl.SSLError, ValueError) as error:
         _log(connection, "failed", detail)
         raise SendError(_explain(error)) from error
-    saved = account["provider"] in SAVES_ITSELF or account["auth"] == "microsoft"
+    # From here the mail has left: nothing below may look like a failure (trying again would send it twice).
+    refused_list = sorted(refused or {})
+    saved = (account["provider"] in SAVES_ITSELF or account["auth"] == "microsoft"
+             or (account["smtp_host"] or "").lower().endswith(SAVES_ITSELF_HOSTS))
     if not saved:
         saved = _keep_copy(account, secret, message, imap_opener)
-    _log(connection, "done", {**detail, "savedToSent": saved})
-    return {"sent": True, "savedToSent": saved, "messageId": message["Message-ID"]}
+    try:
+        _log(connection, "done", {**detail, "savedToSent": saved, "refused": refused_list})
+    except sqlite3.Error:
+        pass
+    return {"sent": True, "savedToSent": saved, "messageId": message["Message-ID"], "refused": refused_list}
 
 
 def mail_oauth_line(user: str, token: str) -> str:
@@ -203,7 +266,7 @@ def _keep_copy(account: sqlite3.Row, secret: str, message: EmailMessage, imap_op
             folder = _sent_folder(client)
             if not folder:
                 return False
-            quoted = folder if re.fullmatch(r"[\w.\-/]+", folder) else '"' + folder.replace('"', '\\"') + '"'
+            quoted = folder if re.fullmatch(r"[\w.\-/]+", folder) else '"' + folder.replace("\\", "\\\\").replace('"', '\\"') + '"'
             status, _ = client.append(quoted, "(\\Seen)", imaplib.Time2Internaldate(time.time()), message.as_bytes())
             return status == "OK"
         finally:

@@ -100,11 +100,12 @@ def mail_send_router(settings: Settings, secrets, drafter=None) -> APIRouter:
             return refuse(error)
 
         def account(connection):
-            return connection.execute("SELECT address FROM mail_account WHERE id = ?", (draft["accountId"],)).fetchone()
+            return connection.execute("SELECT address, label FROM mail_account WHERE id = ?", (draft["accountId"],)).fetchone()
         found = await db(account)
         if found is None:
             return refuse(mail_send.SendError("Esa cuenta no existe."))
-        return {"draft": draft, "from": found["address"], "digest": mail_send.digest(draft), "attachments": []}
+        sender = f"{found['label']} <{found['address']}>" if found["label"] else found["address"]
+        return {"draft": draft, "from": sender, "digest": mail_send.digest(draft), "attachments": []}
 
     @router.post("/mail/send", status_code=201)
     async def send(body: SendIn):
