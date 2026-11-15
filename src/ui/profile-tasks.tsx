@@ -8,7 +8,10 @@ import { MarkdownField } from './markdown-field';
 // explicit button press and goes through Hermes' own functions; deleting and archiving ask first.
 type Busy = { busy: string; run: (key: string, action: () => Promise<unknown>) => Promise<boolean> };
 
-function useAction(onChanged: () => void): Busy & { error: string; done: string; say: (text: string) => void } {
+export type ActionState = Busy & { error: string; done: string; say: (text: string) => void };
+
+/** One busy state and one place for the result messages, shared by a list's items. */
+export function useAction(onChanged: () => void): ActionState {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
@@ -66,7 +69,7 @@ export function JobManager<J extends ScheduledJob>({ profileId, jobs, gateway, o
           {job.enabled ? <button type="button" disabled={!!action.busy} onClick={() => action.run(`pause:${job.id}`, () => changeJob(profileId, job.id!, { action: 'pause' }))}>Pausar</button>
             : <button type="button" disabled={!!action.busy} onClick={() => action.run(`resume:${job.id}`, () => changeJob(profileId, job.id!, { action: 'resume' }))}>Reanudar</button>}
           <button type="button" disabled={!!action.busy} onClick={async () => { if (await action.run(`run:${job.id}`, () => changeJob(profileId, job.id!, { action: 'run' })))
-            action.say(gateway === 'running' ? `«${job.name}» queda marcada: el gateway de Hermes la ejecutará en su próximo ciclo si atiende las tareas de este perfil.` : `«${job.name}» queda marcada para ejecutarse, pero el gateway de Hermes no está en marcha: se ejecutará cuando arranque.`); }}>{action.busy === `run:${job.id}` ? 'Marcando…' : 'Ejecutar ahora'}</button>
+            action.say(gateway === 'running' ? `«${job.name}» queda marcada: el gateway de Hermes la ejecutará en su próximo ciclo si atiende las tareas de este perfil.` : gateway === 'unknown' ? `«${job.name}» queda marcada: se ejecutará cuando el gateway de Hermes la recoja.` : `«${job.name}» queda marcada para ejecutarse, pero el gateway de Hermes no está en marcha: se ejecutará cuando arranque.`); }}>{action.busy === `run:${job.id}` ? 'Marcando…' : 'Ejecutar ahora'}</button>
           <button type="button" disabled={!!action.busy} onClick={() => edit(job.id!)}>Editar</button>
           {confirm === job.id ? <><button type="button" className="danger" disabled={!!action.busy} onClick={async () => { await action.run(`remove:${job.id}`, () => changeJob(profileId, job.id!, { action: 'remove' })); setConfirm(null); }}>Eliminar definitivamente</button>
             <button type="button" onClick={() => setConfirm(null)}>No</button></>
@@ -100,7 +103,7 @@ export function BoardManager({ profileId, board, onChanged }: { profileId: strin
   return <div className="task-manager">
     {board.byStatus.length ? <p>{board.byStatus.map(item => `${statusLabel(item.status)}: ${item.count}`).join(' · ')}</p> : <p>Sin tareas asignadas a este perfil en el tablero.</p>}
     {!!board.open.length && <ul>{board.open.map((task, i) => <li key={task.id ?? i}>{task.title} · {statusLabel(task.status)}
-      {task.id && <CardControls profileId={profileId} card={{ id: task.id, title: task.title, status: task.status }} onChanged={onChanged}/>}
+      {task.id && <CardControls profileId={profileId} card={{ id: task.id, title: task.title, status: task.status }} action={action}/>}
     </li>)}</ul>}
     {action.error && <p role="alert" className="error">{action.error}</p>}
     {action.done && <p role="status" className="task-done">{action.done}</p>}
@@ -115,9 +118,9 @@ export function BoardManager({ profileId, board, onChanged }: { profileId: strin
   </div>;
 }
 
-/** The actions on one kanban card (complete, block or unblock, comment, archive), each through Hermes' own functions. */
-export function CardControls({ profileId, card, onChanged }: { profileId: string; card: { id: string; title: string; status: string }; onChanged: () => void }) {
-  const action = useAction(onChanged);
+/** The actions on one kanban card (complete, block or unblock, comment, archive), each through Hermes' own functions.
+ * The list owns `action`, so its messages stay when a completed or archived card leaves the list. */
+export function CardControls({ profileId, card, action }: { profileId: string; card: { id: string; title: string; status: string }; action: ActionState }) {
   const [note, setNote] = useState<{ id: string; kind: 'comment' | 'block'; text: string } | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
   return <>
@@ -137,7 +140,5 @@ export function CardControls({ profileId, card, onChanged }: { profileId: string
           : <div className="task-field"><span>Comentario</span><MarkdownField label="Comentario" value={note.text} onChange={text => setNote({ ...note, text })} minHeight={90} autoFocus/></div>}
         <div><button type="submit" className="primary" disabled={!!action.busy}>{note.kind === 'block' ? 'Bloquear' : 'Añadir comentario'}</button><button type="button" onClick={() => setNote(null)}>Cancelar</button></div>
       </form>}
-    {action.error && <p role="alert" className="error">{action.error}</p>}
-    {action.done && <p role="status" className="task-done">{action.done}</p>}
   </>;
 }

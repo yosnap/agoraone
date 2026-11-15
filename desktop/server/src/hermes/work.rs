@@ -357,6 +357,8 @@ fn board(root: &Path, profiles: &[ProfileTarget], now_s: f64) -> Value {
             let mut usage = Usage::default();
             let mut paired = false;
             let mut total: Option<f64> = None;
+            // Every run in the window counts for the period totals, by when it ran; the list shows 20.
+            let mut measured: Vec<(f64, Option<f64>, Option<Usage>)> = Vec::new();
             let card_runs: Vec<Value> = runs_by_task
                 .remove(id)
                 .unwrap_or_default()
@@ -375,11 +377,16 @@ fn board(root: &Path, profiles: &[ProfileTarget], now_s: f64) -> Value {
                         total = Some(total.unwrap_or(0.0) + d);
                     }
                     let profile = token(run.get("profile"));
+                    let mut run_usage = None;
                     if let (Some(name), Some(s)) = (profile.as_deref(), started)
                         && let Some(session) = workers.get_mut(name).and_then(|list| take_nearest(list, s))
                     {
                         usage.add(&session.usage);
                         paired = true;
+                        run_usage = Some(session.usage);
+                    }
+                    if let Some(s) = started {
+                        measured.push((s, seconds, run_usage));
                     }
                     (index < RUNS_SHOWN).then(|| {
                         json!({ "profile": profile, "status": status, "outcome": token(run.get("outcome")),
@@ -406,6 +413,7 @@ fn board(root: &Path, profiles: &[ProfileTarget], now_s: f64) -> Value {
                     "runs": card_runs,
                     "seconds": total,
                     "tokens": if paired { usage.json() } else { Value::Null },
+                    "totals": totals(&measured, now_s),
                 }),
             ));
         }

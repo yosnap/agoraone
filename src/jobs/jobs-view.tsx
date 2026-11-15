@@ -4,7 +4,7 @@ import type { HermesWork, WorkCard, WorkTask, WorkTokens } from '../../shared/he
 import { statusLabel, when } from '../data/activity-format';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
-import { CardControls, JobManager } from '../ui/profile-tasks';
+import { CardControls, JobManager, useAction, type ActionState } from '../ui/profile-tasks';
 import { cost, count, duration, tokens } from './work-format';
 import './jobs.css';
 
@@ -34,14 +34,14 @@ function TaskRuns({ task, period, discreet }: { task: WorkTask; period: Period; 
   </div>;
 }
 
-function Card({ card, label, discreet, onChanged }: { card: WorkCard; label: string; discreet: boolean; onChanged: () => void }) {
+function Card({ card, label, discreet, action }: { card: WorkCard; label: string; discreet: boolean; action: ActionState }) {
   const open = !['done', 'archived'].includes(card.status);
   return <li className="work-card">
     <strong>{discreet ? '•••' : card.title}</strong>
-    <small>{label} · {statusLabel(card.status)}{card.board !== 'default' ? ` · tablero ${card.board}` : ''}{card.createdBy === 'agoraone' ? ' · encargo de AgoraOne' : ''}</small>
+    <small>{label} · {statusLabel(card.status)}{card.board !== 'default' && !discreet ? ` · tablero ${card.board}` : ''}{card.createdBy === 'agoraone' ? ' · encargo de AgoraOne' : ''}</small>
     <small>Creada {when(card.createdAt)}{card.runs.length ? ` · ${card.runs.length === 1 ? '1 ejecución' : `${card.runs.length} ejecuciones`}` : ''}
       {card.seconds !== null ? ` · ${duration(card.seconds)}` : ''}{card.tokens && !discreet ? ` · ${tokens(card.tokens)}` : ''}</small>
-    {open && card.id && card.profileId && card.board === 'default' && !discreet && <CardControls profileId={card.profileId} card={{ id: card.id, title: card.title, status: card.status }} onChanged={onChanged}/>}
+    {open && card.id && card.profileId && card.board === 'default' && !discreet && <CardControls profileId={card.profileId} card={{ id: card.id, title: card.title, status: card.status }} action={action}/>}
   </li>;
 }
 
@@ -50,45 +50,51 @@ function Card({ card, label, discreet, onChanged }: { card: WorkCard; label: str
 export function JobsView({ discreet }: { discreet: boolean }) {
   const [work, setWork] = useState<HermesWork | null>(null);
   const [labels, setLabels] = useState<Record<string, string>>({});
-  const [gateway, setGateway] = useState('missing');
+  // Unknown until read: no «not running» warning on a guess.
+  const [gateway, setGateway] = useState('unknown');
   const [error, setError] = useState('');
   const [period, setPeriod] = useState<Period>('7d');
   const [profile, setProfile] = useState(ALL);
   const started = useRef(false);
+  const request = useRef(0);
+  // The refresh lives while the section is on screen: leaving it stops the timer.
+  const timer = useRef<number | undefined>(undefined);
+  const holder = useRef((node: HTMLElement | null) => { if (!node) window.clearTimeout(timer.current); }).current;
   const load = async () => {
+    const mine = ++request.current;
     try {
       const [found, activity] = await Promise.all([getHermesWork(), getHermesActivity().catch(() => null)]);
+      if (mine !== request.current) return;
       setWork(found); setError('');
-      if (activity) setGateway(activity.gateway.state);
-    } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudieron leer los trabajos.'); }
+      setGateway(activity ? activity.gateway.state : 'unknown');
+    } catch (failure) { if (mine === request.current) setError(failure instanceof Error ? failure.message : 'No se pudieron leer los trabajos.'); }
   };
+  const action = useAction(() => void load());
   if (!started.current) {
     started.current = true;
     void load();
     getHermesCatalog().then(catalog => setLabels(Object.fromEntries(catalog.profiles.map(p => [p.id, p.label || p.name])))).catch(() => undefined);
-    const tick = () => { if (document.visibilityState === 'visible') void load(); window.setTimeout(tick, REFRESH); };
-    window.setTimeout(tick, REFRESH);
+    const tick = () => {
+      // Not while a comment, block reason or task is being written: a card moving column would lose it.
+      if (document.visibilityState === 'visible' && !document.querySelector('section.jobs .task-form')) void load();
+      timer.current = window.setTimeout(tick, REFRESH);
+    };
+    timer.current = window.setTimeout(tick, REFRESH);
   }
   const labelOf = (id: string | null, fallback: string | null = null) => (id && labels[id]) || fallback || id || 'sin perfil';
   const profiles = work ? Object.entries(work.profiles).filter(([id]) => profile === ALL || id === profile) : [];
   const cards = (work?.board?.cards ?? []).filter(card => profile === ALL || card.profileId === profile);
-  // The period's totals: task runs plus the cards created in it.
-  const since = Date.now() - periods.find(p => p.id === period)!.days * 86_400_000;
-  const sum: { runs: number; seconds: number; tokens: WorkTokens; measured: boolean } = { runs: 0, seconds: 0, tokens: { input: 0, output: 0, costUsd: null }, measured: false };
-  const addTokens = (used: WorkTokens) => {
-    sum.tokens.input += used.input; sum.tokens.output += used.output; sum.measured = true;
-    if (used.costUsd !== null) sum.tokens.costUsd = (sum.tokens.costUsd ?? 0) + used.costUsd;
+  // The period's totals: every run of the tasks and cards by when it ran.
+  const sum: { runs: number; seconds: number; tokens: WorkTokens; measured: number } = { runs: 0, seconds: 0, tokens: { input: 0, output: 0, costUsd: null }, measured: 0 };
+  const add = (total: WorkTask['totals'][Period]) => {
+    sum.runs += total.runs; sum.seconds += total.seconds; sum.measured += total.measured;
+    sum.tokens.input += total.tokens.input; sum.tokens.output += total.tokens.output;
+    if (total.tokens.costUsd !== null) sum.tokens.costUsd = (sum.tokens.costUsd ?? 0) + total.tokens.costUsd;
   };
-  for (const [, entry] of profiles) for (const task of entry.tasks ?? []) {
-    const total = task.totals[period];
-    sum.runs += total.runs; sum.seconds += total.seconds;
-    if (total.measured) addTokens(total.tokens);
-  }
-  for (const card of cards) if (card.createdAt && Date.parse(card.createdAt) >= since) {
-    sum.runs += card.runs.length; sum.seconds += card.seconds ?? 0;
-    if (card.tokens) addTokens(card.tokens);
-  }
-  return <section className="page jobs" aria-labelledby="jobs-title">
+  for (const [, entry] of profiles) for (const task of entry.tasks ?? []) add(task.totals[period]);
+  for (const card of cards) if (card.totals) add(card.totals[period]);
+  const partial = sum.measured > 0 && sum.measured < sum.runs;
+  return <section className="page jobs" aria-labelledby="jobs-title" ref={holder}>
     <div className="eyebrow">TRABAJOS{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="jobs-title">Trabajos</h1>
     <p className="page-lead">Las tareas programadas y el kanban de todos tus perfiles de Hermes, con el tiempo y los tokens que Hermes ha registrado en cada ejecución. Los cambios usan las funciones de Hermes y solo ocurren al pulsar cada botón.</p>
@@ -104,11 +110,11 @@ export function JobsView({ discreet }: { discreet: boolean }) {
       <dl className="work-totals" aria-label="Totales del periodo">
         <div><dt>Ejecuciones</dt><dd>{sum.runs}</dd></div>
         <div><dt>Tiempo</dt><dd>{duration(sum.seconds)}</dd></div>
-        <div><dt>Tokens</dt><dd>{discreet ? '•••' : sum.measured ? count(sum.tokens.input + sum.tokens.output) : 'sin medir'}</dd></div>
-        <div><dt>Coste estimado</dt><dd>{discreet ? '•••' : cost(sum.tokens.costUsd) ?? '—'}</dd></div>
+        <div><dt>Tokens{partial ? ' (parcial)' : ''}</dt><dd>{discreet ? <span aria-label="oculto">•••</span> : sum.measured ? count(sum.tokens.input + sum.tokens.output) : 'sin medir'}</dd></div>
+        <div><dt>Coste estimado{partial ? ' (parcial)' : ''}</dt><dd>{discreet ? <span aria-label="oculto">•••</span> : cost(sum.tokens.costUsd) ?? '—'}</dd></div>
       </dl>
       <h2>Tareas programadas</h2>
-      {gateway !== 'running' && <p className="fiscal-warning">El gateway de Hermes no está en marcha: las tareas no se ejecutarán hasta que arranque.</p>}
+      {['stopped', 'stale', 'missing'].includes(gateway) && <p className="fiscal-warning">El gateway de Hermes no está en marcha: las tareas no se ejecutarán hasta que arranque.</p>}
       {profiles.every(([, entry]) => !entry.tasks?.length) ? <p className="muted">Ningún perfil tiene tareas programadas.</p>
         : profiles.filter(([, entry]) => entry.tasks?.length).map(([id, entry]) => <article key={id} className="card work-profile">
           <h3>{labelOf(id, entry.name)}</h3>
@@ -116,6 +122,8 @@ export function JobsView({ discreet }: { discreet: boolean }) {
             : <JobManager profileId={id} jobs={entry.tasks} gateway={gateway} onChanged={() => void load()} extra={task => <TaskRuns task={task} period={period} discreet={discreet}/>}/>}
         </article>)}
       <h2>Kanban</h2>
+      {action.error && <p role="alert" className="error">{action.error}</p>}
+      {action.done && !discreet && <p role="status" className="task-done">{action.done}</p>}
       {!work.board ? <p className="muted">El tablero kanban de Hermes no está disponible.</p>
         : !cards.length ? <p className="muted">No hay tarjetas{profile === ALL ? '' : ' de este perfil'} en el tablero.</p>
         : <div className="work-board">{columns.map(column => {
@@ -123,7 +131,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
           const inColumn = cards.filter(card => column.states.includes(card.status) || (column === columns[0] && !columns.some(c => c.states.includes(card.status))));
           return <section key={column.title} className="work-column" aria-label={column.title}>
             <h3>{column.title} <span className="muted">{inColumn.length}</span></h3>
-            <ul>{inColumn.map((card, index) => <Card key={card.id ?? index} card={card} label={labelOf(card.profileId, card.assignee)} discreet={discreet} onChanged={() => void load()}/>)}</ul>
+            <ul>{inColumn.map((card, index) => <Card key={card.id ?? index} card={card} label={labelOf(card.profileId, card.assignee)} discreet={discreet} action={action}/>)}</ul>
           </section>;
         })}</div>}
     </>}

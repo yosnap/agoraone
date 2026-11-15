@@ -40,9 +40,11 @@ const sample = { schema: 1, readAt: iso(now), profiles: {
   beta: { name: 'beta', tasks: [] } },
   board: { cards: [
     { id: 't1', board: 'default', title: 'Tarjeta en curso', assignee: 'alfa', profileId: 'alfa', status: 'running', priority: 0, createdBy: 'agoraone', createdAt: iso(now - 600_000),
-      startedAt: iso(now - 300_000), completedAt: null, runs: [{ profile: 'alfa', status: 'running', outcome: null, startedAt: iso(now - 300_000), endedAt: null, seconds: 300 }], seconds: 300, tokens: null },
+      startedAt: iso(now - 300_000), completedAt: null, runs: [{ profile: 'alfa', status: 'running', outcome: null, startedAt: iso(now - 300_000), endedAt: null, seconds: 300 }], seconds: 300, tokens: null,
+      totals: { '24h': period(1, 300, 0, tokens(0, 0, null)), '7d': period(1, 300, 0, tokens(0, 0, null)), '30d': period(1, 300, 0, tokens(0, 0, null)) } },
     { id: 't2', board: 'default', title: 'Tarjeta hecha', assignee: 'beta', profileId: 'beta', status: 'done', priority: 0, createdBy: 'user', createdAt: iso(now - 86_400_000 * 2),
-      startedAt: null, completedAt: iso(now - 86_400_000), runs: [], seconds: 600, tokens: tokens(3000, 400, 0.25) }] } };
+      startedAt: null, completedAt: iso(now - 86_400_000), runs: [], seconds: 600, tokens: tokens(3000, 400, 0.25),
+      totals: { '24h': period(0, 0, 0, tokens(0, 0, null)), '7d': period(0, 0, 0, tokens(0, 0, null)), '30d': period(0, 0, 0, tokens(0, 0, null)) } }] } };
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [], changed = [];
 page.on('pageerror', e => errors.push(e.message));
@@ -53,7 +55,7 @@ await page.goto(appUrl(5173, 'trabajos'));
 const jobs = page.locator('section.jobs');
 await jobs.locator('.work-card').first().waitFor({ timeout: 60_000 });
 const totals = jobs.locator('.work-totals');
-assert.equal(await totals.locator('div', { hasText: 'Ejecuciones' }).locator('dd').innerText(), '5', '2 ejecuciones de la tarea + 1 de la tarjeta en curso... y las de la hecha');
+assert.equal(await totals.locator('div', { hasText: 'Ejecuciones' }).locator('dd').innerText(), '3', 'en 7 días: 2 ejecuciones de la tarea y 1 de la tarjeta en curso (la hecha no tiene ejecuciones)');
 await jobs.getByRole('button', { name: '24 h', exact: true }).click();
 assert.equal(await totals.locator('div', { hasText: 'Ejecuciones' }).locator('dd').innerText(), '2', 'en 24 h: la última ejecución y la tarjeta de hoy');
 await jobs.getByText('En 24 h: 1 ejecución · 2 min · 1,2 mil tokens · 0,05 $').waitFor();
@@ -66,7 +68,7 @@ if (shots) await page.screenshot({ path: `${shots}/jobs-sample.png`, fullPage: t
 assert.equal(changed.length, 0, 'mirar no cambia nada');
 const running = jobs.locator('.work-card', { hasText: 'Tarjeta en curso' });
 await running.getByRole('button', { name: 'Completar' }).click();
-await running.getByText('Tarjeta «Tarjeta en curso» completada.').waitFor();
+await jobs.getByText('Tarjeta «Tarjeta en curso» completada.').waitFor();
 assert.deepEqual(changed, [{ action: 'complete' }]);
 assert.equal(await jobs.locator('.work-column[aria-label="Hechas"] button').count(), 0, 'las hechas no tienen acciones');
 // Discreet mode hides task names and card titles.
