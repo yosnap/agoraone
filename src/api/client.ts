@@ -6,6 +6,7 @@ export type Status = { state: string; detail: string; csrf: string };
 import type { HermesCatalog, HermesProfile, HermesFile } from '../../shared/hermes-catalog';
 import type { McpTools } from '../../shared/hermes-catalog';
 import type { HermesActivity } from '../../shared/hermes-activity';
+import type { HermesWork } from '../../shared/hermes-work';
 import type { ProfileSkill, ProfileSkillDetail } from '../../shared/hermes-skills';
 let csrf = '';
 /** An error answered by the backend, with its HTTP status (409 means the data changed meanwhile). */
@@ -33,6 +34,7 @@ export async function getStatus() {
 }
 export const getHermesCatalog = () => request<HermesCatalog>('/hermes/catalog');
 export const getHermesActivity = () => request<HermesActivity>('/hermes/activity');
+export const getHermesWork = () => request<HermesWork>('/hermes/work');
 export type ProfileLimits = Record<'MEMORY.md' | 'USER.md', number>;
 export const getHermesProfile = (id: string, reveal = false) => request<{ profile: HermesProfile; files: HermesFile[]; limits: ProfileLimits }>(`/hermes/profiles/${encodeURIComponent(id)}${reveal ? '?reveal=1' : ''}`);
 /** Writes a real Hermes identity file; `revision` is the version the user edited (null when the file is new). */

@@ -301,7 +301,8 @@ fn tool_records(root: &Path, home: &Path, declared_names: &[String], now: i64) -
     Ok(value)
 }
 
-fn raw_jobs(root: &Path, home: &Path) -> Option<Vec<Map<String, Value>>> {
+/// A profile's scheduled tasks as Hermes stores them (the first 20); callers pick which fields leave.
+pub(crate) fn raw_jobs(root: &Path, home: &Path) -> Option<Vec<Map<String, Value>>> {
     let data = json_file(root, &home.join("cron").join("jobs.json"), 1024 * 1024)?;
     let list = match &data {
         Value::Array(items) => items.clone(),
@@ -317,6 +318,11 @@ fn raw_jobs(root: &Path, home: &Path) -> Option<Vec<Map<String, Value>>> {
             })
             .collect(),
     )
+}
+
+/// A Hermes identifier safe to send to the interface (tasks, cards).
+pub(crate) fn valid_id(id: &str) -> bool {
+    ID.is_match(id)
 }
 
 fn jobs(list: Option<&Vec<Map<String, Value>>>) -> Value {
