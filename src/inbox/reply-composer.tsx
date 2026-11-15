@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react';
+import { useAssistantName } from '../assistant/assistant-name';
 import { composeReply, getReplyDraft, previewMail, sendMail, type InboxItem, type MailDraft, type MailPreview } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 
 /** A reply to a received mail: written by hand or drafted by Watson (only for mail the model may read),
  * then the exact preview, and it leaves only with «Enviar» on that preview. Nothing is sent otherwise. */
 export function ReplyComposer({ item, onDone, onCancel }: { item: InboxItem; onDone: (note: string) => void; onCancel: () => void }) {
+  const assistant = useAssistantName();
   const [draft, setDraft] = useState<MailDraft | null>(null);
   const [instructions, setInstructions] = useState('');
   const [preview, setPreview] = useState<MailPreview | null>(null);
@@ -53,7 +55,7 @@ export function ReplyComposer({ item, onDone, onCancel }: { item: InboxItem; onD
     </div>
     <label className="field">Asunto<input value={draft.subject} onChange={set('subject')} maxLength={300}/></label>
     {modelMay ? <div className="field-row">
-      <label className="field reply-instructions">Indicaciones para Watson<input value={instructions} onChange={event => setInstructions(event.target.value)} maxLength={2000}
+      <label className="field reply-instructions">Indicaciones para {assistant}<input value={instructions} onChange={event => setInstructions(event.target.value)} maxLength={2000}
         placeholder="Por ejemplo: dile que lo tendré el lunes"/></label>
       <button type="button" className="button" disabled={Boolean(busy)} onClick={() => void run('compose', async () => {
         const answer = (await composeReply(item.id, instructions)).body;
@@ -64,8 +66,8 @@ export function ReplyComposer({ item, onDone, onCancel }: { item: InboxItem; onD
           return { ...current, body: `${answer}${rest.startsWith('\n') ? rest : `\n\n${rest}`}` };
         });
         setWritten(answer); setPreview(null);
-      })}>{busy === 'compose' ? 'Redactando…' : 'Redactar con Watson'}</button>
-    </div> : <p className="muted">Este correo es {item.confidentiality === 'private' ? 'privado' : 'solo de este Mac'}: Watson no lo lee, escribe la respuesta tú.</p>}
+      })}>{busy === 'compose' ? 'Redactando…' : `Redactar con ${assistant}`}</button>
+    </div> : <p className="muted">Este correo es {item.confidentiality === 'private' ? 'privado' : 'solo de este Mac'}: {assistant} no lo lee, escribe la respuesta tú.</p>}
     <label className="field">Mensaje<textarea value={draft.body} onChange={set('body')} rows={12} required/></label>
     {error && <LoadError message={error}/>}
     <div className="inbox-actions">

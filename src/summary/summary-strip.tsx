@@ -1,9 +1,11 @@
 import { compact, connectedAgents, uptime, useSummary } from './use-summary';
+import { useAssistantName } from '../assistant/assistant-name';
 import './summary.css';
 
 /** One line over the brain's graph: Watson online and for how long, agents connected, today's tokens, the
  * busiest project and the words used most in the notes. «Ver resumen» opens the full page. */
 export function SummaryStrip({ discreet, onOpen }: { discreet: boolean; onOpen: () => void }) {
+  const assistant = useAssistantName();
   const { summary } = useSummary(discreet);
   if (!summary.readAt) return null;
   const online = !!summary.engine?.active;
@@ -13,7 +15,7 @@ export function SummaryStrip({ discreet, onOpen }: { discreet: boolean; onOpen: 
   const words = summary.core?.noteWords.slice(0, 4).map(item => item.word) ?? [];
   return <div className="summary-strip" role="status" aria-label="Resumen rápido">
     <span className={online ? 'live' : 'off'}>● {online ? 'En línea' : 'Sin motor'}</span>
-    {summary.core && <span>Watson <b>{uptime(summary.core.core.startedAt)}</b></span>}
+    {summary.core && <span>{assistant} <b>{uptime(summary.core.core.startedAt)}</b></span>}
     <span>Agentes <b>{connectedAgents(summary).length}</b></span>
     {tokens !== undefined && <span>Tokens 24 h <b>{compact(tokens)}</b></span>}
     {project && <span>Proyecto <b>{project}</b></span>}
