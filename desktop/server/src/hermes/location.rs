@@ -25,7 +25,7 @@ pub fn hermes_location(env: impl Fn(&str) -> Option<String>, home: &Path) -> Her
     let candidates: Vec<PathBuf> =
         [var("AGORA_HERMES_PATH").map(|p| expand(&p)), Some(root.join("hermes-agent")), Some(home.join(".hermes/hermes-agent"))].into_iter().flatten().collect();
     let installation = candidates.iter().find(|path| path.join("run_agent.py").exists()).unwrap_or(&candidates[0]).clone();
-    let python = var("AGORA_HERMES_PYTHON").map(PathBuf::from).unwrap_or_else(|| installation.join("venv/bin/python"));
+    let python = var("AGORA_HERMES_PYTHON").map(PathBuf::from).or_else(|| store_python(&root, &installation)).unwrap_or_else(|| installation.join("venv/bin/python"));
     let source = if agora_home.is_some() {
         "AGORA_HERMES_HOME"
     } else if hermes_home.is_some() {
@@ -34,6 +34,23 @@ pub fn hermes_location(env: impl Fn(&str) -> Option<String>, home: &Path) -> Her
         "Directorio Hermes del usuario"
     };
     HermesLocation { root, installation, python, source: source.into() }
+}
+
+/// The Python Hermes runs with since it manages its own (November 2026): recorded in `<root>/tools/facts.json`
+/// and used only with an installation that selects its own dependencies in `hermes_bootstrap`. Older
+/// installations keep their virtual environment.
+fn store_python(root: &Path, installation: &Path) -> Option<PathBuf> {
+    if !installation.join("hermes_bootstrap.py").is_file() {
+        return None;
+    }
+    let tools = root.join("tools");
+    let facts: serde_json::Value = serde_json::from_slice(&std::fs::read(tools.join("facts.json")).ok()?).ok()?;
+    let entry = facts.get("packages")?.get("python")?.get("entry")?.as_str()?;
+    if entry.is_empty() || entry.contains('/') || entry.starts_with('.') {
+        return None;
+    }
+    let python = tools.join(entry).join("bin/python3");
+    python.is_file().then_some(python)
 }
 
 /// The location from this process' environment and the user's home.
