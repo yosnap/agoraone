@@ -6,7 +6,8 @@ Versión 1.3.0 · Reuniones y voz (plan: plans/261115-1110-reuniones-voz/plan.md
 - **Reuniones**: dos pistas (micrófono desde la interfaz a trozos de 5 s; audio del sistema con `agora-system-audio`, ScreenCaptureKit solo audio, en macOS y ffmpeg sobre el monitor de PulseAudio/PipeWire en Linux; Windows solo micrófono). Indicador permanente en la barra lateral; se detiene sola si la pantalla deja de enviar 45 s o a las 4 h. Migraciones 0021 y 0022.
 - **De la grabación a la nota**: transcripción en dos voces (sin el eco del micrófono), resumen con decisiones y tareas por Claude (normal) o por un modelo local en loopback (solo en este Mac o privada; Ajustes › Voz), nota con su confidencialidad creada en el vault tras confirmar y tareas a recordatorio o encargo del bot central tras confirmar cada una.
 - **Verificado:** 239 pruebas del núcleo, 108 de Rust, 17 de la interfaz y build; captura real del audio del Mac transcrita exacta; reunión sintetizada de dos voces resumida de verdad por Claude Code en 11 s, con fechas relativas resueltas.
-- **Pendiente:** `scripts/verify-voice.mjs` (dictado y grabación real de una reunión en el navegador) con `pnpm dev`, que exige cerrar la app empaquetada; empaquetar la 1.3.0 y que el usuario pruebe en la app firmada el permiso de micrófono y el de grabación de pantalla y audio del sistema con una reunión real de Meet; publicar con su permiso.
+- **Verificado también:** `scripts/verify-voice.mjs` con `pnpm dev` (dictado y reunión real grabada, parada y borrada) y la app 1.3.0 empaquetada, firmada y notarizada (`desktop/paquete/AgoraOne-1.3.0.zip`, auxiliar de audio firmado).
+- **Pendiente:** que el usuario pruebe en la app firmada el permiso de micrófono y el de grabación de pantalla y audio del sistema con una reunión real de Meet; publicar con su permiso.
 - **Siguiente:** 1.4, la ciudad por eventos (agentes trabajando de verdad).
 
 Versión 1.2.1 · Watson propone reglas del correo.
