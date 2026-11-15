@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react';
 import { getHermesActivity, getHermesCatalog, getHermesWork } from '../api/client';
+import { getJobsSettings } from '../api/core';
 import type { HermesWork, WorkCard, WorkTask, WorkTokens } from '../../shared/hermes-work';
 import { statusLabel, when } from '../data/activity-format';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { CardControls, JobManager, useAction, type ActionState } from '../ui/profile-tasks';
 import { cost, count, duration, tokens } from './work-format';
+import { CardHistory } from './card-history';
+import { CommissionForm, type ProfileChoice } from './commission-form';
 import './jobs.css';
 
 type Period = '24h' | '7d' | '30d';
@@ -41,6 +44,7 @@ function Card({ card, label, discreet, action }: { card: WorkCard; label: string
     <small>{label} · {statusLabel(card.status)}{card.board !== 'default' && !discreet ? ` · tablero ${card.board}` : ''}{card.createdBy === 'agoraone' ? ' · encargo de AgoraOne' : ''}</small>
     <small>Creada {when(card.createdAt)}{card.runs.length ? ` · ${card.runs.length === 1 ? '1 ejecución' : `${card.runs.length} ejecuciones`}` : ''}
       {card.seconds !== null ? ` · ${duration(card.seconds)}` : ''}{card.tokens && !discreet ? ` · ${tokens(card.tokens)}` : ''}</small>
+    <CardHistory card={card}/>
     {open && card.id && card.profileId && card.board === 'default' && !discreet && <CardControls profileId={card.profileId} card={{ id: card.id, title: card.title, status: card.status }} action={action}/>}
   </li>;
 }
@@ -49,7 +53,11 @@ function Card({ card, label, discreet, action }: { card: WorkCard; label: string
  * the time and tokens Hermes recorded for each run. Changes go through the same buttons as each profile's card. */
 export function JobsView({ discreet }: { discreet: boolean }) {
   const [work, setWork] = useState<HermesWork | null>(null);
-  const [labels, setLabels] = useState<Record<string, string>>({});
+  const [profileList, setProfileList] = useState<ProfileChoice[]>([]);
+  // Known only once both the catalog and the setting have been read: until then there is no «Nuevo encargo».
+  const [central, setCentral] = useState<string | null>(null);
+  const [commissioning, setCommissioning] = useState(false);
+  const labels: Record<string, string> = Object.fromEntries(profileList.map(p => [p.id, p.label]));
   // Unknown until read: no «not running» warning on a guess.
   const [gateway, setGateway] = useState('unknown');
   const [error, setError] = useState('');
@@ -73,7 +81,8 @@ export function JobsView({ discreet }: { discreet: boolean }) {
   if (!started.current) {
     started.current = true;
     void load();
-    getHermesCatalog().then(catalog => setLabels(Object.fromEntries(catalog.profiles.map(p => [p.id, p.label || p.name])))).catch(() => undefined);
+    getHermesCatalog().then(catalog => setProfileList(catalog.profiles.map(p => ({ id: p.id, name: p.name, label: p.label || p.name })))).catch(() => undefined);
+    getJobsSettings().then(found => setCentral(found.central)).catch(() => setCentral('default'));
     const tick = () => {
       // Not while a comment, block reason or task is being written: a card moving column would lose it.
       if (document.visibilityState === 'visible' && !document.querySelector('section.jobs .task-form')) void load();
@@ -94,6 +103,10 @@ export function JobsView({ discreet }: { discreet: boolean }) {
   for (const [, entry] of profiles) for (const task of entry.tasks ?? []) add(task.totals[period]);
   for (const card of cards) if (card.totals) add(card.totals[period]);
   const partial = sum.measured > 0 && sum.measured < sum.runs;
+  // Whether a new commission will be picked up: the gateway runs Hermes' kanban dispatcher unless its config turns it off.
+  const ready = work && !work.dispatcher ? { ok: false, why: 'La configuración del perfil raíz de Hermes desactiva el despachador del kanban en su gateway (kanban.dispatch_in_gateway): puede que nadie recoja el encargo, salvo que el gateway de otro perfil lo tenga activo.' }
+    : ['stopped', 'stale', 'missing'].includes(gateway) ? { ok: false, why: 'El gateway de Hermes no está en marcha: el encargo esperará en el kanban hasta que arranque.' }
+    : { ok: true, why: '' };
   return <section className="page jobs" aria-labelledby="jobs-title" ref={holder}>
     <div className="eyebrow">TRABAJOS{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="jobs-title">Trabajos</h1>
@@ -121,7 +134,10 @@ export function JobsView({ discreet }: { discreet: boolean }) {
           {discreet ? <p className="muted">{entry.tasks!.length === 1 ? '1 tarea' : `${entry.tasks!.length} tareas`}; nombres ocultos en modo discreto.</p>
             : <JobManager profileId={id} jobs={entry.tasks} gateway={gateway} onChanged={() => void load()} extra={task => <TaskRuns task={task} period={period} discreet={discreet}/>}/>}
         </article>)}
-      <h2>Kanban</h2>
+      <div className="jobs-heading"><h2>Kanban y encargos</h2>
+        {!commissioning && !discreet && central !== null && profileList.length > 0 && <button type="button" className="button primary" onClick={() => { setCommissioning(true); action.say(''); }}>Nuevo encargo</button>}</div>
+      {commissioning && !discreet && central !== null && <CommissionForm profiles={profileList} central={central} ready={ready} onCancel={() => setCommissioning(false)}
+        onDone={note => { setCommissioning(false); action.say(note); void load(); }}/>}
       {action.error && <p role="alert" className="error">{action.error}</p>}
       {action.done && !discreet && <p role="status" className="task-done">{action.done}</p>}
       {!work.board ? <p className="muted">El tablero kanban de Hermes no está disponible.</p>

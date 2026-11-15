@@ -69,7 +69,8 @@ fn fixture() -> Fixture {
             "CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT, body TEXT, assignee TEXT, status TEXT, priority INTEGER, created_by TEXT,
                created_at INTEGER, started_at INTEGER, completed_at INTEGER, result TEXT, last_failure_error TEXT, session_id TEXT);
              CREATE TABLE task_runs (id INTEGER PRIMARY KEY, task_id TEXT, profile TEXT, status TEXT, started_at INTEGER, ended_at INTEGER,
-               outcome TEXT, summary TEXT, error TEXT);",
+               outcome TEXT, summary TEXT, error TEXT);
+             CREATE TABLE task_events (id INTEGER PRIMARY KEY, task_id TEXT, run_id INTEGER, kind TEXT, payload TEXT, created_at INTEGER);",
         )
         .unwrap();
     let card = "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -80,7 +81,15 @@ fn fixture() -> Fixture {
     let run = "INSERT INTO task_runs (task_id, profile, status, started_at, ended_at, outcome, summary, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
     kanban.execute(run, params!["t1", "work", "done", t("2026-11-14T10:00:00+01:00"), t("2026-11-14T10:10:00+01:00"), "completed", "CANARY_SUMMARY", "CANARY_ERROR"]).unwrap();
     kanban.execute(run, params!["t2", "work", "running", t("2026-11-15T06:50:00+01:00"), None::<i64>, None::<String>, "", ""]).unwrap();
+    let event = "INSERT INTO task_events (task_id, kind, payload, created_at) VALUES (?, ?, ?, ?)";
+    kanban.execute(event, params!["t1", "created", "CANARY_PAYLOAD", t("2026-11-14T09:50:00+01:00")]).unwrap();
+    // Hermes' heartbeats while the worker ran: never part of the history.
+    for minute in 0..40 {
+        kanban.execute(event, params!["t1", "heartbeat", "", t("2026-11-14T10:00:00+01:00") + minute]).unwrap();
+    }
+    kanban.execute(event, params!["t1", "completed", "CANARY_PAYLOAD", t("2026-11-14T10:10:00+01:00")]).unwrap();
     drop(kanban);
+    fs::write(root.join("config.yaml"), "kanban:\n  dispatch_in_gateway: false\n").unwrap();
     // A second board, as Hermes keeps it under kanban/boards/<slug>.
     fs::create_dir_all(root.join("kanban/boards/clientes")).unwrap();
     let other = Connection::open(root.join("kanban/boards/clientes/kanban.db")).unwrap();
@@ -138,6 +147,8 @@ fn reads_cards_with_runs_time_and_worker_tokens() {
     assert_eq!(done["totals"]["24h"]["runs"], 1);
     assert_eq!(done["totals"]["24h"]["tokens"]["input"], 3000);
     assert_eq!(running["totals"]["24h"]["runs"], 1);
+    assert_eq!(done["events"], json!([{ "kind": "completed", "at": "2026-11-14T09:10:00.000Z" }, { "kind": "created", "at": "2026-11-14T08:50:00.000Z" }]));
+    assert_eq!(work["dispatcher"], false, "the root config turns the dispatcher off");
 }
 
 #[test]
@@ -158,10 +169,21 @@ fn totals_count_every_run_in_the_window() {
 }
 
 #[test]
+fn reads_the_dispatcher_switch_as_hermes_does() {
+    let fixture = fixture();
+    for (value, on) in [("false", false), ("off", false), ("no", false), ("0", false), ("true", true), ("on", true), ("1", true)] {
+        fs::write(fixture.root.join("config.yaml"), format!("kanban:\n  dispatch_in_gateway: {value}\n")).unwrap();
+        assert_eq!(read(&fixture)["dispatcher"], on, "dispatch_in_gateway: {value}");
+    }
+    fs::write(fixture.root.join("config.yaml"), "kanban:\n  otra: 1\n").unwrap();
+    assert_eq!(read(&fixture)["dispatcher"], true, "without the key, Hermes' default");
+}
+
+#[test]
 fn never_returns_hermes_private_text() {
     let fixture = fixture();
     let text = read(&fixture).to_string();
-    for canary in ["CANARY_PROMPT", "CANARY_ERROR", "CANARY_TITLE", "CANARY_BODY", "CANARY_RESULT", "CANARY_SUMMARY"] {
+    for canary in ["CANARY_PROMPT", "CANARY_ERROR", "CANARY_TITLE", "CANARY_BODY", "CANARY_RESULT", "CANARY_SUMMARY", "CANARY_PAYLOAD"] {
         assert!(!text.contains(canary), "{canary} leaked");
     }
 }
@@ -175,6 +197,7 @@ fn missing_files_give_empty_answers() {
     let work = read_work(&root, &[target("empty", "empty", &home)], 0);
     assert_eq!(work["profiles"]["empty"]["tasks"], Value::Null);
     assert_eq!(work["board"], Value::Null);
+    assert_eq!(work["dispatcher"], true, "without a setting, Hermes' default: on");
 }
 
 /// Against the local Hermes, printing counts only: `cargo test --test hermes_work -- --ignored`.

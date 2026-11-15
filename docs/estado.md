@@ -1,6 +1,13 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
+Versión 1.2.0-alpha.3 · Encargos (fase 3 de la 1.2).
+- **Trabajos › «Nuevo encargo»:** una tarjeta del kanban de Hermes para el bot central (por defecto el perfil raíz, elegible en Ajustes › Trabajos; núcleo `GET/PUT /jobs/settings`) o para otro perfil, creada con las funciones de Hermes solo al pulsar «Crear encargo». Avisa si el gateway está parado o si la config raíz desactiva el despachador (`kanban.dispatch_in_gateway`, leído como Hermes). Un bot central que ya no existe obliga a elegir.
+- **Historia de cada tarjeta:** los eventos de Hermes (creada, recogida, bloqueada, completada…) sin su contenido y sin los latidos de cada minuto.
+- **Revisión** (plans/reports/code-review-261115-0830-encargos.md) aplicada: A1, M1–M3, B2, B3.
+- **Verificado:** 106 pruebas de Rust, 216 del núcleo, 16 de la interfaz, build, verify-jobs (con encargo de ejemplo) y verify-profile-tasks.
+- **Siguiente:** fase 4, proyectos de clientes de Central con su consumo, y Watson con `consultar_trabajos`.
+
 Versión 1.2.0-alpha.2 · Trabajos (fases 1 y 2 de la 1.2) y compatibilidad con la Hermes del 14/11/2026.
 - **Trabajos** (sección nueva): las tareas programadas de todos los perfiles con sus últimas ejecuciones (duración, tokens y coste estimado reales de la sesión que abrió cada una) y el kanban de todos los tableros en columnas, con totales de 24 h, 7 y 30 días, filtro por perfil, modo discreto y las mismas acciones que la ficha del perfil (solo en el tablero `default`). Lector `GET /api/hermes/work` (`desktop/server/src/hermes/work.rs`), solo metadatos.
 - **Hermes nueva** (actualizada por el usuario el 15/11): AgoraOne usa su Python propio y su arranque con `HERMES_DISABLE_LAZY_INSTALLS=1`; con una actualización o reparación a medias se niega y dice cómo terminarla (decisión del usuario). Únicas escrituras aceptadas en Hermes: su bloqueo y sus arrendamientos. Ver docs/integracion-hermes.md.
