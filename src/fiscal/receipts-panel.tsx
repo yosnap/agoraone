@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import {
-  closeUpload, dismissReceipt, fileReceipt, getFiscalFolders, getReceipts, getUpload, openUpload,
+  closeUpload, dismissReceipt, fileReceipt, getFiscalFolders, getReceipts, getUpload, openUpload, readReceipt, receiptPreviewUrl,
   type Category, type FiscalFolder, type InvoiceFields, type Receipt, type UploadState,
 } from '../api/core';
 import { LoadError } from '../ui/load-state';
 import { DocumentFields, FolderChoice, place } from '../inbox/filing-fields';
 import { BotInbox } from './bot-inbox';
+import { followUpload, RECEIVED, stopFollowing, useUpload } from './upload-watch';
 import '../inbox/inbox.css';
 
 const suffixes: Record<string, string> = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/heic': '.heic' };
@@ -21,35 +22,30 @@ export function ReceiptsPanel({ onNote }: { onNote: (note: string) => void }) {
   const [error, setError] = useState('');
   const [inboxName, setInboxName] = useState('Recibos por revisar');
   const asked = useRef(false);
-  const timer = useRef<number | undefined>(undefined);
-  const live = useRef(true);
-  const holder = useRef((node: HTMLDivElement | null) => { live.current = node !== null; if (!node) window.clearTimeout(timer.current); }).current;
+    const live = useRef(true);
+  // Mounted: listens for a receipt that arrives from the phone (followed app-wide), to show it at once.
+  const holder = useRef((node: HTMLDivElement | null) => {
+    live.current = node !== null;
+    if (!node) return;
+    const arrived = () => { void load(); setUpload(null); };
+    window.addEventListener(RECEIVED, arrived);
+    return () => { live.current = false; window.removeEventListener(RECEIVED, arrived); };
+  }).current;
+  const watched = useUpload();
   const load = () => Promise.all([getReceipts(), getFiscalFolders()]).then(([found, known]) => { if (live.current) { setReceipts(found.receipts); setFolders(known.folders); if (found.inbox) setInboxName(found.inbox); } })
     .catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer los recibos.'));
   if (!asked.current) {
     asked.current = true;
     void load();
     // An upload still open (the panel was left and opened again) shows its QR again.
-    getUpload().then(state => { if (live.current && state.open) { setUpload(state); follow(); } }).catch(() => undefined);
+    getUpload().then(state => { if (live.current && state.open) { setUpload(state); followUpload(state); } }).catch(() => undefined);
   }
-  const follow = () => {
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      if (!live.current) return;
-      getUpload().then(state => {
-        if (!live.current) return;
-        setUpload(state);
-        if (state.open) follow();
-        else { if (state.received) onNote('Recibo recibido desde el móvil: revísalo y archívalo.'); void load(); }
-      }).catch(() => undefined);
-    }, 2000);
-  };
   const start = async () => {
     setError('');
-    try { const state = await openUpload(); setUpload(state); follow(); }
+    try { const state = await openUpload(); setUpload(state); followUpload(state); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo abrir la subida.'); }
   };
-  const stop = async () => { window.clearTimeout(timer.current); setUpload(await closeUpload().catch(() => null)); };
+  const stop = async () => { stopFollowing(); setUpload(await closeUpload().catch(() => null)); };
   const minutes = upload?.expiresAt ? Math.max(0, Math.round((upload.expiresAt * 1000 - Date.now()) / 60000)) : 0;
   return <div className="inbox-group" ref={holder}>
     <div className="card-head"><h2>Recibos {receipts.length > 0 && <span className="muted">· {receipts.length}</span>}</h2>
@@ -58,6 +54,7 @@ export function ReceiptsPanel({ onNote }: { onNote: (note: string) => void }) {
     {upload?.open && upload.qr && <div className="card receipt-upload">
       <img className="receipt-qr" alt="Código QR para subir el recibo" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(upload.qr)}`}/>
       <div>
+        {watched.state?.receiving && <p className="ok-note" role="status">Recibiendo el archivo del móvil…</p>}
         <p>Escanea el código con la cámara del móvil (en la misma wifi de casa), haz la foto del recibo o elige un PDF y pulsa «Enviar al Mac».</p>
         <p className="muted">El enlace sirve para una sola subida y se cierra solo en unos {minutes} minutos. Mientras esté abierto, solo esa página es accesible desde la red de casa. Si macOS pregunta si permites conexiones entrantes, acéptalo para esta subida.</p>
       </div>
@@ -80,6 +77,16 @@ function ReceiptCard({ receipt, folders, onDone }: { receipt: Receipt; folders: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const folder = folders.find(item => item.id === folderId);
+  const [zoom, setZoom] = useState(false);
+  const [reading, setReading] = useState(false);
+  const read = async () => {
+    setReading(true); setError('');
+    try {
+      const found = await readReceipt(receipt.id);
+      setFields(current => ({ supplier: found.supplier || current.supplier, taxId: found.taxId ?? current.taxId, issuedOn: found.issuedOn || current.issuedOn,
+        total: found.total || current.total, currency: found.currency || current.currency }));
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudieron leer los datos.'); } finally { setReading(false); }
+  };
   const file = async () => {
     if (!folder) return;
     setBusy(true); setError('');
@@ -92,7 +99,16 @@ function ReceiptCard({ receipt, folders, onDone }: { receipt: Receipt; folders: 
       <span className="muted">{new Date(receipt.uploadedAt).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></div>
     {receipt.name && <p className="inbox-subject">{receipt.name}</p>}
     {receipt.source === 'inbox' && <p className="muted">Lo dejó tu bot en «Recibos por revisar». Al archivarlo, el original sale de esa carpeta (queda la copia archivada); al descartarlo, pasa a «Descartados».</p>}
-    {receipt.mediaType !== 'application/pdf' && <p className="muted">De las fotos aún no se leen los datos: escríbelos mirando el recibo.</p>}
+    <div className="receipt-preview">
+      {receipt.mediaType === 'application/pdf'
+        ? <a className="button" href={receiptPreviewUrl(receipt.id)} target="_blank" rel="noreferrer">Ver el PDF</a>
+        : <button type="button" className={`receipt-thumb${zoom ? ' zoomed' : ''}`} onClick={() => setZoom(!zoom)} aria-label={zoom ? 'Reducir la foto' : 'Ampliar la foto'}>
+            <img src={receiptPreviewUrl(receipt.id)} alt={`Recibo ${receipt.name ?? ''}`.trim()}/></button>}
+      <div className="receipt-read">
+        <button type="button" className="button" disabled={reading} onClick={() => void read()}>{reading ? 'Leyendo con Claude…' : 'Leer los datos con Claude'}</button>
+        <small className="muted">Rellena el formulario para que lo revises; no guarda nada.</small>
+      </div>
+    </div>
     {folders.length === 0 ? <p className="muted">Añade primero una carpeta fiscal en Ajustes.</p> : <>
       <FolderChoice folders={folders} folderId={folderId} category={category} onFolder={setFolderId} onCategory={setCategory}/>
       <DocumentFields fields={fields} onChange={setFields}/>

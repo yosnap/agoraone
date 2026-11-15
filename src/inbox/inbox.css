@@ -25,3 +25,8 @@
 .reply-preview { display:grid; grid-template-columns:auto 1fr; gap:4px 12px; margin:0; font-size:13px }
 .reply-preview dt { color:var(--c-6f8379) } .reply-preview dd { margin:0; overflow-wrap:anywhere }
 .reply-body { white-space:pre-wrap; font:inherit; font-size:13px; margin:0; padding:10px; border-radius:8px; background:var(--c-fffffa); border:1px solid var(--c-dfe3d6); max-height:420px; overflow:auto }
+.receipt-preview { display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap }
+.receipt-thumb { padding:0; border:1px solid var(--c-dfe3d6); border-radius:10px; background:var(--c-fffffa); overflow:hidden; cursor:zoom-in; width:140px; max-height:180px }
+.receipt-thumb img { display:block; width:100%; height:auto }
+.receipt-thumb.zoomed { width:min(100%, 640px); max-height:none; cursor:zoom-out }
+.receipt-read { display:flex; flex-direction:column; gap:4px; flex:1 1 200px }

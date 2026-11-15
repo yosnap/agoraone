@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from . import exchange, invoice_ai, fiscal, fiscal_excel, fiscal_folder, fiscal_manual, fiscal_scan, invoice_extract, mail, qonto, receipts
@@ -623,7 +623,8 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         window = upload["window"]
         if window is None or window.closed:
             return {"open": False, "received": window.received if window else None}
-        return {"open": True, "url": window.url, "qr": receipts.qr_svg(window.url), "expiresAt": int(window.expires_at)}
+        # «receiving»: the phone is sending the file right now (the screen says so while it arrives).
+        return {"open": True, "url": window.url, "qr": receipts.qr_svg(window.url), "expiresAt": int(window.expires_at), "receiving": window.busy}
 
     @router.post("/fiscal/receipts/upload")
     async def open_upload():
@@ -717,5 +718,58 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
             return refuse(error, 409)
         except (fiscal.FiscalError, OSError) as error:
             return refuse(error if isinstance(error, fiscal.FiscalError) else fiscal.FiscalError("No se pudo leer el recibo."))
+
+    def receipt_path(connection, receipt_id: int):
+        row = connection.execute("SELECT file, media_type FROM receipt WHERE id = ?", (receipt_id,)).fetchone()
+        if row is None:
+            return None, None
+        path = (receipt_dir / row["file"]).resolve()
+        if path.parent != receipt_dir.resolve() or not path.is_file():
+            return None, None
+        return path, row["media_type"]
+
+    @router.get("/fiscal/receipts/{receipt_id}/preview")
+    async def receipt_preview(receipt_id: int):
+        """The receipt to look at while filling its data: photos as JPEG (HEIC from an iPhone too), PDFs as they are."""
+        def work(connection):
+            path, kind = receipt_path(connection, receipt_id)
+            if path is None:
+                return None
+            if kind == "application/pdf":
+                return path.read_bytes(), kind
+            if kind in ("image/jpeg", "image/png"):
+                return path.read_bytes(), kind
+            jpeg = fiscal_scan._as_jpeg(path)
+            return (jpeg, "image/jpeg") if jpeg else None
+        found = await db(work)
+        if found is None:
+            return refuse(fiscal.FiscalError("No se puede enseñar ese recibo."), 404)
+        return Response(found[0], media_type=found[1], headers={"Content-Disposition": "inline", "Cache-Control": "no-store"})
+
+    @router.post("/fiscal/receipts/{receipt_id}/read")
+    async def read_receipt(receipt_id: int):
+        """Claude Haiku reads the receipt (as data, never instructions) to fill the form; nothing is saved."""
+        def work(connection):
+            path, kind = receipt_path(connection, receipt_id)
+            if path is None:
+                raise fiscal.FiscalError("Ese recibo ya no está.")
+            reader = invoice_reader(connection)
+            if reader is None:
+                raise fiscal.FiscalError("La lectura con Claude está desactivada en Ajustes › Fiscal, o no hay sesión de Claude Code ni clave de API.")
+            jpeg = fiscal_scan._as_jpeg(path)  # sips turns photos and the first page of a PDF into a JPEG
+            if not jpeg:
+                raise fiscal.FiscalError("No se pudo preparar la imagen del recibo.")
+            found = reader.image(jpeg)
+            if not found:
+                raise fiscal.FiscalError("No se han podido leer los datos: escríbelos mirando el recibo.")
+            total = found.get("total")
+            return {"supplier": found.get("issuer") or "", "taxId": found.get("issuerTaxId"), "issuedOn": found.get("issuedOn"),
+                    "total": f"{total:.2f}".replace(".", ",") if isinstance(total, (int, float)) else "", "currency": found.get("currency") or "EUR"}
+        try:
+            return await db(work)
+        except fiscal.FiscalError as error:
+            return refuse(error)
+        except Exception:  # noqa: BLE001 - the model or sips failed: the user types the data
+            return refuse(fiscal.FiscalError("No se han podido leer los datos ahora: escríbelos mirando el recibo."))
 
     return router
