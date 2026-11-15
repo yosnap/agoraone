@@ -1,6 +1,13 @@
 # Estado de continuidad — 15/11/2026
 
 ## Resultado
+Versión 1.2.0-alpha.4 · Ajustes por pestañas y recibos en Fiscal, también por el bot de Hermes.
+- **Ajustes:** una pestaña por apartado (General, Asistente, Correo, Agenda y avisos, Fiscal, Trabajos, Privacidad y copias), con lo que va junto en la misma; `?pestana=` abre una y se recuerda la última.
+- **Recibos en Fiscal** (antes en la Bandeja): el QR «Subir desde el móvil» y los recibos pendientes. **Bot de Hermes:** «Prepararlo» crea, tras pulsar «Crear la skill», `agoraone/guardar-facturas` en el perfil elegido; el bot guarda lo que le envíes en «Recibos por revisar» de la carpeta fiscal (sin leerlo, nombre oculto y luego «recibo fecha hora») y AgoraOne lo trae como recibo pendiente (migración 0020). Al archivar, el original sale de la carpeta; al descartar o si repite uno archivado, pasa a «Descartados»; reenviado tras descartarlo, vuelve.
+- **Revisión** (plans/reports/code-review-261115-0915-recibos-bot.md) aplicada: A1 (lectura fuera de bloqueos, una vez por archivo y con tope), A2 (descartados y repetidos apartados, los más nuevos primero), M1 (10 s de reposo), M2 (la skill no lee ni renombra por el contenido), M3–M5 y bajas.
+- **Verificado:** 34 pruebas de recibos y fiscal (220 del núcleo), 16 de la interfaz, build, verify-fiscal, verify-inbox, verify-mail-settings (pestañas), verify-agenda y verify-jobs. Pendiente: probar con el bot real (necesita permiso de escritura de archivos en su perfil).
+- **Siguiente:** fase 4 de Trabajos (proyectos de clientes con su consumo; Watson `consultar_trabajos`).
+
 Versión 1.2.0-alpha.3 · Encargos (fase 3 de la 1.2).
 - **Trabajos › «Nuevo encargo»:** una tarjeta del kanban de Hermes para el bot central (por defecto el perfil raíz, elegible en Ajustes › Trabajos; núcleo `GET/PUT /jobs/settings`) o para otro perfil, creada con las funciones de Hermes solo al pulsar «Crear encargo». Avisa si el gateway está parado o si la config raíz desactiva el despachador (`kanban.dispatch_in_gateway`, leído como Hermes). Un bot central que ya no existe obliga a elegir.
 - **Historia de cada tarjeta:** los eventos de Hermes (creada, recogida, bloqueada, completada…) sin su contenido y sin los latidos de cada minuto.

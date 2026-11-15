@@ -11,6 +11,7 @@ import html
 import io
 import ipaddress
 import json
+import os
 import secrets
 import socket
 import sqlite3
@@ -20,7 +21,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from .db import now
+from .db import now, transaction
 from .fiscal import MAX_FILE, SUFFIXES, media_type
 
 INBOX = "Recibos por revisar"
@@ -217,7 +218,7 @@ def open_window(store, address: str | None = None, seconds: int = OPEN_SECONDS) 
             finally:
                 with window.lock:
                     window.busy = False
-            self._send(200, "<p>Recibido. Ya está en tu Mac, en la Bandeja de AgoraOne. Puedes cerrar esta página.</p>")
+            self._send(200, "<p>Recibido. Ya está en tu Mac, en Fiscal › Recibos de AgoraOne. Puedes cerrar esta página.</p>")
             window.close()
 
     class Server(ThreadingHTTPServer):
@@ -263,51 +264,147 @@ def receipts(connection: sqlite3.Connection, state: str = "pending") -> list[dic
             for r in connection.execute("SELECT * FROM receipt WHERE state = ? ORDER BY uploaded_at DESC", (state,))]
 
 
-def import_inbox(connection: sqlite3.Connection, folder: Path, folders: list[tuple[int, Path]]) -> int:
-    """Brings the files waiting in each fiscal folder's «Recibos por revisar» in as pending receipts: a copy
-    in AgoraOne's data (the original stays until it is filed), only photos and PDFs of bounded size, never a
-    link or a hidden file. A receipt already known keeps its state: one dismissed does not come back."""
-    added = 0
-    for folder_id, root in folders:
-        inbox = root / INBOX
+INBOX_SETTLE = 10  # seconds a file must have rested: one still being written is left for the next pass
+INBOX_FILES = 200  # newest files looked at per folder and pass
+INBOX_BUDGET = 64 * 1024 * 1024  # bytes read per pass at most (iCloud may have to download each one)
+DISCARDED = "Descartados"
+_seen: dict[str, tuple[int, int]] = {}  # files already looked at, by path: (size, mtime) — not read again
+
+
+def _candidates(inbox: Path) -> list[tuple[Path, os.stat_result]]:
+    """The photos and PDFs in «Recibos por revisar» that are settled, newest first; never a link, a folder,
+    a hidden file, an iCloud placeholder or one above the size limit."""
+    found = []
+    try:
+        entries = list(inbox.iterdir())
+    except OSError:
+        return []
+    for path in entries:
         try:
-            if inbox.is_symlink() or not inbox.is_dir() or root not in inbox.resolve().parents:
+            if path.name.startswith(".") or path.is_symlink() or not path.is_file():
                 continue
-            entries = sorted(inbox.iterdir())
+            info = path.stat()
         except OSError:
             continue
-        for path in entries[:200]:
+        if info.st_size == 0 or info.st_size > MAX_FILE or time.time() - info.st_mtime < INBOX_SETTLE:
+            continue
+        found.append((path, info))
+    found.sort(key=lambda item: item[1].st_mtime, reverse=True)
+    return found[:INBOX_FILES]
+
+
+def _inbox_of(root: Path) -> Path | None:
+    inbox = root / INBOX
+    try:
+        if inbox.is_symlink() or not inbox.is_dir() or inbox.resolve().parent != root.resolve():
+            return None
+    except OSError:
+        return None
+    return inbox
+
+
+def import_inbox(connect_db, folder: Path, folders: list[tuple[int, Path]]) -> int:
+    """Brings what waits in each fiscal folder's «Recibos por revisar» in as pending receipts, with a copy in
+    AgoraOne's data (the original stays until it is filed or dismissed). Files are read outside any database
+    lock, each file once while unchanged, and within a byte budget per pass. One sent again after being
+    dismissed comes back; one that repeats a filed receipt goes to «Descartados». `connect_db` opens a
+    connection for the short writes."""
+    added, budget = 0, INBOX_BUDGET
+    for folder_id, root in folders:
+        inbox = _inbox_of(root)
+        if inbox is None:
+            continue
+        for path, info in _candidates(inbox):
+            key = str(path)
+            if _seen.get(key) == (info.st_size, int(info.st_mtime_ns)) or info.st_size > budget:
+                continue
             try:
-                if path.is_symlink() or not path.is_file() or path.name.startswith(".") or path.stat().st_size > MAX_FILE:
-                    continue
                 data = path.read_bytes()
             except OSError:
                 continue
+            budget -= len(data)
+            _seen[key] = (info.st_size, int(info.st_mtime_ns))
             kind = media_type(data)
             if kind is None:
                 continue
             digest = hashlib.sha256(data).hexdigest()
-            if connection.execute("SELECT 1 FROM receipt WHERE sha256 = ?", (digest,)).fetchone():
-                continue
-            folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-            file = f"{digest[:24]}{SUFFIXES[kind]}"
-            (folder / file).write_bytes(data)
-            (folder / file).chmod(0o600)
-            connection.execute(
-                "INSERT INTO receipt (file, original_name, media_type, bytes, sha256, uploaded_at, source, inbox_folder, inbox_name) "
-                "VALUES (?, ?, ?, ?, ?, ?, 'inbox', ?, ?)",
-                (file, path.name[:200], kind, len(data), digest, now(), folder_id, path.name[:255]))
-            added += 1
+            connection = connect_db()
+            try:
+                with transaction(connection):
+                    known = connection.execute("SELECT id, state, source, inbox_name FROM receipt WHERE sha256 = ?", (digest,)).fetchone()
+                    if known is None:
+                        try:
+                            folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+                            file = f"{digest[:24]}{SUFFIXES[kind]}"
+                            (folder / file).write_bytes(data)
+                            (folder / file).chmod(0o600)
+                        except OSError:
+                            _seen.pop(key, None)  # no room or no permission: tried again next time
+                            continue
+                        connection.execute(
+                            "INSERT INTO receipt (file, original_name, media_type, bytes, sha256, uploaded_at, source, inbox_folder, inbox_name) "
+                            "VALUES (?, ?, ?, ?, ?, ?, 'inbox', ?, ?)", (file, path.name[:200], kind, len(data), digest, now(), folder_id, path.name[:255]))
+                        added += 1
+                    elif known["state"] == "dismissed":
+                        # Sent again on purpose: it comes back, now pointing at this copy.
+                        connection.execute("UPDATE receipt SET state = 'pending', decided_at = NULL, source = 'inbox', inbox_folder = ?, inbox_name = ? WHERE id = ?",
+                                           (folder_id, path.name[:255], known["id"]))
+                        added += 1
+                    elif known["state"] == "filed" or (known["state"] == "pending" and known["inbox_name"] != path.name):
+                        set_aside(root, path.name, digest)  # a repeat of one filed or already waiting
+            finally:
+                connection.close()
     return added
+
+
+def _same_file(root: Path, name: str, digest: str) -> Path | None:
+    inbox = _inbox_of(root)
+    if inbox is None or not name or "/" in name or name.startswith("."):
+        return None
+    path = inbox / name
+    try:
+        if path.is_symlink() or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            return None
+    except OSError:
+        return None
+    return path
 
 
 def remove_from_inbox(root: Path, name: str, digest: str) -> bool:
     """Once filed, the original leaves «Recibos por revisar» (a copy stays in AgoraOne's data and the filed
     one in its quarter). Only the very same file: a changed or replaced one is left where it is."""
-    path = root / INBOX / name
+    path = _same_file(root, name, digest)
+    if path is None:
+        return False
     try:
-        if path.is_symlink() or not path.is_file() or path.parent.resolve() != (root / INBOX).resolve():
+        path.unlink()
+        _seen.pop(str(path), None)
+        return True
+    except OSError:
+        return False
+
+
+def set_aside(root: Path, name: str, digest: str) -> bool:
+    """A dismissed or repeated receipt's original moves to «Recibos por revisar/Descartados», never deleted
+    and never overwriting another, so the inbox does not fill up with what was already decided."""
+    path = _same_file(root, name, digest)
+    if path is None:
+        return False
+    target_dir = path.parent / DISCARDED
+    try:
+        if target_dir.is_symlink():
             return False
+        target_dir.mkdir(exist_ok=True)
+        target = target_dir / path.name
+        number = 2
+        while target.exists():
+            target = target_dir / f"{path.stem} ({number}){path.suffix}"
+            number += 1
+        path.rename(target)
+        _seen.pop(str(path), None)
+        return True
+    except OSError:
+        return False
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             return False
         path.unlink()

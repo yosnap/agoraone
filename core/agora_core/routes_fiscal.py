@@ -669,16 +669,27 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
     @router.get("/fiscal/receipts")
     async def list_receipts():
         def work(connection):
-            with transaction(connection):
-                receipts.import_inbox(connection, receipt_dir, inbox_folders(connection))
+            # Files are read with no database lock held; each new receipt is written in its own short transaction.
+            receipts.import_inbox(lambda: connect(settings.data_dir / DB_NAME), receipt_dir, inbox_folders(connection))
             return receipts.receipts(connection)
         return {"receipts": await db(work), "inbox": receipts.INBOX}
 
     @router.put("/fiscal/receipts/{receipt_id}")
     async def change_receipt(receipt_id: int, body: ReceiptChange):
-        changed = await db(lambda c: c.execute("UPDATE receipt SET state = ?, decided_at = ? WHERE id = ? AND state != 'filed'",
-                                               (body.state, now(), receipt_id)).rowcount)
-        if not changed:
+        def work(connection):
+            row = connection.execute("SELECT * FROM receipt WHERE id = ? AND state != 'filed'", (receipt_id,)).fetchone()
+            if row is None:
+                return False
+            with transaction(connection):
+                connection.execute("UPDATE receipt SET state = ?, decided_at = ? WHERE id = ?", (body.state, now(), receipt_id))
+            # A dismissed receipt from the bot: its original moves to «Descartados», out of the way.
+            if body.state == "dismissed" and row["source"] == "inbox" and row["inbox_folder"] is not None:
+                try:
+                    receipts.set_aside(fiscal.folder_root(connection, row["inbox_folder"])[1], row["inbox_name"] or "", row["sha256"])
+                except fiscal.FiscalError:
+                    pass
+            return True
+        if not await db(work):
             return refuse(fiscal.FiscalError("Ese recibo no existe o ya está archivado."), 404)
         return {"receipts": await db(receipts.receipts)}
 

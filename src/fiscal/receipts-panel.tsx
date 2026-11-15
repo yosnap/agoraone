@@ -91,6 +91,7 @@ function ReceiptCard({ receipt, folders, onDone }: { receipt: Receipt; folders: 
       <span className="chip">{receipt.source === 'inbox' ? 'De tu bot' : 'Desde el móvil'}</span></div>
       <span className="muted">{new Date(receipt.uploadedAt).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span></div>
     {receipt.name && <p className="inbox-subject">{receipt.name}</p>}
+    {receipt.source === 'inbox' && <p className="muted">Lo dejó tu bot en «Recibos por revisar». Al archivarlo, el original sale de esa carpeta (queda la copia archivada); al descartarlo, pasa a «Descartados».</p>}
     {receipt.mediaType !== 'application/pdf' && <p className="muted">De las fotos aún no se leen los datos: escríbelos mirando el recibo.</p>}
     {folders.length === 0 ? <p className="muted">Añade primero una carpeta fiscal en Ajustes.</p> : <>
       <FolderChoice folders={folders} folderId={folderId} category={category} onFolder={setFolderId} onCategory={setCategory}/>
