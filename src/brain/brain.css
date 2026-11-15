@@ -77,3 +77,24 @@
   .command-bar { right:16px }
   .brain-dock { left:16px; right:16px; bottom:auto; top:calc(48% - 120px) }
 }
+/* The side (1.4): the vault's areas, as a catalogue, and what changed lately. */
+.brain-side h2 { font:600 11px Manrope,sans-serif; letter-spacing:.8px; text-transform:uppercase; margin:10px 0 6px; color:var(--c-4c6b62) }
+.brain-side h3 { font:600 11px Manrope,sans-serif; margin:8px 0 4px; color:var(--c-355a50) }
+.areas, .lately { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:2px }
+.areas button { width:100%; display:flex; gap:10px; align-items:flex-start; text-align:left; background:none; border:1px solid transparent; border-radius:10px; padding:7px 6px; color:var(--c-173d3c) }
+.areas button:hover { background:var(--c-f1f2ea) }
+.areas button[aria-pressed="true"] { background:var(--c-f3e6c4); border-color:var(--c-dfe3d6) }
+.area-dot { width:10px; height:10px; border-radius:50%; flex:none; margin-top:4px }
+.area-text { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1 }
+.area-head { display:flex; justify-content:space-between; gap:8px }
+.area-head strong { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.area-head small, .area-when { font-size:10.5px; color:var(--c-6f8379); font-variant-numeric:tabular-nums }
+.area-text > small { font-size:11px; line-height:1.4; color:var(--c-4c6b62) }
+.area-auto { font-style:italic }
+.lately li { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:6px; align-items:baseline; font-size:12px; padding:3px 0 }
+.lately-tag { font-size:9.5px; padding:1px 6px; border-radius:6px; background:var(--c-e6eadf); color:var(--c-355a50) }
+.lately button { background:none; border:0; padding:0; text-align:left; color:var(--c-173d3c); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:inherit }
+.lately button:hover { color:var(--c-996a25) }
+.lately span:not(.lately-tag) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.lately small { font-size:10.5px; color:var(--c-6f8379) }
+.brain-hubs summary { cursor:pointer; font:600 11px Manrope,sans-serif; color:var(--c-4c6b62); margin-top:10px }

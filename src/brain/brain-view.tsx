@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { AssistantView, type Thinking } from '../assistant/assistant-view';
 import { SummaryStrip } from '../summary/summary-strip';
 import { BrainDock } from './brain-dock';
+import { BrainSide } from './brain-side';
 import { CommandBar } from './command-bar';
 import { getBrainGraph, levelLabels, searchBrain, type BrainGraph, type GraphLayers, type NodeType, type SearchResult } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
@@ -36,6 +37,8 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
   const [thinking, setThinking] = useState<Thinking>(null);
   // A question from the command bar, handed to Watson's panel (which sends it and then clears it).
   const [question, setQuestion] = useState<string | null>(null);
+  // Whether the graph's highlight comes from an area picked at the side (not from Watson's sources).
+  const [fromArea, setFromArea] = useState(false);
   const [near, setNear] = useState(true);
   const [layers, setLayers] = useState<GraphLayers>({ entities: true, tags: true, folders: false });
   const [picked, setPicked] = useState<string | null>(null);
@@ -119,11 +122,12 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
         <ul>{shown.map(result => <li key={`${result.source}/${result.ref}`}><button onClick={() => read(`${result.source}/${result.ref}`)}>
           <strong>{result.title}</strong><small>{result.folder || 'Raíz'}{result.confidentiality !== 'normal' ? ` · ${levelLabels[result.confidentiality]}` : ''}</small>
         </button></li>)}</ul>
-      </div> : focus.length > 0 ? <div className="brain-list"><h2>Fuentes de la respuesta</h2>
+      </div> : focus.length > 0 && !fromArea ? <div className="brain-list"><h2>Fuentes de la respuesta</h2>
         <ul>{focus.map(id => <li key={id}><button onClick={() => read(id)}><strong>{titles.get(id)?.title ?? 'Nota no visible ahora'}</strong><small>{titles.get(id)?.folder || ''}</small></button></li>)}</ul>
-      </div> : hubs.length > 0 && <div className="brain-list"><h2>Notas más conectadas</h2>
+      </div> : <BrainSide discreet={discreet} nodes={graph?.nodes ?? []} colors={colors} onFocus={ids => { setFromArea(ids.length > 0); onFocus(ids); }} onRead={read}/>}
+      {!shown && !pickedNode && hubs.length > 0 && <details className="brain-hubs"><summary>Notas más conectadas</summary><div className="brain-list">
         <ul>{hubs.map(node => <li key={node.id}><button onClick={() => read(node.id)}><strong>{node.title}</strong><small>{node.degree} conexiones · {node.folder || 'Raíz'}</small></button></li>)}</ul>
-      </div>}
+      </div></details>}
       {(layers.entities || layers.tags) && <ul className="brain-legend" aria-label="Colores por tipo">{(Object.keys(typeColors) as NodeType[])
         .filter(type => type === 'tag' ? layers.tags : layers.entities).map(type =>
           <li key={type}><span style={{ background: typeColors[type] }} aria-hidden="true"/>{typeLabels[type]}</li>)}</ul>}
@@ -137,6 +141,6 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
       <ol>{steps.map(([id, label]) => <li key={id} className={stepState(thinking.stage, id)}>{label}</li>)}</ol>
       <span>{thinking.label}</span>
     </div>}
-    <AssistantView embedded question={question} onQuestionTaken={() => setQuestion(null)} onRead={onRead} onSources={onFocus} onThinking={setThinking} discreet={discreet}/>
+    <AssistantView embedded question={question} onQuestionTaken={() => setQuestion(null)} onRead={onRead} onSources={ids => { setFromArea(false); onFocus(ids); }} onThinking={setThinking} discreet={discreet}/>
   </section>;
 }
