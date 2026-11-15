@@ -77,6 +77,8 @@ def _logged(event: dict) -> tuple[str, str]:
         return "clientes", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
     if event["tool"] == "inbox":
         return "bandeja", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
+    if event["tool"] == "cleanup_proposal":  # how many and what to do, never senders or subjects
+        return "proponer_limpieza", json.dumps({"accion": event["action"], "correos": len(event["messages"])}, ensure_ascii=False)
     if event["tool"] == "quote_proposal":  # for whom and how many lines, not the prices
         return "proponer_presupuesto", json.dumps({"cliente": event["quote"].get("client"), "partidas": len(event["quote"].get("items") or [])}, ensure_ascii=False)
     if event["tool"] == "event_proposal":  # that an event was proposed and when, not its title or notes
@@ -94,6 +96,10 @@ def _logged(event: dict) -> tuple[str, str]:
 
 def _event(kind: str, data) -> str:
     return f"event: {kind}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+class CleanupChoice(BaseModel):
+    ids: list[int]
 
 
 def assistant_router(
@@ -221,6 +227,28 @@ def assistant_router(
         except (central.CentralError, Exception) as error:  # noqa: BLE001 - Central's own message, or that it failed
             return JSONResponse({"error": str(error) if isinstance(error, central.CentralError) else "Central no pudo crear el presupuesto."}, status_code=422)
         return {"created": made}
+
+    @router.post("/proposals/{proposal_id}/mail")
+    async def clean_mail(proposal_id: str, request: Request, body: CleanupChoice):
+        """Moves to the archive or the trash the messages the user approved, only from the list Watson proposed."""
+        from . import mail, mail_cleanup
+        from .routes_mail import microsoft_login
+        owner = owner_of(request)
+        found = proposals.get(proposal_id)
+        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "cleanup" not in found:
+            return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        chosen = [i for i in body.ids if i in set(found["cleanup"]["ids"])]
+        if not chosen:
+            return JSONResponse({"error": "No has elegido ningún correo de la lista."}, status_code=422)
+        proposals.pop(proposal_id, None)  # once: a double click moves nothing twice
+        def work():
+            with database() as connection:
+                return mail_cleanup.move(connection, chosen, found["cleanup"]["action"], lambda account: secrets.get(mail.secret_account(account)),
+                                         login=microsoft_login(connection, secrets))
+        try:
+            return await run_in_threadpool(work)
+        except mail_cleanup.CleanupError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
 
     @router.post("/proposals/{proposal_id}/dismiss")
     async def dismiss_proposal(proposal_id: str, request: Request):

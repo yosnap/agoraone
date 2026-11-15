@@ -74,6 +74,7 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'inbox'; filter: string; count: number }
   | { kind: 'tool'; tool: 'clients'; filter: string; count: number }
   | { kind: 'tool'; tool: 'rule_proposal'; id: string; rule: ProposedRule }
+  | { kind: 'tool'; tool: 'cleanup_proposal'; id: string; action: 'archive' | 'trash'; messages: CleanupMessage[] }
   | { kind: 'tool'; tool: 'quote_proposal'; id: string; quote: ProposedQuote }
   | { kind: 'tool'; tool: 'event_proposal'; id: string; event: { title: string; start: string; end: string; allDay: boolean; location: string | null; notes: string | null; calendar: string | null } }
   | { kind: 'tool'; tool: 'note_proposal'; id: string; note: { title: string; folder: string; content: string } }
@@ -419,3 +420,6 @@ export const getVaultReview = (discreet: boolean) => core<VaultReview>(`/brain/r
 export type ProposedQuote = { client: string; title: string; items: { description: string; details?: string; unitPrice: number; priceMax?: number; quantity: number; unit?: string }[];
   phases?: { name: string; percent?: number }[]; vat?: number; validDays?: number };
 export const createQuoteFromProposal = (id: string) => core<{ created: { id?: string; number?: string; text?: string } }>(`/assistant/proposals/${encodeURIComponent(id)}/quote`, {});
+/** Tidying the mailbox (1.7): the messages Watson listed; only the approved ones move to the archive or the trash. */
+export type CleanupMessage = { id: number; from: string; address: string; subject: string; date: string | null; account: string; level: Level };
+export const cleanMailFromProposal = (id: string, ids: number[]) => core<{ moved: number; problems: string[] }>(`/assistant/proposals/${encodeURIComponent(id)}/mail`, { ids });

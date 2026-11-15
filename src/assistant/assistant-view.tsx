@@ -5,6 +5,7 @@ import { isYes, quickCommand, type QuickResult } from './quick-commands';
 import { NoteProposals, useNoteProposals } from './note-proposals';
 import { EventProposals, useEventProposals } from './event-proposals';
 import { QuoteProposals, useQuoteProposals } from './quote-proposals';
+import { CleanupProposals, useCleanupProposals } from './cleanup-proposals';
 import { speak, stopSpeaking, useSpeaking } from './speech';
 
 // The conversation last open (its number only, in this browser), opened again when coming back to the chat.
@@ -58,6 +59,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const notes = useNoteProposals();
   const events = useEventProposals();
   const quotes = useQuoteProposals();
+  const cleanups = useCleanupProposals();
   const abort = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
   // The conversation on screen, read by answers that finish after the user moved to another one.
@@ -106,12 +108,13 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         else if (event.kind === 'tool' && event.tool === 'note_proposal') notes.add(event.id, event.note);
         else if (event.kind === 'tool' && event.tool === 'event_proposal') events.add(event.id, event.event);
         else if (event.kind === 'tool' && event.tool === 'quote_proposal') quotes.add(event.id, event.quote);
+        else if (event.kind === 'tool' && event.tool === 'cleanup_proposal') cleanups.add(event.id, event.action, event.messages);
         else if (event.kind === 'tool' && event.tool === 'read') { reading.push(event.id); onThinking?.({ stage: 'lee', label: `Leyendo «${event.title}»`, reading: [...reading] }); }
         setLive(previous => previous && (
         event.kind === 'stage' ? { ...previous, stage: event.stage, engine: event.engine ?? previous.engine, model: event.model ?? previous.model }
           : event.kind === 'sources' ? (onSources?.(event.sources.map(sourceId)), { ...previous, sources: event.sources })
           : event.kind === 'delta' ? { ...previous, text: previous.text + event.text }
-          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? `Consultó la Bandeja · ${event.count} correos` : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'note_proposal' ? `Propuso la nota «${event.note.title}»` : event.tool === 'event_proposal' ? `Propuso el evento «${event.event.title}»` : event.tool === 'quote_proposal' ? `Propuso el presupuesto «${event.quote.title}»` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
+          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? `Consultó la Bandeja · ${event.count} correos` : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'note_proposal' ? `Propuso la nota «${event.note.title}»` : event.tool === 'event_proposal' ? `Propuso el evento «${event.event.title}»` : event.tool === 'quote_proposal' ? `Propuso el presupuesto «${event.quote.title}»` : event.tool === 'cleanup_proposal' ? `Preparó ${event.messages.length} correos para ${event.action === 'trash' ? 'la Papelera' : 'archivar'}` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
           : previous));
       }, controller.signal);
     } catch (failure) {
@@ -221,6 +224,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <NoteProposals state={notes}/>
         <EventProposals state={events}/>
         <QuoteProposals state={quotes}/>
+        <CleanupProposals state={cleanups} discreet={discreet}/>
         {error && <LoadError message={error}/>}
         <div ref={end}/>
       </div>
