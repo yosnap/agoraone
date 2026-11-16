@@ -27,5 +27,24 @@ cada agente (el Asistente para Watson, la Oficina 3D para conversar con un perfi
 - De Hermes, lo mismo que la Oficina 3D: `/api/hermes/activity`, `/api/hermes/catalog` y `/api/hermes/work`
   (docs/actividad-hermes.md). En modo discreto, los títulos de los encargos y los tokens se ocultan.
 
-## Pendiente (fases 3 y 4 del plan)
-Sesiones de Claude Code y Codex de este Mac, y la Oficina 3D enlazada con estas tarjetas.
+## Agentes de código en este Mac (alpha.29)
+Debajo de las tarjetas, las sesiones de Claude Code y Codex que se han movido en las últimas 24 horas
+(`GET /agents/coding`, `core/agora_core/coding_sessions.py`, `src/agents/coding-sessions.tsx`): la carpeta del
+proyecto donde empezó, la rama, el modelo, si está «Trabajando» (se movió hace menos de 2 minutos con un turno
+abierto), «Herramienta o tu permiso» (pidió una herramienta que no ha contestado en más de 2 minutos: los registros
+no distinguen una orden larga de una aprobación pendiente), «Te espera» (terminó su respuesta o la interrumpiste hace
+menos de 30 minutos; los comandos locales no cuentan) o «En pausa», los tokens de 24 h (entrada,
+creación de caché y salida; sin lecturas de caché) y cuántas respuestas dio.
+
+- Carpetas fijas: `~/.claude/projects`, los perfiles de Orca (`~/Library/Application Support/orca/claude-profiles/*/home/projects`)
+  y `~/.codex/sessions` (solo los días de hoy y ayer). Sin enlaces simbólicos.
+- Cada archivo se lee una vez y después solo lo añadido (hay sesiones de casi 50 MB); una línea a medias se lee
+  cuando termina y una de más de 4 MB se salta. Un mensaje que Claude Code escribe varias veces mientras lo genera
+  cuenta una sola, y un recuento de Codex repetido también. La caché guarda solo los archivos dentro de la ventana
+  (por la fecha del archivo) y los tokens de 24 h: tras la primera lectura (cerca de 1 s), cada sondeo tarda milisegundos.
+- Una sesión de Codex de hace más de un día reanudada hoy escribe en la carpeta de su primer día y no se ve.
+- No se guardan ni se devuelven mensajes, entradas o resultados de herramientas, adjuntos ni rutas completas: solo
+  el último tramo de la carpeta. En modo discreto se ocultan el proyecto, la rama y los tokens.
+
+## Pendiente (fase 4 del plan)
+La Oficina 3D enlazada con estas tarjetas.

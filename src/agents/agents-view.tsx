@@ -5,6 +5,7 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ago, BLOCKED, describe, describeWatson, outcomeLabel, RUNNING, sourceLabel, uniqueKeys, until, type Line } from './agent-lines';
 import { refreshAgents, useAgentsFeed } from './agents-feed';
+import { CodingSessions } from './coding-sessions';
 import './agents.css';
 
 const tokens = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} M` : n >= 1000 ? `${Math.round(n / 1000)} k` : String(n);
@@ -44,13 +45,14 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
       .reduce((sum, total) => ({ runs: sum.runs + total.runs, tokens: sum.tokens + total.tokens.input + total.tokens.output }), { runs: 0, tokens: 0 });
     return { profile, own, status, running, blocked, next, day };
   });
-  const working = (profiles.filter(p => !['connected', 'idle'].includes(p.status.state)).length) + (['answering', 'live'].includes(watsonState.state) ? 1 : 0);
+  const coders = (feed.coding ?? []).filter(session => session.state === 'working').length;
+  const working = coders + (profiles.filter(p => !['connected', 'idle'].includes(p.status.state)).length) + (['answering', 'live'].includes(watsonState.state) ? 1 : 0);
   const gateway = activity?.gateway;
 
   return <section className="page agents" aria-labelledby="agents-title">
     <div className="eyebrow">AGENTES{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="agents-title">Agentes</h1>
-    <p className="page-lead">Quién trabaja ahora y en qué, y lo que ha hecho cada uno en las últimas 24 horas. Todo sale de los registros reales de {assistant} y de Hermes (nunca el texto de las conversaciones) y se actualiza solo cada 15 segundos.</p>
+    <p className="page-lead">Quién trabaja ahora y en qué, y lo que ha hecho cada uno en las últimas 24 horas. Todo sale de los registros reales de {assistant}, de Hermes y de Claude Code y Codex en este Mac (nunca el texto de las conversaciones) y se actualiza solo cada 15 segundos.</p>
     <div className="agents-bar" role="status">
       <span className={`chip ${working ? 'agents-busy' : ''}`}>{working ? `${working} ${working === 1 ? 'agente trabajando' : 'agentes trabajando'}` : 'Nadie trabajando ahora'}</span>
       {gateway && <span className="chip">Gateway de Hermes: {gateway.state === 'running' ? `en marcha${gateway.activeAgents ? ` · ${gateway.activeAgents} en curso` : ''}` : gateway.state === 'stopped' ? 'detenido' : gateway.state === 'stale' ? 'sin datos recientes' : 'sin estado'}</span>}
@@ -59,6 +61,7 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
     </div>
     {feed.failed.length > 0 && <small className="dictation-error" role="status">No se pudo leer: {feed.failed.join(', ')}. Se muestra lo demás.</small>}
     {!feed.readAt ? <Loading label="Leyendo a los agentes" lines={4}/> : <div className="agents-layout">
+      <div className="agents-main">
       <div className="agents-cards">
         <article className={`card agent-tile state-${watsonState.state}`}>
           <header><span className="agent-avatar watson" aria-hidden="true">{assistant.slice(0, 1)}</span>
@@ -81,6 +84,8 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
             <button type="button" className="button" onClick={() => onOpen('jobs')}>Tareas</button>
           </div>
         </article>)}
+      </div>
+        <CodingSessions sessions={feed.coding} discreet={discreet} now={now}/>
       </div>
       <aside className="card agents-log" aria-label="Actividad de las últimas 24 horas">
         <strong>Actividad · últimas 24 h</strong>
