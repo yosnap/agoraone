@@ -1,6 +1,6 @@
 [project]
 name = "agora-core"
-version = "1.7.0-alpha.26"
+version = "1.7.0-alpha.27"
 description = "Núcleo local de AgoraOne: cerebro, asistente y complementos. Solo escucha en loopback detrás del backend."
 requires-python = "==3.13.*"
 license = "MIT"
