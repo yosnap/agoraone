@@ -50,7 +50,7 @@ export function PeopleField({ value, onChange, onTyping }: { value: MeetingPerso
         onChange={event => type(event.target.value)}
         onBlur={() => { if (text.trim()) add(typedPeople(text)); else cancel(); }}
         onKeyDown={event => {
-          if (event.key === 'ArrowDown' && found.length) { event.preventDefault(); setActive(i => Math.min(found.length - 1, i + 1)); }
+          if (event.key === 'ArrowDown' && found.length) { event.preventDefault(); setActive(i => Math.min(found.length, i + 1)); }
           else if (event.key === 'ArrowUp' && found.length) { event.preventDefault(); setActive(i => Math.max(0, i - 1)); }
           else if (event.key === 'Enter') { event.preventDefault(); if (found[active]) pick(found[active]); else if (text.trim()) add(typedPeople(text)); }
           else if (event.key === 'Escape') cancel();
@@ -62,7 +62,7 @@ export function PeopleField({ value, onChange, onTyping }: { value: MeetingPerso
         className={n === active ? 'active' : ''} onMouseDown={event => { event.preventDefault(); pick(contact); }}>
         <strong>{contact.name}</strong>{contact.org && <small> · {contact.org}</small>}{contact.email && <small className="muted"> · {contact.email}</small>}
       </button>)}
-      <button type="button" role="option" aria-selected={false} className="people-new" onMouseDown={event => { event.preventDefault(); add(typedPeople(text)); }}>
+      <button type="button" role="option" aria-selected={active === found.length} className={`people-new${active === found.length ? ' active' : ''}`} onMouseDown={event => { event.preventDefault(); add(typedPeople(text)); }}>
         ＋ Añadir «{text.trim()}» sin contacto</button>
     </div>}
     {text.trim() && !found.length && <small className="muted">Pulsa Enter o escribe una coma para añadir a «{text.trim()}», aunque no esté en tus contactos.</small>}

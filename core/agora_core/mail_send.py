@@ -161,6 +161,8 @@ def check_login(host: str, port: int, username: str, password: str | None, opene
         return "ok", "El servidor aceptó el usuario y la contraseña."
     except smtplib.SMTPAuthenticationError:
         return "auth", "El servidor no aceptó el usuario o la contraseña (en Resend, usuario «resend» y la clave de API)."
+    except ValueError:  # smtplib only takes ASCII user names and passwords
+        return "auth", "El usuario o la contraseña llevan letras que el servidor de salida no admite."
     except (smtplib.SMTPException, OSError, ssl.SSLError) as error:
         return "error", f"El servidor respondió con un error ({type(error).__name__})."
     finally:
@@ -222,9 +224,13 @@ def _send(connection: sqlite3.Connection, draft: dict, sealed: str, secret, toke
         raise SendError("Falta la contraseña de aplicación de esa cuenta." if account["auth"] != "microsoft" else "Falta conectar la cuenta con Microsoft.")
     original = None
     if draft["replyTo"]:
-        original = connection.execute("SELECT * FROM mail_message WHERE id = ? AND account_id = ?", (draft["replyTo"], account["id"])).fetchone()
+        # A mailbox answers only its own mail; a sending-only account (Resend…) may answer mail of any account.
+        if account["kind"] == "send":
+            original = connection.execute("SELECT * FROM mail_message WHERE id = ?", (draft["replyTo"],)).fetchone()
+        else:
+            original = connection.execute("SELECT * FROM mail_message WHERE id = ? AND account_id = ?", (draft["replyTo"], account["id"])).fetchone()
         if original is None:
-            raise SendError("Solo se responde desde la cuenta que recibió el correo.")
+            raise SendError("Solo se responde desde la cuenta que recibió el correo o desde una cuenta de solo envío.")
     detail = {"accountId": account["id"], "to": draft["to"], "cc": draft["cc"], "subject": draft["subject"],
               "replyTo": draft["replyTo"], "seal": sealed}
     try:

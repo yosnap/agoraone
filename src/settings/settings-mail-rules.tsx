@@ -41,7 +41,7 @@ export function MailRulesCard() {
       confidentiality: (form.confidentiality || null) as Level | null, enabled: true,
     }), 'Regla creada; ya se aplica a lo pendiente de la Bandeja.').then(ok => { if (ok) { setForm(empty); setAdding(false); } });
   };
-  const accountOptions = [{ value: '', label: 'Todas las cuentas' }, ...accounts.map(a => ({ value: String(a.id), label: a.address }))];
+  const accountOptions = [{ value: '', label: 'Todas las cuentas' }, ...accounts.filter(a => a.kind === 'mailbox').map(a => ({ value: String(a.id), label: a.address }))];
   const scopeOptions = [{ value: '', label: 'El de la cuenta' }, ...scopes.map(s => ({ value: String(s.id), label: s.name }))];
   const describe = (rule: MailRule) => [
     rule.sender && `de ${rule.sender}`, rule.accountId && `en ${accounts.find(a => a.id === rule.accountId)?.address ?? 'una cuenta'}`,

@@ -155,7 +155,7 @@ export type MailAccountIn = {
 export const getMailPresets = () => core<{ presets: Record<MailProvider, MailPreset> }>('/mail/presets');
 export const getMailAccounts = () => core<{ accounts: MailAccount[] }>('/mail/accounts');
 export const createMailAccount = (account: MailAccountIn) => core<{ accounts: MailAccount[] }>('/mail/accounts', account);
-export const changeMailAccount = (id: number, changes: Partial<MailAccountIn & { enabled: boolean; password: string | null }>) =>
+export const changeMailAccount = (id: number, changes: Partial<Omit<MailAccountIn, 'smtpHost'> & { smtpHost: string | null; enabled: boolean; password: string | null }>) =>
   core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, changes, 'PUT');
 export const deleteMailAccount = (id: number) => core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, undefined, 'DELETE');
 /** Signs in to an account's SMTP server without sending anything. */

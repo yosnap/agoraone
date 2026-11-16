@@ -124,7 +124,7 @@ def create_account(connection: sqlite3.Connection, data: dict) -> int:
 
 def _port(value, default: int) -> int:
     try:
-        port = int(value or default)
+        port = int(value if value is not None else default)
     except (TypeError, ValueError) as error:
         raise MailError("Puerto no válido.") from error
     if not 1 <= port <= 65535:
@@ -183,7 +183,7 @@ def update_account(connection: sqlite3.Connection, account_id: int, changes: dic
             if key in ("imapHost", "smtpHost"):
                 value = _host(value)
             elif key in ("imapPort", "smtpPort") and value is not None:
-                value = _port(value, 993)
+                value = _port(value, 0)
             elif key == "username":
                 value = _username(value)
             elif key == "enabled":

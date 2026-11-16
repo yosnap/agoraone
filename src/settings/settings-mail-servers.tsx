@@ -15,7 +15,8 @@ export function MailServersForm({ account, busy, onSave }: {
   const save = () => void onSave(() => changeMailAccount(account.id, {
     username: form.username.trim(),
     ...(mailbox ? { imapHost: form.imapHost.trim(), imapPort: port(form.imapPort, 993) } : {}),
-    smtpHost: form.smtpHost.trim() || undefined, smtpPort: port(form.smtpPort, 465),
+    // An empty sending server on a mailbox removes it (it can no longer send); a sending-only account needs one.
+    smtpHost: form.smtpHost.trim() || (mailbox ? null : undefined), smtpPort: form.smtpHost.trim() ? port(form.smtpPort, 465) : undefined,
   }), 'Usuario y servidores guardados.');
   return <details className="mail-servers">
     <summary>Usuario y servidores</summary>

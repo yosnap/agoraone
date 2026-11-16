@@ -214,11 +214,13 @@ def mail_router(settings: Settings, secrets) -> APIRouter:
         """Signs in to an account's SMTP server (without sending anything) and says whether it worked."""
         from . import mail_send
         account = await db(lambda c: c.execute("SELECT * FROM mail_account WHERE id = ?", (account_id,)).fetchone())
-        if account is None or account["auth"] != "password" or not account["smtp_host"]:
-            return JSONResponse({"error": "Esa cuenta no tiene servidor de salida que probar."}, status_code=404)
+        if account is None or account["kind"] != "send":
+            return JSONResponse({"error": "Esa cuenta no es de solo envío."}, status_code=404)
         password = await run_in_threadpool(secrets.get, mail.secret_account(account_id))
         status, detail = await run_in_threadpool(mail_send.check_login, account["smtp_host"], account["smtp_port"], account["username"], password)
-        await db(lambda c: c.execute("UPDATE mail_account SET status = ?, last_error = ? WHERE id = ?", (status, None if status == "ok" else detail, account_id)))
+        # Only if the server and user are still the ones tried: an edit made meanwhile stays pending.
+        await db(lambda c: c.execute("UPDATE mail_account SET status = ?, last_error = ? WHERE id = ? AND smtp_host = ? AND smtp_port = ? AND username = ?",
+                                     (status, None if status == "ok" else detail, account_id, account["smtp_host"], account["smtp_port"], account["username"])))
         return {"result": {"status": status, "detail": detail}, **(await accounts())}
 
     @router.get("/mail/microsoft")
