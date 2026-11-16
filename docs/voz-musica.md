@@ -39,7 +39,12 @@ para pedir algo.
     cuenta ni clave (`core/agora_core/youtube.py`), y solo se queda con identificador, título, canal y duración. El
     vídeo es el de YouTube sin cookies, manejado por mensajes (`src/brain/youtube-player.tsx`): el script de
     YouTube nunca corre dentro de AgoraOne. Los vídeos que su dueño no deja incrustar (lo habitual en los de las
-    discográficas) se saltan; si no queda ninguno, se ofrece «Abrir en YouTube» en el navegador.
+    discográficas) suenan, en la app de escritorio, en una ventana oculta con la página de YouTube
+    (`desktop/app/src/youtube_window.rs`). Esa ventana no tiene órdenes nativas, no guarda nada entre arranques,
+    solo carga páginas de YouTube, rechaza las cookies, salta los anuncios que dejan saltarse y no pasa sola al
+    siguiente vídeo. La pantalla deja sus órdenes en el núcleo y la app las recoge; el estado del vídeo vuelve a la
+    pantalla ya revisado. En el navegador, sin esa ventana, se saltan; si no queda ninguno, se ofrece «Abrir en
+    YouTube».
 - En la tarjeta de música, el desplegable elige la fuente.
 
 ## Órdenes rápidas, sin modelo
@@ -121,6 +126,8 @@ queda para más adelante: genera en segundo plano y necesita descargar antes su 
 | `GET /music/library`, `PUT /music/library/folders`, `POST /music/library/choose`, `GET /music/library/{id}/file` | biblioteca: carpetas, búsqueda y archivo |
 | `GET /music/youtube/search` | vídeos de YouTube para el reproductor de AgoraOne |
 | `POST /music/youtube` | abre una búsqueda de YouTube en el navegador |
+| `GET/POST /music/youtube/hidden` | si existe la ventana oculta de YouTube y las órdenes para ella |
+| `GET /internal/youtube/hidden/next` | la app de escritorio recoge esas órdenes (espera hasta 25 s) |
 
 ## Pendiente
 

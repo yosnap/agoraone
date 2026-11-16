@@ -7,7 +7,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import music, music_library, youtube
+from . import hidden_player, music, music_library, youtube
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -30,8 +30,16 @@ class Query(BaseModel):
     query: str
 
 
-def music_router(settings: Settings) -> APIRouter:
+class HiddenCommand(BaseModel):
+    action: str
+    id: str | None = None
+    volume: float | None = None
+    seconds: float | None = None
+
+
+def music_router(settings: Settings, relay: hidden_player.Relay | None = None) -> APIRouter:
     router = APIRouter()
+    relay = relay or hidden_player.Relay()
 
     @contextmanager
     def database():
@@ -83,6 +91,23 @@ def music_router(settings: Settings) -> APIRouter:
     @router.post("/music/youtube")
     async def youtube_in_browser(body: Query):  # not «youtube»: that name is the module used just above
         return await run(lambda: {"done": music_library.youtube(body.query)})
+
+    @router.get("/music/youtube/hidden")
+    async def hidden_available():
+        return {"available": relay.available()}
+
+    @router.post("/music/youtube/hidden")
+    async def hidden_command(body: HiddenCommand):
+        command = hidden_player.valid(body.model_dump(exclude_none=True))
+        if command is None:
+            return JSONResponse({"error": "Orden no válida."}, status_code=400)
+        if not relay.available():
+            return JSONResponse({"error": "La ventana de YouTube solo existe en la app de escritorio."}, status_code=409)
+        return {"seq": relay.push(command)}
+
+    @router.get("/internal/youtube/hidden/next")  # only the desktop app: the browser cannot reach /internal
+    async def hidden_next(after: int = -1):
+        return await relay.next(after)
 
     @router.get("/music/status")
     async def now_playing():

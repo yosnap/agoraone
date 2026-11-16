@@ -413,6 +413,9 @@ export const getLibrary = (q = '') => core<{ folders: string[]; tracks: LibraryT
 export const putLibraryFolders = (folders: string[]) => core<{ folders: string[] }>('/music/library/folders', { folders }, 'PUT');
 export const chooseLibraryFolder = () => core<{ path: string | null }>('/music/library/choose', {});
 export const openYouTube = (query: string) => core<{ done: string }>('/music/youtube', { query });
+export type HiddenCommand = { action: 'play'; id: string } | { action: 'pause' | 'resume' | 'stop' } | { action: 'volume'; volume: number } | { action: 'seek'; seconds: number };
+export const hiddenYouTubeAvailable = () => core<{ available: boolean }>('/music/youtube/hidden');
+export const hiddenYouTube = (command: HiddenCommand) => core<{ seq: number }>('/music/youtube/hidden', command);
 export async function trackUrl(id: string): Promise<string> {
   const response = await fetch(`/api/core/music/library/${encodeURIComponent(id)}/file`, { headers: csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {} });
   if (!response.ok) throw new ApiError('No se pudo abrir esa canción.', response.status, {});

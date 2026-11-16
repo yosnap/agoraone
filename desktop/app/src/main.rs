@@ -6,6 +6,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod youtube_window;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -257,7 +259,8 @@ fn main() {
             let _ = app.global_shortcut().register(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyW));
             if let Some(link) = core_link.clone() {
                 notify_loop(app.handle().clone(), link.clone());
-                wake_loop(app.handle().clone(), link);
+                wake_loop(app.handle().clone(), link.clone());
+                youtube_window::youtube_loop(app.handle().clone(), link);
             }
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(address.clone()))
                 .title("AgoraOne")
@@ -288,7 +291,13 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .unwrap_or_else(|_| alert("no se pudo abrir la ventana"));
-    app.run(move |_, event| {
+    app.run(move |app, event| {
+        // The hidden YouTube window never keeps the app open: closing AgoraOne's window closes it too.
+        if let RunEvent::WindowEvent { label, event: tauri::WindowEvent::Destroyed, .. } = &event
+            && label == "main"
+        {
+            app.exit(0);
+        }
         if let RunEvent::Exit = event {
             if let Some(stop) = stop.take() {
                 let _ = stop.send(());
