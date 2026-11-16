@@ -3,7 +3,7 @@
 
 const plain = (text: string) => text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 // Characters Obsidian does not accept in a note name (the server refuses them too).
-const unsafe = /[\\/:*?"<>|#^[\]\u0000-\u001f\p{Cf}\u2028\u2029]/gu;
+export const unsafe = /[\\/:*?"<>|#^[\]\u0000-\u001f\p{Cf}\u2028\u2029]/gu;
 // Company forms left out when matching a client with its folder («Artilabs S.L.» is «Artilabs»).
 const FORMS = new Set(['s', 'l', 'u', 'a', 'sl', 'slu', 'sa', 'sau', 'sll', 'scp', 'cb', 'inc', 'ltd', 'llc', 'gmbh']);
 const bare = (name: string) => plain(name).split(' ').filter(word => !FORMS.has(word)).join(' ');
@@ -18,13 +18,26 @@ export function projectsBase(folders: string[]): string | null {
   return named.find(base => plain(base).includes('client')) ?? named[0] ?? null;
 }
 
+/** A folder or note name the vault accepts: NFC, no forbidden characters, no leading dot, at most `bytes` bytes
+ * cut on whole characters, and no space left at either end. */
+export function vaultName(text: string, bytes = 240): string {
+  const clean = text.normalize('NFC').replace(unsafe, ' ').replace(/\s+/g, ' ').trim().replace(/^[.\s]+/, '');
+  const encoder = new TextEncoder();
+  let out = '';
+  for (const char of Array.from(clean)) {
+    if (encoder.encode(out + char).length > bytes) break;
+    out += char;
+  }
+  return out.trim();
+}
+
 /** The client's folder inside the base: an existing one whose name matches the client's, or a new one. */
 export function clientFolder(folders: string[], base: string, client: string): { folder: string; exists: boolean } {
   const wanted = plain(client);
   const children = [...new Set(folders.filter(f => f.startsWith(`${base}/`)).map(f => f.slice(base.length + 1).split('/')[0]))];
   // Only the same name: a similar one may be another client («Foodzinder Web» is not «FoodZinder»).
   const found = children.find(name => plain(name) === wanted) ?? children.find(name => bare(name) !== '' && bare(name) === bare(client));
-  const name = found ?? (client.replace(unsafe, ' ').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Cliente');
+  const name = found ?? (vaultName(Array.from(client).slice(0, 60).join('')) || 'Cliente');
   return { folder: `${base}/${name}`, exists: Boolean(found) };
 }
 
