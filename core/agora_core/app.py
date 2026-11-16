@@ -189,7 +189,7 @@ def create_app(
     app.include_router(assistant_router(settings, embedder, cache, secrets, engines))
     app.include_router(mail_router(settings, secrets))
     app.include_router(mail_send_router(settings, secrets, drafter))
-    app.include_router(inbox_router(settings, summary_health))
+    app.include_router(inbox_router(settings, summary_health, secrets))
     app.include_router(fiscal_router(settings, secrets))
     app.include_router(central_router(settings, central_health))
     if calendar is not None:

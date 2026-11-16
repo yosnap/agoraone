@@ -2,8 +2,43 @@
 .inbox-bar { margin:0 0 14px; align-items:center }
 .inbox-group { margin:18px 0 0 }
 .inbox-group h2 { margin:0 0 10px }
-.inbox-cards { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(min(460px, 100%), 1fr)); gap:12px; align-items:start }
-.inbox-card { gap:8px }
+/* The cards chosen per row (3 or 4) when there is room, fewer on a narrow window; every card as tall as the
+   others of its row, with the long texts cut to the same lines and the buttons at the bottom. */
+.inbox-cards { list-style:none; margin:0; padding:0; display:grid; gap:12px; align-items:stretch;
+  grid-template-columns:repeat(auto-fill, minmax(max(260px, calc((100% - 36px) / 4)), 1fr)) }
+/* Every row as tall as the tallest card, except while a card holds an open form (it would stretch them all). */
+.inbox-cards { grid-auto-rows:1fr }
+.inbox-cards.editing { grid-auto-rows:auto }
+.inbox-cards.per-3 { grid-template-columns:repeat(auto-fill, minmax(max(300px, calc((100% - 24px) / 3)), 1fr)) }
+.inbox-card { gap:8px; display:flex; flex-direction:column; min-height:250px; height:100% }
+.inbox-card > .inbox-actions { margin-top:auto; padding-top:4px }
+.inbox-card.chosen { border-color:var(--c-24563a); box-shadow:0 0 0 1px var(--c-24563a) inset }
+.inbox-card .inbox-subject { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden }
+.inbox-card .inbox-summary { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:4; overflow:hidden }
+.inbox-card .inbox-from { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.inbox-card .inbox-details { max-height:5.6em; overflow:hidden }
+.inbox-pick { margin-right:2px }
+.inbox-tools { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; margin:4px 0 10px }
+.inbox-search { flex:1 1 260px }
+.inbox-tools .field { min-width:170px }
+.inbox-tools .inbox-per-row { min-width:0 }
+.inbox-per-row .segmented { width:auto }
+.inbox-delete { display:flex; flex-direction:column; gap:10px; margin:0 0 14px; max-width:760px }
+.inbox .inbox-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,380px); gap:20px; align-items:start; max-width:none }
+.inbox .inbox-layout.alone { grid-template-columns:minmax(0,1fr) }
+@media (max-width:1100px) { .inbox .inbox-layout { grid-template-columns:minmax(0,1fr) } }
+.inbox-main { min-width:0 }
+.inbox-chat { position:sticky; top:16px; display:flex; flex-direction:column; gap:8px; max-height:calc(100vh - 80px) }
+.inbox-chat-lines { flex:1; min-height:160px; overflow:auto; display:flex; flex-direction:column; gap:8px }
+.inbox-chat-line { display:flex; flex-direction:column; gap:2px }
+.inbox-chat-line p { margin:0; white-space:pre-wrap; font-size:13px; line-height:1.45; padding:8px 10px; border-radius:10px }
+.inbox-chat-line.user p { background:var(--c-dcebdc); color:var(--c-24563a); align-self:flex-end; max-width:90% }
+.inbox-chat-line.assistant p { background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6) }
+.inbox-chat-line.failed p { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.inbox-chat-examples { display:flex; flex-direction:column; gap:6px }
+.inbox-chat-examples .button { text-align:left; white-space:normal }
+.inbox-chat-form { display:flex; gap:12px; align-items:stretch }
+.inbox-chat-form input { flex:1; min-width:0 }
 .inbox-chips { display:flex; flex-wrap:wrap; gap:6px }
 .inbox-from, .inbox-subject { overflow-wrap:anywhere }
 .inbox-subject { font-weight:600; color:var(--c-173d3c) !important }

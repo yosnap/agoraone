@@ -73,6 +73,8 @@ SPECS = [
                          "description": "Qué tipo de correos (todos por defecto)."},
                 "de": {"type": "string", "description": ("Nombre, dirección o cliente del remitente (opcional), para «¿qué me ha pedido X?»: "
                                                          "busca también en los correos ya marcados como hechos.")},
+                "texto": {"type": "string", "description": ("Palabras que buscar en el asunto, el resumen o el remitente (opcional), para "
+                                                            "«busca el correo de la factura de Hostinger»: busca también en los ya hechos.")},
             },
         },
     },
@@ -310,7 +312,7 @@ class Toolbox:
             if name == "consultar_trabajos":
                 return await self._projects(str(args.get("periodo") or "7d"), str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
-                return await self._inbox(str(args.get("tipo") or "todos"), str(args.get("de") or ""))
+                return await self._inbox(str(args.get("tipo") or "todos"), str(args.get("de") or ""), str(args.get("texto") or ""))
             if name in meeting_tools.NAMES:
                 return await self._meetings(name, args)
         except (TypeError, ValueError):
@@ -405,7 +407,7 @@ class Toolbox:
         return json.dumps({"propuesta": {"repositorio": issue["repo"], "titulo": issue["title"]},
                            "estado": "En la pantalla del usuario, esperando «Crear la issue». No está creada."}, ensure_ascii=False)
 
-    async def _inbox(self, tipo: str, sender: str = "") -> str:
+    async def _inbox(self, tipo: str, sender: str = "", text: str = "") -> str:
         from . import mail_inbox
 
         if not self.mail:
@@ -414,20 +416,23 @@ class Toolbox:
 
         wanted = sender.casefold().strip()[:80]
 
+        words = [w for w in text.casefold().split() if len(w) > 1][:8]
+
         def matches(item: dict) -> bool:
-            if not wanted:
-                return True
             fields = (item["from"]["name"], item["from"]["address"], (item.get("client") or {}).get("name"))
-            return any(wanted in (value or "").casefold() for value in fields)
+            if wanted and not any(wanted in (value or "").casefold() for value in fields):
+                return False
+            seen = " ".join(v or "" for v in (*fields, item["subject"], item["summary"])).casefold()
+            return all(word in seen for word in words)
 
         def run():
             with self.database() as connection:
                 items = mail_inbox.inbox(connection, "pending", 200, audience=AUDIENCE)
-                if wanted:  # «what has X asked me?» covers what was already handled too
+                if wanted or words:  # «what has X asked me?» or a search covers what was already handled too
                     items += mail_inbox.inbox(connection, "done", 200, audience=AUDIENCE)
             return [i for i in items if (kind is None or i["kind"] == kind) and matches(i)][:INBOX_LIMIT]
         items = await run_in_threadpool(run)
-        self._record({"tool": "inbox", "filter": tipo, "sender": bool(wanted), "count": len(items)})
+        self._record({"tool": "inbox", "filter": tipo, "sender": bool(wanted or words), "count": len(items)})
         return json.dumps({
             "correos": [{"tipo": i["kind"], "de": i["from"]["name"] or i["from"]["address"], "asunto": i["subject"],
                          "fecha": i["sentAt"], "resumen": i["summary"], "piden": i["details"].get("asks", []),
