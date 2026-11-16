@@ -140,7 +140,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         } catch { /* the error above is enough */ }
       }
       // No answer to finish (an error, another conversation on screen): the voice waiting for it lets go.
-      if (!spokeFinal) stopSpeaking();
+      if (!spokeFinal) speak('', false);  // closes the answer begun (an error, another conversation): nothing more is said
       if (id === null || shownId.current === id) setLive(null);
       void refreshList();
     }

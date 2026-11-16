@@ -56,7 +56,7 @@ def test_rutas_de_la_voz(tmp_path, monkeypatch):
     from agora_core.keystore import MemoryStore
     from agora_core.settings import load_settings
     from tests.test_fiscal_excel import MemorySecrets
-    monkeypatch.setattr(tts, "voicestudio_voices", lambda: VOICES)
+    monkeypatch.setattr(tts, "voicestudio_voices", lambda fresh=False: VOICES)
     monkeypatch.setattr(tts, "synthesize", lambda voice, text: b"RIFF" + voice.encode())
     settings = load_settings({"AGORA_CORE_SECRET": "a" * 64, "AGORA_CORE_DATA": str(tmp_path / "data")})
     with TestClient(create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets()), base_url=f"http://{settings.authority}") as client:

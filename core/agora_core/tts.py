@@ -7,6 +7,7 @@ The address is fixed here, never taken from the client or the settings, so the c
 
 import json
 import sqlite3
+import time
 
 import httpx
 
@@ -44,15 +45,26 @@ def save_settings(connection: sqlite3.Connection, changes: dict) -> dict:
     return merged
 
 
-def voicestudio_voices() -> list[dict] | None:
-    """VoiceStudio's voice profiles, or None when it is not open."""
+_seen: dict = {"at": 0.0, "voices": None}
+
+
+def voicestudio_voices(fresh: bool = False) -> list[dict] | None:
+    """VoiceStudio's voice profiles, or None when it is not open. Kept 30 s: an answer is spoken in several pieces
+    and asking for the list each time would queue behind VoiceStudio's own work."""
+    if not fresh and time.monotonic() - _seen["at"] < 30:
+        return _seen["voices"]
+    _seen.update(at=time.monotonic(), voices=_read_voices())
+    return _seen["voices"]
+
+
+def _read_voices() -> list[dict] | None:
     try:
         answer = httpx.get(f"{VOICESTUDIO}/profiles", timeout=2.5)
         answer.raise_for_status()
         profiles = answer.json()
     except (httpx.HTTPError, ValueError):
         return None
-    return [{"id": str(p["id"]), "name": str(p.get("name") or p["id"]), "language": p.get("language") or None}
+    return [{"id": str(p["id"])[:120], "name": str(p.get("name") or p["id"])[:120], "language": str(p.get("language") or "")[:40] or None}
             for p in profiles if isinstance(p, dict) and p.get("id")][:100]
 
 
@@ -65,6 +77,8 @@ def resolve(chosen: dict, voices: list[dict] | None) -> dict:
     elif engine == "voicestudio":
         if voices is None:
             engine, problem = "macos", "VoiceStudio no está abierto: Watson habla con la voz de macOS."
+        elif not voice:
+            engine, problem = "macos", "Elige una voz de VoiceStudio: mientras, Watson habla con la voz de macOS."
         elif not any(v["id"] == voice for v in voices):
             engine, problem = "macos", "Esa voz ya no está en VoiceStudio: Watson habla con la voz de macOS."
     return {"engine": engine, "voice": voice if engine == "voicestudio" else None, "speed": chosen["speed"],

@@ -32,30 +32,41 @@ export function speakable(text: string): string {
 }
 
 const wants = (spokenTo: boolean) => { const mode = voiceMode(); return mode === 'always' || (mode === 'spoken' && spokenTo); };
+// The answer being written: spoken, silenced by the user («Callar»: it stays silent until the next question), or none.
+let answer: 'none' | 'spoken' | 'hushed' = 'none';
 
 /** A question was sent: if Watson will speak the answer, the voice gets ready and starts with the first sentence
  * while the rest is still being written (with VoiceStudio; macOS speaks the whole answer at the end). */
 export function beginAnswer(spokenTo: boolean) {
-  stopSpeaking();
-  if (wants(spokenTo)) player.begin(setSpeaking);
+  player.stop();
+  setSpeaking(false);
+  answer = wants(spokenTo) ? 'spoken' : 'none';
+  if (answer === 'spoken') player.begin(setSpeaking);
 }
 /** The answer as written so far. */
 export const answerSoFar = (text: string) => player.feed(text, false);
 
 /** The finished answer (or a quick command's reply): spoken, or finished if it was already being spoken. */
 export function speak(text: string, spokenTo: boolean) {
-  if (!player.active() && wants(spokenTo)) player.begin(setSpeaking);
-  if (player.active()) player.feed(text, true);
+  if (answer !== 'none') {  // the end of an answer already begun: finished, never started again (nor after «Callar»)
+    const silenced = answer === 'hushed';
+    answer = 'none';
+    if (!silenced) player.feed(text, true);
+    return;
+  }
+  if (wants(spokenTo)) { player.begin(setSpeaking); player.feed(text, true); }
 }
 
 export function stopSpeaking() {
+  if (answer === 'spoken') answer = 'hushed';
   player.stop();
   setSpeaking(false);
 }
 
 /** «Probar» in Ajustes: says this with the chosen voice, whatever the «responde hablando» choice is. */
 export function tryVoice(text: string) {
-  stopSpeaking();
+  player.stop();
+  answer = 'none';
   player.begin(setSpeaking);
   player.feed(text, true);
 }

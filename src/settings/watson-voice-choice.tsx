@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { getTts, putTts, type TtsSettings, type TtsView } from '../api/core';
 import { tryVoice } from '../assistant/speech';
-import { refreshVoice } from '../assistant/voice-player';
+import { lastProblem, refreshVoice } from '../assistant/voice-player';
 import { ModernSelect } from '../ui/modern-select';
 
 const SAMPLE = 'Hola, soy Watson. Hoy tienes una reunión a las once y tres correos esperando.';
@@ -37,18 +37,18 @@ export function WatsonVoiceChoice() {
       { value: 'macos', label: 'Una voz de macOS' }]}/></label>
     {settings.engine === 'voicestudio' && (voicestudio === null
       ? <small className="dictation-error">VoiceStudio no está abierto: ábrelo para elegir sus voces.</small>
-      : <label className="field">Voz de VoiceStudio<ModernSelect value={settings.voice ?? ''} onChange={value => void save({ voice: value })}
+      : <label className="field">Voz de VoiceStudio<ModernSelect value={settings.voice ?? ''} onChange={value => { if (value) void save({ voice: value }); }}
         options={[{ value: '', label: 'Elige una voz' }, ...studioVoices]}/></label>)}
     {(settings.engine === 'macos' || now.engine === 'macos') && mac.length > 0 && <label className="field">{settings.engine === 'macos' ? 'Voz de macOS' : 'Voz de macOS (si VoiceStudio no responde)'}
       <ModernSelect value={settings.macVoice ?? ''} onChange={value => void save({ macVoice: value || null })}
-        options={[{ value: '', label: 'La primera en español de España' }, ...mac.map(v => ({ value: v.name, label: `${v.name} · ${v.lang}` }))]}/></label>}
+        options={[{ value: '', label: 'La primera en español de España' }, ...mac.filter((v, i, all) => all.findIndex(o => o.name === v.name) === i).map(v => ({ value: v.name, label: `${v.name} · ${v.lang}` }))]}/></label>}
     <label className="field">Velocidad · {shownSpeed.toLocaleString('es-ES', { maximumFractionDigits: 2 })}×
       <input type="range" min={0.7} max={1.5} step={0.05} value={shownSpeed} onChange={event => setSpeed(Number(event.target.value))}
-        onPointerUp={() => speed !== null && void save({ speed })} onKeyUp={() => speed !== null && void save({ speed })}/></label>
+        onPointerUp={() => speed !== null && void save({ speed })} onKeyUp={() => speed !== null && void save({ speed })} onBlur={() => speed !== null && speed !== settings.speed && void save({ speed })}/></label>
     <div className="inbox-actions"><button type="button" className="button" onClick={() => tryVoice(SAMPLE)}>Probar</button></div>
-    <small className="muted">Ahora habla {now.engine === 'voicestudio' ? `VoiceStudio${voicestudio?.find(v => v.id === now.voice) ? ` con «${voicestudio.find(v => v.id === now.voice)!.name}»` : ''}, en este Mac` : 'macOS'}.
+    <small className="muted" role="status">Ahora habla {now.engine === 'voicestudio' ? `VoiceStudio${voicestudio?.find(v => v.id === now.voice) ? ` con «${voicestudio.find(v => v.id === now.voice)!.name}»` : ''}, en este Mac` : 'macOS'}.
       {now.engine === 'voicestudio' && ' La primera frase tarda unos segundos en sonar; el resto se prepara mientras habla.'}</small>
-    {now.problem && <small className="dictation-error" role="status">{now.problem}</small>}
+    {(now.problem || lastProblem) && <small className="dictation-error" role="status">{now.problem || lastProblem}</small>}
     {error && <small className="dictation-error" role="alert">{error}</small>}
   </div>;
 }

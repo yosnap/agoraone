@@ -50,7 +50,7 @@ def voice_router(settings: Settings) -> APIRouter:
     # Watson's voice (1.7): the chosen engine and voice, what speaks now and the voices VoiceStudio offers.
     def tts_view(connection) -> dict:
         chosen = tts.settings(connection)
-        voices = tts.voicestudio_voices()
+        voices = tts.voicestudio_voices(fresh=True)
         return {"settings": chosen, "now": tts.resolve(chosen, voices), "voicestudio": voices}
 
     @router.get("/voice/tts")

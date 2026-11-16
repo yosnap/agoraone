@@ -1,11 +1,11 @@
 import { getTts, speakPiece, type TtsNow } from '../api/core';
-import { MAX_SPOKEN, pieces, plainWords, settled } from './voice-pieces';
+import { advance, fresh, type Progress } from './voice-pieces';
 
 /** Plays Watson's answers aloud (1.7). With VoiceStudio, piece by piece: the next one is prepared while one plays,
  * and the first starts as soon as the first sentence is written. If VoiceStudio fails, the rest is said with the
  * macOS voice and the problem is kept for Ajustes › Voz. With macOS, the whole answer at the end, as before. */
 
-type Turn = { plain: string; taken: number; queue: string[]; next: number; final: boolean; stopped: boolean;
+type Turn = { progress: Progress; queue: string[]; next: number; final: boolean; stopped: boolean;
   ready: Map<number, Promise<string>>; abort: AbortController; wake?: () => void; audio?: HTMLAudioElement; urls: string[] };
 
 let voice: TtsNow | null = null;
@@ -35,7 +35,11 @@ function macSpeak(text: string, done: () => void) {
 }
 
 const prepare = (t: Turn, index: number) => {
-  if (index < t.queue.length && !t.ready.has(index)) t.ready.set(index, speakPiece(t.queue[index], t.abort.signal).then(url => { t.urls.push(url); return url; }));
+  if (index < t.queue.length && !t.ready.has(index)) {
+    const made = speakPiece(t.queue[index], t.abort.signal).then(url => { t.urls.push(url); return url; });
+    made.catch(() => undefined);  // a piece prepared ahead and never played (silenced) is no unhandled error
+    t.ready.set(index, made);
+  }
   return t.ready.get(index);
 };
 const waitMore = (t: Turn) => new Promise<void>(resolve => { t.wake = resolve; });
@@ -88,7 +92,7 @@ export const player = {
   begin(setSpeaking: (now: boolean) => void) {
     if (turn) finish(turn);
     onSpeaking = setSpeaking;
-    turn = { plain: '', taken: 0, queue: [], next: 0, final: false, stopped: false, ready: new Map(), abort: new AbortController(), urls: [] };
+    turn = { progress: fresh(), queue: [], next: 0, final: false, stopped: false, ready: new Map(), abort: new AbortController(), urls: [] };
     onSpeaking(true);
     void run(turn);
   },
@@ -96,19 +100,10 @@ export const player = {
   feed(text: string, final: boolean) {
     const t = turn;
     if (!t || t.final) return;
-    const plain = plainWords(text);
-    // A final text that does not continue what was being said (rewritten while streaming): only its new part counts.
-    const from = plain.startsWith(t.plain.slice(0, t.taken)) ? t.taken : plain.length;
-    // Up to the spoken limit, and there only up to the last whole sentence.
-    const long = plain.length > MAX_SPOKEN;
-    const window = plain.slice(0, MAX_SPOKEN);
-    const end = long && final ? settled(window, false) || MAX_SPOKEN : settled(window, final);
-    if (end > from) {
-      t.queue.push(...pieces(plain.slice(from, end), t.queue.length === 0));
-      t.taken = end;
-    }
-    t.plain = plain;
-    t.final = final || (long && end >= settled(window, false));
+    const { next, add } = advance(t.progress, text, final);
+    t.progress = next;
+    t.queue.push(...add);
+    t.final = next.final;
     t.wake?.();
   },
   stop() {
