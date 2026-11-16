@@ -19,7 +19,7 @@ from .settings import Settings
 
 SYNC_SECONDS = 300
 Level = Literal["normal", "local_only", "private"]
-Provider = Literal["gmail", "icloud", "microsoft", "other"]
+Provider = Literal["gmail", "icloud", "microsoft", "other", "resend", "smtp"]
 # Microsoft sign-ins in progress and access tokens in memory, shared by the routes and the background reader.
 FLOWS = mail_oauth.Flows()
 
@@ -109,7 +109,7 @@ def sync_all(settings: Settings, secrets) -> None:
     connection = connect(settings.data_dir / DB_NAME)
     try:
         login = microsoft_login(connection, secrets)
-        for row in connection.execute("SELECT id FROM mail_account WHERE enabled = 1").fetchall():
+        for row in connection.execute("SELECT id FROM mail_account WHERE enabled = 1 AND kind = 'mailbox'").fetchall():
             try:  # one account failing never stops the others
                 mail.sync_account(connection, row["id"], secrets.get(mail.secret_account(row["id"])), login=login)
             except Exception as error:
@@ -208,6 +208,20 @@ def mail_router(settings: Settings, secrets) -> APIRouter:
         if result["status"] == "missing":
             return JSONResponse({"error": "Esa cuenta no existe."}, status_code=404)
         return {"result": result, **(await accounts())}
+
+    @router.post("/mail/accounts/{account_id}/check")
+    async def check_sender(account_id: int):
+        """Signs in to an account's SMTP server (without sending anything) and says whether it worked."""
+        from . import mail_send
+        account = await db(lambda c: c.execute("SELECT * FROM mail_account WHERE id = ?", (account_id,)).fetchone())
+        if account is None or account["kind"] != "send":
+            return JSONResponse({"error": "Esa cuenta no es de solo envío."}, status_code=404)
+        password = await run_in_threadpool(secrets.get, mail.secret_account(account_id))
+        status, detail = await run_in_threadpool(mail_send.check_login, account["smtp_host"], account["smtp_port"], account["username"], password)
+        # Only if the server and user are still the ones tried: an edit made meanwhile stays pending.
+        await db(lambda c: c.execute("UPDATE mail_account SET status = ?, last_error = ? WHERE id = ? AND smtp_host = ? AND smtp_port = ? AND username = ?",
+                                     (status, None if status == "ok" else detail, account_id, account["smtp_host"], account["smtp_port"], account["username"])))
+        return {"result": {"status": status, "detail": detail}, **(await accounts())}
 
     @router.get("/mail/microsoft")
     async def microsoft_settings():

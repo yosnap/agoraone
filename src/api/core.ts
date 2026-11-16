@@ -138,10 +138,12 @@ export const getCoreSummary = (discreet: boolean) => core<CoreSummary>(`/summary
 export type Scope = { id: number; slug: string; name: string; color: string | null; fiscal: boolean };
 export const getScopes = () => core<{ scopes: Scope[] }>('/scopes');
 export const createScope = (name: string, fiscal = false) => core<{ scopes: Scope[] }>('/scopes', { name, fiscal });
-export type MailProvider = 'gmail' | 'icloud' | 'microsoft' | 'other';
+export type MailProvider = 'gmail' | 'icloud' | 'microsoft' | 'other' | 'resend' | 'smtp';
+/** Presets of accounts that only send (no mailbox to read). */
+export const sendOnly = (provider: MailProvider) => provider === 'resend' || provider === 'smtp';
 export type MailPreset = { name: string; imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; hint: string };
 export type MailAccount = {
-  id: number; address: string; label: string | null; provider: MailProvider; auth: 'password' | 'microsoft'; username: string; imapHost: string; imapPort: number;
+  id: number; address: string; label: string | null; kind: 'mailbox' | 'send'; provider: MailProvider; auth: 'password' | 'microsoft'; username: string; imapHost: string; imapPort: number;
   smtpHost: string | null; smtpPort: number | null; scopeId: number | null; scopeName: string | null; confidentiality: Level;
   maxAgeDays: number; enabled: boolean; status: 'pending' | 'ok' | 'auth' | 'unreachable' | 'error'; lastError: string | null;
   lastSyncAt: string | null; messages: number; hasPassword: boolean;
@@ -153,9 +155,11 @@ export type MailAccountIn = {
 export const getMailPresets = () => core<{ presets: Record<MailProvider, MailPreset> }>('/mail/presets');
 export const getMailAccounts = () => core<{ accounts: MailAccount[] }>('/mail/accounts');
 export const createMailAccount = (account: MailAccountIn) => core<{ accounts: MailAccount[] }>('/mail/accounts', account);
-export const changeMailAccount = (id: number, changes: Partial<MailAccountIn & { enabled: boolean; password: string | null }>) =>
+export const changeMailAccount = (id: number, changes: Partial<Omit<MailAccountIn, 'smtpHost'> & { smtpHost: string | null; enabled: boolean; password: string | null }>) =>
   core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, changes, 'PUT');
 export const deleteMailAccount = (id: number) => core<{ accounts: MailAccount[] }>(`/mail/accounts/${id}`, undefined, 'DELETE');
+/** Signs in to an account's SMTP server without sending anything. */
+export const checkMailSender = (id: number) => core<{ result: { status: string; detail: string }; accounts: MailAccount[] }>(`/mail/accounts/${id}/check`, {});
 export const syncMailAccount = (id: number) => core<{ result: { status: string; added: number }; accounts: MailAccount[] }>(`/mail/accounts/${id}/sync`, {});
 export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error' | 'cancelled'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
 export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail/microsoft');

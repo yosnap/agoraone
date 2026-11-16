@@ -4,6 +4,8 @@ AgoraOne lee las cuentas de correo que conectas, las resume y te deja en la Band
 
 ## Cuentas (Ajustes › Correo)
 - IMAP en **solo lectura**: nunca marca como leído, mueve ni borra. Se lee cada cinco minutos y con «Leer ahora».
+- Cuentas de **solo envío** (1.7.0-alpha.20): Resend (servidor `smtp.resend.com`, usuario `resend`, la clave de API como contraseña) o cualquier SMTP (SendGrid, Mailgun, Brevo…). No se leen nunca; «Probar» inicia sesión en su SMTP sin enviar nada y dice si el servidor aceptó la clave. La dirección tiene que ser de un dominio verificado en el servicio. Al responder un correo, «Enviar desde» deja elegir entre la cuenta que lo recibió y las de solo envío (sin copia en «Enviados», porque no tienen buzón). El SMTP de estas cuentas usa TLS directo en el 465 o STARTTLS en los demás puertos (587, 2587…).
+- El usuario, los servidores y los puertos de una cuenta se cambian en «Usuario y servidores» sin quitarla (no en las de Microsoft, que entran solas).
 - Contraseña de aplicación (iCloud, Gmail, Fastmail, otras), guardada en el Llavero de macOS. Las cuentas de Microsoft entran con su permiso OAuth (código de dispositivo, con tu propio registro de Entra en Ajustes › Microsoft); en el Llavero solo queda el permiso de renovación.
 - Cada cuenta tiene **ámbito** (trabajo, personal…), **confidencialidad** y antigüedad máxima:
   - **Normal**: se resume con Claude Haiku y Watson la ve.
