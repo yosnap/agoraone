@@ -129,7 +129,12 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
             row = recorder.owned(connection, owner, meeting_id)
             if not row["transcript"]:
                 raise MeetingError("Todavía no hay transcripción que exportar.")
-            path = meeting_notes.export(row, downloads())
+            if row["confidentiality"] != "normal":
+                raise MeetingError("Las reuniones privadas o solo en este Mac no salen de AgoraOne: no se exportan.", 403)
+            try:
+                path = meeting_notes.export(row, downloads())
+            except OSError as error:
+                raise MeetingError(f"No se pudo escribir en Descargas ({error.strerror or type(error).__name__}).") from error
             try:
                 fiscal.open_in_finder(path.parent, path.name, reveal=True)
             except fiscal.FiscalError:

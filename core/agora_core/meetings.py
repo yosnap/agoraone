@@ -11,6 +11,7 @@ import shutil
 import sqlite3
 import threading
 import time
+import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -214,15 +215,21 @@ def classify(kind, client, people) -> tuple[str, str | None, list[str]]:
     """A known kind, a client name (or none) and up to MAX_PEOPLE names, each on one line and of bounded size."""
     if kind not in KINDS:
         raise MeetingError("Tipo de reunión no válido.")
-    one_line = lambda text, size: " ".join(str(text or "").split())[:size]  # noqa: E731
+    def one_line(text, size):  # no control or invisible characters: they would break the note's properties
+        visible = "".join(c if unicodedata.category(c) not in ("Cc", "Cf", "Zl", "Zp") else " " for c in str(text or "")[:size * 4])
+        return " ".join(visible.split())[:size]
     if people is not None and not isinstance(people, list):
         raise MeetingError("Las personas van en una lista.")
     names: list[str] = []
-    for name in people or []:
+    seen: set[str] = set()
+    for name in (people or [])[:MAX_PEOPLE * 4]:
         name = one_line(name, 100)
-        if name and name.casefold() not in (n.casefold() for n in names):
+        if name and name.casefold() not in seen:
+            seen.add(name.casefold())
             names.append(name)
-    return kind, one_line(client, 200) or None, names[:MAX_PEOPLE]
+            if len(names) == MAX_PEOPLE:
+                break
+    return kind, one_line(client, 200) or None, names
 
 
 def default_title(kind: str, client: str | None) -> str:

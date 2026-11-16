@@ -8,6 +8,7 @@ user confirms each one."""
 import asyncio
 import difflib
 import json
+import os
 import re
 import secrets
 import sqlite3
@@ -182,7 +183,7 @@ FORBIDDEN = re.compile(r'[\\/*?"<>|#^\[\]]')
 def note_title(text: str) -> str:
     """A name the vault accepts: the hour's «:» becomes «.», the other forbidden characters «-»."""
     visible = "".join(c for c in unicodedata.normalize("NFC", text) if unicodedata.category(c) not in ("Cc", "Cf", "Zl", "Zp"))
-    clean = FORBIDDEN.sub("-", visible.replace(":", ".")).strip().lstrip(".").strip()
+    clean = re.sub(r"^[\s.]+", "", FORBIDDEN.sub("-", visible.replace(":", ".")))
     return clean.encode()[:240].decode(errors="ignore").strip() or "Reunión"
 
 
@@ -229,12 +230,12 @@ def export(row: sqlite3.Row, folder: Path) -> Path:
     for number in range(1, 1000):
         path = folder / (f"{made['title']}.md" if number == 1 else f"{made['title']} ({number}).md")
         try:
-            with open(path, "x", encoding="utf-8") as file:
-                file.write(made["content"])
-            path.chmod(0o600)
-            return path
+            handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         except FileExistsError:
             continue
+        with os.fdopen(handle, "w", encoding="utf-8") as file:
+            file.write(made["content"])
+        return path
     raise ValueError("Ya hay demasiados archivos con ese nombre en Descargas.")
 
 

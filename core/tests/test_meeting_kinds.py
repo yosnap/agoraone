@@ -125,3 +125,24 @@ def test_watson_lee_una_reunion_solo_tras_encontrarla(database, tmp_path):
     read = json.loads(asyncio.run(box.call("leer_reunion", {"id": kickoff})))
     assert "[00:01] Los demás: Hablamos del presupuesto" in read["texto"] and read["partes"] == 1
     assert [e["tool"] for e in box.history] == ["meetings", "meeting"]
+
+
+def test_watson_busca_con_cuidado(database):
+    assert [m["titulo"] for m in meeting_tools.find(database, OWNER, "con los del panel")] == ["Formación panel"], "las palabras vacías no cuentan"
+    with pytest.raises(ValueError):
+        meeting_tools.find(database, OWNER, kind="llamadas")
+    with pytest.raises(ValueError):
+        meeting_tools.find(database, OWNER, kind=5)
+
+
+def test_nombres_sin_controles_y_exportar_solo_normales(client, monkeypatch, tmp_path):  # noqa: F811
+    assert meetings.classify("meeting", "Acme\x7f\x9b SL", ["A​na"] * 3 + [f"p{n}" for n in range(100)])[1:] == ("Acme SL", ["A na"] + [f"p{n}" for n in range(29)])
+    assert meeting_notes.note_title(". . x") == "x"
+    started = client.post("/meetings", json={"mic_type": "audio/webm", "confidentiality": "private"}, headers=H).json()
+    client.post(f"/meetings/{started['id']}/stop", headers=H)
+    database = connect(client.data / DB_NAME)
+    database.execute("UPDATE meeting SET transcript = '[]' WHERE id = ?", (started["id"],))
+    database.commit()
+    database.close()
+    refused = client.post(f"/meetings/{started['id']}/export", headers=H)
+    assert refused.status_code == 403 and "no salen" in refused.json()["error"]

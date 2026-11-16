@@ -49,6 +49,10 @@ export function MeetingExport({ detail }: { detail: MeetingDetail }) {
   const timer = useRef(0);
   const say = (text: string, error = false) => { window.clearTimeout(timer.current); setNote({ text, error }); if (!error) timer.current = window.setTimeout(() => setNote(null), 6000); };
   if (!detail.draft) return null;
+  if (detail.confidentiality !== 'normal') return <section aria-label="Exportar" className="meeting-save">
+    <h3>Para Claude o Codex</h3>
+    <p className="muted">Esta reunión es privada o solo de este Mac: no se exporta ni se copia para un modelo de fuera.</p>
+  </section>;
   const download = async () => {
     try { const made = await exportMeeting(detail.id); say(`Guardado en Descargas: ${made.name}`); }
     catch (failure) { say(failed(failure, 'No se pudo crear el archivo.'), true); }

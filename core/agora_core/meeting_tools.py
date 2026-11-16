@@ -4,7 +4,7 @@ of the access that asks, and only those already transcribed. The transcript is d
 
 import json
 import sqlite3
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from .meeting_notes import WEEKDAYS, as_text
 from .meetings import KINDS
@@ -64,26 +64,56 @@ def _day(text: str | None) -> date | None:
         raise ValueError("Fecha no válida: usa AAAA-MM-DD.") from error
 
 
-def _rows(connection: sqlite3.Connection, owner: str) -> list[sqlite3.Row]:
-    return connection.execute(
-        """SELECT * FROM meeting WHERE owner = ? AND confidentiality = 'normal' AND transcript IS NOT NULL
-           ORDER BY started_at DESC, id DESC LIMIT 500""", (owner,)).fetchall()
+STOPWORDS = {"con", "del", "las", "los", "una", "uno", "unos", "unas", "que", "qué", "por", "para", "sobre", "como", "cómo",
+             "fue", "hablamos", "reunión", "reunion", "semana", "pasada", "día", "dia", "esta", "este", "ese", "esa", "dónde"}
 
 
-def find(connection: sqlite3.Connection, owner: str, query: str = "", since: str | None = None, until: str | None = None, kind: str | None = None) -> list[dict]:
+def _rows(connection: sqlite3.Connection, owner: str, first: date | None, last: date | None, kind: str | None, words: list[str]) -> list[sqlite3.Row]:
+    """The candidate meetings, filtered in SQL: owner, normal, transcribed, a day around the dates (local time is
+    checked after) and, with words, holding at least one of them somewhere."""
+    where, args = ["owner = ?", "confidentiality = 'normal'", "transcript IS NOT NULL"], [owner]
+    if first:
+        where.append("started_at >= ?")
+        args.append(f"{(first - timedelta(days=1)).isoformat()}T00:00:00Z")
+    if last:
+        where.append("started_at < ?")
+        args.append(f"{(last + timedelta(days=2)).isoformat()}T00:00:00Z")
+    if kind:
+        where.append("kind = ?")
+        args.append(kind)
+    if words:
+        fields = "lower(title || ' ' || coalesce(client, '') || ' ' || people || ' ' || coalesce(summary, '') || ' ' || transcript)"
+        where.append("(" + " OR ".join(f"instr({fields}, ?) > 0" for _ in words) + ")")
+        args += words
+    return connection.execute(f"SELECT * FROM meeting WHERE {' AND '.join(where)} ORDER BY started_at DESC, id DESC LIMIT 300", args).fetchall()
+
+
+def _summary_text(summary: dict | None) -> str:
+    if not summary:
+        return ""
+    parts = [summary.get("summary") or "", *summary.get("decisions", []), *(t["title"] for t in summary.get("tasks", []))]
+    parts += [f"{t['topic']} {t['detail']}" for t in summary.get("topics", [])]
+    return " ".join(parts)
+
+
+def find(connection: sqlite3.Connection, owner: str, query: str = "", since: str | None = None, until: str | None = None, kind=None) -> list[dict]:
     """The normal meetings that match, best first (then the most recent), with what Watson needs to answer."""
     first, last = _day(since), _day(until)
-    wanted = _KIND_OF_TIPO.get((kind or "").casefold())
-    words = [w for w in query.casefold().split() if len(w) > 2][:12]
+    wanted = None
+    if kind:
+        wanted = _KIND_OF_TIPO.get(str(kind).casefold())
+        if wanted is None:
+            raise ValueError("Tipo no válido: reunión, formación, entrevista, llamada u otra.")
+    words = [w for w in str(query or "").casefold().split() if len(w) > 2 and w not in STOPWORDS][:12]
     found = []
-    for row in _rows(connection, owner):
+    for row in _rows(connection, owner, first, last, wanted, words):
         held = _local(row["started_at"])
-        if (first and held.date() < first) or (last and held.date() > last) or (wanted and row["kind"] != wanted):
+        if (first and held.date() < first) or (last and held.date() > last):
             continue
         people = json.loads(row["people"] or "[]")
         summary = json.loads(row["summary"]) if row["summary"] else None
         lines = json.loads(row["transcript"] or "[]")
-        about = " ".join([row["title"], row["client"] or "", *people, KINDS[row["kind"]], json.dumps(summary or {}, ensure_ascii=False)]).casefold()
+        about = " ".join([row["title"], row["client"] or "", *people, KINDS[row["kind"]], _summary_text(summary)]).casefold()
         heard = [line for line in lines if any(w in line["text"].casefold() for w in words)] if words else []
         score = sum(3 for w in words if w in about) + min(len(heard), 10)
         if words and not score:
@@ -99,6 +129,8 @@ def find(connection: sqlite3.Connection, owner: str, query: str = "", since: str
             "frases": [f"{line['speaker']}: {line['text']}"[:400] for line in heard[:4]],
             "partes_transcripcion": max(1, -(-len(as_text(lines)) // PART_CHARS)),
         }))
+        if not words and len(found) == FOUND_LIMIT:
+            break  # without words the most recent are enough
     found.sort(key=lambda pair: -pair[0])  # stable: equal scores keep the most recent first
     return [item for _, item in found[:FOUND_LIMIT]]
 

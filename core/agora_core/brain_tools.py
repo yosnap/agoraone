@@ -279,6 +279,9 @@ class Toolbox:
         if self.calls >= self.max_calls:
             return json.dumps({"error": "Has llegado al límite de consultas de esta respuesta: responde con lo que ya tienes."}, ensure_ascii=False)
         self.calls += 1
+        from .engines import HIDDEN_TOOLS
+        if name in HIDDEN_TOOLS:  # a tool of a module turned off, even if the model names it
+            return json.dumps({"error": "Esa herramienta está apagada en Ajustes › Módulos."}, ensure_ascii=False)
         try:
             if name == "buscar_en_cerebro":
                 return await self._search(str(args.get("consulta", ""))[:500], args.get("limite", 6))

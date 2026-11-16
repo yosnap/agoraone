@@ -63,7 +63,7 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned }: 
         </span>
       : <button type="button" className="button" onClick={() => setConfirming(true)}>Borrar</button>)}
     {error && <small className="dictation-error" role="alert">{error}</small>}
-    {open && meeting.has_transcript && <MeetingDetailPanel key={`${meeting.id}:${meeting.work}`} id={meeting.id} onChanged={onChanged}/>}
+    {open && !hidden && meeting.has_transcript && <MeetingDetailPanel key={`${meeting.id}:${meeting.work}`} id={meeting.id} onChanged={onChanged}/>}
   </li>;
 }
 

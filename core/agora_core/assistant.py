@@ -120,7 +120,7 @@ def system_prompt(settings: dict) -> str:
     style = "; ".join(TONE_OPTIONS[k][tone[k]] for k in ("register", "humor", "length", "address", "language"))
     today = datetime.now().astimezone()
     return (
-        f"Hoy es {WEEKDAYS[today.weekday()]} {today.strftime('%Y-%m-%d')} (hora local {today.strftime('%H:%M')}).\n"
+        f"Hoy es {WEEKDAYS[today.weekday()]} {today.strftime('%Y-%m-%d')}.\n"
         f"Eres {persona.name}, el asistente personal del usuario en AgoraOne. Tu carácter se inspira en el "
         f"personaje de {persona.origin}: {persona.voice}. No imites frases de esa obra.\n"
         f"Estilo: {style}.\n"
