@@ -9,6 +9,7 @@ import json
 import re
 from datetime import datetime
 import sqlite3
+import unicodedata
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 
@@ -231,6 +232,10 @@ def read_note(connection: sqlite3.Connection, source: str, ref: str, part: int =
             "text": text[(part - 1) * PART_CHARS: part * PART_CHARS]}
 
 
+# Words that say nothing in a mail search («el correo de la factura» looks for «correo» and «factura»).
+_SEARCH_STOPWORDS = {"del", "los", "las", "una", "unos", "unas", "que", "por", "para", "con", "sin", "sobre", "correo", "correos", "email", "mail"}
+
+
 class Toolbox:
     """The tools of one answer: numbered sources, a call limit and the events of what was done."""
 
@@ -416,13 +421,15 @@ class Toolbox:
 
         wanted = sender.casefold().strip()[:80]
 
-        words = [w for w in text.casefold().split() if len(w) > 1][:8]
+        def plain(value: str) -> str:
+            return "".join(c for c in unicodedata.normalize("NFD", value.casefold()) if unicodedata.category(c) != "Mn")
+        words = [w for w in plain(text).split() if len(w) > 2 and w not in _SEARCH_STOPWORDS][:8]
 
         def matches(item: dict) -> bool:
             fields = (item["from"]["name"], item["from"]["address"], (item.get("client") or {}).get("name"))
             if wanted and not any(wanted in (value or "").casefold() for value in fields):
                 return False
-            seen = " ".join(v or "" for v in (*fields, item["subject"], item["summary"])).casefold()
+            seen = plain(" ".join(v or "" for v in (*fields, item["subject"], item["summary"])))
             return all(word in seen for word in words)
 
         def run():
@@ -430,9 +437,9 @@ class Toolbox:
                 items = mail_inbox.inbox(connection, "pending", 200, audience=AUDIENCE)
                 if wanted or words:  # «what has X asked me?» or a search covers what was already handled too
                     items += mail_inbox.inbox(connection, "done", 200, audience=AUDIENCE)
-            return [i for i in items if (kind is None or i["kind"] == kind) and matches(i)][:INBOX_LIMIT]
+            return [i for i in items if not i["moved"] and (kind is None or i["kind"] == kind) and matches(i)][:INBOX_LIMIT]
         items = await run_in_threadpool(run)
-        self._record({"tool": "inbox", "filter": tipo, "sender": bool(wanted or words), "count": len(items)})
+        self._record({"tool": "inbox", "filter": tipo, "sender": bool(wanted), "text": bool(words), "count": len(items)})
         return json.dumps({
             "correos": [{"tipo": i["kind"], "de": i["from"]["name"] or i["from"]["address"], "asunto": i["subject"],
                          "fecha": i["sentAt"], "resumen": i["summary"], "piden": i["details"].get("asks", []),

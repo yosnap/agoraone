@@ -371,3 +371,22 @@ def test_watson_busca_en_la_bandeja_por_palabras(db, tmp_path):
     found = json.loads(asyncio.run(toolbox.call("consultar_bandeja", {"texto": "factura hostinger"})))["correos"]
     assert [c["asunto"] for c in found] == ["Tu factura de Hostinger"], "busca también en lo ya hecho, con todas las palabras"
     assert json.loads(asyncio.run(toolbox.call("consultar_bandeja", {"texto": "factura lunes"})))["correos"] == []
+
+
+def test_buscar_ignora_tildes_y_palabras_vacias_y_lo_movido(db, tmp_path):
+    box = account(db, "yo@gmail.com")
+    for subject, moved in (("Reunión del lunes", None), ("Reunión antigua", "trash")):
+        message = add(db, box, "ana@cliente.com", subject)
+        db.execute("UPDATE mail_message SET moved = ? WHERE id = ?", (moved, message))
+        db.execute("INSERT INTO mail_summary (message_id, kind, source, confidentiality, state, created_at) VALUES (?, 'other', 'local', 'normal', 'done', 'x')", (message,))
+    db.commit()
+
+    class Database:
+        def __enter__(self):
+            self.connection = connect(tmp_path / "data" / DB_NAME)
+            return self.connection
+
+        def __exit__(self, *exc):
+            self.connection.close()
+    found = json.loads(asyncio.run(Toolbox(Database, None, VectorCache()).call("consultar_bandeja", {"texto": "el correo de la reunion"})))["correos"]
+    assert [c["asunto"] for c in found] == ["Reunión del lunes"], "sin tildes, sin palabras vacías y sin lo ya movido a la Papelera"

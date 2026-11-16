@@ -44,7 +44,9 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const [clearing, setClearing] = useState(false);
   const [view, setView] = useState<View>(readView);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
-  const [deleting, setDeleting] = useState<{ title: string; messages: Doomed[] } | null>(null);
+  const [deleting, setDeleting] = useState<{ title: string; messages: Doomed[]; key: number } | null>(null);
+  const opened = useRef(0);  // each confirmation is a new one: its ticks never carry over to another list
+  const confirm = (title: string, messages: Doomed[]) => setDeleting({ title, messages, key: ++opened.current });
   const [chat, setChat] = useState(true);
   const doomed = (item: InboxItem): Doomed => ({ id: item.id, from: sender(item), subject: item.subject ?? '', date: item.sentAt, hidden: discreet });
   const pick = (id: number) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -54,8 +56,8 @@ export function InboxView({ discreet }: { discreet: boolean }) {
     try {
       const found = (await getInboxAdvertising()).messages;
       if (!found.length) { setNote('No queda publicidad en la bandeja de entrada de tus cuentas.'); return; }
-      setDeleting({ title: `Eliminar publicidad: ${found.length} ${found.length === 1 ? 'correo' : 'correos'}`,
-        messages: found.map(m => ({ id: m.id, from: m.from, subject: m.subject, date: m.date, hidden: discreet && m.level !== 'normal' })) });
+      confirm(`Eliminar publicidad: ${found.length} ${found.length === 1 ? 'correo' : 'correos'}`,
+        found.map(m => ({ id: m.id, from: m.from, subject: m.subject, date: m.date, hidden: discreet })));
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo buscar la publicidad.'); }
   };
   const clearAll = async () => {
@@ -68,7 +70,8 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const load = async (which: InboxState = state) => {
     setError('');
     const mine = ++request.current;
-    try { const data = await getInbox(which); if (mine !== request.current) return; setItems(data.items); setCounts(data.counts); setProblem(data.problem); }
+    try { const data = await getInbox(which); if (mine !== request.current) return; setItems(data.items);
+      setSelected(current => new Set([...current].filter(id => data.items.some(item => item.id === id && !item.moved)))); setCounts(data.counts); setProblem(data.problem); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo leer la Bandeja.'); }
   };
   if (!asked.current) { asked.current = true; void load(); }
@@ -105,8 +108,8 @@ export function InboxView({ discreet }: { discreet: boolean }) {
         <button type="button" className="button" onClick={() => void load()}>Actualizar</button>
         <button type="button" className="button act-delete" onClick={() => void askAdvertising()}>Eliminar publicidad…</button>
         {selected.size > 0 && <>
-          <button type="button" className="button act-delete" onClick={() => setDeleting({ title: `Eliminar ${selected.size} ${selected.size === 1 ? 'correo seleccionado' : 'correos seleccionados'}`,
-            messages: (items ?? []).filter(item => selected.has(item.id)).map(doomed) })}>Eliminar {selected.size} seleccionados…</button>
+          <button type="button" className="button act-delete" onClick={() => confirm(`Eliminar ${selected.size} ${selected.size === 1 ? 'correo seleccionado' : 'correos seleccionados'}`,
+            (items ?? []).filter(item => selected.has(item.id)).map(doomed))}>Eliminar {selected.size} seleccionados…</button>
           <button type="button" className="button" onClick={() => setSelected(new Set())}>Quitar selección</button></>}
         <button type="button" className="button" aria-pressed={chat} onClick={() => setChat(!chat)}>{chat ? 'Ocultar chat' : 'Chat de la Bandeja'}</button>
         {state === 'pending' && (counts?.pending ?? 0) > 0 && !clearing && <button type="button" className="button" onClick={() => setClearing(true)}>Archivar todo lo que hay ahora…</button>}
@@ -117,7 +120,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
       <div className="inbox-actions"><button type="button" className="button primary" onClick={() => void clearAll()}>Archivar {counts?.pending} tarjetas</button>
         <button type="button" className="button" onClick={() => setClearing(false)}>Cancelar</button></div>
     </div>}
-    {deleting && <InboxDelete key={deleting.title + deleting.messages.length} title={deleting.title} messages={deleting.messages} onCancel={() => setDeleting(null)} onDone={deleted}/>}
+    {deleting && <InboxDelete key={deleting.key} title={deleting.title} messages={deleting.messages} onCancel={() => setDeleting(null)} onDone={deleted}/>}
     <div className={`inbox-layout${chat ? '' : ' alone'}`}><div className="inbox-main">
     <InboxTools view={view} onChange={setView} kinds={[...new Set((items ?? []).map(item => item.kind))]}/>
     {scopes.length > 1 && <div className="segmented inbox-scopes" role="group" aria-label="Ámbito">
@@ -137,8 +140,8 @@ export function InboxView({ discreet }: { discreet: boolean }) {
         <h2><span className="scope-dot" style={{ background: colorOf(scope) }} aria-hidden="true"/>{scope} <span className="muted">· {cards.length}</span></h2>
         <ul className={`inbox-cards per-${view.perRow}${cards.some(c => [filing, noting, scheduling, replying].includes(c.id)) ? ' editing' : ''}`}>{cards.map(item => <li key={item.id} className={`card inbox-card${selected.has(item.id) ? ' chosen' : ''}`}>
           <div className="card-head">
-            <div className="inbox-chips"><label className="check inbox-pick" title="Seleccionar"><input type="checkbox" checked={selected.has(item.id)} onChange={() => pick(item.id)}
-              aria-label={`Seleccionar ${discreet ? 'este correo' : item.subject || 'correo sin asunto'}`}/></label><span className={`chip kind-${item.kind}`}>{kindLabels[item.kind]}</span>
+            <div className="inbox-chips">{item.moved ? <span className="chip">{item.moved === 'trash' ? 'En la Papelera' : 'Archivado'}</span> : <label className="check inbox-pick" title="Seleccionar"><input type="checkbox" checked={selected.has(item.id)} onChange={() => pick(item.id)}
+              aria-label={`Seleccionar ${discreet ? 'este correo' : item.subject || 'correo sin asunto'}`}/></label>}<span className={`chip kind-${item.kind}`}>{kindLabels[item.kind]}</span>
               {item.source === 'rule' && item.ruleName && <span className="chip">Regla: {item.ruleName}</span>}
               {item.client && <span className="chip good" title={!discreet && item.client.projects.length ? `Proyectos activos: ${item.client.projects.join(', ')}` : undefined}>
                 {discreet ? 'Cliente de Central' : `Cliente: ${item.client.name}`}{!discreet && item.client.projects.length ? ` · ${item.client.projects.length} proyecto${item.client.projects.length > 1 ? 's' : ''}` : ''}</span>}
@@ -176,7 +179,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
               {replying !== item.id && <button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para responder' : undefined}
                 onClick={() => setReplying(item.id)}>Responder…</button>}
             </> : <button type="button" className="button" onClick={() => void decide(item, 'pending')}>Volver a Pendientes</button>}
-            <button type="button" className="button act-delete" onClick={() => setDeleting({ title: 'Eliminar este correo', messages: [doomed(item)] })}>Eliminar…</button>
+            {!item.moved && <button type="button" className="button act-delete" onClick={() => confirm('Eliminar este correo', [doomed(item)])}>Eliminar…</button>}
             {item.suggestion && <button type="button" className="button" onClick={() => void makeRule(item)}
               title={`${actionLabels[item.suggestion.action]} para todo lo que venga de ${item.suggestion.sender}`}>Crear regla «{item.suggestion.name}»</button>}
           </div>

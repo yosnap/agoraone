@@ -217,7 +217,7 @@ def _item(row: sqlite3.Row, clients: list[dict] | None = None) -> dict:
         "from": {"name": row["from_name"], "address": row["from_address"]}, "subject": row["subject"],
         "sentAt": row["sent_at"] or row["received_at"], "account": {"id": row["account_id"], "address": row["account_address"]},
         "scope": {"id": row["scope_id"], "name": row["scope_name"], "color": row["scope_color"]} if row["scope_id"] else None,
-        "attachments": len(json.loads(row["attachments"] or "[]")), "announcedAt": row["announced_at"],
+        "attachments": len(json.loads(row["attachments"] or "[]")), "announcedAt": row["announced_at"], "moved": row["moved"],
     }
 
 
@@ -226,7 +226,7 @@ _LEVEL = """CASE WHEN 'private' IN (s.confidentiality, a.confidentiality, COALES
               WHEN 'local_only' IN (s.confidentiality, a.confidentiality, COALESCE(r.confidentiality, '')) THEN 'local_only'
               ELSE 'normal' END"""
 _SELECT = f"""SELECT s.*, {_LEVEL} AS level, r.name AS rule_name, m.account_id, m.from_address, m.from_name, m.subject, m.sent_at, m.received_at,
-                    m.attachments, a.address AS account_address, sc.id AS scope_id, sc.name AS scope_name, sc.color AS scope_color
+                    m.attachments, m.moved, a.address AS account_address, sc.id AS scope_id, sc.name AS scope_name, sc.color AS scope_color
              FROM mail_summary s JOIN mail_message m ON m.id = s.message_id JOIN mail_account a ON a.id = m.account_id
              LEFT JOIN mail_rule r ON r.id = s.rule_id
              LEFT JOIN scope sc ON sc.id = COALESCE(r.scope_id, a.scope_id)"""

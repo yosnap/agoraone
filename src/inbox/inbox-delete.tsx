@@ -11,13 +11,14 @@ export function InboxDelete({ title, messages, onDone, onCancel }: {
   title: string; messages: Doomed[]; onDone: (note: string) => void; onCancel: () => void;
 }) {
   const [chosen, setChosen] = useState<Set<number>>(() => new Set(messages.map(m => m.id)));
+  const count = messages.filter(m => chosen.has(m.id)).length;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const toggle = (id: number) => setChosen(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const run = async () => {
     setBusy(true); setError('');
     try {
-      const done = await moveInboxMail([...chosen], 'trash');
+      const done = await moveInboxMail(messages.filter(m => chosen.has(m.id)).map(m => m.id), 'trash');
       onDone(`${done.moved} ${done.moved === 1 ? 'correo movido' : 'correos movidos'} a la Papelera de su cuenta.${done.problems.length ? ` ${done.problems.join('. ')}.` : ''}`);
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo mover.'); setBusy(false); }
   };
@@ -34,8 +35,8 @@ export function InboxDelete({ title, messages, onDone, onCancel }: {
     </label></li>)}</ul>
     {error && <LoadError message={error}/>}
     <div className="inbox-actions">
-      <button type="button" className="button act-delete" disabled={busy || chosen.size === 0} onClick={() => void run()}>
-        {busy ? 'Moviendo…' : `Mover ${chosen.size} a la Papelera`}</button>
+      <button type="button" className="button act-delete" disabled={busy || count === 0} onClick={() => void run()}>
+        {busy ? 'Moviendo…' : `Mover ${count} a la Papelera`}</button>
       <button type="button" className="button" disabled={busy} onClick={onCancel}>Cancelar</button>
     </div>
   </div>;

@@ -44,7 +44,9 @@ def candidates(connection: sqlite3.Connection, sender: str = "", kind: str = "",
     if account:
         where.append("(lower(coalesce(a.label, '')) LIKE ? OR lower(a.address) LIKE ?)")
         args += [f"%{account.lower()}%"] * 2
-    rows = connection.execute(f"""SELECT m.id, m.from_address, m.from_name, m.subject, m.sent_at, coalesce(a.label, a.address) AS account, s.confidentiality
+    rows = connection.execute(f"""SELECT m.id, m.from_address, m.from_name, m.subject, m.sent_at, coalesce(a.label, a.address) AS account,
+                                         CASE WHEN 'private' IN (coalesce(s.confidentiality, ''), a.confidentiality) THEN 'private'
+                                              WHEN 'local_only' IN (coalesce(s.confidentiality, ''), a.confidentiality) THEN 'local_only' ELSE 'normal' END AS confidentiality
                                   FROM mail_message m JOIN mail_account a ON a.id = m.account_id LEFT JOIN mail_summary s ON s.message_id = m.id
                                   WHERE {' AND '.join(where)} ORDER BY m.sent_at DESC LIMIT ?""", (*args, min(limit, MAX))).fetchall()
     return [{"id": r["id"], "from": r["from_name"] or r["from_address"] or "", "address": r["from_address"] or "", "subject": r["subject"] or "(sin asunto)",
@@ -85,8 +87,8 @@ def move(connection: sqlite3.Connection, ids: list[int], action: str, password_o
         account = connection.execute("SELECT * FROM mail_account WHERE id = ?", (account_id,)).fetchone()
         try:
             moved = _move_account(account, messages, action, password_of(account_id), login, opener)
-        except (CleanupError, imaplib.IMAP4.error, OSError) as error:
-            problems.append(f"{account['label'] or account['address']}: {error if isinstance(error, CleanupError) else 'el servidor no lo permitió'}")
+        except (CleanupError, mail.LoginError, imaplib.IMAP4.error, OSError) as error:
+            problems.append(f"{account['label'] or account['address']}: {error if isinstance(error, (CleanupError, mail.LoginError)) else 'el servidor no lo permitió'}")
             continue
         with transaction(connection):
             for row in [m for m in messages if m["uid"] in moved]:

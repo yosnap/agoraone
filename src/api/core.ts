@@ -185,7 +185,7 @@ export type InboxItem = {
   suggestion: { sender: string; action: MailRuleAction; name: string } | null;
   from: { name: string | null; address: string | null }; subject: string | null; sentAt: string;
   account: { id: number; address: string }; scope: { id: number; name: string; color: string | null } | null;
-  attachments: number; announcedAt: string | null; client: { name: string; projects: string[] } | null;
+  attachments: number; announcedAt: string | null; moved: 'trash' | 'archive' | null; client: { name: string; projects: string[] } | null;
 };
 export type InboxCounts = { pending: number; done: number; dismissed: number; unread: number; since: string | null };
 export const getInbox = (state: InboxState = 'pending') => core<{ items: InboxItem[]; counts: InboxCounts; problem: string | null }>(`/mail/inbox?state=${state}`);

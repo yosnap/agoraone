@@ -142,7 +142,7 @@ def inbox_router(settings: Settings, health, secrets=None) -> APIRouter:
             skipped = len(ids) - len(movable)
             if skipped:
                 done["problems"].append(f"{skipped} {'correo no se puede mover' if skipped == 1 else 'correos no se pueden mover'} desde AgoraOne "
-                                        "(ya movidos, o leídos con la API de Resend, que no deja borrar): márcalos como hechos o descártalos")
+                                        "(ya estaban movidos, o se leyeron con la API de Resend, que no deja borrar)")
             return done
         if secrets is None:
             return JSONResponse({"error": "El correo no está disponible."}, status_code=503)
