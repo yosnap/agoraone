@@ -365,10 +365,14 @@ def assistant_router(
                         # aclosing: if the browser leaves, the engine (and Claude Code's process) is closed too.
                         async with aclosing(engine.stream(turn)) as stream:
                             async for text in stream:
-                                if text is None:  # a tool round: say what was searched and read, for real
-                                    for done in toolbox.drain():
-                                        yield _event("tool", done)
+                                # What the tools did, as soon as it is known: an engine may announce a tool round
+                                # before the tool runs (Claude Code does), so it is collected again here.
+                                done_now = toolbox.drain()
+                                for done in done_now:
+                                    yield _event("tool", done)
+                                if text is None or done_now:
                                     yield _event("sources", {"sources": toolbox.sources})
+                                if text is None:
                                     continue
                                 if not parts:
                                     yield _event("stage", {"stage": "responde", "engine": engine.name, "model": model})
@@ -380,6 +384,12 @@ def assistant_router(
                         last_error = error
                         print(f"AgoraOne núcleo: el motor {engine.name} falló, se prueba el siguiente ({error}).", file=sys.stderr)
                         continue
+                    # The last tool of the answer (often a proposal for the screen) may have run after the last round.
+                    late = toolbox.drain()
+                    for done in late:
+                        yield _event("tool", done)
+                    if late:
+                        yield _event("sources", {"sources": toolbox.sources})
                     reply = "".join(parts).strip()
                     if not reply:
                         last_error = EngineError("El motor no devolvió texto.")
