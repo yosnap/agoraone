@@ -54,10 +54,12 @@ export function MusicCard() {
     const wanted = query.trim();
     if (!wanted) return;
     setError(''); setMessage('');
+    // This request's place, taken now: anything asked after it (to Watson, by voice) wins.
+    const mine = askTicket();
     // YouTube, in AgoraOne's own player; `before` says why it went there.
     const onYouTube = async (before = '') => {
-      const mine = askTicket();
       const { videos } = await searchYouTube(wanted);
+      if (!videos.length) throw new Error(`No encuentro «${wanted}» en YouTube.`);
       const playing = (await getMusic().catch(() => null))?.players[0];
       if (!playYouTube(videos, wanted, mine)) return false;  // something else was asked for meanwhile
       if (local.playing) localControl('pause');

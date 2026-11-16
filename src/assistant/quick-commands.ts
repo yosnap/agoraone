@@ -5,7 +5,7 @@ import { askTicket, playYouTube, stopYouTube, youtubeActive, youtubeControl } fr
 
 /** Quick commands (1.5): what Watson does at once, without a model, when the whole message is one of these.
  * Anything else goes to the model as usual. Words are matched in Spanish, with or without accents. */
-const plain = (text: string) => text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[¿?¡!.,]/g, '').replace(/\s+/g, ' ').trim();
+const plain = (text: string) => text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[¿?¡!.,:;]/g, '').replace(/\s+/g, ' ').trim();
 
 const controls: [RegExp, MusicAction, string][] = [
   [/^(pausa|pausar|para la musica|deten la musica|silencio)$/, 'pause', 'Música en pausa.'],
@@ -17,20 +17,32 @@ const controls: [RegExp, MusicAction, string][] = [
 ];
 const PLAY = /^(?:pon(?:me)?|reproduce|quiero escuchar|toca)\s+(.+?)(?:\s+en\s+(spotify|musica|apple music|youtube|mi biblioteca|la biblioteca))?$/;
 // What people add when they speak: «Oye Watson, …», «¿me puedes poner…?», «… por favor».
-const CALLED = /^(?:(?:oye|hey|ok|hola)\s+)?watson\s+/;
+const CALLED = /^(?:(?:oye|hey|ok|hola)\s+)?watson\s+/;  // on plain text: commas and colons are already gone
 const ASKING = /^(?:me\s+)?(?:puedes|podrias|quieres|podras)\s+(?:poner(?:me)?|reproducir(?:me)?)\s+/;
-const POLITE = /\s+(?:por favor|porfa|gracias)$/;
+const POLITE = /\s+(?:por favor|porfa)$/;
 // «Pon música», «ponme algo»: no song in particular.
 const ANY = /^(?:(?:un poco de|algo de)\s+)?(?:musica|algo|la musica|lo que sea|cualquier cosa|cancion|canciones)$/;
 /** The request as the commands read it: without the call to Watson, the courtesy or a trailing «please». */
 const asked = (said: string) => said.replace(CALLED, '').replace(ASKING, 'pon ').replace(POLITE, '').trim();
 // «Pon» also means other things («pon una regla…», «pon un recordatorio…»): those go to Watson.
-const NOT_MUSIC = /\b(regla|recordatorio|evento|cita|alarma|nota|tarea|correo|reunion|aviso|calendario|agenda|titulo|encargo)s?\b/;
+const NOT_MUSIC = /\b(regla|recordatorio|evento|cita|alarma|nota|tarea|correo|reunion|aviso|calendario|agenda|titulo|encargo|resumen|mensaje|borrador|temporizador|ejemplo|lista|informe|modo|whatsapp|atencion)e?s?\b|\b(al dia|al corriente|en contexto|esto|eso)\b/;
+// «¿Me puedes poner…?» is music only when what follows sounds like music: a song or artist, «algo de…», «música…».
+const NOT_A_SONG = /^(?:un|una|unos|unas|al|a la|en|lo|la|el)\s(?!poco de|cancion|tema|disco|album|playlist)/;
 
 export type QuickResult = { reply: string; failed: boolean; /** Asked before doing it: run when the user says «sí». */ confirm?: () => Promise<QuickResult> };
 const OPEN = /^(?:abre(?:me)?|lanza|inicia|arranca)\s+(?:la app |la aplicacion |el programa )?(.{2,40})$/;
 export const YES = /^(si|vale|venga|adelante|abrela|abrelo|ok|de acuerdo)$/;
 export const isYes = (text: string) => YES.test(plain(text));
+
+/** What a «pon …» asks for, from the original words (accents kept for the search): without the call to Watson,
+ * the courtesy, the question marks, «un poco de» or where to play it. */
+export function musicQuery(text: string): string {
+  const original = text.replace(/^[\s¿¡]+/, '').replace(/^(?:(?:oye|hey|ok|hola)[\s,]+)?watson[\s,.:;]+/i, '').replace(/^[\s¿¡]+/, '')
+    .replace(/^(?:me\s+)?(?:puedes|podr[ií]as|quieres|podr[aá]s)\s+(?:poner(?:me)?|reproducir(?:me)?)\s+/i, 'pon ')
+    .replace(/[\s,]+(?:por favor|porfa)(?=\s+en\s|\s*[.!?]*$)/i, '').replace(/[?!.]+\s*$/, '');
+  return original.replace(/^\s*(pon(me)?|reproduce|quiero escuchar|toca)\s+/i, '').replace(/^(?:un poco de|algo de)\s+/i, '')
+    .replace(/\s+en\s+(spotify|m[uú]sica|apple music|youtube|mi biblioteca|la biblioteca)\s*[.!?]*$/i, '').trim();
+}
 
 /** Whether this message is a quick command; if so, does it and says what happened. */
 export function quickCommand(text: string): (() => Promise<QuickResult>) | null {
@@ -40,28 +52,33 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
   const opening = control ? null : OPEN.exec(said);
   if (opening && /^(un|una|unos|unas|el|la|los|las|mi|mis|tu|lo)\s/.test(opening[1])) return null;
   if (opening) return () => openByName(opening[1]);
-  const play = control || NOT_MUSIC.test(said) || said.split(' ').length > 10 ? null : PLAY.exec(said);
+  const courteous = ASKING.test(plain(text).replace(CALLED, ''));
+  const candidate = control || NOT_MUSIC.test(said) || said.split(' ').length > 8 ? null : PLAY.exec(said);
+  const play = candidate && courteous && NOT_A_SONG.test(candidate[1]) && !candidate[2] ? null : candidate;
   if (!control && !play) return null;
   return async () => {
     try {
       if (control && youtubeActive()) { youtubeControl(control[1]); return { reply: control[2], failed: false }; }
       if (control && localActive()) { localControl(control[1]); return { reply: control[2], failed: false }; }
-      const now = (await getMusic()).players[0];
+      const now = control ? (await getMusic()).players[0] : (await getMusic().catch(() => null))?.players[0];
       if (control) {
         if (!now) return { reply: 'No hay ningún reproductor abierto (Música o Spotify).', failed: true };
         await controlMusic(now.player, control[1]);
         return { reply: control[2], failed: false };
       }
       const where = play![2];
-      // The original words, not the accent-free ones, are what the player searches.
-      const original = text.replace(/^[\s¿¡]*(?:(?:oye|hey|ok|hola)\s+)?watson[\s,.:]+/i, '').replace(/^\s*(?:me\s+)?(?:puedes|podr[ií]as|quieres|podr[aá]s)\s+(?:poner(?:me)?|reproducir(?:me)?)\s+/i, 'pon ')
-        .replace(/[\s,]+(?:por favor|porfa|gracias)\s*[.!?]*$/i, '').replace(/[?!.]+\s*$/, '');
-      const query = original.replace(/^\s*(pon(me)?|reproduce|quiero escuchar|toca)\s+/i, '').replace(/^(?:un poco de|algo de)\s+/i, '').replace(/\s+en\s+(spotify|m[uú]sica|apple music|youtube|mi biblioteca|la biblioteca)\s*[.!?]*$/i, '').trim();
+      const query = musicQuery(text);
       // «Pon música»: what was playing goes on; with nothing open, something calm on YouTube.
       if (!where && ANY.test(play![1])) {
-        if (youtubeActive()) { youtubeControl('play'); return { reply: 'Sigue la música.', failed: false }; }
-        if (localActive()) { localControl('play'); return { reply: 'Sigue la música.', failed: false }; }
-        if (now && (now.player === 'music' || now.player === 'spotify')) {
+        const outside = now && (now.player === 'music' || now.player === 'spotify') ? now : null;
+        if (outside?.state === 'playing') return { reply: `Ya suena ${outside.title ? `«${outside.title}»` : 'música'} en ${outside.name}.`, failed: false };
+        if (youtubeActive() || localActive()) {
+          askTicket();  // this request wins over a YouTube search still on its way
+          if (youtubeActive()) youtubeControl('play'); else localControl('play');
+          return { reply: 'Sigue la música.', failed: false };
+        }
+        if (outside) {
+          const now = outside;
           await controlMusic(now.player, 'play');
           return { reply: `Sigue ${now.title ? `«${now.title}»` : 'la música'} en ${now.name}.`, failed: false };
         }
