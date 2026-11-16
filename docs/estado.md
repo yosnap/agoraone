@@ -1,10 +1,12 @@
-# Estado de continuidad — 15/11/2026
+# Estado de continuidad — 16/11/2026
 
 ## Resultado
-Para retomar (15/11/2026, noche) · 1.7.0-alpha.5 «Watson que actúa» en `integracion/v1.7` (sale de `integracion/v1.6`, que sale de develop tras publicar la 1.5.0). 1.6.x y 1.7 sin publicar. App empaquetada y notarizada: 1.7.0-alpha.5.
+Para retomar (16/11/2026, madrugada) · 1.7.0-alpha.6 «Watson que actúa» en `integracion/v1.7` (sale de `integracion/v1.6`, que sale de develop tras publicar la 1.5.0). 1.6.x y 1.7 sin publicar. App empaquetada y notarizada: 1.7.0-alpha.5 (la alpha.6 está integrada, sin empaquetar).
 - Hecho en 1.6: «Qué tengo instalado» e instalar con permiso (Homebrew y modelo de Whisper), módulos que se pueden apagar, guía de primer arranque (docs/instalacion-modulos.md); 1.6.1–1.6.2: casillas propias, Ajustes y Bandeja a todo el ancho (pestañas de ámbito y colores por clase), scroll al borde, avisos arriba a la derecha, botones de Trabajos de colores.
 - Hecho en 1.7 (docs/watson-actua.md; decisión del usuario en AGENTS.md): Watson propone notas, fichas de cliente, eventos, presupuestos en borrador en Central (`create_quote`) y limpiar el correo (archivar o Papelera de una lista aprobada; migración 0023); «Revisar el vault» en el Cerebro.
 - Hecho en 1.7.0-alpha.5 (fase 4): Watson revisa el vault (`revisar_vault`, solo notas normales) y propone lotes de hasta 40 movimientos o renombrados (`proponer_reorganizacion`, `core/agora_core/vault_reorg.py`); la tarjeta aplica solo los marcados por la ruta de mover, con la revisión vista al aparecer, copia previa, aviso de enlaces rotos y sin borrar; mover admite una carpeta nueva dentro de una existente. Botón «Pedir a Watson que lo ordene» en «Revisar el vault». 262 pruebas del núcleo, 20 de la interfaz, Rust y build.
+- Hecho en 1.7.0-alpha.6: Ajustes › Voz dice si «Oye Watson» escucha o por qué no arranca (permisos, español sin internet, micrófono) con «Reintentar»; tras un fallo la app no relanza el oyente en bucle (docs/voz-musica.md). El usuario dijo «Oye Watson» y no respondía: probablemente estaba apagado (por defecto).
+- Ideas aceptables para la fase 5: lectura fiscal de solo lectura para Watson y órdenes rápidas para ir a una pantalla («abre la Bandeja»).
 - Siguiente: fase 5 (investigación a fondo de cómo ordenar el vault como nota; más botones e información en el Cerebro); después publicar 1.6 y 1.7 con permiso del usuario.
 - Pendiente de probar por el usuario: reordenar el vault con Watson sobre su vault real, limpieza del correo con sus cuentas reales (IMAP MOVE y carpetas especiales), presupuesto en Central, «Oye Watson», ⌃⌥W.
 
