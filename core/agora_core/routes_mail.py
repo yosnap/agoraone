@@ -37,6 +37,7 @@ class AccountIn(BaseModel):
     confidentiality: Level = "normal"
     maxAgeDays: StrictInt = Field(default=60, ge=1, le=3650)
     password: str | None = Field(default=None, min_length=4, max_length=500)
+    inbound: StrictBool = True  # Resend: also read what it receives
 
 
 class AccountChange(BaseModel):
@@ -50,6 +51,7 @@ class AccountChange(BaseModel):
     confidentiality: Level | None = None
     maxAgeDays: StrictInt | None = Field(default=None, ge=1, le=3650)
     enabled: StrictBool | None = None
+    inbound: StrictBool | None = None
     # A new password replaces the stored one; an explicit null forgets it.
     password: str | None = Field(default=None, min_length=4, max_length=500)
 
@@ -109,7 +111,7 @@ def sync_all(settings: Settings, secrets) -> None:
     connection = connect(settings.data_dir / DB_NAME)
     try:
         login = microsoft_login(connection, secrets)
-        for row in connection.execute("SELECT id FROM mail_account WHERE enabled = 1 AND kind = 'mailbox'").fetchall():
+        for row in connection.execute("SELECT id FROM mail_account WHERE enabled = 1 AND (kind = 'mailbox' OR inbound = 1)").fetchall():
             try:  # one account failing never stops the others
                 mail.sync_account(connection, row["id"], secrets.get(mail.secret_account(row["id"])), login=login)
             except Exception as error:

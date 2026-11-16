@@ -61,3 +61,10 @@ li.open .compact-chevron { transform:rotate(180deg) }
 .alerts-permissions li { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap }
 .voice-choice { display:flex; flex-direction:column; gap:6px }
 .voice-choice .field-row input { flex:1; min-width:0 }
+
+/* Blocks of an open account never touch each other: fields, key, servers and actions each have room. */
+.mail-accounts.compact > li.open { gap:14px }
+.mail-servers[open] { display:flex; flex-direction:column; gap:12px }
+.mail-servers > summary { cursor:pointer }
+.mail-servers-actions { align-self:end; justify-content:flex-end; padding-bottom:1px }
+.mail-new { gap:14px }

@@ -18,7 +18,7 @@ def db(tmp_path):
 
 
 def test_resend_sin_imap_y_nunca_se_lee(db):
-    account = mail.create_account(db, {"provider": "resend", "address": "Hola@MiDominio.com"})
+    account = mail.create_account(db, {"provider": "resend", "address": "Hola@MiDominio.com", "inbound": False})
     listed = mail.list_accounts(db, lambda i: True)[0]
     assert listed["kind"] == "send" and listed["provider"] == "resend" and listed["username"] == "resend"
     assert (listed["smtpHost"], listed["smtpPort"]) == ("smtp.resend.com", 465) and listed["address"] == "hola@midominio.com"

@@ -50,8 +50,8 @@ PRESETS = {
     "other": Preset("Otro servidor (IMAP)", ("", 993), ("", 465),
                     "Los servidores IMAP y SMTP de tu proveedor (en Namecheap, mail.privateemail.com; en Hostinger, imap/smtp.hostinger.com). Usuario: la dirección completa."),
     # Only sending: no mailbox to read.
-    "resend": Preset("Resend (solo envío)", ("", 0), ("smtp.resend.com", 465),
-                     "Solo envía, no lee correo. La dirección tiene que ser de un dominio verificado en Resend. Contraseña: tu clave de API (empieza por «re_»)."),
+    "resend": Preset("Resend (envío y recepción)", ("", 0), ("smtp.resend.com", 465),
+                     "Envía por el SMTP de Resend y, si lo marcas, lee lo que recibes con su API (no tiene IMAP). La dirección tiene que ser de un dominio verificado en Resend. Contraseña: tu clave de API (empieza por «re_»; para leer, con «Full access»)."),
     "smtp": Preset("Solo envío por SMTP (SendGrid, Mailgun, Brevo…)", ("", 0), ("", 465),
                    "Solo envía, no lee correo: el servidor SMTP, el puerto (465 o 587), el usuario y la contraseña o clave que te dé el servicio."),
 }
@@ -138,6 +138,7 @@ def _create_sender(connection: sqlite3.Connection, provider: str, preset: Preset
     if not smtp_host:
         raise MailError("Falta el servidor SMTP.")
     smtp_port = _port(data.get("smtpPort"), preset.smtp[1])
+    inbound = 1 if provider == "resend" and data.get("inbound", True) else 0
     username = _username(data.get("username") or ("resend" if provider == "resend" else address))
     level = data.get("confidentiality", "normal")
     if level not in LEVELS:
@@ -146,8 +147,9 @@ def _create_sender(connection: sqlite3.Connection, provider: str, preset: Preset
     try:
         return connection.execute(
             """INSERT INTO mail_account (address, label, provider, username, imap_host, imap_port, smtp_host, smtp_port,
-               scope_id, confidentiality, created_at, auth, kind) VALUES (?, ?, 'other', ?, ?, ?, ?, ?, ?, ?, ?, 'password', 'send')""",
-            (address, data.get("label") or None, username, smtp_host, smtp_port, smtp_host, smtp_port, data.get("scopeId"), level, now()),
+               scope_id, confidentiality, max_age_days, created_at, auth, kind, inbound) VALUES (?, ?, 'other', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'password', 'send', ?)""",
+            (address, data.get("label") or None, username, smtp_host, smtp_port, smtp_host, smtp_port, data.get("scopeId"), level,
+             int(data.get("maxAgeDays") or 60), now(), inbound),
         ).lastrowid
     except sqlite3.IntegrityError as error:
         if "UNIQUE" in str(error):
@@ -157,7 +159,7 @@ def _create_sender(connection: sqlite3.Connection, provider: str, preset: Preset
 
 _EDITABLE = {"label": "label", "username": "username", "imapHost": "imap_host", "imapPort": "imap_port", "smtpHost": "smtp_host",
              "smtpPort": "smtp_port", "scopeId": "scope_id", "confidentiality": "confidentiality", "maxAgeDays": "max_age_days",
-             "enabled": "enabled"}
+             "enabled": "enabled", "inbound": "inbound"}
 
 
 _REQUIRED = {"username", "imapHost", "imapPort", "maxAgeDays", "enabled", "confidentiality"}
@@ -186,7 +188,7 @@ def update_account(connection: sqlite3.Connection, account_id: int, changes: dic
                 value = _port(value, 0)
             elif key == "username":
                 value = _username(value)
-            elif key == "enabled":
+            elif key in ("enabled", "inbound"):
                 value = 1 if value else 0
             values[column] = value
     if send_only:  # its placeholder IMAP columns follow the SMTP server; nothing reads them
@@ -217,7 +219,7 @@ def list_accounts(connection: sqlite3.Connection, has_password: Callable[[int], 
            FROM mail_account a LEFT JOIN scope s ON s.id = a.scope_id ORDER BY a.address"""
     ).fetchall()
     return [{
-        "id": r["id"], "address": r["address"], "label": r["label"], "kind": r["kind"],
+        "id": r["id"], "address": r["address"], "label": r["label"], "kind": r["kind"], "inbound": bool(r["inbound"]),
         "provider": "microsoft" if r["auth"] == "microsoft" else ("resend" if (r["smtp_host"] or "") == "smtp.resend.com" else "smtp") if r["kind"] == "send" else r["provider"],
         "auth": r["auth"], "username": r["username"],
         "imapHost": r["imap_host"], "imapPort": r["imap_port"], "smtpHost": r["smtp_host"], "smtpPort": r["smtp_port"],
@@ -254,7 +256,7 @@ def _size_of(meta: bytes) -> int:
     return 0
 
 
-def _store(connection: sqlite3.Connection, account_id: int, uidvalidity: int, uid: int, raw: bytes | None, size: int) -> None:
+def _store(connection: sqlite3.Connection, account_id: int, uidvalidity: int, uid: int, raw: bytes | None, size: int, folder: str = FOLDER) -> None:
     columns = dict(message_id=None, in_reply_to=None, from_address=None, from_name=None, to_addresses="[]", cc_addresses="[]",
                    subject=None, sent_at=None, body=None, truncated=1, attachments="[]")
     try:
@@ -271,7 +273,7 @@ def _store(connection: sqlite3.Connection, account_id: int, uidvalidity: int, ui
     connection.execute(
         f"""INSERT OR IGNORE INTO mail_message (account_id, folder, uidvalidity, uid, {", ".join(columns)}, bytes, received_at)
             VALUES (?, ?, ?, ?, {", ".join("?" * len(columns))}, ?, ?)""",
-        (account_id, FOLDER, uidvalidity, uid, *columns.values(), size, now()),
+        (account_id, folder, uidvalidity, uid, *columns.values(), size, now()),
     )
 
 
@@ -298,6 +300,22 @@ def sync_account(connection: sqlite3.Connection, account_id: int, password: str 
         lock.release()
 
 
+def _sync_resend(connection: sqlite3.Connection, account: sqlite3.Row, key: str | None, batch: int) -> dict:
+    """What arrived through Resend Inbound, read with its API (Resend has no IMAP)."""
+    from . import resend_inbound
+
+    if not key:
+        _status(connection, account["id"], "auth", "Falta la clave de API de Resend.")
+        return {"status": "auth", "added": 0}
+    try:
+        added = resend_inbound.sync(connection, account, key, _store, MAX_MESSAGE, batch)
+    except resend_inbound.InboundError as error:
+        _status(connection, account["id"], error.status, str(error))
+        return {"status": error.status, "added": 0}
+    _status(connection, account["id"], "ok", None)
+    return {"status": "ok", "added": added}
+
+
 class LoginError(RuntimeError):
     """A sign-in that could not even be attempted (an expired Microsoft permission, a missing client id)."""
 
@@ -306,8 +324,10 @@ def _sync(connection: sqlite3.Connection, account_id: int, password: str | None,
     account = connection.execute("SELECT * FROM mail_account WHERE id = ?", (account_id,)).fetchone()
     if account is None:
         return {"status": "missing", "added": 0}
-    if account["kind"] == "send":  # no mailbox: nothing to read
-        return {"status": "send", "added": 0}
+    if account["kind"] == "send":
+        if not (account["inbound"] and account["smtp_host"] == "smtp.resend.com"):
+            return {"status": "send", "added": 0}  # no mailbox: nothing to read
+        return _sync_resend(connection, account, password, batch)
     if not password:
         _status(connection, account_id, "auth", "Falta conectar la cuenta con Microsoft." if account["auth"] == "microsoft"
                 else "Falta la contraseña de aplicación de esta cuenta.")
@@ -425,6 +445,12 @@ def fetch_raw(connection: sqlite3.Connection, message_id: int, password: str | N
         raise MailError("Ese correo ya no está guardado.")
     if not password:
         raise MailError("Falta la contraseña o la conexión de esa cuenta.")
+    if row["folder"] == "RESEND":
+        from . import resend_inbound
+        try:
+            return resend_inbound.fetch_raw(connection, row["id"], row["uid"], password, MAX_MESSAGE)
+        except resend_inbound.InboundError as error:
+            raise MailError(str(error)) from error
     try:
         client = opener(row["imap_host"], row["imap_port"])
     except (OSError, socket.timeout, ssl.SSLError) as error:

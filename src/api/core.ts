@@ -143,14 +143,14 @@ export type MailProvider = 'gmail' | 'icloud' | 'microsoft' | 'other' | 'resend'
 export const sendOnly = (provider: MailProvider) => provider === 'resend' || provider === 'smtp';
 export type MailPreset = { name: string; imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; hint: string };
 export type MailAccount = {
-  id: number; address: string; label: string | null; kind: 'mailbox' | 'send'; provider: MailProvider; auth: 'password' | 'microsoft'; username: string; imapHost: string; imapPort: number;
+  id: number; address: string; label: string | null; kind: 'mailbox' | 'send'; inbound: boolean; provider: MailProvider; auth: 'password' | 'microsoft'; username: string; imapHost: string; imapPort: number;
   smtpHost: string | null; smtpPort: number | null; scopeId: number | null; scopeName: string | null; confidentiality: Level;
   maxAgeDays: number; enabled: boolean; status: 'pending' | 'ok' | 'auth' | 'unreachable' | 'error'; lastError: string | null;
   lastSyncAt: string | null; messages: number; hasPassword: boolean;
 };
 export type MailAccountIn = {
   address: string; provider: MailProvider; username?: string; imapHost?: string; imapPort?: number; smtpHost?: string; smtpPort?: number;
-  scopeId?: number | null; confidentiality: Level; maxAgeDays: number; password?: string;
+  scopeId?: number | null; confidentiality: Level; maxAgeDays: number; password?: string; inbound?: boolean;
 };
 export const getMailPresets = () => core<{ presets: Record<MailProvider, MailPreset> }>('/mail/presets');
 export const getMailAccounts = () => core<{ accounts: MailAccount[] }>('/mail/accounts');
