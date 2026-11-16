@@ -78,6 +78,8 @@ def _read_voices() -> list[dict] | None:
         profiles = answer.json()
     except (httpx.HTTPError, ValueError):
         return None
+    if not isinstance(profiles, list):  # something else on that port, or another VoiceStudio API
+        return None
     return [{"id": str(p["id"])[:120], "name": str(p.get("name") or p["id"])[:120], "language": str(p.get("language") or "")[:40] or None}
             for p in profiles if isinstance(p, dict) and p.get("id")][:100]
 
@@ -95,14 +97,15 @@ def resolve(chosen: dict, voices: list[dict] | None) -> dict:
             engine, problem = "macos", "Elige una voz de VoiceStudio: mientras, Watson habla con la voz de macOS."
         elif not any(v["id"] == voice for v in voices):
             engine, problem = "macos", "Esa voz ya no está en VoiceStudio: Watson habla con la voz de macOS."
-    if problem is None and engine == "macos" and chosen["engine"] != "macos" and _launch["state"] == "opening":
-        problem = "Abriendo VoiceStudio: mientras arranca, Watson habla con la voz de macOS."
+    if engine == "macos" and chosen["engine"] != "macos" and voices is None and _launch["state"]:
+        problem = {"opening": "Abriendo VoiceStudio: mientras arranca, Watson habla con la voz de macOS.",
+                   "failed": "AgoraOne intentó abrir VoiceStudio y no respondió en 2 minutos: Watson habla con la voz de macOS."}[_launch["state"]]
     return {"engine": engine, "voice": voice if engine == "voicestudio" else None, "speed": chosen["speed"],
             "macVoice": chosen["macVoice"], "problem": problem, "steps": QUALITY.get(chosen["quality"], 16)}
 
 
 _launch: dict = {"state": None}
-_spoke: dict = {"at": -1e9}  # when VoiceStudio last said something for AgoraOne (monotonic)
+_spoke: dict = {"at": -1e9, "failed": -1e9}  # when VoiceStudio last spoke for AgoraOne, or last failed to (monotonic)
 WARM_FOR = 600
 _warming = threading.Lock()
 
@@ -136,7 +139,8 @@ def open_at_start(connect_db, wait: float = 120.0, opener=subprocess.run) -> str
                 time.sleep(2)
         except (OSError, subprocess.SubprocessError):
             pass
-        _launch["state"] = None if _seen["voices"] is not None else "failed"
+        finally:  # never left «opening»: whatever happened, the state says how it ended
+            _launch["state"] = None if _seen["voices"] is not None else "failed"
         if _seen["voices"] is None:
             return "failed"
     warm(chosen)
@@ -149,12 +153,16 @@ def warm(chosen: dict) -> bool:
     process as loaded before the model is really in memory, so this goes by when AgoraOne last heard it speak:
     nothing if that was less than ten minutes ago."""
     now = resolve(chosen, voicestudio_voices())
-    if now["engine"] != "voicestudio" or time.monotonic() - _spoke["at"] < WARM_FOR or not _warming.acquire(blocking=False):
+    recent = lambda: time.monotonic() - max(_spoke["at"], _spoke["failed"]) < WARM_FOR  # noqa: E731
+    if now["engine"] != "voicestudio" or recent() or not _warming.acquire(blocking=False):
         return False
     try:
+        if recent():  # another thread got it ready while this one waited
+            return False
         synthesize(now["voice"], "Hola.", steps=QUALITY["fast"])
         return True
     except TtsError:
+        _spoke["failed"] = time.monotonic()  # not asked again on every question while VoiceStudio keeps failing
         return False
     finally:
         _warming.release()

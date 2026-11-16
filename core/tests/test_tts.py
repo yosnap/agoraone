@@ -119,16 +119,30 @@ def test_si_no_esta_instalado_o_no_arranca_se_dice(tmp_path, monkeypatch):
     monkeypatch.setattr(tts.time, "sleep", lambda s: None)
     assert tts.open_at_start(_db(tmp_path / "b"), wait=0, opener=lambda *a, **k: None) == "failed"
     assert tts._launch["state"] == "failed"
+    assert "no respondió" in tts.resolve(dict(tts.DEFAULTS), None)["problem"], "se dice en Ajustes"
+    tts._launch["state"] = None
+
+
+def test_no_se_queda_abriendo_si_el_puerto_contesta_otra_cosa(tmp_path, monkeypatch):
+    monkeypatch.setattr(tts, "installed_app", lambda: tts.APPS[0])
+    monkeypatch.setattr(tts.time, "sleep", lambda s: None)
+    monkeypatch.setattr(tts.httpx, "get", lambda url, timeout: httpx.Response(200, json=None, request=httpx.Request("GET", url)))
+    assert tts.open_at_start(_db(tmp_path), wait=0, opener=lambda *a, **k: None) == "failed"
+    assert tts._launch["state"] == "failed"
     tts._launch["state"] = None
 
 
 def test_calentar_solo_si_hace_rato_que_no_habla(monkeypatch):
     said = []
     monkeypatch.setattr(tts, "voicestudio_voices", lambda fresh=False: VOICES)
-    monkeypatch.setattr(tts, "_spoke", {"at": -1e9})
+    monkeypatch.setattr(tts, "_spoke", {"at": -1e9, "failed": -1e9})
     monkeypatch.setattr(tts.httpx, "post", lambda url, json, timeout: said.append((json["input"], json["num_step"])) or httpx.Response(200, headers={"content-type": "audio/wav"}, content=b"RIFF"))
     assert tts.warm(dict(tts.DEFAULTS)) is True and said == [("Hola.", 8)]
     assert tts.warm(dict(tts.DEFAULTS)) is False and len(said) == 1, "acaba de hablar: ya está cargada"
     tts._spoke["at"] -= tts.WARM_FOR + 1
     assert tts.warm(dict(tts.DEFAULTS)) is True and len(said) == 2
     assert tts.warm({**tts.DEFAULTS, "engine": "macos"}) is False
+    tts._spoke["at"] -= tts.WARM_FOR + 1
+    monkeypatch.setattr(tts.httpx, "post", lambda *a, **k: said.append("fallo") or httpx.Response(500, content=b"no"))
+    assert tts.warm(dict(tts.DEFAULTS)) is False and tts.warm(dict(tts.DEFAULTS)) is False
+    assert said.count("fallo") == 1, "si VoiceStudio falla, no se reintenta en cada pregunta"
