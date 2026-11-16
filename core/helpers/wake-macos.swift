@@ -1,8 +1,10 @@
 // «Oye Watson» for AgoraOne (1.5): listens to the microphone with Apple's speech recognition ON THIS MAC
 // (on-device only: it refuses to run otherwise) and prints "wake" when it hears the phrase. Nothing heard is
 // kept, printed or sent; the desktop app reads the "wake" lines and makes Watson listen.
-// Usage: agora-wake [frase…]  (default: «oye watson»). Prints "ready" when listening; exit 2 without permission
-// or without on-device recognition. Stops on SIGTERM or when its input closes.
+// Usage: agora-wake [frase…]  (default: «oye watson»). Prints "ready" when listening. Exit codes, which the
+// desktop app shows in Ajustes › Voz: 2 no speech-recognition permission, 3 the microphone did not open,
+// 4 this Mac cannot recognise Spanish without internet, 5 no microphone permission. Stops on SIGTERM or when
+// its input closes.
 import AVFoundation
 import Foundation
 import Speech
@@ -36,7 +38,7 @@ final class Listener {
 
     init() {
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-ES")), recognizer.supportsOnDeviceRecognition else {
-            fail(2, "sin reconocimiento en el equipo")
+            fail(4, "sin reconocimiento en el equipo")
         }
         self.recognizer = recognizer
     }
@@ -84,9 +86,12 @@ Thread.detachNewThread {
 
 SFSpeechRecognizer.requestAuthorization { status in
     guard status == .authorized else { fail(2, "permiso") }
-    DispatchQueue.main.async {
-        keep = Listener()
-        keep?.begin()
+    AVCaptureDevice.requestAccess(for: .audio) { granted in
+        guard granted else { fail(5, "micrófono") }
+        DispatchQueue.main.async {
+            keep = Listener()
+            keep?.begin()
+        }
     }
 }
 RunLoop.main.run()

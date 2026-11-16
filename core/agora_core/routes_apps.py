@@ -21,6 +21,13 @@ class Wake(BaseModel):
     enabled: bool
 
 
+WAKE_STATES = {"off", "starting", "listening", "no_speech_permission", "no_mic_permission", "no_offline", "mic_failed", "missing", "stopped"}
+
+
+class WakeState(BaseModel):
+    state: str
+
+
 class Open(BaseModel):
     id: str
     confirmed: bool = False
@@ -59,10 +66,21 @@ def apps_router(settings: Settings) -> APIRouter:
         return await run(lambda c: {"done": apps.open_app(c, body.id, body.confirmed)})
 
     # «Oye Watson» (1.5): off unless the user turns it on, since it keeps the microphone open. The desktop app
-    # reads this to start or stop its on-device listener.
+    # reads this to start or stop its on-device listener, and tells how its listener is doing (listening, or
+    # why it could not start) so Ajustes › Voz can say it; None when no desktop app has said anything.
+    # «attempt» grows each time the user turns it on: the desktop app tries again after a failure.
+    listener = {"state": None, "attempt": 0}
+
     def wake(connection) -> dict:
         row = connection.execute("SELECT value FROM setting WHERE key = 'wake'").fetchone()
-        return {"enabled": bool(row and json.loads(row["value"]).get("enabled"))}
+        return {"enabled": bool(row and json.loads(row["value"]).get("enabled")), "state": listener["state"], "attempt": listener["attempt"]}
+
+    @router.post("/wake/status")
+    async def wake_status(body: WakeState):
+        if body.state not in WAKE_STATES:
+            return JSONResponse({"error": "Estado desconocido."}, status_code=400)
+        listener["state"] = body.state
+        return {"state": body.state}
 
     @router.get("/wake/settings")
     async def wake_settings():
@@ -74,6 +92,8 @@ def apps_router(settings: Settings) -> APIRouter:
             with transaction(connection):
                 connection.execute("INSERT INTO setting (key, value) VALUES ('wake', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
                                    (json.dumps({"enabled": body.enabled}),))
+            if body.enabled:
+                listener["attempt"] += 1
             return wake(connection)
         return await run(work)
 

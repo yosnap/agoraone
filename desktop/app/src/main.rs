@@ -137,42 +137,88 @@ fn listen(app: &AppHandle) {
 }
 
 /// «Oye Watson» (1.5): while the user has it on in Ajustes › Voz, the on-device listener runs and each "wake"
-/// it prints works like ⌃⌥W. Off, or the app closing, stops it (its input pipe closes with the app).
+/// it prints works like ⌃⌥W. Off, or the app closing, stops it (its input pipe closes with the app). How it is
+/// doing goes to the core for Ajustes › Voz: listening, or why it could not start. After a failure it is not
+/// started again (macOS would ask again and again) until the user turns the setting off and on.
 fn wake_loop(app: AppHandle, link: agora_server::core::CoreLink) {
-    let Some(helper) = bundle_resources().map(|r| r.join("core/helpers/bin/agora-wake")).filter(|p| p.is_file()) else { return };
+    let helper = bundle_resources().map(|r| r.join("core/helpers/bin/agora-wake")).filter(|p| p.is_file());
     tauri::async_runtime::spawn(async move {
         use tokio::io::AsyncBufReadExt;
         let http = reqwest::Client::new();
         let mut child: Option<tokio::process::Child> = None;
+        let mut failed = false;
+        let mut said_off = false;
+        let mut attempt = 0;
         loop {
-            let on = agora_server::core::core_request(&http, &link, "/wake/settings", None).await
-                .ok().and_then(|a| a.get("enabled").and_then(|e| e.as_bool())).unwrap_or(false);
-            let running = child.as_mut().is_some_and(|c| c.try_wait().ok().flatten().is_none());
-            if on && !running {
-                if let Ok(mut started) = tokio::process::Command::new(&helper).stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).kill_on_drop(true).spawn()
-                {
-                    if let Some(out) = started.stdout.take() {
-                        let app = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let mut lines = tokio::io::BufReader::new(out).lines();
-                            while let Ok(Some(line)) = lines.next_line().await {
-                                if line.trim() == "wake" {
-                                    listen(&app);
-                                }
-                            }
-                        });
-                    }
-                    child = Some(started);
-                }
-            } else if !on && running {
+            let settings = agora_server::core::core_request(&http, &link, "/wake/settings", None).await.ok();
+            let on = settings.as_ref().and_then(|a| a.get("enabled")?.as_bool()).unwrap_or(false);
+            // Turned on again (or «Reintentar»): a fresh try after a failure.
+            let asked = settings.as_ref().and_then(|a| a.get("attempt")?.as_u64()).unwrap_or(0);
+            if asked != attempt {
+                attempt = asked;
+                failed = false;
+            }
+            if let Some(ended) = child.as_mut().and_then(|c| c.try_wait().ok().flatten()) {
+                child = None;
+                failed = true;
+                wake_state(&http, &link, wake_failure(ended.code())).await;
+            }
+            if !on {
                 if let Some(mut stopping) = child.take() {
                     let _ = stopping.kill().await;
+                    said_off = false;
+                }
+                if !said_off || failed {
+                    wake_state(&http, &link, "off").await;
+                    said_off = true;
+                }
+                failed = false;
+            } else if child.is_none() && !failed {
+                said_off = false;
+                match helper.as_ref().map(|h| tokio::process::Command::new(h).stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).kill_on_drop(true).spawn())
+                {
+                    Some(Ok(mut started)) => {
+                        wake_state(&http, &link, "starting").await;
+                        if let Some(out) = started.stdout.take() {
+                            let (app, http, link) = (app.clone(), http.clone(), link.clone());
+                            tauri::async_runtime::spawn(async move {
+                                let mut lines = tokio::io::BufReader::new(out).lines();
+                                while let Ok(Some(line)) = lines.next_line().await {
+                                    match line.trim() {
+                                        "ready" => wake_state(&http, &link, "listening").await,
+                                        "wake" => listen(&app),
+                                        _ => {}
+                                    }
+                                }
+                            });
+                        }
+                        child = Some(started);
+                    }
+                    other => {
+                        failed = true;
+                        wake_state(&http, &link, if other.is_none() { "missing" } else { "stopped" }).await;
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_secs(4)).await;
         }
     });
+}
+
+/// What the listener's exit code means (see core/helpers/wake-macos.swift).
+fn wake_failure(code: Option<i32>) -> &'static str {
+    match code {
+        Some(2) => "no_speech_permission",
+        Some(3) => "mic_failed",
+        Some(4) => "no_offline",
+        Some(5) => "no_mic_permission",
+        _ => "stopped",
+    }
+}
+
+async fn wake_state(http: &reqwest::Client, link: &agora_server::core::CoreLink, state: &str) {
+    let _ = agora_server::core::core_request(http, link, "/wake/status", Some(&serde_json::json!({ "state": state }))).await;
 }
 
 fn main() {

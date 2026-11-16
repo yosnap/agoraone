@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { getVoiceStatus, getWake, putVoiceSettings, putWake, type VoiceSettings, type VoiceStatus } from '../api/core';
+import { getVoiceStatus, getWake, putVoiceSettings, putWake, type VoiceSettings, type VoiceStatus, type Wake } from '../api/core';
+import { wakeStatus } from './wake-status';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { setVoiceMode, voiceMode, type VoiceMode } from '../assistant/speech';
@@ -75,19 +76,30 @@ function WatsonVoice() {
     options={[{ value: 'spoken', label: 'Cuando le hablas con el micrófono' }, { value: 'always', label: 'Siempre' }, { value: 'never', label: 'Nunca' }]}/></label>;
 }
 
-/** «Oye Watson» from any app, heard on this Mac (Apple's on-device recognition): off unless turned on here. */
+/** «Oye Watson» from any app, heard on this Mac (Apple's on-device recognition): off unless turned on here. Under
+ * the box, what the desktop app's listener is doing: listening, or why it could not start and how to fix it. */
 function WakeWord() {
-  const [on, setOn] = useState<boolean | null>(null);
+  const [wake, setWake] = useState<Wake | null>(null);
   const [error, setError] = useState('');
   const asked = useRef(false);
-  if (!asked.current) { asked.current = true; void getWake().then(state => setOn(state.enabled)).catch(() => setOn(false)); }
+  // The listener takes a few seconds to start (and macOS may be asking for permission): look again a while.
+  const follow = (left: number) => void getWake().then(state => {
+    setWake(state);
+    if (left > 0 && state.enabled && (state.state === null || state.state === 'starting' || state.state === 'off')) setTimeout(() => follow(left - 1), 2000);
+  }).catch(() => setWake(current => current ?? { enabled: false, state: null, attempt: 0 }));
+  if (!asked.current) { asked.current = true; follow(3); }
   const change = async (next: boolean) => {
     setError('');
-    try { setOn((await putWake(next)).enabled); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
+    try { setWake(await putWake(next)); if (next) setTimeout(() => follow(15), 1500); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
   };
+  const status = wake?.enabled ? wakeStatus(wake.state) : null;
   return <div className="field">
-    <label className="check"><input type="checkbox" checked={on === true} disabled={on === null} onChange={event => void change(event.target.checked)}/> Escuchar «Oye Watson»</label>
+    <label className="check"><input type="checkbox" checked={wake?.enabled === true} disabled={wake === null} onChange={event => void change(event.target.checked)}/> Escuchar «Oye Watson»</label>
     <small className="muted">Di «Oye Watson» desde cualquier app y Watson empieza a escuchar, como con ⌃⌥W. Se reconoce en este Mac (sin internet) y no se guarda ni se envía nada de lo que oye. Mientras esté activo, el micrófono queda abierto y macOS enseña su punto naranja. Solo en la app de escritorio del Mac; la primera vez macOS pide los permisos de micrófono y reconocimiento de voz.</small>
+    {status && <small className={status.ok ? 'ok-note' : 'dictation-error'} role="status">{status.text}</small>}
+    {status && !status.ok && status.retry && <div className="inbox-actions">
+      <button type="button" className="button" onClick={() => void change(true)}>Reintentar</button>
+    </div>}
     {error && <small className="dictation-error" role="alert">{error}</small>}
   </div>;
 }
