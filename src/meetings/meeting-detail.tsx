@@ -112,7 +112,7 @@ export function MeetingDetailPanel({ id, onChanged }: { id: number; onChanged: (
     <details><summary>Transcripción ({detail.transcript.length} {detail.transcript.length === 1 ? 'frase' : 'frases'})</summary>
       <ol className="meeting-transcript">{detail.transcript.map((s, n) => <li key={n}><span className="muted">{Math.floor(s.start / 60)}:{String(Math.floor(s.start % 60)).padStart(2, '0')}</span> <strong>{s.speaker}:</strong> {s.text}</li>)}</ol>
     </details>
-    <MeetingClassCard key={`${detail.kind}:${detail.client}:${detail.project}:${detail.people.join(',')}`} detail={detail} onSaved={() => { void load(); onChanged(); }}/>
+    <MeetingClassCard key={`${detail.kind}:${detail.client}:${detail.project}:${detail.people.map(p => p.email ?? p.name).join(',')}`} detail={detail} onSaved={() => { void load(); onChanged(); }}/>
     <MeetingExport detail={detail}/>
     <SaveNote key={detail.draft?.title} detail={detail} vaults={target.vaults} onSaved={() => { void load(); onChanged(); }}/>
   </div>;

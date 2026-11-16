@@ -354,10 +354,14 @@ export const sendMail = (draft: MailDraft, digest: string) => core<{ sent: boole
 export type Meeting = { id: number; title: string; confidentiality: Level; status: 'recording' | 'recorded' | 'interrupted';
   started_at: string; ended_at: string | null; seconds: number; mic_bytes: number; system_source: string | null; system_bytes: number; note: string | null;
   work: 'none' | 'transcribing' | 'summarizing' | 'done' | 'failed'; work_error: string | null; summary_by: 'claude' | 'local' | 'none' | null;
-  has_transcript: boolean; saved_note: { vault: string; note: string } | null; kind: MeetingKind; client: string | null; project: string | null; people: string[] };
+  has_transcript: boolean; saved_note: { vault: string; note: string } | null; kind: MeetingKind; client: string | null; project: string | null; people: MeetingPerson[] };
+export type MeetingPerson = { name: string; email: string | null };
+export type ContactMatch = { name: string; org: string | null; email: string | null };
+/** People from the Mac's Contacts for «Con quién» (status: granted, denied, undetermined, unavailable…). */
+export const findContacts = (q: string) => core<{ status: string; contacts: ContactMatch[] }>(`/meetings/contacts?q=${encodeURIComponent(q)}`);
 export type MeetingKind = 'meeting' | 'training' | 'interview' | 'call' | 'other';
 export const kindLabels: Record<MeetingKind, string> = { meeting: 'Reunión', training: 'Formación', interview: 'Entrevista', call: 'Llamada', other: 'Otra' };
-export type MeetingClass = { kind: MeetingKind; client: string | null; project: string | null; people: string[] };
+export type MeetingClass = { kind: MeetingKind; client: string | null; project: string | null; people: MeetingPerson[] };
 export type MeetingTask = { title: string; who: string | null; due: string | null };
 export type MeetingDetail = Meeting & { transcript: { start: number; end: number; text: string; speaker: string }[];
   summary: { summary: string; topics?: { topic: string; detail: string }[]; decisions: string[]; tasks: MeetingTask[] } | null; draft: { title: string; content: string } | null };

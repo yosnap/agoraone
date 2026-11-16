@@ -8,7 +8,7 @@ from datetime import UTC, date, datetime, timedelta
 
 from .github_issues import repos
 from .meeting_notes import WEEKDAYS, as_text
-from .meetings import KINDS
+from .meetings import KINDS, names_of
 
 PART_CHARS = 8000
 FOUND_LIMIT = 10
@@ -126,7 +126,7 @@ def find(connection: sqlite3.Connection, owner: str, query: str = "", since: str
         held = _local(row["started_at"])
         if (first and held.date() < first) or (last and held.date() > last):
             continue
-        people = json.loads(row["people"] or "[]")
+        people = names_of(row["people"])
         summary = json.loads(row["summary"]) if row["summary"] else None
         lines = json.loads(row["transcript"] or "[]")
         about = " ".join([row["title"], row["client"] or "", row["project"] or "", *people, KINDS[row["kind"]], _summary_text(summary)]).casefold()

@@ -38,7 +38,7 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned }: 
     <div className="meeting-main">
       <strong>{hidden ? 'Reunión' : meeting.title}</strong>
       <small>{when(meeting.started_at)} · {clock(meeting.seconds)} · {levelLabels[meeting.confidentiality]}</small>
-      {!hidden && <small className="muted">{[kindLabels[meeting.kind], meeting.client, meeting.project, meeting.people.length ? `con ${meeting.people.join(', ')}` : ''].filter(Boolean).join(' · ')}</small>}
+      {!hidden && <small className="muted">{[kindLabels[meeting.kind], meeting.client, meeting.project, meeting.people.length ? `con ${meeting.people.map(p => p.name).join(', ')}` : ''].filter(Boolean).join(' · ')}</small>}
       <small className="muted">Tu micrófono: {meeting.mic_bytes ? size(meeting.mic_bytes) : 'vacío'} · Audio del sistema: {meeting.system_source ? (meeting.system_bytes ? size(meeting.system_bytes) : meeting.status === 'recording' ? 'grabando' : 'vacío') : 'no grabado'}</small>
       {meeting.note && !hidden && <small className="muted">{meeting.note}</small>}
       {meeting.work_error && !hidden && <small className={meeting.work === 'failed' ? 'dictation-error' : 'muted'} role={meeting.work === 'failed' ? 'alert' : undefined}>
