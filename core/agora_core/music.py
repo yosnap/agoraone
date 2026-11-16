@@ -51,7 +51,7 @@ COMMANDS = {"toggle": "playpause", "play": "play", "pause": "pause", "next": "ne
             "louder": "set sound volume to (sound volume + 10)", "quieter": "set sound volume to (sound volume - 10)"}
 SEARCH_MUSIC = '''on run argv
   tell application "Music"
-    set found to (search playlist "Library" for (item 1 of argv))
+    set found to (search library playlist 1 for (item 1 of argv))  -- by position: its name depends on the language («Biblioteca»)
     if found is {} then return "none"
     play item 1 of found
     return "ok"

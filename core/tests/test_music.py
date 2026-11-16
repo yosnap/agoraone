@@ -41,3 +41,9 @@ def test_ordenes_cerradas_y_pon_como_argumento(mac):
     script, args = mac[-1]
     assert "rm -rf" not in script and args == ('jazz" & do shell script "rm -rf ~',), "el texto va como argumento"
     assert "Spotify" in said
+
+
+def test_la_biblioteca_de_musica_no_depende_del_idioma():
+    # En un Mac en español la lista se llama «Biblioteca»: buscar «Library» por nombre fallaba siempre.
+    from agora_core import music
+    assert "library playlist 1" in music.SEARCH_MUSIC and '"Library"' not in music.SEARCH_MUSIC
