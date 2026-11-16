@@ -9,15 +9,21 @@ list, and what to play («pon …») is passed as an argument, never written int
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
-PLAYERS = {"music": {"name": "Apple Music", "process": "Music", "app": "Music"},
-           "spotify": {"name": "Spotify", "process": "Spotify", "app": "Spotify"}}
+PLAYERS = {"music": {"name": "Apple Music", "process": "Music", "app": "Music", "bundle": "com.apple.Music"},
+           "spotify": {"name": "Spotify", "process": "Spotify", "app": "Spotify", "bundle": "com.spotify.client"}}
 ACTIONS = {"toggle", "play", "pause", "next", "previous", "louder", "quieter"}
 TIMEOUT = 8
 
 
 class MusicError(RuntimeError):
-    pass
+    """`reason` says why when it matters to the screen: «missing» (the song or the player is not there), so «pon …»
+    may try YouTube; any other failure (permission, a player that does not answer) is told as it is."""
+
+    def __init__(self, message: str, reason: str | None = None):
+        super().__init__(message)
+        self.reason = reason
 
 
 def _osascript(script: str, *args: str) -> str:
@@ -37,6 +43,25 @@ def _running(process: str) -> bool:
         return subprocess.run(["/usr/bin/pgrep", "-x", process], capture_output=True, timeout=3, check=False).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
+
+
+def _installed(player: str) -> bool:
+    """Whether the player is on this Mac (asking AppleScript for a missing app would open «Where is…?»): the
+    Applications folders first, then Spotlight, never counting a copy in the Bin or on another volume. When Spotlight
+    cannot answer, the player is not blocked."""
+    if player == "music" or _running(PLAYERS[player]["process"]):
+        return True  # Music is part of macOS
+    app = f"{PLAYERS[player]['app']}.app"
+    if any(folder.joinpath(app).is_dir() for folder in (Path("/Applications"), Path.home() / "Applications")):
+        return True
+    try:
+        found = subprocess.run(["/usr/bin/mdfind", f"kMDItemCFBundleIdentifier == '{PLAYERS[player]['bundle']}'"],
+                               capture_output=True, text=True, timeout=3, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    if found.returncode != 0:
+        return True
+    return any(line and "/.Trash/" not in line and not line.startswith("/Volumes/") for line in found.stdout.splitlines())
 
 
 # --- macOS ---------------------------------------------------------------------------------------------------
@@ -165,10 +190,12 @@ def play(player: str, query: str) -> str:
         raise MusicError("Di qué quieres escuchar.")
     if available()["adapter"] != "macos" or player not in PLAYERS:
         raise MusicError("Pedir una canción por su nombre solo funciona de momento con Música y Spotify en macOS.")
+    if not _installed(player):
+        raise MusicError(f"{PLAYERS[player]['name']} no está instalado en este Mac. Prueba con YouTube.", "missing")
     if player == "music":
         result = _osascript(SEARCH_MUSIC, query)
         if result == "none":
-            raise MusicError(f"No encuentro «{query}» en tu biblioteca de Música.")
+            raise MusicError(f"No encuentro «{query}» en tu biblioteca de Apple Music (solo busca en ella). Prueba con YouTube.", "missing")
         return f"Reproduciendo «{query}» en Música."
     _osascript(SEARCH_SPOTIFY, query)
     return f"Abierta la búsqueda de «{query}» en Spotify: elige qué poner."

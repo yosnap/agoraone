@@ -26,7 +26,8 @@ export function MusicCard() {
   const alive = useRef(false);
   const read = useCallback(() => {
     window.clearTimeout(timer.current);
-    void getMusic().then(next => { if (alive.current) setState(next); }).catch(() => undefined)
+    void getMusic().then(next => { if (alive.current) setState(next); })
+      .catch(() => { if (alive.current) setState(current => current ?? { players: [], note: 'No puedo leer la música ahora.' }); })
       .finally(() => { if (alive.current) timer.current = window.setTimeout(read, REFRESH); });
   }, []);
   // Reads while the card is on the page and stops when it leaves (a ref callback, no effect); the first time it
@@ -34,10 +35,14 @@ export function MusicCard() {
   const attach = useCallback((node: HTMLElement | null) => {
     if (!node) return;
     alive.current = true; read();
-    void getLibrary('').then(found => setTarget(current => current ?? (found.folders.length ? 'local' : 'music'))).catch(() => setTarget(current => current ?? 'music'));
+    // Without a library of their own, YouTube: Apple Music only searches the user's Apple Music library.
+    void getLibrary('').then(found => setTarget(current => current ?? (found.folders.length ? 'local' : 'youtube'))).catch(() => setTarget(current => current ?? 'youtube'));
     return () => { alive.current = false; window.clearTimeout(timer.current); };
   }, [read]);
   const outside = state?.players[0];
+  // What the card says when nothing plays: reading only until the first answer arrives.
+  const idle = !state ? 'Leyendo…' : outside?.problem ?? state.note
+    ?? (outside ? `${outside.name} está abierto, sin nada sonando. Pide algo con «Pon…».` : 'Nada sonando. Pide algo con «Pon…».');
   const act = async (action: MusicAction) => {
     setError('');
     if (tube.video) { youtubeControl(action); return; }
@@ -50,7 +55,7 @@ export function MusicCard() {
     if (!wanted) return;
     setError(''); setMessage('');
     try {
-      const where = target ?? 'music';
+      const where = target ?? 'youtube';
       if (where === 'youtube') {
         const mine = askTicket();
         const { videos } = await searchYouTube(wanted);
@@ -97,11 +102,11 @@ export function MusicCard() {
           <button type="button" className="music-button" aria-label="Subir el volumen" onClick={() => void act('louder')}>+</button>
           <small className="music-time">{clock(showing.position)} / {clock(showing.duration)}</small>
         </div>
-      </> : <div className="music-head"><strong>Música</strong><small>{outside?.problem ?? state?.note ?? 'Leyendo…'}</small></div>}
+      </> : <div className="music-head"><strong>Música</strong><small>{idle}</small></div>}
       <form className="music-ask" onSubmit={event => { event.preventDefault(); void ask(); }}>
         <label htmlFor="music-query" className="visually-hidden">Qué quieres escuchar</label>
         <input id="music-query" value={query} onChange={event => setQuery(event.target.value)} placeholder="Pon… (canción, artista o lista)" maxLength={120}/>
-        <ModernSelect value={target ?? 'music'} onChange={value => setTarget(value as Target)} options={targets}/>
+        <ModernSelect value={target ?? 'youtube'} onChange={value => setTarget(value as Target)} options={targets}/>
         <button type="submit" className="button" disabled={!query.trim()}>Poner</button>
       </form>
       {(message || local.error) && <small className={local.error ? 'dock-note' : 'ok-note'} role="status">{local.error || message}</small>}

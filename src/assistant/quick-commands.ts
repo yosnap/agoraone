@@ -1,3 +1,4 @@
+import { ApiError } from '../api/client';
 import { controlMusic, getApps, getLibrary, getMusic, openApp, playMusic, searchYouTube, type MusicAction } from '../api/core';
 import { localActive, localControl, playLocal } from '../brain/local-player';
 import { askTicket, playYouTube, stopYouTube, youtubeActive, youtubeControl } from '../brain/youtube-player';
@@ -46,16 +47,17 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
       const where = play![2];
       // The original words, not the accent-free ones, are what the player searches.
       const query = text.replace(/^\s*(pon(me)?|reproduce|quiero escuchar|toca)\s+/i, '').replace(/\s+en\s+(spotify|m[uú]sica|apple music|youtube|mi biblioteca|la biblioteca)\s*[.!?]*$/i, '').trim();
-      if (where === 'youtube') {
-        const mine = askTicket();
+      const onYouTube = async (mine = askTicket(), before = ''): Promise<QuickResult> => {
         const { videos } = await searchYouTube(query);
         const playing = (await getMusic().catch(() => null))?.players[0];
         if (!playYouTube(videos, query, mine)) return { reply: 'Lo dejo: me has pedido otra cosa mientras buscaba.', failed: false };
         if (localActive()) localControl('pause');
         if (playing?.state === 'playing' && (playing.player === 'music' || playing.player === 'spotify')) await controlMusic(playing.player, 'pause').catch(() => undefined);
-        return { reply: `Pongo «${videos[0].title}» en YouTube, aquí en AgoraOne.`, failed: false };
-      }
-      // Unless a player is named, the user's own library first, then the player that is open, then Music.
+        return { reply: `${before}Pongo «${videos[0].title}» en YouTube, aquí en AgoraOne.`, failed: false };
+      };
+      if (where === 'youtube') return await onYouTube();
+      // Unless a player is named, the user's own library first, then the player that is open, then Music, and
+      // YouTube when none of them has it (Music only searches the user's own Apple Music library).
       if (!where || where.includes('biblioteca')) {
         const found = await getLibrary(query).catch(() => null);
         if (found?.tracks.length) {
@@ -68,8 +70,16 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
       const wanted = where === 'spotify' ? 'spotify' : where ? 'music' : now && (now.player === 'spotify' || now.player === 'music') ? now.player : 'music';
       if (localActive()) localControl('pause');
       stopYouTube();
-      const done = await playMusic(wanted, query);
-      return { reply: done.done, failed: false };
+      // This request's place in the queue, taken now: anything asked while Music answers wins over YouTube here.
+      const mine = askTicket();
+      try {
+        const done = await playMusic(wanted, query);
+        return { reply: done.done, failed: false };
+      } catch (failure) {
+        // Only when the song (or the player) is not there; a permission or a player that does not answer is said.
+        if (where || !(failure instanceof ApiError) || failure.data?.reason !== 'missing') throw failure;
+        return await onYouTube(mine, `No está en ${wanted === 'spotify' ? 'Spotify' : 'Música'}. `);
+      }
     } catch (failure) {
       return { reply: failure instanceof Error ? failure.message : 'No se pudo hacer.', failed: true };
     }

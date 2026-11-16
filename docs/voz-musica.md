@@ -31,8 +31,8 @@ para pedir algo.
   sección. Cada canción se pide con la cabecera anti-CSRF y suena desde memoria.
 - Solo se sirven archivos que están dentro de esas carpetas.
 - «Pon…» decide dónde buscar así:
-  - si no nombras dónde, busca primero en tu biblioteca, después en el reproductor que esté abierto y por
-    último en Música;
+  - si no nombras dónde, busca primero en tu biblioteca, después en el reproductor que esté abierto, luego en
+    Música (que solo busca en tu biblioteca de Apple Music) y, si no está en ninguno, en YouTube;
   - «en Spotify», «en Música» o «en mi biblioteca» lo fuerzan;
   - «en YouTube» (1.7) suena dentro de AgoraOne, en un reproductor pequeño que sigue en todas las secciones y solo
     se maneja desde la app (tarjeta de música, Watson y su ✕). El núcleo busca en la página pública de YouTube, sin
@@ -45,7 +45,11 @@ para pedir algo.
     siguiente vídeo. La pantalla deja sus órdenes en el núcleo y la app las recoge; el estado del vídeo vuelve a la
     pantalla ya revisado. En el navegador, sin esa ventana, se saltan; si no queda ninguno, se ofrece «Abrir en
     YouTube».
-- En la tarjeta de música, el desplegable elige la fuente.
+- En la tarjeta de música, el desplegable elige la fuente: tu biblioteca si tienes carpetas de música, YouTube si
+  no. Cuando nada suena, la tarjeta dice qué reproductor está abierto. Un reproductor que no está instalado (Spotify)
+  se avisa sin preguntarle a macOS, que abriría «¿Dónde está…?».
+- La búsqueda de YouTube lee sus resultados en las dos formas en que YouTube los sirve y, si una página llega sin
+  ellos, repite una vez.
 
 ## Órdenes rápidas, sin modelo
 

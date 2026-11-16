@@ -53,7 +53,7 @@ def music_router(settings: Settings, relay: hidden_player.Relay | None = None) -
         try:
             return await run_in_threadpool(work)
         except (music.MusicError, music_library.LibraryError) as error:
-            return JSONResponse({"error": str(error)}, status_code=422)
+            return JSONResponse({"error": str(error), "reason": getattr(error, "reason", None)}, status_code=422)
 
     def with_db(work):
         def job():

@@ -24,8 +24,27 @@ def test_lee_solo_videos_validos():
                                 video("mal id"), video("Mq7gC2gLPLI")]))
     assert [v["id"] for v in found] == ["5g2hT4GmAGU", "Mq7gC2gLPLI"]
     assert found[0] == {"id": "5g2hT4GmAGU", "title": "Despechá", "channel": "Canal", "length": "3:10"}
-    assert youtube.parse("<html>sin datos</html>") == []
+    assert youtube.parse("<html>sin datos</html>") is None, "una página sin datos no es una búsqueda vacía"
+    assert youtube.parse(page([])) == []
     assert len(youtube.parse(page([video(f"abcdefghi{n:02d}") for n in range(20)]))) == 10
+    escaped = json.dumps({"c": [{"videoRenderer": video("5g2hT4GmAGU")}]}).replace("{", "\\x7b").replace("}", "\\x7d")
+    assert youtube.parse(f"<script>var ytInitialData = '{escaped}';</script>")[0]["id"] == "5g2hT4GmAGU", "también la forma escapada"
+    quoted = json.dumps({"c": [{"videoRenderer": video("5g2hT4GmAGU", "Rock \\' n roll")}]}).replace("\\", "\\x5c").replace("'", "\\x27")
+    assert youtube.parse(f"<script>var ytInitialData = '{quoted}';</script>")[0]["title"] == "Rock \\' n roll", "una barra y un apóstrofo no vacían la página"
+
+
+def test_una_pagina_sin_resultados_se_pide_otra_vez(monkeypatch):
+    answers = iter([httpx.Response(200, text="<html>sin datos</html>"), httpx.Response(200, text=page([video("5g2hT4GmAGU")]))])
+    monkeypatch.setattr(youtube.httpx, "get", lambda url, **k: next(answers))
+    assert youtube.search("lofi")[0]["id"] == "5g2hT4GmAGU"
+    asked = []
+    monkeypatch.setattr(youtube.httpx, "get", lambda url, **k: asked.append(1) or httpx.Response(200, text=page([])))
+    with pytest.raises(youtube.YouTubeError, match="No encuentro"):
+        youtube.search("zzz")
+    assert len(asked) == 1, "una búsqueda sin resultados no se repite"
+    monkeypatch.setattr(youtube.httpx, "get", lambda url, **k: httpx.Response(200, text="<html>comprobación</html>"))
+    with pytest.raises(youtube.YouTubeError, match="No he podido leer"):
+        youtube.search("zzz")
 
 
 def test_busqueda(monkeypatch):
@@ -33,7 +52,7 @@ def test_busqueda(monkeypatch):
     monkeypatch.setattr(youtube.httpx, "get", lambda url, **k: asked.append((url, k["params"])) or httpx.Response(200, text=page([video("5g2hT4GmAGU")])))
     assert youtube.search("  rosalía   despechá ")[0]["id"] == "5g2hT4GmAGU"
     assert asked == [("https://www.youtube.com/results", {"search_query": "rosalía despechá"})]
-    monkeypatch.setattr(youtube.httpx, "get", lambda url, **k: httpx.Response(200, text="nada"))
+    monkeypatch.setattr(youtube.httpx, "get", lambda url, **k: httpx.Response(200, text=page([])))
     with pytest.raises(youtube.YouTubeError, match="No encuentro"):
         youtube.search("zzz")
     with pytest.raises(youtube.YouTubeError):
