@@ -8,6 +8,7 @@ import json
 import re
 import sqlite3
 from dataclasses import asdict, dataclass
+from datetime import datetime
 
 from .engines import DEFAULT_MODEL, MODELS, public_https
 
@@ -110,11 +111,16 @@ def personas() -> list[dict]:
     return [asdict(p) for p in PERSONAS.values()]
 
 
+WEEKDAYS = ("lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo")
+
+
 def system_prompt(settings: dict) -> str:
     persona = PERSONAS[settings["persona"]]
     tone = settings["tone"]
     style = "; ".join(TONE_OPTIONS[k][tone[k]] for k in ("register", "humor", "length", "address", "language"))
+    today = datetime.now().astimezone()
     return (
+        f"Hoy es {WEEKDAYS[today.weekday()]} {today.strftime('%Y-%m-%d')} (hora local {today.strftime('%H:%M')}).\n"
         f"Eres {persona.name}, el asistente personal del usuario en AgoraOne. Tu carácter se inspira en el "
         f"personaje de {persona.origin}: {persona.voice}. No imites frases de esa obra.\n"
         f"Estilo: {style}.\n"
@@ -136,6 +142,9 @@ def system_prompt(settings: dict) -> str:
         "(con su nombre en «de») y buscar_en_cerebro, y propónla con proponer_nota en la carpeta «Clientes/<Nombre>», con "
         "estas secciones: Resumen, Contacto, Proyectos y estado, Últimos correos, Reuniones y decisiones, Tareas abiertas y "
         "Próximos pasos. Pon solo lo que sepas por esos datos, cada cosa con su fecha, y di lo que falta; nunca contraseñas.\n"
+        "Para lo que se habló en una reunión (por fecha, cliente, persona o tema), usa consultar_reuniones y, si necesitas "
+        "el detalle, leer_reunion; si pide preparar algo a partir de una reunión (una issue de GitHub, un correo, un acta), "
+        "escríbelo en el chat listo para copiar, con lo que se dijo y sin inventar.\n"
         "Si pide ordenar el vault: mira revisar_vault, lee las notas que no sepas dónde van, y propón un lote corto y claro "
         "que siga las carpetas que ya usa (por cliente, proyecto o tema). No muevas lo que ya está bien ni renombres sin "
         "motivo, y explica en el chat el orden que propones."

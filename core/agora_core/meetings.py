@@ -4,6 +4,8 @@ Nothing records in the background unnoticed: when the interface stops sending th
 crashed, asleep) the recording stops by itself, and a meeting left «recording» by a core that died is
 marked interrupted on the next start. The audio lives in AgoraOne's data, never in the vault, until deleted."""
 
+from __future__ import annotations
+
 import json
 import shutil
 import sqlite3
@@ -17,6 +19,8 @@ from .db import now, transaction
 
 MIC_TYPES = {"audio/webm": "webm", "audio/mp4": "mp4", "audio/ogg": "ogg"}
 LEVELS = {"normal", "local_only", "private"}
+KINDS = {"meeting": "Reunión", "training": "Formación", "interview": "Entrevista", "call": "Llamada", "other": "Otra"}
+MAX_PEOPLE = 30
 PIECE_BYTES = 1024 * 1024
 MAX_MIC_BYTES = 300 * 1024 * 1024  # about 20 hours at the 32 kbps the interface records
 MAX_HOURS = 4
@@ -47,7 +51,8 @@ class Recorder:
     # --- reading -------------------------------------------------------------------------------------------
     def view(self, row: sqlite3.Row) -> dict:
         item = {k: row[k] for k in ("id", "title", "confidentiality", "status", "started_at", "ended_at", "mic_bytes", "system_source", "system_bytes", "note",
-                                    "work", "work_error", "summary_by")}
+                                    "work", "work_error", "summary_by", "kind", "client")}
+        item["people"] = json.loads(row["people"] or "[]")
         item["has_transcript"] = bool(row["transcript"])
         item["saved_note"] = json.loads(row["saved_note"]) if row["saved_note"] else None
         ended = row["ended_at"] or now()
@@ -75,23 +80,37 @@ class Recorder:
                     connection.execute("UPDATE meeting SET status = 'interrupted', ended_at = COALESCE(ended_at, ?), note = COALESCE(note, ?) WHERE id = ?",
                                        (now(), "AgoraOne se cerró mientras grababa; se conserva lo grabado hasta entonces.", row["id"]))
 
+    def update(self, connection: sqlite3.Connection, owner: str, meeting_id: int, changes: dict) -> dict:
+        """The user changes the title, kind, client or people of a meeting (at any time, even while recording)."""
+        row = self.owned(connection, owner, meeting_id)
+        kind, client, people = classify(changes.get("kind", row["kind"]), changes.get("client", row["client"]),
+                                        changes["people"] if "people" in changes else json.loads(row["people"] or "[]"))
+        title = " ".join(str(changes.get("title") or row["title"]).split())[:200] or row["title"]
+        with transaction(connection):
+            connection.execute("UPDATE meeting SET title = ?, kind = ?, client = ?, people = ? WHERE id = ?",
+                               (title, kind, client, json.dumps(people, ensure_ascii=False), meeting_id))
+        return self.view(self.owned(connection, owner, meeting_id))
+
     # --- recording -----------------------------------------------------------------------------------------
-    def start(self, connection: sqlite3.Connection, owner: str, title: str, confidentiality: str, mic_type: str, system: bool) -> dict:
-        title = " ".join((title or "").split())[:200] or f"Reunión del {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+    def start(self, connection: sqlite3.Connection, owner: str, title: str, confidentiality: str, mic_type: str, system: bool,
+              kind: str = "meeting", client: str | None = None, people: list[str] | None = None) -> dict:
+        kind, client, people = classify(kind, client, people)
+        title = " ".join((title or "").split())[:200] or default_title(kind, client)
         if confidentiality not in LEVELS:
             raise MeetingError("Nivel de confidencialidad no válido.")
-        kind = MIC_TYPES.get((mic_type or "").split(";")[0].strip().lower())
-        if not kind:
+        audio = MIC_TYPES.get((mic_type or "").split(";")[0].strip().lower())
+        if not audio:
             raise MeetingError("Ese formato de audio no se puede grabar.")
         with self.lock:
             if self.live:
                 raise MeetingError("Ya hay una reunión grabándose.", 409)
             with transaction(connection):
-                meeting_id = connection.execute("INSERT INTO meeting (owner, title, confidentiality, status, started_at, mic_type) VALUES (?, ?, ?, 'recording', ?, ?)",
-                                                (owner, title, confidentiality, now(), kind)).lastrowid
+                meeting_id = connection.execute(
+                    "INSERT INTO meeting (owner, title, confidentiality, status, started_at, mic_type, kind, client, people) VALUES (?, ?, ?, 'recording', ?, ?, ?, ?, ?)",
+                    (owner, title, confidentiality, now(), audio, kind, client, json.dumps(people, ensure_ascii=False))).lastrowid
             folder = self.folder(meeting_id)
             folder.mkdir(parents=True, mode=0o700)
-            (folder / f"microfono.{kind}").touch(mode=0o600)
+            (folder / f"microfono.{audio}").touch(mode=0o600)
             capture, note = None, None
             if system:
                 try:
@@ -189,6 +208,26 @@ class Recorder:
         shutil.rmtree(folder, ignore_errors=True)
         with transaction(connection):
             connection.execute("DELETE FROM meeting WHERE id = ? AND owner = ?", (meeting_id, owner))
+
+
+def classify(kind, client, people) -> tuple[str, str | None, list[str]]:
+    """A known kind, a client name (or none) and up to MAX_PEOPLE names, each on one line and of bounded size."""
+    if kind not in KINDS:
+        raise MeetingError("Tipo de reunión no válido.")
+    one_line = lambda text, size: " ".join(str(text or "").split())[:size]  # noqa: E731
+    if people is not None and not isinstance(people, list):
+        raise MeetingError("Las personas van en una lista.")
+    names: list[str] = []
+    for name in people or []:
+        name = one_line(name, 100)
+        if name and name.casefold() not in (n.casefold() for n in names):
+            names.append(name)
+    return kind, one_line(client, 200) or None, names[:MAX_PEOPLE]
+
+
+def default_title(kind: str, client: str | None) -> str:
+    """«Formación con Acme · 10.30»: what it was and when, with no character a note's name cannot hold."""
+    return f"{KINDS[kind]}{f' con {client}' if client else ''} · {datetime.now().strftime('%H.%M')}"
 
 
 def _parse(stamp: str) -> datetime:

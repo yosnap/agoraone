@@ -80,6 +80,8 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'quote_proposal'; id: string; quote: ProposedQuote }
   | { kind: 'tool'; tool: 'event_proposal'; id: string; event: { title: string; start: string; end: string; allDay: boolean; location: string | null; notes: string | null; calendar: string | null } }
   | { kind: 'tool'; tool: 'note_proposal'; id: string; note: { title: string; folder: string; content: string } }
+  | { kind: 'tool'; tool: 'meetings'; query: string; count: number }
+  | { kind: 'tool'; tool: 'meeting'; title: string; part: number }
   | { kind: 'tool'; tool: 'agenda' | 'day' | 'projects'; [key: string]: unknown }
   | { kind: 'done'; engine: string; model: string };
 
@@ -351,10 +353,13 @@ export const sendMail = (draft: MailDraft, digest: string) => core<{ sent: boole
 export type Meeting = { id: number; title: string; confidentiality: Level; status: 'recording' | 'recorded' | 'interrupted';
   started_at: string; ended_at: string | null; seconds: number; mic_bytes: number; system_source: string | null; system_bytes: number; note: string | null;
   work: 'none' | 'transcribing' | 'summarizing' | 'done' | 'failed'; work_error: string | null; summary_by: 'claude' | 'local' | 'none' | null;
-  has_transcript: boolean; saved_note: { vault: string; note: string } | null };
+  has_transcript: boolean; saved_note: { vault: string; note: string } | null; kind: MeetingKind; client: string | null; people: string[] };
+export type MeetingKind = 'meeting' | 'training' | 'interview' | 'call' | 'other';
+export const kindLabels: Record<MeetingKind, string> = { meeting: 'Reunión', training: 'Formación', interview: 'Entrevista', call: 'Llamada', other: 'Otra' };
+export type MeetingClass = { kind: MeetingKind; client: string | null; people: string[] };
 export type MeetingTask = { title: string; who: string | null; due: string | null };
 export type MeetingDetail = Meeting & { transcript: { start: number; end: number; text: string; speaker: string }[];
-  summary: { summary: string; decisions: string[]; tasks: MeetingTask[] } | null; draft: { title: string; content: string } | null };
+  summary: { summary: string; topics?: { topic: string; detail: string }[]; decisions: string[]; tasks: MeetingTask[] } | null; draft: { title: string; content: string } | null };
 export const getMeeting = (id: number) => core<MeetingDetail>(`/meetings/${id}`);
 export const processMeeting = (id: number, summaryOnly = false) => core<Meeting>(`/meetings/${id}/process`, { summary_only: summaryOnly });
 export const markMeetingSaved = (id: number, vault: string, note: string) => core<Meeting>(`/meetings/${id}/saved`, { vault, note });
@@ -366,7 +371,10 @@ export const getSummarizers = () => core<Record<Level, Summarizer>>('/meetings/s
 export const getLocalModels = (url: string) => core<{ models: string[] }>(`/meetings/local-models?url=${encodeURIComponent(url)}`);
 export type MeetingList = { meetings: Meeting[]; system: string | null; recording: number | null };
 export const getMeetings = () => core<MeetingList>('/meetings');
-export const startMeeting = (body: { title: string; confidentiality: Level; mic_type: string; system: boolean }) => core<Meeting>('/meetings', body);
+export const startMeeting = (body: { title: string; confidentiality: Level; mic_type: string; system: boolean } & Partial<MeetingClass>) => core<Meeting>('/meetings', body);
+export const updateMeeting = (id: number, changes: Partial<MeetingClass> & { title?: string }) => core<Meeting>(`/meetings/${id}`, changes, 'PATCH');
+/** The whole meeting as a Markdown file in Downloads (for Claude, Codex or anyone), shown in the Finder. */
+export const exportMeeting = (id: number) => core<{ path: string; name: string }>(`/meetings/${id}/export`, {});
 export const stopMeeting = (id: number) => core<Meeting>(`/meetings/${id}/stop`, {});
 export const deleteMeeting = (id: number) => core<{ deleted: boolean }>(`/meetings/${id}`, undefined, 'DELETE');
 /** One piece of the microphone, in order. */

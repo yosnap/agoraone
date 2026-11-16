@@ -3,6 +3,7 @@ stop, list and delete. Each meeting belongs to the access that recorded it."""
 
 import re
 from contextlib import contextmanager
+from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 
 import json
 
-from . import local_model, meeting_notes, system_audio
+from . import fiscal, local_model, meeting_notes, system_audio
 from .db import DB_NAME, connect, transaction
 from .meetings import MeetingError, Recorder
 from .settings import Settings
@@ -39,6 +40,22 @@ class NewMeeting(BaseModel):
     confidentiality: str = "normal"
     mic_type: str
     system: bool = True
+    kind: str = "meeting"
+    client: str | None = None
+    people: list[str] = []
+
+
+class Changes(BaseModel):
+    title: str | None = None
+    kind: str | None = None
+    client: str | None = None
+    people: list[str] | None = None
+
+
+def downloads() -> Path:
+    """The user's Downloads folder (or their home when there is none)."""
+    folder = Path.home() / "Downloads"
+    return folder if folder.is_dir() else Path.home()
 
 
 def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_notes.Worker) -> APIRouter:
@@ -101,6 +118,25 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
                     "summary": json.loads(row["summary"]) if row["summary"] else None, "draft": meeting_notes.note(row) if row["transcript"] else None}
         return await run(request, work)
 
+    @router.patch("/meetings/{meeting_id}")
+    async def change(request: Request, meeting_id: int, body: Changes):
+        return await run(request, lambda c, o: recorder.update(c, o, meeting_id, body.model_dump(exclude_unset=True)))
+
+    @router.post("/meetings/{meeting_id}/export")
+    async def export(request: Request, meeting_id: int):
+        """The whole meeting as a Markdown file in Downloads, shown selected in the Finder."""
+        def work(connection, owner):
+            row = recorder.owned(connection, owner, meeting_id)
+            if not row["transcript"]:
+                raise MeetingError("Todavía no hay transcripción que exportar.")
+            path = meeting_notes.export(row, downloads())
+            try:
+                fiscal.open_in_finder(path.parent, path.name, reveal=True)
+            except fiscal.FiscalError:
+                pass  # the file is there even if the Finder could not show it
+            return {"path": str(path), "name": path.name}
+        return await run(request, work)
+
     @router.post("/meetings/{meeting_id}/process")
     async def process(request: Request, meeting_id: int, body: Process):
         def work(connection, owner):
@@ -121,7 +157,7 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
 
     @router.post("/meetings")
     async def start(request: Request, body: NewMeeting):
-        return await run(request, lambda c, o: recorder.start(c, o, body.title, body.confidentiality, body.mic_type, body.system))
+        return await run(request, lambda c, o: recorder.start(c, o, body.title, body.confidentiality, body.mic_type, body.system, body.kind, body.client, body.people))
 
     @router.post("/meetings/{meeting_id}/mic")
     async def piece(request: Request, meeting_id: int):
