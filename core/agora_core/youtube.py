@@ -47,18 +47,28 @@ def _initial_data(page: str):
     match = re.search(r"var ytInitialData\s*=\s*'((?:[^'\\]|\\.)*)';", page, re.S)
     if match:
         try:
-            text = re.sub(r"\\x([0-9A-Fa-f]{2})", lambda m: chr(int(m.group(1), 16)), match.group(1)).replace("\\'", "'")
-            return json.loads(text)
+            return json.loads(JS_ESCAPE.sub(_unescape, match.group(1)))  # one pass: «\\'» in a title stays right
         except (json.JSONDecodeError, ValueError):
             pass
     return None
 
 
-def parse(page: str) -> list[dict]:
-    """The videos of a search page (no lives, no shorts without length), in YouTube's order."""
+JS_ESCAPE = re.compile(r"\\(x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|.)", re.S)
+
+
+def _unescape(match: re.Match) -> str:
+    escape = match.group(1)
+    if escape[0] in "xu" and len(escape) > 1:
+        return chr(int(escape[1:], 16))
+    return {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f"}.get(escape, escape)
+
+
+def parse(page: str) -> list[dict] | None:
+    """The videos of a search page (no lives, no shorts without length), in YouTube's order; None when the page
+    carries no readable results at all (not the same as a search with nothing found)."""
     data = _initial_data(page)
     if data is None:
-        return []
+        return None
     found, seen = [], set()
     for video in _videos(data):
         ident = str(video.get("videoId") or "")
@@ -77,12 +87,15 @@ def search(query: str) -> list[dict]:
     query = " ".join((query or "").split())[:120]
     if not query:
         raise YouTubeError("Di qué quieres escuchar en YouTube.")
-    # Now and then YouTube answers a page without its results: one more try before saying nothing was found.
-    for _ in range(2):
+    # Now and then YouTube answers a page without its results: one more try, only then.
+    found = parse(_page(query))
+    if found is None:
         found = parse(_page(query))
-        if found:
-            return found
-    raise YouTubeError(f"No encuentro «{query}» en YouTube.")
+    if found is None:
+        raise YouTubeError("No he podido leer la respuesta de YouTube. Prueba otra vez en un momento.")
+    if not found:
+        raise YouTubeError(f"No encuentro «{query}» en YouTube.")
+    return found
 
 
 def _page(query: str) -> str:

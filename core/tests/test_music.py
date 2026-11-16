@@ -56,3 +56,29 @@ def test_spotify_sin_instalar_no_se_le_pregunta(mac, monkeypatch):
     with pytest.raises(music.MusicError, match="no está instalado"):
         music.play("spotify", "jazz")
     assert len(mac) == before
+
+
+def test_solo_lo_que_falta_se_puede_buscar_en_youtube(mac, monkeypatch):
+    monkeypatch.setattr(music, "_running", lambda process: True)
+    monkeypatch.setattr(music, "_osascript", lambda script, *a: "none")
+    with pytest.raises(music.MusicError) as missing:
+        music.play("music", "jazz")
+    assert missing.value.reason == "missing"
+    def denied(script, *a):
+        raise music.MusicError("macOS no deja a AgoraOne controlar la música")
+    monkeypatch.setattr(music, "_osascript", denied)
+    with pytest.raises(music.MusicError) as refused:
+        music.play("music", "jazz")
+    assert refused.value.reason is None, "un permiso que falta se dice, no se tapa con YouTube"
+
+
+def test_spotify_en_la_papelera_no_cuenta(monkeypatch, tmp_path):
+    import subprocess
+    monkeypatch.setattr(music, "_running", lambda process: False)
+    monkeypatch.setattr(music.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(music.Path, "is_dir", lambda self: False)
+    found = "/Users/x/.Trash/Spotify.app\n/Volumes/Copia/Applications/Spotify.app\n"
+    monkeypatch.setattr(music.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, found, ""))
+    assert not music._installed("spotify")
+    monkeypatch.setattr(music.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, found + "/Users/x/Apps/Spotify.app\n", ""))
+    assert music._installed("spotify")

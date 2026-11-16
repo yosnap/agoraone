@@ -26,7 +26,8 @@ export function MusicCard() {
   const alive = useRef(false);
   const read = useCallback(() => {
     window.clearTimeout(timer.current);
-    void getMusic().then(next => { if (alive.current) setState(next); }).catch(() => undefined)
+    void getMusic().then(next => { if (alive.current) setState(next); })
+      .catch(() => { if (alive.current) setState(current => current ?? { players: [], note: 'No puedo leer la música ahora.' }); })
       .finally(() => { if (alive.current) timer.current = window.setTimeout(read, REFRESH); });
   }, []);
   // Reads while the card is on the page and stops when it leaves (a ref callback, no effect); the first time it
