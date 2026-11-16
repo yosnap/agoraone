@@ -16,6 +16,14 @@ const controls: [RegExp, MusicAction, string][] = [
   [/^(baja|baja el volumen|mas bajo|bajale)$/, 'quieter', 'Volumen más bajo.'],
 ];
 const PLAY = /^(?:pon(?:me)?|reproduce|quiero escuchar|toca)\s+(.+?)(?:\s+en\s+(spotify|musica|apple music|youtube|mi biblioteca|la biblioteca))?$/;
+// What people add when they speak: «Oye Watson, …», «¿me puedes poner…?», «… por favor».
+const CALLED = /^(?:(?:oye|hey|ok|hola)\s+)?watson\s+/;
+const ASKING = /^(?:me\s+)?(?:puedes|podrias|quieres|podras)\s+(?:poner(?:me)?|reproducir(?:me)?)\s+/;
+const POLITE = /\s+(?:por favor|porfa|gracias)$/;
+// «Pon música», «ponme algo»: no song in particular.
+const ANY = /^(?:(?:un poco de|algo de)\s+)?(?:musica|algo|la musica|lo que sea|cualquier cosa|cancion|canciones)$/;
+/** The request as the commands read it: without the call to Watson, the courtesy or a trailing «please». */
+const asked = (said: string) => said.replace(CALLED, '').replace(ASKING, 'pon ').replace(POLITE, '').trim();
 // «Pon» also means other things («pon una regla…», «pon un recordatorio…»): those go to Watson.
 const NOT_MUSIC = /\b(regla|recordatorio|evento|cita|alarma|nota|tarea|correo|reunion|aviso|calendario|agenda|titulo|encargo)s?\b/;
 
@@ -26,13 +34,13 @@ export const isYes = (text: string) => YES.test(plain(text));
 
 /** Whether this message is a quick command; if so, does it and says what happened. */
 export function quickCommand(text: string): (() => Promise<QuickResult>) | null {
-  const said = plain(text);
+  const said = asked(plain(text));
   const control = controls.find(([pattern]) => pattern.test(said));
   // «Abre una nota…», «abre el correo de…» are requests for Watson; «abre Notas» is an app.
   const opening = control ? null : OPEN.exec(said);
   if (opening && /^(un|una|unos|unas|el|la|los|las|mi|mis|tu|lo)\s/.test(opening[1])) return null;
   if (opening) return () => openByName(opening[1]);
-  const play = control || NOT_MUSIC.test(said) || said.split(' ').length > 7 ? null : PLAY.exec(said);
+  const play = control || NOT_MUSIC.test(said) || said.split(' ').length > 10 ? null : PLAY.exec(said);
   if (!control && !play) return null;
   return async () => {
     try {
@@ -46,16 +54,27 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
       }
       const where = play![2];
       // The original words, not the accent-free ones, are what the player searches.
-      const query = text.replace(/^\s*(pon(me)?|reproduce|quiero escuchar|toca)\s+/i, '').replace(/\s+en\s+(spotify|m[uú]sica|apple music|youtube|mi biblioteca|la biblioteca)\s*[.!?]*$/i, '').trim();
+      const original = text.replace(/^[\s¿¡]*(?:(?:oye|hey|ok|hola)\s+)?watson[\s,.:]+/i, '').replace(/^\s*(?:me\s+)?(?:puedes|podr[ií]as|quieres|podr[aá]s)\s+(?:poner(?:me)?|reproducir(?:me)?)\s+/i, 'pon ')
+        .replace(/[\s,]+(?:por favor|porfa|gracias)\s*[.!?]*$/i, '').replace(/[?!.]+\s*$/, '');
+      const query = original.replace(/^\s*(pon(me)?|reproduce|quiero escuchar|toca)\s+/i, '').replace(/^(?:un poco de|algo de)\s+/i, '').replace(/\s+en\s+(spotify|m[uú]sica|apple music|youtube|mi biblioteca|la biblioteca)\s*[.!?]*$/i, '').trim();
+      // «Pon música»: what was playing goes on; with nothing open, something calm on YouTube.
+      if (!where && ANY.test(play![1])) {
+        if (youtubeActive()) { youtubeControl('play'); return { reply: 'Sigue la música.', failed: false }; }
+        if (localActive()) { localControl('play'); return { reply: 'Sigue la música.', failed: false }; }
+        if (now && (now.player === 'music' || now.player === 'spotify')) {
+          await controlMusic(now.player, 'play');
+          return { reply: `Sigue ${now.title ? `«${now.title}»` : 'la música'} en ${now.name}.`, failed: false };
+        }
+      }
       const onYouTube = async (mine = askTicket(), before = ''): Promise<QuickResult> => {
-        const { videos } = await searchYouTube(query);
+        const { videos } = await searchYouTube(ANY.test(plain(query)) ? 'música relajante para concentrarse' : query);
         const playing = (await getMusic().catch(() => null))?.players[0];
         if (!playYouTube(videos, query, mine)) return { reply: 'Lo dejo: me has pedido otra cosa mientras buscaba.', failed: false };
         if (localActive()) localControl('pause');
         if (playing?.state === 'playing' && (playing.player === 'music' || playing.player === 'spotify')) await controlMusic(playing.player, 'pause').catch(() => undefined);
         return { reply: `${before}Pongo «${videos[0].title}» en YouTube, aquí en AgoraOne.`, failed: false };
       };
-      if (where === 'youtube') return await onYouTube();
+      if (where === 'youtube' || (!where && ANY.test(play![1]))) return await onYouTube();
       // Unless a player is named, the user's own library first, then the player that is open, then Music, and
       // YouTube when none of them has it (Music only searches the user's own Apple Music library).
       if (!where || where.includes('biblioteca')) {

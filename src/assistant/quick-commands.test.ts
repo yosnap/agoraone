@@ -12,3 +12,10 @@ test('lo demás va a Watson, también los «pon» que no son música', () => {
     'pon en una nota todo lo que hablamos ayer sobre el presupuesto de la web', 'abre una nota nueva sobre Acme', 'abre el correo de Hostinger'])
     assert.equal(quickCommand(said), null, said);
 });
+
+test('Watson entiende «pon…» dicho con naturalidad', () => {
+  for (const said of ['Watson, pon música', 'Oye Watson pon algo de Rosalía', '¿Me puedes poner jazz?', 'pon música, por favor', 'Ponme algo', '¿Podrías ponerme Despechá de Rosalía en YouTube?'])
+    assert.ok(quickCommand(said), said);
+  for (const said of ['Watson, pon un recordatorio para mañana', 'oye watson qué tengo hoy'])
+    assert.equal(quickCommand(said), null, said);
+});

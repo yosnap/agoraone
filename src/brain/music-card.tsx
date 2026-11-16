@@ -54,21 +54,30 @@ export function MusicCard() {
     const wanted = query.trim();
     if (!wanted) return;
     setError(''); setMessage('');
+    // YouTube, in AgoraOne's own player; `before` says why it went there.
+    const onYouTube = async (before = '') => {
+      const mine = askTicket();
+      const { videos } = await searchYouTube(wanted);
+      const playing = (await getMusic().catch(() => null))?.players[0];
+      if (!playYouTube(videos, wanted, mine)) return false;  // something else was asked for meanwhile
+      if (local.playing) localControl('pause');
+      if (playing?.state === 'playing' && (playing.player === 'music' || playing.player === 'spotify')) await controlMusic(playing.player, 'pause').catch(() => undefined);
+      setMessage(`${before}En YouTube: «${videos[0].title}».`);
+      return true;
+    };
     try {
       const where = target ?? 'youtube';
       if (where === 'youtube') {
-        const mine = askTicket();
-        const { videos } = await searchYouTube(wanted);
-        const playing = (await getMusic().catch(() => null))?.players[0];
-        if (!playYouTube(videos, wanted, mine)) return;  // something else was asked for meanwhile
-        if (local.playing) localControl('pause');
-        if (playing?.state === 'playing' && (playing.player === 'music' || playing.player === 'spotify')) await controlMusic(playing.player, 'pause').catch(() => undefined);
-        setMessage(`En YouTube: «${videos[0].title}».`);
+        if (!await onYouTube()) return;
       }
       else if (where === 'local') {
         const found = await getLibrary(wanted);
-        if (!found.folders.length) throw new Error('Elige primero tu carpeta de música en Ajustes › Voz.');
-        if (!found.tracks.length) throw new Error(`No encuentro «${wanted}» en tu biblioteca.`);
+        // Not in the user's own music: YouTube, saying so, instead of stopping at «not found».
+        if (!found.folders.length || !found.tracks.length) {
+          if (!await onYouTube(found.folders.length ? 'No está en tu biblioteca. ' : 'No tienes carpeta de música. ')) return;
+          setQuery('');
+          return;
+        }
         if (outside?.state === 'playing' && (outside.player === 'music' || outside.player === 'spotify')) await controlMusic(outside.player, 'pause').catch(() => undefined);
         playLocal(found.tracks);
         setMessage(`Reproduciendo ${found.tracks.length === 1 ? '1 canción' : `${found.tracks.length} canciones`} de tu biblioteca.`);
