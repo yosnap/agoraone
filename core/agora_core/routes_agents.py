@@ -19,12 +19,13 @@ _ACTION = re.compile(r"^[a-z_.]{1,40}$")  # the log's own action names; anything
 
 def watson_activity(connection, now: datetime | None = None) -> dict:
     since = ((now or datetime.now(UTC)) - WINDOW).strftime("%Y-%m-%dT%H:%M:%SZ")
-    rows = connection.execute("SELECT occurred_at, actor, action, outcome FROM action_log WHERE occurred_at >= ? ORDER BY occurred_at DESC, id DESC LIMIT ?",
+    rows = connection.execute("SELECT id, occurred_at, actor, action, outcome FROM action_log WHERE occurred_at >= ? ORDER BY occurred_at DESC, id DESC LIMIT ?",
                               (since, MAX_EVENTS)).fetchall()
-    events = [{"at": r["occurred_at"], "actor": "watson" if r["actor"] == "watson" else "user", "action": r["action"], "outcome": r["outcome"]}
+    events = [{"id": r["id"], "at": r["occurred_at"], "actor": "watson" if r["actor"] == "watson" else "user", "action": r["action"], "outcome": r["outcome"]}
               for r in rows if _ACTION.match(r["action"] or "")]
-    return {"answering": ANSWERING["now"], "since": ANSWERING["since"], "lastAt": events[0]["at"] if events else None, "events": events}
-
+    # Only Watson's own actions count as Watson working (sending a mail or creating a rule is the user's).
+    mine = connection.execute("SELECT count(*) AS n, max(occurred_at) AS last FROM action_log WHERE occurred_at >= ? AND actor = 'watson'", (since,)).fetchone()
+    return {"answering": ANSWERING["now"], "since": ANSWERING["since"], "lastAt": mine["last"], "count": mine["n"], "events": events}
 
 def agents_router(settings: Settings) -> APIRouter:
     router = APIRouter()

@@ -49,8 +49,8 @@ export const getPersonas = () => core<{ personas: Persona[]; tone: Record<ToneKe
 export const getAssistantSettings = () => core<AssistantSettings>('/assistant/settings');
 export const putAssistantSettings = (changes: Partial<AssistantSettings>) => core<AssistantSettings>('/assistant/settings', changes, 'PUT');
 /** The «Agentes» section: whether Watson is answering now and what it did in 24 h (actions and outcomes only). */
-export type WatsonEvent = { at: string; actor: 'watson' | 'user'; action: string; outcome: 'done' | 'denied' | 'failed' | 'undone' };
-export type WatsonActivity = { answering: number; since: string | null; lastAt: string | null; events: WatsonEvent[] };
+export type WatsonEvent = { id: number; at: string; actor: 'watson' | 'user'; action: string; outcome: 'done' | 'denied' | 'failed' | 'undone' };
+export type WatsonActivity = { answering: number; since: string | null; lastAt: string | null; count: number; events: WatsonEvent[] };
 export const getWatsonActivity = () => core<WatsonActivity>('/agents/watson');
 export const getEngines = () => core<{ engines: { name: string; available: boolean }[]; active: string | null; model: string }>('/assistant/engines');
 /** Saves (or with null forgets) a key in the Keychain; keys are never read back. */

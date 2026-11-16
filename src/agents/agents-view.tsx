@@ -3,7 +3,7 @@ import { agentStatus, type AgentStatus } from '../office/agent-state';
 import { useAssistantName } from '../assistant/assistant-name';
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
-import { ago, BLOCKED, describe, describeWatson, outcomeLabel, RUNNING, sourceLabel, until, type Line } from './agent-lines';
+import { ago, BLOCKED, describe, describeWatson, outcomeLabel, RUNNING, sourceLabel, uniqueKeys, until, type Line } from './agent-lines';
 import { refreshAgents, useAgentsFeed } from './agents-feed';
 import './agents.css';
 
@@ -21,11 +21,11 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
   const cards = work?.board?.cards ?? [];
   const now = feed.readAt ?? Date.now();
 
-  const lines: Line[] = [
+  const lines: Line[] = uniqueKeys([
     ...Object.entries(activity?.profiles ?? {}).flatMap(([id, profile]) => profile.events
-      .filter(event => event.kind !== 'link' || event.state !== 'connected').map(event => describe(event, name(id)))),
+      .filter(event => event.kind !== 'link' || event.state !== 'connected').map(event => ({ ...describe(event, name(id), discreet), key: `${id}|${describe(event, id).key}` }))),
     ...(watson?.events ?? []).map(event => describeWatson(event, assistant)),
-  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 80);
+  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 80));
   // What arrived since the previous reading is marked for a moment (nothing on the first one).
   const fresh = seen.current ? new Set(lines.filter(line => !seen.current!.has(line.key)).map(line => line.key)) : new Set<string>();
   if (feed.readAt) seen.current = new Set(lines.map(line => line.key));
@@ -63,7 +63,7 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
         <article className={`card agent-tile state-${watsonState.state}`}>
           <header><span className="agent-avatar watson" aria-hidden="true">{assistant.slice(0, 1)}</span>
             <div><strong>{assistant}</strong><small role="status">{watsonState.label}{watson?.since && watson.answering ? ` · desde ${ago(watson.since, now)}` : ''}</small></div></header>
-          <p className="agent-facts">{watson?.lastAt ? `Última acción ${ago(watson.lastAt, now)} · ${watson.events.length} en 24 h` : 'Sin acciones en 24 h'}</p>
+          <p className="agent-facts">{watson?.lastAt ? `Última acción ${ago(watson.lastAt, now)} · ${watson.count} en 24 h` : 'Sin acciones en 24 h'}</p>
           <div className="agent-actions"><button type="button" className="button" onClick={() => onOpen('assistant')}>Conversar</button></div>
         </article>
         {profiles.map(({ profile, own, status, running, blocked, next, day }) => <article key={profile.id} className={`card agent-tile state-${status.state}`}>
@@ -72,7 +72,7 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
           <ul className="agent-facts">
             {running.map(card => <li key={card.id ?? card.title}><span className="chip">{card.status === 'review' ? 'en revisión' : 'en curso'}</span> {discreet ? 'Encargo' : card.title} · {ago(card.startedAt ?? card.createdAt, now)}</li>)}
             {blocked > 0 && <li><span className="chip agents-alert">bloqueado</span> {blocked} {blocked === 1 ? 'encargo necesita' : 'encargos necesitan'} atención</li>}
-            {next && <li>Próxima tarea: {next.name} · {until(next.nextRunAt!, now)}</li>}
+            {next && <li>Próxima tarea: {discreet ? 'programada' : next.name} · {until(next.nextRunAt!, now)}</li>}
             <li>{own?.lastActivityAt ? `Última actividad ${ago(own.lastActivityAt, now)}` : 'Sin actividad registrada'}{own?.recent.length ? ` · ${own.recent.map(r => `${r.sessions} por ${sourceLabel[r.source] ?? r.source}`).join(', ')}` : ''}</li>
             {day.runs > 0 && <li>{day.runs} {day.runs === 1 ? 'ejecución' : 'ejecuciones'} en 24 h{day.tokens && !discreet ? ` · ${tokens(day.tokens)} tokens` : ''}</li>}
           </ul>

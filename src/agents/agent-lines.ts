@@ -21,11 +21,11 @@ export const sourceLabel: Record<string, string> = { telegram: 'Telegram', deskt
 export type Outcome = 'hecho' | 'falló' | 'rechazado' | 'deshecho' | null;
 export type Line = { at: string; who: string; text: string; outcome: Outcome; key: string };
 
-export function describe(event: ActivityEvent, who: string): Line {
+export function describe(event: ActivityEvent, who: string, discreet = false): Line {
   const key = `${who}|${event.at}|${event.kind}`;
   if (event.kind === 'job') {
     const failed = event.status !== null && /fail|error|crash|timeout/i.test(event.status);
-    return { key: `${key}|${event.name}`, at: event.at, who, text: `tarea «${event.name}»`, outcome: event.status === null ? null : failed ? 'falló' : 'hecho' };
+    return { key: `${key}|${event.name}`, at: event.at, who, text: discreet ? 'una tarea programada' : `tarea «${event.name}»`, outcome: event.status === null ? null : failed ? 'falló' : 'hecho' };
   }
   if (event.kind === 'session') return { key: `${key}|${event.source}`, at: event.at, who, text: `conversación por ${sourceLabel[event.source] ?? event.source}`, outcome: null };
   if (event.kind === 'mcp') return { key: `${key}|${event.server}`, at: event.at, who, text: `${event.calls} ${event.calls === 1 ? 'llamada' : 'llamadas'} a ${event.server}`, outcome: null };
@@ -45,8 +45,18 @@ const decided = (action: string) => action.startsWith('proponer_') || action ===
 
 export function describeWatson(event: WatsonEvent, assistant: string): Line {
   const who = event.actor === 'user' ? 'Tú' : assistant;
-  return { key: `w|${event.at}|${event.action}`, at: event.at, who, text: watsonLabels[event.action] ?? event.action.replace(/[_.]/g, ' '),
+  return { key: `w|${event.id}`, at: event.at, who, text: watsonLabels[event.action] ?? event.action.replace(/[_.]/g, ' '),
     outcome: decided(event.action) || event.outcome !== 'done' ? outcomes[event.outcome] : null };
 }
 
 export const outcomeLabel = (outcome: Outcome) => outcome === 'hecho' ? 'Hecho' : outcome === 'falló' ? 'Falló' : outcome === 'rechazado' ? 'Rechazado' : outcome === 'deshecho' ? 'Deshecho' : '·';
+
+/** Two entries can share time and kind (two sessions started in the same second): each key made unique. */
+export function uniqueKeys(lines: Line[]): Line[] {
+  const seen = new Map<string, number>();
+  return lines.map(line => {
+    const n = seen.get(line.key) ?? 0;
+    seen.set(line.key, n + 1);
+    return n ? { ...line, key: `${line.key}#${n}` } : line;
+  });
+}

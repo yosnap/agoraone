@@ -22,6 +22,10 @@ def test_actividad_de_watson_sin_detalles(tmp_path):
     view = routes_agents.watson_activity(connection, now)
     assert [e["action"] for e in view["events"]] == ["buscar", "mail.send"], "solo 24 h y solo nombres del propio registro"
     assert view["events"][1]["actor"] == "user" and view["lastAt"] == stamp(1)
+    assert view["count"] == 2, "las acciones de Watson en 24 h, no las del usuario"
+    assert len({e["id"] for e in view["events"]}) == 2
+    connection.execute("INSERT INTO action_log (occurred_at, actor, action, outcome) VALUES (?, 'user', 'mail.send', 'done')", (stamp(0),))
+    assert routes_agents.watson_activity(connection, now)["lastAt"] == stamp(1), "enviar tú un correo no es Watson trabajando"
     assert "CANARIO" not in json.dumps(view) and "ana@" not in json.dumps(view)
     connection.close()
 
