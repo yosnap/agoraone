@@ -76,8 +76,9 @@ def test_la_propuesta_va_al_repositorio_del_proyecto(database):
         github_issues.propose(database, OWNER, {"cuerpo": "x", "proyecto": "web", "cliente": "beta"}, set())
 
 
-def test_watson_propone_y_no_crea(database, tmp_path):
+def test_watson_propone_y_no_crea(database, tmp_path, monkeypatch):
     meeting = _meeting(database, "Web")
+    monkeypatch.setattr(github_issues, "visibility", lambda repo: "public")
 
     @contextmanager
     def opened():
@@ -91,7 +92,7 @@ def test_watson_propone_y_no_crea(database, tmp_path):
     answer = json.loads(asyncio.run(box.call("proponer_issue", {"reunion": meeting, "titulo": "T", "cuerpo": "C"})))
     assert answer["propuesta"]["repositorio"] == "acme/web" and "No está creada" in answer["estado"]
     (kept,) = box.proposals.values()
-    assert kept["issue"]["repo"] == "acme/web" and box.history[-1]["tool"] == "issue_proposal"
+    assert kept["issue"]["repo"] == "acme/web" and kept["issue"]["visibility"] == "public" and box.history[-1]["tool"] == "issue_proposal"
 
 
 def test_se_crea_con_gh_y_argumentos(monkeypatch):
@@ -103,7 +104,16 @@ def test_se_crea_con_gh_y_argumentos(monkeypatch):
         return subprocess.CompletedProcess(command, 0, stdout="https://github.com/acme/web/issues/7\n", stderr="")
     issue = {"repo": "acme/web", "title": "$(rm -rf /)", "body": "## Hola\n`x`"}
     assert github_issues.create(issue, runner) == "https://github.com/acme/web/issues/7"
-    assert calls == [(["/bin/gh", "issue", "create", "--repo", "acme/web", "--title", "$(rm -rf /)", "--body-file", "-"], "## Hola\n`x`")]
+    assert calls == [(["/bin/gh", "issue", "create", "--repo=acme/web", "--title=$(rm -rf /)", "--body-file", "-"], "## Hola\n`x`")]
+    def slow(command, **o):
+        raise subprocess.TimeoutExpired(command, 60)
+    with pytest.raises(github_issues.IssueError, match="puede que se haya creado"):
+        github_issues.create(issue, slow)
+    seen = lambda command, **o: subprocess.CompletedProcess(command, 0, stdout="PUBLIC\n", stderr="")  # noqa: E731
+    assert github_issues.visibility("acme/web", seen) == "public" and github_issues.visibility("-x/web", seen) is None
+    monkeypatch.setenv("GH_TOKEN", "otra-cuenta")
+    monkeypatch.setenv("GH_HOST", "evil.example")
+    assert "GH_TOKEN" not in github_issues._env() and "GH_HOST" not in github_issues._env() and github_issues._env()["GH_PROMPT_DISABLED"] == "1"
     failing = lambda command, **o: subprocess.CompletedProcess(command, 1, stdout="", stderr="could not resolve to a Repository")  # noqa: E731
     with pytest.raises(github_issues.IssueError, match="could not resolve"):
         github_issues.create(issue, failing)

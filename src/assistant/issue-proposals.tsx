@@ -26,10 +26,13 @@ export function IssueProposals({ state }: { state: ReturnType<typeof useIssuePro
     return <article key={proposal.id} className="card note-proposal" aria-label="Issue propuesta">
       <strong>Issue propuesta: {issue.title}</strong>
       <small>En {issue.repo} · {issue.client ? `${issue.client} › ` : ''}{issue.project}{issue.meeting ? ` · de la reunión «${issue.meeting}»` : ''}</small>
+      {issue.visibility === 'public' ? <small className="fiscal-warning" role="note">Repositorio PÚBLICO: cualquiera en internet verá esta issue. Revisa que no lleve nada privado de la reunión.</small>
+        : issue.visibility === null ? <small className="muted">No se ha podido saber si el repositorio es público: la verá quien pueda ver {issue.repo}.</small>
+        : <small className="muted">Repositorio privado: la verá quien tenga acceso a {issue.repo}.</small>}
       <pre className="issue-body">{issue.body}</pre>
       {proposal.state === 'open' || proposal.state === 'busy' ? <div className="inbox-actions">
-        <button type="button" className="button primary" disabled={proposal.state === 'busy'} onClick={() => void state.create(proposal)}>{proposal.state === 'busy' ? 'Creando en GitHub…' : 'Crear la issue'}</button>
-        <button type="button" className="button" onClick={() => state.dismiss(proposal)}>Descartar</button>
+        <button type="button" className="button primary" disabled={proposal.state === 'busy'} onClick={() => void state.create(proposal)}>{proposal.state === 'busy' ? 'Creando en GitHub…' : issue.visibility === 'public' ? 'Crear la issue pública' : 'Crear la issue'}</button>
+        <button type="button" className="button" disabled={proposal.state === 'busy'} onClick={() => state.dismiss(proposal)}>Descartar</button>
       </div> : null}
       {proposal.result && <small className={proposal.state === 'made' ? 'ok-note' : 'muted'} role="status">{proposal.result}{proposal.url && <> <a href={proposal.url} target="_blank" rel="noopener noreferrer">Abrir en GitHub</a></>}</small>}
     </article>;

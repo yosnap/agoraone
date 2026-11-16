@@ -390,13 +390,17 @@ class Toolbox:
 
         def check():
             with self.database() as connection:
-                return github_issues.propose(connection, owner, args, seen)
+                found = github_issues.propose(connection, owner, args, seen)
+            return {**found, "visibility": github_issues.visibility(found["repo"])}  # the card warns when it is public
         try:
             issue = await run_in_threadpool(check)
         except github_issues.IssueError as error:
             return json.dumps({"error": str(error)}, ensure_ascii=False)
+        now = time.time()
+        for key in [k for k, v in self.proposals.items() if v["expires"] < now]:
+            del self.proposals[key]
         proposal_id = random.token_urlsafe(12)
-        self.proposals[proposal_id] = {"owner": owner, "issue": issue, "expires": time.time() + PROPOSAL_SECONDS}
+        self.proposals[proposal_id] = {"owner": owner, "issue": issue, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "issue_proposal", "id": proposal_id, "issue": issue})
         return json.dumps({"propuesta": {"repositorio": issue["repo"], "titulo": issue["title"]},
                            "estado": "En la pantalla del usuario, esperando «Crear la issue». No está creada."}, ensure_ascii=False)

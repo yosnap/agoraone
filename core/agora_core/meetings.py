@@ -86,7 +86,9 @@ class Recorder:
         row = self.owned(connection, owner, meeting_id)
         kind, client, people = classify(changes.get("kind", row["kind"]), changes.get("client", row["client"]),
                                         changes["people"] if "people" in changes else json.loads(row["people"] or "[]"))
-        if client != row["client"]:
+        if "client" not in changes:
+            client = row["client"]  # unchanged as it was saved (Central's own spelling), never normalized again
+        elif client != row["client"]:
             client = central_client(connection, client)
         # Another client takes the project away unless a project of that client comes with it.
         project = changes.get("project", row["project"] if client == row["client"] else None) or None
@@ -246,7 +248,7 @@ def central_client(connection: sqlite3.Connection, name: str | None) -> str | No
         return None
     from .central import snapshot
 
-    known = {str(c.get("name") or "").casefold(): c["name"] for c in ((snapshot(connection) or {}).get("clients") or []) if c.get("name")}
+    known = {" ".join(str(c.get("name") or "").split()).casefold(): c["name"] for c in ((snapshot(connection) or {}).get("clients") or []) if c.get("name")}
     if name.casefold() not in known:
         raise MeetingError("Ese cliente no está en Central: elige uno de la lista.")
     return known[name.casefold()]
@@ -262,7 +264,8 @@ def central_project(connection: sqlite3.Connection, client: str | None, name) ->
     if not client:
         raise MeetingError("Elige antes el cliente del proyecto.")
     found = next((c for c in ((snapshot(connection) or {}).get("clients") or []) if c.get("name") == client), None)
-    known = {str(p.get("name") or "").casefold(): p["name"] for p in ((found or {}).get("projects") or []) if p.get("name")}
+    found = found or next((c for c in ((snapshot(connection) or {}).get("clients") or []) if " ".join(str(c.get("name") or "").split()) == client), None)
+    known = {" ".join(str(p.get("name") or "").split()).casefold(): p["name"] for p in ((found or {}).get("projects") or []) if p.get("name")}
     if name.casefold() not in known:
         raise MeetingError(f"Ese proyecto no es de {client} en Central: elige uno de la lista.")
     return known[name.casefold()]

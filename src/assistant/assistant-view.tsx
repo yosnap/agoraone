@@ -79,7 +79,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [refreshList]);
   const open = useCallback(async (id: number) => {
     abort.current?.abort();
-    setCurrent(id); setLive(null); setError(''); setLoading(true); proposals.clear(); writeLast(id); shownId.current = id;
+    setCurrent(id); setLive(null); setError(''); setLoading(true); proposals.clear(); issues.clear(); writeLast(id); shownId.current = id;
     if (embedded) setListOpen(false);
     try { const found = (await getAssistantConversation(id)).messages; setMessages(found); onSources?.(lastSources(found)); }
     catch (failure) { setMessages([]); setCurrent(null); writeLast(null); setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.'); }
@@ -182,7 +182,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
-  const fresh = () => { abort.current?.abort(); stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setLive(null); setError(''); proposals.clear(); onSources?.([]); if (embedded) setListOpen(false); };
+  const fresh = () => { abort.current?.abort(); stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setLive(null); setError(''); proposals.clear(); issues.clear(); onSources?.([]); if (embedded) setListOpen(false); };
   const sourceList = (sources: Source[]) => sources.length > 0 && <div className="sources">
     <span className="muted">Fuentes</span>
     <ol>{sources.map(source => <li key={source.n} value={source.n}><button onClick={() => onRead({ vault: source.source, note: source.ref })}>{source.title}</button><small>{source.folder || 'Raíz'}</small></li>)}</ol>

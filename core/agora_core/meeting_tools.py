@@ -6,7 +6,7 @@ import json
 import sqlite3
 from datetime import UTC, date, datetime, timedelta
 
-from .github_issues import project_repo
+from .github_issues import repos
 from .meeting_notes import WEEKDAYS, as_text
 from .meetings import KINDS
 
@@ -121,6 +121,7 @@ def find(connection: sqlite3.Connection, owner: str, query: str = "", since: str
             raise ValueError("Tipo no válido: reunión, formación, entrevista, llamada u otra.")
     words = [w for w in str(query or "").casefold().split() if len(w) > 2 and w not in STOPWORDS][:12]
     found = []
+    known_repos = repos(connection)
     for row in _rows(connection, owner, first, last, wanted, words):
         held = _local(row["started_at"])
         if (first and held.date() < first) or (last and held.date() > last):
@@ -136,7 +137,7 @@ def find(connection: sqlite3.Connection, owner: str, query: str = "", since: str
         found.append((score, {
             "id": row["id"], "fecha": f"{WEEKDAYS[held.weekday()]} {held.strftime('%Y-%m-%d %H:%M')}", "titulo": row["title"],
             "tipo": KINDS[row["kind"]], "cliente": row["client"], "proyecto": row["project"],
-            "repositorio": project_repo(connection, row["client"], row["project"]) if row["project"] else None, "participantes": people,
+            "repositorio": known_repos.get((row["client"] or "", row["project"] or "")), "participantes": people,
             "minutos": max(1, round((_local(row["ended_at"]) - held).total_seconds() / 60)) if row["ended_at"] else None,
             "resumen": summary["summary"] if summary else None,
             "temas": [{"tema": t["topic"], "detalle": t["detail"]} for t in (summary or {}).get("topics", [])],

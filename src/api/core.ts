@@ -452,7 +452,7 @@ export type VaultReview = { notes: number; folders: number; root: ReviewNote[]; 
   secrets: ReviewNote[]; secretCount: number };
 export const getVaultReview = (discreet: boolean) => core<VaultReview>(`/brain/review?discreet=${+discreet}`);
 /** A GitHub issue Watson proposed for a Central project's repository, created with the user's `gh` once confirmed. */
-export type ProposedIssue = { repo: string; client: string | null; project: string; title: string; body: string; meeting: string | null };
+export type ProposedIssue = { repo: string; client: string | null; project: string; title: string; body: string; meeting: string | null; visibility: 'public' | 'private' | 'internal' | null };
 export const createIssueFromProposal = (id: string) => core<{ url: string; repo: string }>(`/assistant/proposals/${encodeURIComponent(id)}/issue`, {});
 /** A quote Watson proposed, created in Central as a draft once confirmed (1.7). */
 export type ProposedQuote = { client: string; title: string; items: { description: string; details?: string; unitPrice: number; priceMax?: number; quantity: number; unit?: string }[];

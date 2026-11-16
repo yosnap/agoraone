@@ -90,7 +90,7 @@ def _domain(value: str | None) -> str | None:
     return host if re.fullmatch(r"(?:[a-z0-9-]+\.)+[a-z]{2,63}", host or "") else None
 
 
-_GITHUB = re.compile(r"(?:https://(?:www\.)?github\.com/|git@github\.com:)([A-Za-z0-9-]{1,39})/([A-Za-z0-9._-]{1,100}?)(?:\.git)?/?")
+_GITHUB = re.compile(r"(?:https://(?:www\.)?github\.com/|git@github\.com:)((?!-)[A-Za-z0-9-]{1,39})/([A-Za-z0-9._-]{1,100}?)(?:\.git)?/?")
 
 
 def github_repo(value) -> str | None:
