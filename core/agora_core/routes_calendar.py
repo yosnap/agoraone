@@ -112,12 +112,14 @@ def calendar_router(settings: Settings) -> APIRouter:
         store = calendar_store.shared()
         if problem := ready(store):
             return {"events": [], "reminders": [], "overlaps": [], "problem": problem}
+        if (first is None) != (last is None):
+            return JSONResponse({"error": "Indica «from» y «to» juntos."}, status_code=422)
         try:
             start, end = calendar_store.dates_range(first, last) if first and last else calendar_store.day_range(when)
         except calendar_store.CalendarError as error:
             return JSONResponse({"error": str(error)}, status_code=422)
         try:
-            found = await db(lambda c: calendar_store.agenda(c, store, start, end))
+            found = await db(lambda c: calendar_store.agenda(c, store, start, end, describe=True))
         except calendar_store.CalendarError as error:
             return {"events": [], "reminders": [], "overlaps": [], "problem": str(error)}
         return {**found, "from": start.isoformat(), "to": end.isoformat(), "problem": None}

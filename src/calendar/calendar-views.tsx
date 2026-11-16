@@ -54,18 +54,27 @@ function byDay(events: CalendarEvent[]): Map<string, CalendarEvent[]> {
   return days;
 }
 
-function Chip({ event, discreet, clash }: { event: CalendarEvent; discreet: boolean; clash: boolean }) {
+/** The time an event shows on a day: an event of several days says it goes on, or until when. */
+export function timeOn(event: CalendarEvent, day: Date, long = false): string {
+  if (event.allDay) return 'Todo el día';
+  const starts = ymd(new Date(event.start)) === ymd(day), ends = ymd(new Date(Math.max(new Date(event.end).getTime() - 1, new Date(event.start).getTime()))) === ymd(day);
+  if (starts && ends) return long ? `${hourMinute(event.start)}–${hourMinute(event.end)}` : hourMinute(event.start);
+  if (starts) return long ? `desde ${hourMinute(event.start)}` : hourMinute(event.start);
+  return ends ? `hasta ${hourMinute(event.end)}` : 'Continúa';
+}
+
+function Chip({ event, day, discreet, clash }: { event: CalendarEvent; day: Date; discreet: boolean; clash: boolean }) {
   const from = origin(event);
   return <span className={`cal-chip${clash ? ' clash' : ''}`} title={discreet ? undefined : `${event.title}${from ? ` · ${from}` : ''}`}
     style={event.scope?.color ? { borderColor: event.scope.color } : undefined}>
-    <small>{event.allDay ? 'Todo el día' : hourMinute(event.start)}</small> {discreet ? '•••' : event.title}
+    <small>{timeOn(event, day)}</small> {discreet ? '•••' : event.title}
   </span>;
 }
 
 /** The calendar views of the agenda: a day (each event with where it comes from), a week, a month or a year
  * (the number of events of each day). Pressing a day opens it. */
-export function CalendarViews({ scale, focus, agenda, discreet, onDay }: {
-  scale: Scale; focus: Date; agenda: Agenda; discreet: boolean; onDay: (day: Date) => void;
+export function CalendarViews({ scale, focus, agenda, discreet, onDay, onMonth }: {
+  scale: Scale; focus: Date; agenda: Agenda; discreet: boolean; onDay: (day: Date) => void; onMonth: (month: Date) => void;
 }) {
   const clashing = new Set(agenda.overlaps.flat());
   const days = byDay(agenda.events);
@@ -73,7 +82,7 @@ export function CalendarViews({ scale, focus, agenda, discreet, onDay }: {
   if (scale === 'dia') {
     const events = days.get(ymd(focus)) ?? [];
     return events.length ? <ul className="agenda-list">{events.map(event => <li key={event.id} className={clashing.has(event.id) ? 'agenda-clash' : undefined}>
-      <span className="agenda-time">{event.allDay ? 'Todo el día' : `${hourMinute(event.start)}–${hourMinute(event.end)}`}</span>
+      <span className="agenda-time">{timeOn(event, focus, true)}</span>
       <span className="agenda-what"><span>{discreet ? '•••' : event.title}{!discreet && event.location && <small className="muted"> · {event.location}</small>}</span>
         {!discreet && origin(event) && <small className="agenda-origin"><i style={{ background: event.scope?.color ?? undefined }}/>{origin(event)}</small>}</span>
       {clashing.has(event.id) && <span className="chip warn">Solape</span>}</li>)}</ul> : <p className="muted">Nada en el calendario este día.</p>;
@@ -85,13 +94,13 @@ export function CalendarViews({ scale, focus, agenda, discreet, onDay }: {
       const cells: Date[] = [];
       for (let day = from; ymd(day) <= ymd(last); day = addDays(day, 1)) cells.push(day);
       return <div key={month} className="cal-mini">
-        <button type="button" className="cal-mini-title" onClick={() => onDay(first)}>{first.toLocaleDateString('es-ES', { month: 'long' })}</button>
+        <button type="button" className="cal-mini-title" onClick={() => onMonth(first)}>{first.toLocaleDateString('es-ES', { month: 'long' })}</button>
         <div className="cal-mini-grid">{WEEKDAYS.map(w => <small key={w}>{w[0]}</small>)}
           {cells.map(day => {
             const count = days.get(ymd(day))?.length ?? 0;
             return <button type="button" key={ymd(day)} disabled={day.getMonth() !== month} onClick={() => onDay(day)}
               className={`${count ? 'busy' : ''}${ymd(day) === today ? ' today' : ''}`} title={count ? `${count} ${count === 1 ? 'evento' : 'eventos'}` : undefined}
-              aria-label={`${day.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}${count ? `, ${count} eventos` : ''}`}>
+              aria-label={`${day.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}${count ? `, ${count} ${count === 1 ? 'evento' : 'eventos'}` : ''}`}>
               {day.getMonth() === month ? day.getDate() : ''}</button>;
           })}</div>
       </div>;
@@ -107,8 +116,9 @@ export function CalendarViews({ scale, focus, agenda, discreet, onDay }: {
       const outside = scale === 'mes' && day.getMonth() !== focus.getMonth();
       const shown = scale === 'mes' ? events.slice(0, 3) : events;
       return <div key={ymd(day)} className={`cal-cell${outside ? ' outside' : ''}${ymd(day) === today ? ' today' : ''}`}>
-        <button type="button" className="cal-day" onClick={() => onDay(day)}>{day.getDate()}</button>
-        {shown.map(event => <Chip key={event.id} event={event} discreet={discreet} clash={clashing.has(event.id)}/>)}
+        <button type="button" className="cal-day" onClick={() => onDay(day)}
+          aria-label={`${day.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}${events.length ? `, ${events.length} ${events.length === 1 ? 'evento' : 'eventos'}` : ''}`}>{day.getDate()}</button>
+        {shown.map(event => <Chip key={event.id} event={event} day={day} discreet={discreet} clash={clashing.has(event.id)}/>)}
         {events.length > shown.length && <button type="button" className="cal-more" onClick={() => onDay(day)}>+{events.length - shown.length} más</button>}
       </div>;
     })}

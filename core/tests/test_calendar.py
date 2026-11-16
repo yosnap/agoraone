@@ -56,6 +56,9 @@ def test_agenda_crear_y_lo_que_ve_watson(tmp_path):
         assert month.status_code == 200 and isinstance(month.json()["events"], list)
         assert client.get(f"/calendar/agenda?from={today.isoformat()}&to={(today + timedelta(days=500)).isoformat()}", headers=headers).status_code == 422
         assert client.get(f"/calendar/agenda?from={today.isoformat()}&to={(today - timedelta(days=1)).isoformat()}", headers=headers).status_code == 422
+        assert client.get(f"/calendar/agenda?from={today.isoformat()}", headers=headers).status_code == 422, "from y to van juntos"
+        assert client.get("/calendar/agenda?from=9999-12-30&to=9999-12-31", headers=headers).status_code == 422
+        assert "calendar" not in fake.events_list[0], "las copias no tocan los eventos del almacén"
         assert client.put("/calendar/calendars/medico", json={"confidentiality": "private"}, headers=headers).json() == {"ok": True}
         assert client.put("/calendar/calendars/trabajo", json={"scopeId": 999}, headers=headers).status_code == 422
         listed = {c["id"]: c for c in client.get("/calendar/calendars", headers=headers).json()["calendars"]}
