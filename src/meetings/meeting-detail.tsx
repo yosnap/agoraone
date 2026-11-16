@@ -53,28 +53,32 @@ function SaveNote({ detail, vaults, onSaved }: { detail: MeetingDetail; vaults: 
   const [title, setTitle] = useState(detail.draft?.title ?? '');
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
   if (!detail.draft) return null;
   if (detail.saved_note) return <p className="ok-note">Guardada en el vault: {detail.saved_note.note}</p>;
   if (!vaults.length) return <p className="muted">No hay ningún vault de Obsidian disponible para guardar la nota.</p>;
+  const vaultLabel = vaults.find(v => v.id === vault)?.name ?? 'Vault';
   const save = async () => {
-    setError('');
+    if (folder === null || saving) return;
+    setError(''); setSaving(true);
     try {
-      const made = await createVaultNote(vault, folder ?? '', title.trim(), detail.draft!.content);
+      const made = await createVaultNote(vault, folder, title.trim(), detail.draft!.content);
       await markMeetingSaved(detail.id, vault, made.id);
       onSaved();
     } catch (failure) { setError(failed(failure, 'No se pudo guardar la nota.')); setAsking(false); }
+    finally { setSaving(false); }
   };
   return <div className="meeting-save">
     <details><summary>Ver la nota completa</summary><pre className="meeting-draft">{detail.draft.content}</pre></details>
     <div className="meeting-save-fields">
-      <label className="field">Vault<ModernSelect value={vault} onChange={next => { setVault(next); setFolder(null); }} options={vaults.map(v => ({ value: v.id, label: v.name }))}/></label>
+      <label className="field">Vault<ModernSelect value={vault} disabled={asking} onChange={next => { if (next === vault) return; setVault(next); setFolder(null); setAsking(false); }} options={vaults.map(v => ({ value: v.id, label: v.name }))}/></label>
       <label className="field">Título<input value={title} onChange={event => setTitle(event.target.value)} maxLength={200}/></label>
     </div>
-    <div className="field"><span>Carpeta</span><VaultFolderBrowser key={vault} vaultId={vault} vaultName={vaults.find(v => v.id === vault)?.name ?? 'Vault'}
-      client={detail.client} value={folder} onChange={setFolder}/></div>
+    <div className="field"><span>Carpeta</span><VaultFolderBrowser key={vault} vaultId={vault} vaultName={vaultLabel}
+      client={detail.client} value={folder} onChange={(from, next) => { if (from === vault) { setFolder(next); setAsking(false); } }}/></div>
     {asking ? <span className="meeting-confirm" role="group" aria-label="Confirmar">
-        <span>¿Crear la nota «{title}» en {folder || 'la raíz'}?</span>
-        <button type="button" className="button primary" onClick={() => void save()}>Crear la nota</button>
+        <span>¿Crear la nota «{title}» en {vaultLabel} › {folder || '(raíz)'}?</span>
+        <button type="button" className="button primary" disabled={folder === null || saving} onClick={() => void save()}>{saving ? 'Creando…' : 'Crear la nota'}</button>
         <button type="button" className="button" onClick={() => setAsking(false)}>Cancelar</button>
       </span>
       : <button type="button" className="button primary" disabled={!vault || !title.trim() || folder === null} onClick={() => setAsking(true)}>Guardar en el vault…</button>}

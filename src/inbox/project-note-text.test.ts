@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clientFolder, noteContent, noteTitle, projectsBase, withLevel } from './project-note-text';
+import { clientFolder, noteContent, noteTitle, projectsBase, vaultName, withLevel } from './project-note-text';
 
 const folders = ['- Clientes/Proyectos/Artilabs', '- Clientes/Proyectos/Artilabs/Clientes Artilabs', '- Clientes/Proyectos/Coetools',
   '- Clientes/Proyectos/FoodZinder', '- Clientes/Proyectos/Foodzinder-web', 'Fundación PC/Clientes', 'Empresa/Proyectos'];
@@ -35,4 +35,14 @@ test('la nota de un correo privado o solo en este Mac lo dice en sus propiedades
   assert.equal(withLevel('# x\n', 'normal'), '# x\n');
   assert.equal(withLevel('# x\n', 'local_only'), '---\nconfidencialidad: solo-local\n---\n# x\n');
   assert.equal(withLevel('# x\n', 'private'), '---\nconfidencialidad: privado\n---\n# x\n');
+});
+
+test('un nombre de carpeta que el vault acepta', () => {
+  assert.equal(vaultName('  ..Proyecto: web/app  '), 'Proyecto- web-app'.replace(/-/g, ' ').replace(/\s+/g, ' '));
+  assert.equal(vaultName('Café'), 'Café', 'en NFC');
+  assert.equal(new TextEncoder().encode(vaultName('á'.repeat(200))).length <= 240, true);
+  assert.equal(vaultName('😀'.repeat(100)).length % 2, 0, 'no parte un emoji');
+  const long = `${'a'.repeat(59)} b`;
+  assert.equal(clientFolder([], 'Base', long).folder, `Base/${'a'.repeat(59)}`, 'sin espacio al final tras cortar');
+  assert.equal(clientFolder([], 'Base', '.oculto').folder, 'Base/oculto');
 });
