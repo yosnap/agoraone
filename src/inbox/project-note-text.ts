@@ -3,7 +3,7 @@
 
 const plain = (text: string) => text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 // Characters Obsidian does not accept in a note name (the server refuses them too).
-const unsafe = /[\\/:*?"<>|#^[\]\u0000-\u001f\p{Cf}\u2028\u2029]/gu;
+export const unsafe = /[\\/:*?"<>|#^[\]\u0000-\u001f\p{Cf}\u2028\u2029]/gu;
 // Company forms left out when matching a client with its folder («Artilabs S.L.» is «Artilabs»).
 const FORMS = new Set(['s', 'l', 'u', 'a', 'sl', 'slu', 'sa', 'sau', 'sll', 'scp', 'cb', 'inc', 'ltd', 'llc', 'gmbh']);
 const bare = (name: string) => plain(name).split(' ').filter(word => !FORMS.has(word)).join(' ');
