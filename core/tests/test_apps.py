@@ -44,6 +44,7 @@ def test_oye_watson_apagado_por_defecto(tmp_path):
         h = {SECRET_HEADER: "a" * 64}
         assert client.get("/wake/settings", headers=h).json() == {"enabled": False, "state": None, "attempt": 0}
         assert client.put("/wake/settings", json={"enabled": True}, headers=h).json() == {"enabled": True, "state": None, "attempt": 1}
-        assert client.post("/wake/status", json={"state": "no_offline"}, headers=h).json() == {"state": "no_offline"}
+        assert client.post("/internal/wake/status", json={"state": "no_offline"}, headers=h).json() == {"state": "no_offline"}
         assert client.get("/wake/settings", headers=h).json()["state"] == "no_offline", "la app de escritorio cuenta por qué no escucha"
-        assert client.post("/wake/status", json={"state": "rm -rf"}, headers=h).status_code == 400
+        assert client.put("/wake/settings", json={"enabled": True}, headers=h).json()["state"] == "starting", "reintentar borra el fallo anterior"
+        assert client.post("/internal/wake/status", json={"state": "rm -rf"}, headers=h).status_code == 400

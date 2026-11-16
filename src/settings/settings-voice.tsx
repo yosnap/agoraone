@@ -82,15 +82,23 @@ function WakeWord() {
   const [wake, setWake] = useState<Wake | null>(null);
   const [error, setError] = useState('');
   const asked = useRef(false);
-  // The listener takes a few seconds to start (and macOS may be asking for permission): look again a while.
-  const follow = (left: number) => void getWake().then(state => {
+  const round = useRef(0);
+  // The listener takes a few seconds to start (and macOS may be asking for permission): look again for up to a
+  // minute. Only the latest round of looks counts, so answers from an older click never overwrite newer ones.
+  const follow = (left: number, mine = ++round.current) => void getWake().then(state => {
+    if (mine !== round.current) return;
     setWake(state);
-    if (left > 0 && state.enabled && (state.state === null || state.state === 'starting' || state.state === 'off')) setTimeout(() => follow(left - 1), 2000);
+    if (left > 0 && state.enabled && (state.state === null || state.state === 'starting' || state.state === 'off')) setTimeout(() => follow(left - 1, mine), 2000);
   }).catch(() => setWake(current => current ?? { enabled: false, state: null, attempt: 0 }));
   if (!asked.current) { asked.current = true; follow(3); }
   const change = async (next: boolean) => {
     setError('');
-    try { setWake(await putWake(next)); if (next) setTimeout(() => follow(15), 1500); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
+    const mine = ++round.current;
+    try {
+      const saved = await putWake(next);
+      if (mine === round.current) setWake(saved);
+      if (next) setTimeout(() => follow(30, mine), 1500);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
   };
   const status = wake?.enabled ? wakeStatus(wake.state) : null;
   return <div className="field">

@@ -7,6 +7,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use agora_server::PORT;
@@ -139,7 +141,8 @@ fn listen(app: &AppHandle) {
 /// «Oye Watson» (1.5): while the user has it on in Ajustes › Voz, the on-device listener runs and each "wake"
 /// it prints works like ⌃⌥W. Off, or the app closing, stops it (its input pipe closes with the app). How it is
 /// doing goes to the core for Ajustes › Voz: listening, or why it could not start. After a failure it is not
-/// started again (macOS would ask again and again) until the user turns the setting off and on.
+/// started again (macOS would ask again and again) until the user turns it on again or presses «Reintentar»
+/// (the core's «attempt» grows). If the core cannot be read, nothing changes until the next look.
 fn wake_loop(app: AppHandle, link: agora_server::core::CoreLink) {
     let helper = bundle_resources().map(|r| r.join("core/helpers/bin/agora-wake")).filter(|p| p.is_file());
     tauri::async_runtime::spawn(async move {
@@ -149,21 +152,28 @@ fn wake_loop(app: AppHandle, link: agora_server::core::CoreLink) {
         let mut failed = false;
         let mut said_off = false;
         let mut attempt = 0;
+        let mut alive = Arc::new(AtomicBool::new(false));
         loop {
-            let settings = agora_server::core::core_request(&http, &link, "/wake/settings", None).await.ok();
-            let on = settings.as_ref().and_then(|a| a.get("enabled")?.as_bool()).unwrap_or(false);
+            if let Some(ended) = child.as_mut().and_then(|c| c.try_wait().ok().flatten()) {
+                child = None;
+                failed = true;
+                alive.store(false, Ordering::SeqCst);
+                wake_state(&http, &link, wake_failure(ended.code())).await;
+            }
+            let Ok(settings) = agora_server::core::core_request(&http, &link, "/wake/settings", None).await else {
+                tokio::time::sleep(Duration::from_secs(4)).await;
+                continue;
+            };
+            let on = settings.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false);
             // Turned on again (or «Reintentar»): a fresh try after a failure.
-            let asked = settings.as_ref().and_then(|a| a.get("attempt")?.as_u64()).unwrap_or(0);
+            let asked = settings.get("attempt").and_then(|a| a.as_u64()).unwrap_or(0);
             if asked != attempt {
                 attempt = asked;
                 failed = false;
             }
-            if let Some(ended) = child.as_mut().and_then(|c| c.try_wait().ok().flatten()) {
-                child = None;
-                failed = true;
-                wake_state(&http, &link, wake_failure(ended.code())).await;
-            }
             if !on {
+                // A «ready» still on its way must not say «listening» after this says «off».
+                alive.store(false, Ordering::SeqCst);
                 if let Some(mut stopping) = child.take() {
                     let _ = stopping.kill().await;
                     said_off = false;
@@ -180,13 +190,14 @@ fn wake_loop(app: AppHandle, link: agora_server::core::CoreLink) {
                 {
                     Some(Ok(mut started)) => {
                         wake_state(&http, &link, "starting").await;
+                        alive = Arc::new(AtomicBool::new(true));
                         if let Some(out) = started.stdout.take() {
-                            let (app, http, link) = (app.clone(), http.clone(), link.clone());
+                            let (app, http, link, alive) = (app.clone(), http.clone(), link.clone(), alive.clone());
                             tauri::async_runtime::spawn(async move {
                                 let mut lines = tokio::io::BufReader::new(out).lines();
                                 while let Ok(Some(line)) = lines.next_line().await {
                                     match line.trim() {
-                                        "ready" => wake_state(&http, &link, "listening").await,
+                                        "ready" if alive.load(Ordering::SeqCst) => wake_state(&http, &link, "listening").await,
                                         "wake" => listen(&app),
                                         _ => {}
                                     }
@@ -218,7 +229,7 @@ fn wake_failure(code: Option<i32>) -> &'static str {
 }
 
 async fn wake_state(http: &reqwest::Client, link: &agora_server::core::CoreLink, state: &str) {
-    let _ = agora_server::core::core_request(http, link, "/wake/status", Some(&serde_json::json!({ "state": state }))).await;
+    let _ = agora_server::core::core_request(http, link, "/internal/wake/status", Some(&serde_json::json!({ "state": state }))).await;
 }
 
 fn main() {

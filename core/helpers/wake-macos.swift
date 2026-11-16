@@ -45,6 +45,8 @@ final class Listener {
 
     func begin() {
         let input = engine.inputNode
+        // No microphone at all: say so instead of failing inside the audio engine.
+        if input.outputFormat(forBus: 0).channelCount == 0 { fail(3, "sin micrófono") }
         input.installTap(onBus: 0, bufferSize: 2048, format: input.outputFormat(forBus: 0)) { [weak self] buffer, _ in
             self?.request?.append(buffer)
         }

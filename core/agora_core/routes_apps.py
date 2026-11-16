@@ -75,7 +75,7 @@ def apps_router(settings: Settings) -> APIRouter:
         row = connection.execute("SELECT value FROM setting WHERE key = 'wake'").fetchone()
         return {"enabled": bool(row and json.loads(row["value"]).get("enabled")), "state": listener["state"], "attempt": listener["attempt"]}
 
-    @router.post("/wake/status")
+    @router.post("/internal/wake/status")  # only the desktop app: the browser cannot reach /internal
     async def wake_status(body: WakeState):
         if body.state not in WAKE_STATES:
             return JSONResponse({"error": "Estado desconocido."}, status_code=400)
@@ -94,6 +94,9 @@ def apps_router(settings: Settings) -> APIRouter:
                                    (json.dumps({"enabled": body.enabled}),))
             if body.enabled:
                 listener["attempt"] += 1
+                # A desktop app is there: it is about to try again, so the old failure no longer stands.
+                if listener["state"] is not None:
+                    listener["state"] = "starting"
             return wake(connection)
         return await run(work)
 
