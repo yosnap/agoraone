@@ -1,6 +1,7 @@
 """HTTP routes of the local speech to text: what is installed and chosen, the settings, and transcribing a
 short clip (dictation). The audio never leaves this machine; nothing is kept once transcribed."""
 
+import threading
 from contextlib import contextmanager
 
 from fastapi import APIRouter, Request
@@ -20,6 +21,8 @@ class TtsSettings(BaseModel):
     voice: str | None = None
     speed: float | None = None
     macVoice: str | None = None
+    quality: str | None = None
+    openAtStart: bool | None = None
 
 
 class SpeakText(BaseModel):
@@ -51,7 +54,8 @@ def voice_router(settings: Settings) -> APIRouter:
     def tts_view(connection) -> dict:
         chosen = tts.settings(connection)
         voices = tts.voicestudio_voices(fresh=True)
-        return {"settings": chosen, "now": tts.resolve(chosen, voices), "voicestudio": voices}
+        return {"settings": chosen, "now": tts.resolve(chosen, voices), "voicestudio": voices,
+                "opening": tts._launch["state"] == "opening", "installed": tts.installed_app() is not None}
 
     @router.get("/voice/tts")
     async def tts_get():
@@ -78,11 +82,21 @@ def voice_router(settings: Settings) -> APIRouter:
                 now = tts.resolve(tts.settings(connection), tts.voicestudio_voices())
             if now["engine"] != "voicestudio":
                 raise tts.TtsError(now["problem"] or "La voz elegida es la de macOS.")
-            return tts.synthesize(now["voice"], body.text)
+            return tts.synthesize(now["voice"], body.text, steps=now["steps"])
         try:
             return Response(await run_in_threadpool(job), media_type="audio/wav")
         except tts.TtsError as error:
             return refuse(error, 503)
+
+    @router.post("/voice/warm")
+    async def tts_warm():
+        """A question was just sent: get VoiceStudio's voice ready while Watson thinks (in the background)."""
+        def job():
+            with database() as connection:
+                chosen = tts.settings(connection)
+            threading.Thread(target=tts.warm, args=(chosen,), daemon=True).start()
+        await run_in_threadpool(job)
+        return {"ok": True}
 
     @router.get("/voice/status")
     async def status():

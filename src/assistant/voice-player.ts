@@ -1,4 +1,4 @@
-import { getTts, speakPiece, type TtsNow } from '../api/core';
+import { getTts, speakPiece, warmVoice, type TtsNow } from '../api/core';
 import { advance, fresh, type Progress } from './voice-pieces';
 
 /** Plays Watson's answers aloud (1.7). With VoiceStudio, piece by piece: the next one is prepared while one plays,
@@ -16,7 +16,8 @@ export let lastProblem: string | null = null;
 
 /** What speaks now, read again from the core (after a change in Ajustes, or at most once a minute). */
 export function refreshVoice(): Promise<void> {
-  asked = getTts().then(view => { voice = view.now; lastProblem = view.now.problem; }).catch(() => { voice = null; });
+  // While AgoraOne opens VoiceStudio, read again in a few seconds so its voice is used as soon as it is up.
+  asked = getTts().then(view => { voice = view.now; lastProblem = view.now.problem; if (view.opening) readAt = Date.now() - 55_000; }).catch(() => { voice = null; });
   return asked;
 }
 let readAt = 0;
@@ -54,6 +55,7 @@ const play = (t: Turn, url: string) => new Promise<void>(resolve => {
 async function run(t: Turn) {
   const now = await current();
   if (t.stopped) return;
+  if (now?.engine === 'voicestudio') warmVoice().catch(() => undefined);
   if (now?.engine !== 'voicestudio') {
     while (!t.final && !t.stopped) await waitMore(t);
     if (!t.stopped) macSpeak(t.queue.join(' '), () => { if (turn === t) finish(t); });

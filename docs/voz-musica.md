@@ -90,13 +90,28 @@ nunca.
 En Ajustes › Voz › «Voz de Watson» se elige quién lee las respuestas:
 - Automática (por defecto): el perfil «Watson (AgoraOne)» de VoiceStudio cuando la app está abierta; si no, macOS.
 - Una voz de VoiceStudio (sus perfiles) o una voz de macOS en español.
-- Velocidad y «Probar».
+- Velocidad, «Rapidez de VoiceStudio» (rápida, equilibrada por defecto o más natural) y «Probar».
+- «Abrir VoiceStudio en segundo plano al arrancar AgoraOne» (activada por defecto; petición del usuario, 16/11/2026).
 
 VoiceStudio (OmniVoice) corre en este Mac, en `127.0.0.1:3900`, una dirección fija en el núcleo (`core/agora_core/tts.py`).
 El texto de la respuesta no sale del equipo. La pantalla corta la respuesta en frases mientras llega
 (`src/assistant/voice-pieces.ts`): la primera suena en cuanto está escrita y las siguientes se preparan mientras habla
 (`src/assistant/voice-player.ts`). Si VoiceStudio no responde, sigue la voz de macOS y Ajustes lo dice. Voicebox
 queda para más adelante: genera en segundo plano y necesita descargar antes su modelo.
+
+**Rapidez y consumo (alpha.27).** VoiceStudio trae su perfil «max», que hace 64 pasos por frase. AgoraOne pide
+los suyos: 8 (rápida), 16 (equilibrada) o 32 (más natural). Medido en el Mac del usuario con el perfil de Watson,
+una frase de unos 5 s de audio tardaba 5,4 s sin indicar pasos, 2,7 s con 16 y 1,8 s con 8. El modelo ocupa
+cerca de 1 GB de memoria y solo gasta procesador mientras habla. La primera petición tras abrir VoiceStudio tarda
+entre 10 y 15 s, porque carga el modelo, aunque `/model/loaded` ya lo dé por cargado. Por eso, al arrancar y al
+enviar una pregunta (`POST /voice/warm`), si AgoraOne no ha oído hablar a VoiceStudio en los últimos 10 minutos, le
+hace decir «Hola.» sin reproducirlo mientras Watson piensa. No se usa
+`/setup/warmup` de VoiceStudio: carga otro modelo de 2 GB que la voz no usa y la frena.
+
+**Abrir VoiceStudio al arrancar.** Si la voz no es la de macOS, la opción está activada y VoiceStudio está
+instalado en `/Applications` o `~/Applications` pero cerrado, el núcleo lo abre con `open -g -j`, oculto y sin
+quitar el foco. Espera hasta 2 minutos a que responda y prepara la voz. Mientras arranca, Watson habla con la voz
+de macOS y Ajustes dice «Abriendo VoiceStudio».
 
 ## Llamar a Watson
 
@@ -124,7 +139,8 @@ queda para más adelante: genera en segundo plano y necesita descargar antes su 
 | `GET /music/status`, `POST /music/control`, `POST /music/play` | lo que suena, los controles y «pon…» |
 | `GET /apps`, `PUT /apps/allowed`, `POST /apps/open` | apps instaladas, las permitidas y abrir una (409 si hace falta confirmar) |
 | `GET/PUT /voice/tts` | Voz de Watson: lo elegido, lo que habla ahora y las voces de VoiceStudio |
-| `POST /voice/speak` | Un trozo de respuesta dicho por VoiceStudio (audio WAV) |
+| `POST /voice/speak` | Un trozo de respuesta dicho por VoiceStudio (audio WAV), con los pasos de la rapidez elegida |
+| `POST /voice/warm` | Carga la voz de VoiceStudio en segundo plano si no está cargada (al enviar una pregunta) |
 | `GET/PUT /wake/settings` | «Oye Watson» encendido o apagado, y el estado del oyente |
 | `POST /internal/wake/status` | La app de escritorio cuenta cómo va el oyente (el navegador no llega a `/internal`) |
 | `GET /music/library`, `PUT /music/library/folders`, `POST /music/library/choose`, `GET /music/library/{id}/file` | biblioteca: carpetas, búsqueda y archivo |

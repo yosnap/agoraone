@@ -330,11 +330,15 @@ export const getVoiceStatus = () => core<VoiceStatus>('/voice/status');
 /** Watson's voice (1.7): the engine and voice chosen, what speaks now (macOS when VoiceStudio is closed) and the
  * voices VoiceStudio offers (null when it is not open). */
 export type TtsEngine = 'auto' | 'macos' | 'voicestudio';
-export type TtsSettings = { engine: TtsEngine; voice: string | null; speed: number; macVoice: string | null };
-export type TtsNow = { engine: 'macos' | 'voicestudio'; voice: string | null; speed: number; macVoice: string | null; problem: string | null };
-export type TtsView = { settings: TtsSettings; now: TtsNow; voicestudio: { id: string; name: string; language: string | null }[] | null };
+export type TtsQuality = 'fast' | 'balanced' | 'best';
+export type TtsSettings = { engine: TtsEngine; voice: string | null; speed: number; macVoice: string | null; quality: TtsQuality; openAtStart: boolean };
+export type TtsNow = { engine: 'macos' | 'voicestudio'; voice: string | null; speed: number; macVoice: string | null; problem: string | null; steps: number };
+/** `opening`: AgoraOne is opening VoiceStudio right now; `installed`: VoiceStudio is on this Mac. */
+export type TtsView = { settings: TtsSettings; now: TtsNow; voicestudio: { id: string; name: string; language: string | null }[] | null; opening: boolean; installed: boolean };
 export const getTts = () => core<TtsView>('/voice/tts');
 export const putTts = (changes: Partial<TtsSettings>) => core<TtsView>('/voice/tts', changes, 'PUT');
+/** A question was sent: VoiceStudio loads its voice while Watson thinks (nothing when it is ready). */
+export const warmVoice = () => core<{ ok: boolean }>('/voice/warm', {}, 'POST');
 /** One piece of an answer spoken by VoiceStudio on this Mac, as audio in memory (a blob: URL the caller revokes). */
 export async function speakPiece(text: string, signal?: AbortSignal): Promise<string> {
   const response = await fetch('/api/core/voice/speak', { method: 'POST', signal, body: JSON.stringify({ text }),

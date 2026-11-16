@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { getTts, putTts, type TtsSettings, type TtsView } from '../api/core';
+import { getTts, putTts, type TtsQuality, type TtsSettings, type TtsView } from '../api/core';
 import { tryVoice } from '../assistant/speech';
 import { lastProblem, refreshVoice } from '../assistant/voice-player';
 import { ModernSelect } from '../ui/modern-select';
@@ -45,9 +45,15 @@ export function WatsonVoiceChoice() {
     <label className="field">Velocidad · {shownSpeed.toLocaleString('es-ES', { maximumFractionDigits: 2 })}×
       <input type="range" min={0.7} max={1.5} step={0.05} value={shownSpeed} onChange={event => setSpeed(Number(event.target.value))}
         onPointerUp={() => speed !== null && void save({ speed })} onKeyUp={() => speed !== null && void save({ speed })} onBlur={() => speed !== null && speed !== settings.speed && void save({ speed })}/></label>
+    {settings.engine !== 'macos' && <label className="field">Rapidez de VoiceStudio<ModernSelect value={settings.quality} onChange={value => void save({ quality: value as TtsQuality })} options={[
+      { value: 'fast', label: 'Rápida: empieza antes y gasta menos, algo menos natural' },
+      { value: 'balanced', label: 'Equilibrada (recomendada)' },
+      { value: 'best', label: 'Más natural: tarda el doble en empezar' }]}/></label>}
+    {settings.engine !== 'macos' && view.installed && <label className="check"><input type="checkbox" checked={settings.openAtStart}
+      onChange={event => void save({ openAtStart: event.target.checked })}/> Abrir VoiceStudio en segundo plano al arrancar AgoraOne</label>}
     <div className="inbox-actions"><button type="button" className="button" onClick={() => tryVoice(SAMPLE)}>Probar</button></div>
     <small className="muted" role="status">Ahora habla {now.engine === 'voicestudio' ? `VoiceStudio${voicestudio?.find(v => v.id === now.voice) ? ` con «${voicestudio.find(v => v.id === now.voice)!.name}»` : ''}, en este Mac` : 'macOS'}.
-      {now.engine === 'voicestudio' && ' La primera frase tarda unos segundos en sonar; el resto se prepara mientras habla.'}</small>
+      {now.engine === 'voicestudio' && ' La primera frase tarda uno o dos segundos en sonar; el resto se prepara mientras habla.'}</small>
     {(now.problem || lastProblem) && <small className="dictation-error" role="status">{now.problem || lastProblem}</small>}
     {error && <small className="dictation-error" role="alert">{error}</small>}
   </div>;
