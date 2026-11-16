@@ -2,7 +2,7 @@ import type { CodingSession } from '../api/core';
 import { ago } from './agent-lines';
 
 const tools: Record<CodingSession['tool'], string> = { claude: 'Claude Code', codex: 'Codex' };
-const states: Record<CodingSession['state'], string> = { working: 'Trabajando', waiting: 'Te espera', paused: 'En pausa' };
+const states: Record<CodingSession['state'], string> = { working: 'Trabajando', tool: 'Herramienta o tu permiso', waiting: 'Te espera', paused: 'En pausa' };
 const count = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} M` : n >= 1000 ? `${Math.round(n / 1000)} k` : String(n);
 
 /** The coding agents of this Mac (Claude Code and Codex) moved in the last 24 h, from their own local records:

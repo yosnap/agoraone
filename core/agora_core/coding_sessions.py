@@ -26,7 +26,10 @@ def roots(home: Path | None = None) -> list[tuple[str, Path]]:
     found = [("claude", home / ".claude" / "projects"), ("codex", home / ".codex" / "sessions")]
     orca = home / "Library" / "Application Support" / "orca" / "claude-profiles"
     if orca.is_dir() and not orca.is_symlink():
-        found += [("claude", profile / "home" / "projects") for profile in sorted(orca.iterdir()) if profile.is_dir() and not profile.is_symlink()]
+        try:
+            found += [("claude", profile / "home" / "projects") for profile in sorted(orca.iterdir()) if profile.is_dir() and not profile.is_symlink()]
+        except OSError:
+            pass
     return found
 
 
@@ -35,19 +38,55 @@ def _recent_files(tool: str, root: Path, since: float) -> list[Path]:
     if not root.is_dir() or root.is_symlink():
         return []
     if tool == "claude":
-        folders = [f for f in root.iterdir() if f.is_dir() and not f.is_symlink()]
+        try:
+            folders = [f for f in root.iterdir() if f.is_dir() and not f.is_symlink()]
+        except OSError:
+            return []
     else:
-        days = {(datetime.fromtimestamp(since, UTC) + timedelta(days=d)).strftime("%Y/%m/%d") for d in range(3)}
+        # Codex names the day folder by local date: a day either side covers any time zone. A session older than
+        # that and resumed today writes in its first day's folder and is not seen (accepted).
+        days = {(datetime.fromtimestamp(since, UTC) + timedelta(days=d)).strftime("%Y/%m/%d") for d in range(-1, 3)}
         folders = [root / day for day in days if (root / day).is_dir() and not (root / day).is_symlink()]
     out = []
     for folder in folders:  # a folder's own date does not move when a file in it grows: every file is looked at
-        for file in folder.glob("*.jsonl"):
+        try:
+            files = list(folder.glob("*.jsonl"))
+        except OSError:
+            continue
+        for file in files:
             try:
                 if not file.is_symlink() and file.is_file() and file.stat().st_mtime >= since:
                     out.append(file)
             except OSError:
                 continue
     return out
+
+
+def _number(value) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _text(value) -> str | None:
+    """A metadata field only when it is plain text written by the tool (never an internal «<synthetic>» value)."""
+    return value if isinstance(value, str) and value and not value.startswith("<") else None
+
+
+def _said(message) -> str:
+    """The start of what a user line says, only to tell a real prompt from an interruption or a local command.
+    It is looked at here and dropped: nothing of it is kept."""
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        return content[:80]
+    if isinstance(content, list):
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "tool_result":
+                return "<tool_result>"
+            if isinstance(part, dict) and part.get("type") == "text":
+                return str(part.get("text") or "")[:80]
+    return ""
 
 
 def _stamp(text) -> float | None:
@@ -65,7 +104,9 @@ class _Record:
         self.cwd = self.branch = self.model = None
         self.started: float | None = None
         self.last: float | None = None
-        self.turn_open = False  # Codex: a task started and not completed; Claude: the last answer asked for a tool
+        self.turn_open = False  # a turn under way: the user asked, or a tool is running or waiting for permission
+        self.tool_pending = False  # the last answer asked for a tool that has not answered yet (running, or your permission)
+        self.total = None  # Codex: the session's running total, to skip repeated token events
         self.usage: dict[str, tuple[float, int, int]] = {}  # message or turn id -> (when, input, output)
 
     def read(self, line: dict):
@@ -76,38 +117,51 @@ class _Record:
         (self._claude if self.tool == "claude" else self._codex)(line, at)
 
     def _claude(self, line: dict, at):
-        self.cwd = self.cwd or line.get("cwd")  # where it started: later «cd» into subfolders do not rename it
-        self.branch = line.get("gitBranch") or self.branch
-        message = line.get("message") if line.get("type") == "assistant" else None
-        if isinstance(message, dict):
-            self.model = message.get("model") or self.model
+        self.cwd = self.cwd or _text(line.get("cwd"))  # where it started: later «cd» into subfolders do not rename it
+        self.branch = _text(line.get("gitBranch")) or self.branch
+        message = line.get("message")
+        if line.get("type") == "assistant" and isinstance(message, dict):
+            self.model = _text(message.get("model")) or self.model
             stop = message.get("stop_reason")
             if stop:
-                self.turn_open = stop == "tool_use"
+                self.turn_open = self.tool_pending = stop == "tool_use"
             usage = message.get("usage")
             if isinstance(usage, dict) and at:
-                ins = sum(int(usage.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens"))
+                ins = _number(usage.get("input_tokens")) + _number(usage.get("cache_creation_input_tokens"))
                 # The same message is written again as it streams: counted once, by its id.
-                self.usage[str(message.get("id") or line.get("uuid"))] = (at, ins, int(usage.get("output_tokens") or 0))
-        elif line.get("type") == "user":
-            self.turn_open = True  # the user wrote, or a tool answered: Claude is on it
+                self.usage[str(message.get("id") or line.get("uuid"))] = (at, ins, _number(usage.get("output_tokens")))
+        elif line.get("type") == "user" and not line.get("isMeta"):
+            said = _said(message)
+            if said == "<tool_result>":
+                self.turn_open, self.tool_pending = True, False  # the tool answered: Claude goes on
+            elif said.startswith("[Request interrupted"):
+                self.turn_open = self.tool_pending = False  # stopped with Esc: it waits for you
+            elif said and not said.startswith(("<local-command", "<command-name>", "<command-message>")):
+                self.turn_open, self.tool_pending = True, False  # a real prompt
 
     def _codex(self, line: dict, at):
         payload = line.get("payload") if isinstance(line.get("payload"), dict) else {}
         kind = line.get("type")
         if kind in ("session_meta", "turn_context"):
-            self.cwd = self.cwd or payload.get("cwd")
-            self.model = payload.get("model") or self.model
+            self.cwd = self.cwd or _text(payload.get("cwd"))
+            self.model = _text(payload.get("model")) or self.model
         elif kind == "event_msg":
-            event = payload.get("type")
+            event = str(payload.get("type") or "")
             if event == "task_started":
-                self.turn_open = True
-            elif event == "task_complete":
-                self.turn_open = False
+                self.turn_open, self.tool_pending = True, False
+            elif event in ("task_complete", "turn_aborted"):
+                self.turn_open = self.tool_pending = False
+            elif "approval_request" in event:
+                self.tool_pending = True
             elif event == "token_count" and isinstance(payload.get("info"), dict) and at:
-                last = payload["info"].get("last_token_usage") or {}
-                ins = int(last.get("input_tokens") or 0) - int(last.get("cached_input_tokens") or 0)
-                self.usage[f"{at}:{len(self.usage)}"] = (at, max(0, ins), int(last.get("output_tokens") or 0))
+                info = payload["info"]
+                total = (info.get("total_token_usage") or {}).get("total_tokens")
+                if total is not None and total == self.total:
+                    return  # the same count written again
+                self.total = total
+                last = info.get("last_token_usage") or {}
+                ins = _number(last.get("input_tokens")) - _number(last.get("cached_input_tokens"))
+                self.usage[f"{at}:{len(self.usage)}"] = (at, max(0, ins), _number(last.get("output_tokens")))
 
 
 _cache: dict[str, _Record] = {}
@@ -125,20 +179,30 @@ def _update(tool: str, file: Path) -> _Record | None:
         record = _cache[key] = _Record(tool)
     if size == record.offset:
         return record
-    with file.open("rb") as handle:
-        handle.seek(record.offset)
-        for raw in handle:
-            if not raw.endswith(b"\n"):
-                break  # a line still being written: read next time
-            record.offset += len(raw)
-            if len(raw) > MAX_LINE:
-                continue
-            try:
-                line = json.loads(raw)
-            except ValueError:
-                continue
-            if isinstance(line, dict):
-                record.read(line)
+    try:
+        with file.open("rb") as handle:
+            handle.seek(record.offset)
+            while True:
+                raw = handle.readline(MAX_LINE + 1)
+                if not raw or not raw.endswith(b"\n"):
+                    if len(raw) > MAX_LINE:  # a huge line (a big tool result): skipped without keeping it whole
+                        skipped = len(raw)
+                        while raw and not raw.endswith(b"\n"):
+                            raw = handle.readline(MAX_LINE + 1)
+                            skipped += len(raw)
+                        if raw:
+                            record.offset += skipped
+                            continue
+                    break  # a line still being written: read next time
+                record.offset += len(raw)
+                try:
+                    line = json.loads(raw)
+                except ValueError:
+                    continue
+                if isinstance(line, dict):
+                    record.read(line)
+    except OSError:  # gone or rotated between looking at it and opening it
+        return None
     record.size = size
     return record
 
@@ -146,10 +210,11 @@ def _update(tool: str, file: Path) -> _Record | None:
 def sessions(now: float | None = None, home: Path | None = None) -> list[dict]:
     now = now or time.time()
     since = now - WINDOW.total_seconds()
-    out = []
+    out, seen = [], set()
     with _lock:
         for tool, root in roots(home):
             for file in _recent_files(tool, root, since):
+                seen.add(str(file))
                 record = _update(tool, file)
                 if record is None or record.last is None:
                     continue
@@ -158,17 +223,22 @@ def sessions(now: float | None = None, home: Path | None = None) -> list[dict]:
                 except OSError:
                     continue
                 quiet = now - max(moved, record.last)
-                state = "working" if quiet < WORKING and record.turn_open else "waiting" if quiet < WAITING and not record.turn_open else "paused"
-                day = [u for u in record.usage.values() if u[0] >= since]
+                # A tool asked for and not answered: running something long or waiting for your permission (the
+                # records do not say which), so it is told as such instead of «working» or «paused».
+                state = ("working" if quiet < WORKING else "tool" if quiet < WAITING else "paused") if record.tool_pending and record.turn_open \
+                    else "working" if quiet < WORKING and record.turn_open else "waiting" if quiet < WAITING and not record.turn_open else "paused"
+                record.usage = {k: u for k, u in record.usage.items() if u[0] >= since}  # only the last 24 h is kept
+                day = list(record.usage.values())
                 out.append({
                     "id": hashlib.sha256(str(file).encode()).hexdigest()[:12], "tool": tool,
-                    "project": Path(record.cwd).name[:80] if record.cwd else None, "branch": (record.branch or None) and str(record.branch)[:80],
-                    "model": (record.model or None) and str(record.model)[:60], "state": state,
+                    "project": Path(record.cwd).name[:80] if record.cwd else None, "branch": record.branch[:80] if record.branch else None,
+                    "model": record.model[:60] if record.model else None, "state": state,
                     "startedAt": _iso(record.started), "lastAt": _iso(max(moved, record.last)),
                     "tokens": {"input": sum(u[1] for u in day), "output": sum(u[2] for u in day)}, "turns": len(day),
                 })
-        # Files gone or quiet for more than a day leave the cache.
-        for key in [k for k, r in _cache.items() if (r.last or 0) < since - 3600]:
+        # Only the files still in the window stay in the cache (by the file's date, which is what puts it in the
+        # list: Claude Code appends lines without a time, so the content's last time can be older).
+        for key in set(_cache) - seen:
             _cache.pop(key, None)
     out.sort(key=lambda s: s["lastAt"], reverse=True)
     return out[:MAX_SESSIONS]

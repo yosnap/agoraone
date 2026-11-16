@@ -53,7 +53,7 @@ export type WatsonEvent = { id: number; at: string; actor: 'watson' | 'user'; ac
 export type WatsonActivity = { answering: number; since: string | null; lastAt: string | null; count: number; events: WatsonEvent[] };
 /** Claude Code and Codex sessions of this Mac moved in 24 h: metadata only, never the conversation. */
 export type CodingSession = { id: string; tool: 'claude' | 'codex'; project: string | null; branch: string | null; model: string | null;
-  state: 'working' | 'waiting' | 'paused'; startedAt: string | null; lastAt: string; tokens: { input: number; output: number }; turns: number };
+  state: 'working' | 'tool' | 'waiting' | 'paused'; startedAt: string | null; lastAt: string; tokens: { input: number; output: number }; turns: number };
 export const getCodingSessions = () => core<{ sessions: CodingSession[] }>('/agents/coding');
 export const getWatsonActivity = () => core<WatsonActivity>('/agents/watson');
 export const getEngines = () => core<{ engines: { name: string; available: boolean }[]; active: string | null; model: string }>('/assistant/engines');

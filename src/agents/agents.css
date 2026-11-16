@@ -51,3 +51,5 @@ p.agent-facts { display:block }
 .coding-state.working { background:var(--c-f3e6c4); color:var(--c-7a5717) }
 .coding-state.waiting { background:var(--c-dcebdc); color:var(--c-24563a) }
 @media (max-width:640px) { .coding-row { grid-template-columns:auto minmax(0,1fr); } .coding-numbers { text-align:left } }
+.coding-state.tool { background:#f6d6d2; color:#8e2f24 }
+.coding-row.state-tool { border-color:#e3a59d }
