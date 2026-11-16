@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 
+from . import coding_sessions
 from .db import DB_NAME, connect
 from .routes_assistant import ANSWERING
 from .settings import Settings
@@ -39,5 +40,10 @@ def agents_router(settings: Settings) -> APIRouter:
             finally:
                 connection.close()
         return await run_in_threadpool(job)
+
+    @router.get("/agents/coding")
+    async def coding():
+        """Claude Code and Codex sessions of this Mac moved in 24 h (metadata only)."""
+        return {"sessions": await run_in_threadpool(coding_sessions.sessions)}
 
     return router
