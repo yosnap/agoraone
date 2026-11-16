@@ -45,7 +45,7 @@ export function PeopleField({ value, onChange, onTyping }: { value: MeetingPerso
         {person.name}{person.email && <small> · {person.email}</small>}
         <button type="button" aria-label={`Quitar a ${person.name}`} onClick={() => onChange(value.filter((_, i) => i !== n))}>✕</button>
       </span>)}
-      <input value={text} maxLength={200} placeholder={value.length ? '' : 'Busca en tus contactos o escribe nombres separados por comas'}
+      <input value={text} maxLength={200} placeholder={value.length ? 'Añadir a otra persona…' : 'Busca en tus contactos o escribe cualquier nombre (separa con comas)'}
         role="combobox" aria-expanded={found.length > 0} aria-autocomplete="list" aria-label="Con quién"
         onChange={event => type(event.target.value)}
         onBlur={() => { if (text.trim()) add(typedPeople(text)); else cancel(); }}
@@ -62,7 +62,10 @@ export function PeopleField({ value, onChange, onTyping }: { value: MeetingPerso
         className={n === active ? 'active' : ''} onMouseDown={event => { event.preventDefault(); pick(contact); }}>
         <strong>{contact.name}</strong>{contact.org && <small> · {contact.org}</small>}{contact.email && <small className="muted"> · {contact.email}</small>}
       </button>)}
+      <button type="button" role="option" aria-selected={false} className="people-new" onMouseDown={event => { event.preventDefault(); add(typedPeople(text)); }}>
+        ＋ Añadir «{text.trim()}» sin contacto</button>
     </div>}
+    {text.trim() && !found.length && <small className="muted">Pulsa Enter o escribe una coma para añadir a «{text.trim()}», aunque no esté en tus contactos.</small>}
     {access && access !== 'granted' && <small className="muted">
       {access === 'unavailable' ? 'Los contactos solo se leen en macOS: escribe los nombres separados por comas.'
         : <>{access === 'undetermined' ? 'AgoraOne todavía no tiene permiso para leer tus contactos.' : 'AgoraOne no puede leer tus contactos.'} <button type="button" className="button" onClick={() => void allow()}>Darle permiso</button> (o en Ajustes del Sistema › Privacidad › Contactos).</>}

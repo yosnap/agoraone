@@ -146,6 +146,30 @@ def open_smtp(host: str, port: int):
     return client
 
 
+def check_login(host: str, port: int, username: str, password: str | None, opener=None) -> tuple[str, str]:
+    """(status, words) of signing in to an SMTP server without sending: ok, auth, unreachable or error."""
+    if not password:
+        return "auth", "Falta la contraseña (o la clave de API) de esta cuenta."
+    try:
+        client = (opener or open_smtp)(host, port)
+    except SendError as error:
+        return "error", str(error)
+    except (OSError, ssl.SSLError, smtplib.SMTPException):
+        return "unreachable", f"No se pudo conectar con {host}:{port}."
+    try:
+        client.login(username, password)
+        return "ok", "El servidor aceptó el usuario y la contraseña."
+    except smtplib.SMTPAuthenticationError:
+        return "auth", "El servidor no aceptó el usuario o la contraseña (en Resend, usuario «resend» y la clave de API)."
+    except (smtplib.SMTPException, OSError, ssl.SSLError) as error:
+        return "error", f"El servidor respondió con un error ({type(error).__name__})."
+    finally:
+        try:
+            client.quit()
+        except (smtplib.SMTPException, OSError):
+            pass
+
+
 def _sent_folder(client) -> str | None:
     status, lines = client.list()
     if status != "OK":
@@ -242,7 +266,7 @@ def _send(connection: sqlite3.Connection, draft: dict, sealed: str, secret, toke
     refused_list = sorted(refused or {})
     saved = (account["provider"] in SAVES_ITSELF or account["auth"] == "microsoft"
              or (account["smtp_host"] or "").lower().endswith(SAVES_ITSELF_HOSTS))
-    if not saved:
+    if not saved and account["kind"] != "send":  # a sending-only account has no mailbox to keep a copy in
         saved = _keep_copy(account, secret, message, imap_opener)
     try:
         _log(connection, "done", {**detail, "savedToSent": saved, "refused": refused_list})
