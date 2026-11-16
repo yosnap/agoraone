@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Section } from './shell-state';
 import { applyTheme, readTheme, themeLabels, type ThemeChoice } from './theme';
 import { setSound, useSoundOn } from '../sound/sound';
@@ -12,7 +12,12 @@ const moduleOf: Partial<Record<Section, ModuleName>> = { inbox: 'correo', agenda
 const themeOrder: ThemeChoice[] = ['system', 'light', 'dark'];
 const themeIcons: Record<ThemeChoice, string> = { system: '◑', light: '☀', dark: '☾' };
 
-type Item = { id: Section; label: string; icon: string; pending?: boolean };
+type Item = { id: Section; label: string; icon: ReactNode; pending?: boolean };
+
+// No text glyph draws a calendar without being a coloured emoji: a small drawing in the rail's own colour.
+const calendarIcon = <svg className="rail-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8 14h2M14 14h2M8 17.5h2" strokeWidth="2.4"/>
+</svg>;
 
 const main: Item[] = [
   { id: 'brain', label: 'Cerebro', icon: '◉' },
@@ -21,7 +26,7 @@ const main: Item[] = [
   { id: 'office', label: 'Oficina 3D', icon: '▦' },
   { id: 'connectors', label: 'Conectores', icon: '⧉' },
   { id: 'inbox', label: 'Bandeja', icon: '✉' },
-  { id: 'agenda', label: 'Agenda', icon: '▣' },
+  { id: 'agenda', label: 'Agenda', icon: calendarIcon },
   { id: 'fiscal', label: 'Fiscal', icon: '€' },
   { id: 'jobs', label: 'Trabajos', icon: '☰' },
   { id: 'meetings', label: 'Reuniones', icon: '◎' },
