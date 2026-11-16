@@ -322,3 +322,71 @@ def test_archivar_todo_y_resumir_solo_lo_nuevo(db):
     sent.clear()
     summarize_once(db, [FakeEngine()], ask)
     assert [[m["id"] for m in batch] for batch in sent] == [[nuevo]]
+
+
+class NoSecrets:
+    def get(self, account):
+        return None
+
+
+def test_eliminar_desde_la_bandeja_solo_lo_que_tiene_tarjeta_y_se_puede_mover(tmp_path):
+    settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
+    app = create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=NoSecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        headers = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
+        c = connect(tmp_path / "data" / DB_NAME)
+        box = account(c, "yo@gmail.com")
+        card, loose = add(c, box, "ofertas@tienda.com", "Rebajas"), add(c, box, "ana@cliente.com", "Hola")
+        resend = add(c, box, "x@y.com", "Por Resend")
+        c.execute("UPDATE mail_message SET folder = 'RESEND' WHERE id = ?", (resend,))
+        for message in (card, resend):
+            c.execute("INSERT INTO mail_summary (message_id, kind, source, confidentiality, state, created_at) VALUES (?, 'advertising', 'local', 'normal', 'quiet', 'x')", (message,))
+        c.commit()
+        assert client.post("/mail/inbox/move", json={"ids": [card], "action": "destroy"}, headers=headers).status_code == 422
+        assert client.post("/mail/inbox/move", json={"ids": [], "action": "trash"}, headers=headers).status_code == 422
+        done = client.post("/mail/inbox/move", json={"ids": [card, loose, resend], "action": "trash"}, headers=headers).json()
+        assert done["moved"] == 0
+        assert any("contraseña" in p for p in done["problems"]), "sin contraseña no se toca el servidor"
+        assert any("2 correos no se pueden mover" in p for p in done["problems"]), "ni lo de Resend ni lo que no tiene tarjeta"
+        assert c.execute("SELECT count(*) FROM mail_message WHERE moved IS NOT NULL").fetchone()[0] == 0
+        assert [m["subject"] for m in client.get("/mail/inbox/advertising", headers=headers).json()["messages"]] == ["Rebajas"], "la publicidad sin tarjeta también, y nunca lo de Resend"
+        c.close()
+
+
+def test_watson_busca_en_la_bandeja_por_palabras(db, tmp_path):
+    box = account(db, "yo@gmail.com")
+    for sender, subject in (("hola@hostinger.com", "Tu factura de Hostinger"), ("ana@cliente.com", "Reunión del lunes")):
+        message = add(db, box, sender, subject)
+        db.execute("INSERT INTO mail_summary (message_id, kind, source, confidentiality, state, created_at) VALUES (?, 'other', 'local', 'normal', 'done', 'x')", (message,))
+    db.commit()
+
+    class Database:
+        def __enter__(self):
+            self.connection = connect(tmp_path / "data" / DB_NAME)
+            return self.connection
+
+        def __exit__(self, *exc):
+            self.connection.close()
+    toolbox = Toolbox(Database, None, VectorCache())
+    found = json.loads(asyncio.run(toolbox.call("consultar_bandeja", {"texto": "factura hostinger"})))["correos"]
+    assert [c["asunto"] for c in found] == ["Tu factura de Hostinger"], "busca también en lo ya hecho, con todas las palabras"
+    assert json.loads(asyncio.run(toolbox.call("consultar_bandeja", {"texto": "factura lunes"})))["correos"] == []
+
+
+def test_buscar_ignora_tildes_y_palabras_vacias_y_lo_movido(db, tmp_path):
+    box = account(db, "yo@gmail.com")
+    for subject, moved in (("Reunión del lunes", None), ("Reunión antigua", "trash")):
+        message = add(db, box, "ana@cliente.com", subject)
+        db.execute("UPDATE mail_message SET moved = ? WHERE id = ?", (moved, message))
+        db.execute("INSERT INTO mail_summary (message_id, kind, source, confidentiality, state, created_at) VALUES (?, 'other', 'local', 'normal', 'done', 'x')", (message,))
+    db.commit()
+
+    class Database:
+        def __enter__(self):
+            self.connection = connect(tmp_path / "data" / DB_NAME)
+            return self.connection
+
+        def __exit__(self, *exc):
+            self.connection.close()
+    found = json.loads(asyncio.run(Toolbox(Database, None, VectorCache()).call("consultar_bandeja", {"texto": "el correo de la reunion"})))["correos"]
+    assert [c["asunto"] for c in found] == ["Reunión del lunes"], "sin tildes, sin palabras vacías y sin lo ya movido a la Papelera"

@@ -1,10 +1,13 @@
 import { useRef, useState } from 'react';
-import { archiveAllInbox, createMailRule, decideInbox, getInbox, type InboxCounts, type InboxItem, type InboxState } from '../api/core';
+import { archiveAllInbox, createMailRule, decideInbox, getInbox, getInboxAdvertising, type InboxCounts, type InboxItem, type InboxState } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { actionLabels, kindLabels, proposalLabels, sender, when } from './inbox-labels';
 import { InvoiceFiling } from './invoice-filing';
 import { ProjectNote } from './project-note';
 import { ReplyComposer } from './reply-composer';
+import { InboxChat } from './inbox-chat';
+import { InboxDelete, type Doomed } from './inbox-delete';
+import { arrange, InboxTools, readView, type View } from './inbox-tools';
 import { EventForm } from '../calendar/event-form';
 import '../calendar/calendar.css';
 
@@ -39,6 +42,24 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const [scheduling, setScheduling] = useState<number | null>(null);
   const [replying, setReplying] = useState<number | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [view, setView] = useState<View>(readView);
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
+  const [deleting, setDeleting] = useState<{ title: string; messages: Doomed[]; key: number } | null>(null);
+  const opened = useRef(0);  // each confirmation is a new one: its ticks never carry over to another list
+  const confirm = (title: string, messages: Doomed[]) => setDeleting({ title, messages, key: ++opened.current });
+  const [chat, setChat] = useState(true);
+  const doomed = (item: InboxItem): Doomed => ({ id: item.id, from: sender(item), subject: item.subject ?? '', date: item.sentAt, hidden: discreet });
+  const pick = (id: number) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const deleted = (done: string) => { setDeleting(null); setSelected(new Set()); setNote(done); void load(); };
+  const askAdvertising = async () => {
+    setNote(''); setError('');
+    try {
+      const found = (await getInboxAdvertising()).messages;
+      if (!found.length) { setNote('No queda publicidad en la bandeja de entrada de tus cuentas.'); return; }
+      confirm(`Eliminar publicidad: ${found.length} ${found.length === 1 ? 'correo' : 'correos'}`,
+        found.map(m => ({ id: m.id, from: m.from, subject: m.subject, date: m.date, hidden: discreet })));
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo buscar la publicidad.'); }
+  };
   const clearAll = async () => {
     setNote(''); setClearing(false);
     try { const done = await archiveAllInbox(); setNote(`${done.archived} tarjetas archivadas en «Hechos». Desde ahora solo se resume lo que llegue.`); await load(); }
@@ -49,11 +70,12 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const load = async (which: InboxState = state) => {
     setError('');
     const mine = ++request.current;
-    try { const data = await getInbox(which); if (mine !== request.current) return; setItems(data.items); setCounts(data.counts); setProblem(data.problem); }
+    try { const data = await getInbox(which); if (mine !== request.current) return; setItems(data.items);
+      setSelected(current => new Set([...current].filter(id => data.items.some(item => item.id === id && !item.moved)))); setCounts(data.counts); setProblem(data.problem); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo leer la Bandeja.'); }
   };
   if (!asked.current) { asked.current = true; void load(); }
-  const show = (which: InboxState) => { setState(which); setItems(null); void load(which); };
+  const show = (which: InboxState) => { setState(which); setItems(null); setSelected(new Set()); void load(which); };
   const decide = async (item: InboxItem, next: InboxState) => {
     setNote('');
     try { await decideInbox(item.id, next); setNote(next === 'done' ? 'Marcado como hecho.' : next === 'dismissed' ? 'Descartado.' : 'Vuelve a Pendientes.'); await load(); }
@@ -68,7 +90,8 @@ export function InboxView({ discreet }: { discreet: boolean }) {
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo crear la regla.'); }
   };
   const groups = new Map<string, InboxItem[]>();
-  for (const item of items ?? []) groups.set(item.scope?.name ?? 'Sin ámbito', [...(groups.get(item.scope?.name ?? 'Sin ámbito') ?? []), item]);
+  const shown = arrange(items ?? [], view);
+  for (const item of shown) groups.set(item.scope?.name ?? 'Sin ámbito', [...(groups.get(item.scope?.name ?? 'Sin ámbito') ?? []), item]);
   // One tab per scope (Profesional, Personal y profesional, Personal…), each with its own colour (1.6.2).
   const scopes = [...groups.keys()];
   const shownScope = scopeTab !== ALL && groups.has(scopeTab) ? scopeTab : ALL;
@@ -83,6 +106,12 @@ export function InboxView({ discreet }: { discreet: boolean }) {
         <button key={tab.state} aria-pressed={state === tab.state} onClick={() => show(tab.state)}>{tab.label}{counts ? ` · ${counts[tab.state]}` : ''}</button>)}</div>
       <div className="inbox-actions">
         <button type="button" className="button" onClick={() => void load()}>Actualizar</button>
+        <button type="button" className="button act-delete" onClick={() => void askAdvertising()}>Eliminar publicidad…</button>
+        {selected.size > 0 && <>
+          <button type="button" className="button act-delete" onClick={() => confirm(`Eliminar ${selected.size} ${selected.size === 1 ? 'correo seleccionado' : 'correos seleccionados'}`,
+            (items ?? []).filter(item => selected.has(item.id)).map(doomed))}>Eliminar {selected.size} seleccionados…</button>
+          <button type="button" className="button" onClick={() => setSelected(new Set())}>Quitar selección</button></>}
+        <button type="button" className="button" aria-pressed={chat} onClick={() => setChat(!chat)}>{chat ? 'Ocultar chat' : 'Chat de la Bandeja'}</button>
         {state === 'pending' && (counts?.pending ?? 0) > 0 && !clearing && <button type="button" className="button" onClick={() => setClearing(true)}>Archivar todo lo que hay ahora…</button>}
       </div>
     </div>
@@ -91,8 +120,11 @@ export function InboxView({ discreet }: { discreet: boolean }) {
       <div className="inbox-actions"><button type="button" className="button primary" onClick={() => void clearAll()}>Archivar {counts?.pending} tarjetas</button>
         <button type="button" className="button" onClick={() => setClearing(false)}>Cancelar</button></div>
     </div>}
+    {deleting && <InboxDelete key={deleting.key} title={deleting.title} messages={deleting.messages} onCancel={() => setDeleting(null)} onDone={deleted}/>}
+    <div className={`inbox-layout${chat ? '' : ' alone'}`}><div className="inbox-main">
+    <InboxTools view={view} onChange={setView} kinds={[...new Set((items ?? []).map(item => item.kind))]}/>
     {scopes.length > 1 && <div className="segmented inbox-scopes" role="group" aria-label="Ámbito">
-      <button type="button" aria-pressed={shownScope === ALL} onClick={() => setScopeTab(ALL)}>Todas · {items?.length ?? 0}</button>
+      <button type="button" aria-pressed={shownScope === ALL} onClick={() => setScopeTab(ALL)}>Todas · {shown.length}</button>
       {scopes.map(scope => <button key={scope} type="button" aria-pressed={shownScope === scope} onClick={() => setScopeTab(scope)}>
         <span className="scope-dot" style={{ background: colorOf(scope) }} aria-hidden="true"/>{scope} · {groups.get(scope)!.length}</button>)}
     </div>}
@@ -102,12 +134,14 @@ export function InboxView({ discreet }: { discreet: boolean }) {
     {error && <LoadError message={error} onRetry={() => void load()}/>}
     {note && <p className="ok-note" role="status">{note}</p>}
     {items === null ? <Loading label="Leyendo la Bandeja" lines={4}/>
+      : items.length > 0 && shown.length === 0 ? <p className="muted">Ningún correo coincide con la búsqueda.</p>
       : items.length === 0 ? <p className="muted">{state === 'pending' ? 'No hay nada pendiente. Si acabas de conectar una cuenta, los resúmenes llegan en unos minutos.' : 'Nada por aquí.'}</p>
       : [...groups].filter(([scope]) => shownScope === ALL || scope === shownScope).map(([scope, cards]) => <div key={scope} className="inbox-group">
         <h2><span className="scope-dot" style={{ background: colorOf(scope) }} aria-hidden="true"/>{scope} <span className="muted">· {cards.length}</span></h2>
-        <ul className="inbox-cards">{cards.map(item => <li key={item.id} className="card inbox-card">
+        <ul className={`inbox-cards per-${view.perRow}${cards.some(c => [filing, noting, scheduling, replying].includes(c.id)) ? ' editing' : ''}`}>{cards.map(item => <li key={item.id} className={`card inbox-card${selected.has(item.id) ? ' chosen' : ''}`}>
           <div className="card-head">
-            <div className="inbox-chips"><span className={`chip kind-${item.kind}`}>{kindLabels[item.kind]}</span>
+            <div className="inbox-chips">{item.moved ? <span className="chip">{item.moved === 'trash' ? 'En la Papelera' : 'Archivado'}</span> : <label className="check inbox-pick" title="Seleccionar"><input type="checkbox" checked={selected.has(item.id)} onChange={() => pick(item.id)}
+              aria-label={`Seleccionar ${discreet ? 'este correo' : item.subject || 'correo sin asunto'}`}/></label>}<span className={`chip kind-${item.kind}`}>{kindLabels[item.kind]}</span>
               {item.source === 'rule' && item.ruleName && <span className="chip">Regla: {item.ruleName}</span>}
               {item.client && <span className="chip good" title={!discreet && item.client.projects.length ? `Proyectos activos: ${item.client.projects.join(', ')}` : undefined}>
                 {discreet ? 'Cliente de Central' : `Cliente: ${item.client.name}`}{!discreet && item.client.projects.length ? ` · ${item.client.projects.length} proyecto${item.client.projects.length > 1 ? 's' : ''}` : ''}</span>}
@@ -117,7 +151,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
           <p className="inbox-from"><strong>{sender(item)}</strong>{item.from.address && item.from.name ? ` · ${item.from.address}` : ''} <span className="muted">→ {item.account.address}</span></p>
           {discreet ? <p className="muted">Asunto y resumen ocultos en modo discreto.</p> : <>
             <p className="inbox-subject">{item.subject || '(sin asunto)'}{item.attachments > 0 ? ` · ${item.attachments} adjunto${item.attachments > 1 ? 's' : ''}` : ''}</p>
-            {item.summary && <p>{item.summary}</p>}
+            {item.summary && <p className="inbox-summary">{item.summary}</p>}
             {(item.details.asks?.length || item.details.amounts?.length || item.details.dates?.length) ? <ul className="inbox-details">
               {item.details.asks?.map((ask, index) => <li key={index}>Piden: {ask}</li>)}
               {item.details.amounts?.length ? <li>Importes: {item.details.amounts.join(', ')}</li> : null}
@@ -145,10 +179,14 @@ export function InboxView({ discreet }: { discreet: boolean }) {
               {replying !== item.id && <button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para responder' : undefined}
                 onClick={() => setReplying(item.id)}>Responder…</button>}
             </> : <button type="button" className="button" onClick={() => void decide(item, 'pending')}>Volver a Pendientes</button>}
+            {!item.moved && <button type="button" className="button act-delete" onClick={() => confirm('Eliminar este correo', [doomed(item)])}>Eliminar…</button>}
             {item.suggestion && <button type="button" className="button" onClick={() => void makeRule(item)}
               title={`${actionLabels[item.suggestion.action]} para todo lo que venga de ${item.suggestion.sender}`}>Crear regla «{item.suggestion.name}»</button>}
           </div>
         </li>)}</ul>
       </div>)}
+    </div>
+    {chat && <InboxChat discreet={discreet} onChanged={() => void load()}/>}
+    </div>
   </section>;
 }

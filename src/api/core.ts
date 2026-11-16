@@ -185,12 +185,17 @@ export type InboxItem = {
   suggestion: { sender: string; action: MailRuleAction; name: string } | null;
   from: { name: string | null; address: string | null }; subject: string | null; sentAt: string;
   account: { id: number; address: string }; scope: { id: number; name: string; color: string | null } | null;
-  attachments: number; announcedAt: string | null; client: { name: string; projects: string[] } | null;
+  attachments: number; announcedAt: string | null; moved: 'trash' | 'archive' | null; client: { name: string; projects: string[] } | null;
 };
 export type InboxCounts = { pending: number; done: number; dismissed: number; unread: number; since: string | null };
 export const getInbox = (state: InboxState = 'pending') => core<{ items: InboxItem[]; counts: InboxCounts; problem: string | null }>(`/mail/inbox?state=${state}`);
 export const archiveAllInbox = () => core<{ archived: number; counts: InboxCounts }>('/mail/inbox/archive-all', {});
 export const decideInbox = (id: number, state: InboxState) => core<{ ok: true }>(`/mail/inbox/${id}`, { state }, 'PUT');
+/** Moves these cards' messages to their account's trash (or archive), only after the user confirmed it. Never deleted for good. */
+export const moveInboxMail = (ids: number[], action: 'trash' | 'archive') =>
+  core<{ moved: number; problems: string[]; counts: InboxCounts }>('/mail/inbox/move', { ids, action });
+/** The advertising still in the accounts' inboxes (it never gets a card), to review before «Eliminar publicidad». */
+export const getInboxAdvertising = () => core<{ messages: CleanupMessage[] }>('/mail/inbox/advertising');
 /** The cards the assistant announces now; the core hands each one out only once. */
 export const claimAnnouncements = () => core<{ items: InboxItem[] }>('/mail/inbox/announce', {});
 export type InvoiceFields = { supplier: string; taxId?: string | null; issuedOn: string; total: string; currency: string; base?: string | null; vat?: string | null; notes?: string | null };

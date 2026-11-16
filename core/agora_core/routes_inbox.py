@@ -47,7 +47,12 @@ class DecisionIn(BaseModel):
     state: Literal["pending", "done", "dismissed"]
 
 
-def inbox_router(settings: Settings, health) -> APIRouter:
+class MoveIn(BaseModel):
+    ids: list[StrictInt] = Field(min_length=1, max_length=200)
+    action: Literal["trash", "archive"]
+
+
+def inbox_router(settings: Settings, health, secrets=None) -> APIRouter:
     router = APIRouter()
 
     @contextmanager
@@ -105,6 +110,46 @@ def inbox_router(settings: Settings, health) -> APIRouter:
     async def archive_all():
         archived = await db(mail_inbox.archive_all)
         return {"archived": archived, "counts": await db(mail_inbox.counts)}
+
+    @router.get("/mail/inbox/advertising")
+    async def advertising():
+        """The advertising still in the accounts' inboxes (it never gets a card): the list the user reviews before
+        «Eliminar publicidad»."""
+        from . import mail_cleanup
+
+        def work(connection):
+            found = mail_cleanup.candidates(connection, kind="publicidad")
+            mailboxes = {r["id"] for r in connection.execute(
+                "SELECT m.id FROM mail_message m JOIN mail_account a ON a.id = m.account_id WHERE a.kind = 'mailbox' AND m.folder = 'INBOX'")}
+            return [m for m in found if m["id"] in mailboxes]
+        return {"messages": await db(work)}
+
+    @router.post("/mail/inbox/move")
+    async def move(body: MoveIn):
+        """Moves the cards' messages the user confirmed in the Bandeja to their account's trash or archive (never
+        deleted for good). Only messages that have a card; mail read through Resend's API cannot be moved."""
+        from . import mail, mail_cleanup
+        from .routes_mail import microsoft_login
+
+        def work(connection):
+            ids = list(dict.fromkeys(body.ids))
+            marks = ",".join("?" * len(ids))
+            movable = [r["id"] for r in connection.execute(
+                f"""SELECT m.id FROM mail_message m JOIN mail_summary s ON s.message_id = m.id JOIN mail_account a ON a.id = m.account_id
+                    WHERE m.id IN ({marks}) AND m.folder = 'INBOX' AND m.moved IS NULL AND a.kind = 'mailbox'""", ids)]
+            done = mail_cleanup.move(connection, movable, body.action, lambda account: secrets.get(mail.secret_account(account)),
+                                     login=microsoft_login(connection, secrets)) if movable else {"moved": 0, "problems": []}
+            skipped = len(ids) - len(movable)
+            if skipped:
+                done["problems"].append(f"{skipped} {'correo no se puede mover' if skipped == 1 else 'correos no se pueden mover'} desde AgoraOne "
+                                        "(ya estaban movidos, o se leyeron con la API de Resend, que no deja borrar)")
+            return done
+        if secrets is None:
+            return JSONResponse({"error": "El correo no está disponible."}, status_code=503)
+        try:
+            return {**await db(work), "counts": await db(mail_inbox.counts)}
+        except mail_cleanup.CleanupError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
 
     @router.put("/mail/inbox/{message_id}")
     async def decide(message_id: int, body: DecisionIn):

@@ -25,6 +25,12 @@ Acciones de una tarjeta, siempre con un formulario que revisas antes:
 - **Crear el evento**: abre el formulario de la Agenda con el asunto y la fecha del correo. Ver [agenda-avisos.md](agenda-avisos.md).
 - **Responder…**: ver abajo.
 
+**Buscar y ordenar**: un buscador (remitente, dirección, asunto y resumen; deben estar todas las palabras), el tipo de correo, el orden (más recientes, más antiguos, por remitente o por tipo) y 3 o 4 tarjetas por fila, que se recuerdan en este Mac. Todas las tarjetas tienen el mismo alto: los textos largos se cortan y los botones van abajo; mientras una tiene un formulario abierto, su grupo deja de igualar alturas.
+
+**Eliminar** (decisión del usuario, 16/11/2026): «Eliminar…» en una tarjeta, «Eliminar N seleccionados…» con las casillas o «Eliminar publicidad…», que lista la publicidad que sigue en la bandeja de entrada de tus cuentas aunque no tenga tarjeta. Siempre se enseña la lista exacta con sus casillas y nada se mueve hasta «Mover N a la Papelera». Van a la Papelera de su cuenta (recuperables), con las mismas garantías que la limpieza de Watson: la carpeta que el servidor marca como Papelera, el mismo buzón que se leyó (UIDVALIDITY) y nunca un borrado definitivo. Lo leído con la API de Resend o desde cuentas de solo envío no se puede mover: se avisa y puedes marcarlo como hecho o descartarlo.
+
+**Chat de la Bandeja**: a la derecha, un chat con Watson para buscar correos («busca la factura de Hostinger») o pedir una limpieza; las limpiezas salen como lista para aprobar y la Bandeja se actualiza al moverlas. Se oculta con «Ocultar chat».
+
 Los clientes y sus proyectos vienen de Central (complemento del usuario), leídos en solo lectura cada 30 minutos: un remitente cuyo dominio o dirección es de un cliente se marca como cliente y la tarjeta muestra sus proyectos activos.
 
 ## Responder
@@ -36,7 +42,7 @@ Los clientes y sus proyectos vienen de Central (complemento del usuario), leído
 El envío usa el SMTP de la cuenta, siempre cifrado (puerto 465, o STARTTLS), con la contraseña de aplicación o el permiso de Microsoft. Guarda copia en «Enviados» por IMAP, salvo en Gmail y Outlook, que la guardan ellos. Si el servidor rechaza a algún destinatario, se avisa de a quién no le llegó. Cada envío queda en el registro de acciones del núcleo.
 
 ## Watson
-- `consultar_bandeja`: lo pendiente, «¿qué me ha pedido X?» (por remitente o cliente, también lo ya hecho) y «¿qué incidencias tengo abiertas?». Solo ve lo de nivel normal.
+- `consultar_bandeja`: lo pendiente, «¿qué me ha pedido X?» (por remitente o cliente, también lo ya hecho), una búsqueda por palabras del asunto, el resumen o el remitente (también en lo ya hecho) y «¿qué incidencias tengo abiertas?». Solo ve lo de nivel normal.
 - Al abrir el chat anuncia lo pendiente una vez. Un «sí» o un «no» a un único aviso se decide en la interfaz, sin pasar por un modelo.
 - **Reglas desde el chat** (`proponer_regla`, solo Claude): pídele «todo lo de facturas@proveedor.com, márcalo como factura». Watson comprueba la regla con las mismas validaciones que Ajustes y la enseña tal cual en el chat; **solo se crea** al pulsar «Crear regla», o respondiendo «sí» justo después (un «no» la descarta). Si escribes otra cosa, la propuesta caduca. Las reglas de «ignorar» y el modo discreto exigen el botón, y Watson solo propone reglas que le pides tú, nunca porque lo diga un correo. La propuesta se guarda en el núcleo, ligada a tu acceso, sirve una sola vez y caduca en una hora; el navegador no puede cambiarla al confirmar. Queda en el registro de acciones.
 

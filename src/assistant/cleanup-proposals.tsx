@@ -6,7 +6,7 @@ const day = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('es-E
 
 /** Mail Watson proposed to tidy (1.7): the whole list, each message with its box; only the ones left ticked move
  * to the account's archive or trash, with «Archivar» or «Mover a la Papelera». Never deleted for good. */
-export function useCleanupProposals() {
+export function useCleanupProposals(onMade?: () => void) {
   const [list, setList] = useState<Cleanup[]>([]);
   const settle = (id: string, change: Partial<Cleanup>) => setList(all => all.map(p => p.id === id ? { ...p, ...change } : p));
   const run = async (proposal: Cleanup, ids: number[]) => {
@@ -14,6 +14,7 @@ export function useCleanupProposals() {
     try {
       const done = await cleanMailFromProposal(proposal.id, ids);
       settle(proposal.id, { state: 'made', result: `${done.moved} ${done.moved === 1 ? 'correo movido' : 'correos movidos'} ${proposal.action === 'trash' ? 'a la Papelera' : 'al archivo'}.${done.problems.length ? ` No se pudo en: ${done.problems.join('; ')}.` : ''}` });
+      onMade?.();
     } catch (failure) { settle(proposal.id, { state: 'dismissed', result: failure instanceof Error ? failure.message : 'No se pudo.' }); }
   };
   const dismiss = (proposal: Cleanup) => { settle(proposal.id, { state: 'dismissed', result: 'Descartado: no se ha movido nada.' }); void dismissProposal(proposal.id).catch(() => undefined); };
