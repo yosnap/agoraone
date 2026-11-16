@@ -14,6 +14,7 @@ from contextlib import AbstractContextManager
 
 from fastapi.concurrency import run_in_threadpool
 
+from . import meeting_tools
 from .embed import Embedder, VectorCache
 from .search import search
 
@@ -198,6 +199,7 @@ SPECS.append({
             "titulo": {"type": "string", "description": "Título nuevo, solo si cambia."},
             "motivo": {"type": "string", "description": "Por qué, en pocas palabras."}}}}}},
 })
+SPECS.extend(meeting_tools.SPECS)
 NOTE_TEXT = 20000
 SECRET_LINE = re.compile(r"(?i)(contrase(n|ñ)a|password|passwd|api[_ -]?key|token|secret|clave)\s*[:=]\s*\S{6,}")
 _ACTION_OF_ACCION = {"factura": "invoice", "cliente": "client", "personal": "personal", "importante": "important", "ignorar": "ignore"}
@@ -243,6 +245,7 @@ class Toolbox:
         # Rules proposed to the user, waiting for their confirmation: shared by the router, keyed by a one-time id.
         self.proposals: dict[str, dict] = {}
         self.owner: str | None = None
+        self.meetings_seen: set[int] = set()  # a meeting can only be read once it was found
 
     def register(self, results: list[dict], listed: bool = False) -> list[dict]:
         """Numbers the notes found (a note found again keeps its number). `listed` notes were only seen by title in
@@ -276,6 +279,9 @@ class Toolbox:
         if self.calls >= self.max_calls:
             return json.dumps({"error": "Has llegado al límite de consultas de esta respuesta: responde con lo que ya tienes."}, ensure_ascii=False)
         self.calls += 1
+        from .engines import HIDDEN_TOOLS
+        if name in HIDDEN_TOOLS:  # a tool of a module turned off, even if the model names it
+            return json.dumps({"error": "Esa herramienta está apagada en Ajustes › Módulos."}, ensure_ascii=False)
         try:
             if name == "buscar_en_cerebro":
                 return await self._search(str(args.get("consulta", ""))[:500], args.get("limite", 6))
@@ -305,6 +311,8 @@ class Toolbox:
                 return await self._projects(str(args.get("periodo") or "7d"), str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
                 return await self._inbox(str(args.get("tipo") or "todos"), str(args.get("de") or ""))
+            if name in meeting_tools.NAMES:
+                return await self._meetings(name, args)
         except (TypeError, ValueError):
             pass
         return json.dumps({"error": "Herramienta o argumentos no válidos."}, ensure_ascii=False)
@@ -341,6 +349,33 @@ class Toolbox:
         self._record({"tool": "read", "id": f"{source['source']}/{source['ref']}", "title": source["title"], "n": source["n"]})
         return json.dumps({"n": source["n"], "titulo": found["title"], "parte": found["part"], "partes": found["parts"],
                            "texto": found["text"], "aviso": DATA_NOTICE}, ensure_ascii=False)
+
+    async def _meetings(self, name: str, args: dict) -> str:
+        if not self.mail or self.owner is None:
+            return json.dumps({"error": "Las reuniones no están disponibles con este motor."}, ensure_ascii=False)
+        owner = self.owner
+        if name == "consultar_reuniones":
+            query = str(args.get("consulta") or "")[:300]
+
+            def run():
+                with self.database() as connection:
+                    return meeting_tools.find(connection, owner, query, args.get("desde"), args.get("hasta"), args.get("tipo"))
+            found = await run_in_threadpool(run)
+            self.meetings_seen.update(m["id"] for m in found)
+            self._record({"tool": "meetings", "query": query, "count": len(found)})
+            return json.dumps({"reuniones": found, "aviso": meeting_tools.NOTICE}, ensure_ascii=False)
+        meeting_id = int(args.get("id"))
+        if meeting_id not in self.meetings_seen:
+            return json.dumps({"error": "Busca antes la reunión con consultar_reuniones."}, ensure_ascii=False)
+
+        def read():
+            with self.database() as connection:
+                return meeting_tools.read(connection, owner, meeting_id, int(args.get("parte") or 1))
+        found = await run_in_threadpool(read)
+        if found is None:
+            return json.dumps({"error": "Esa reunión ya no está disponible."}, ensure_ascii=False)
+        self._record({"tool": "meeting", "title": found["titulo"], "part": found["parte"]})
+        return json.dumps({**found, "aviso": meeting_tools.NOTICE}, ensure_ascii=False)
 
     async def _inbox(self, tipo: str, sender: str = "") -> str:
         from . import mail_inbox

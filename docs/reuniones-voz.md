@@ -39,7 +39,7 @@ Cómo se comporta:
 
 En la sección **Reuniones**:
 
-1. Escribe un título (opcional) y elige la confidencialidad: normal, solo en este Mac o privada.
+1. Elige qué es (reunión, formación, entrevista, llamada u otra), el cliente y con quién, todo opcional y editable después en **Ver**. Escribe un título si quieres; si no, se compone con el tipo, el cliente y la hora («Formación con Acme · 10.30»). Elige la confidencialidad: normal, solo en este Mac o privada.
 2. Indica si quieres grabar también el audio del sistema, es decir, lo que dicen los demás.
 3. Pulsa **Empezar a grabar**.
 
@@ -68,7 +68,7 @@ El audio se guarda en los datos de AgoraOne, en `meetings/<id>/`, con permisos s
 Al parar, la reunión se transcribe y se resume sola (se puede desactivar en Ajustes › Voz › Resumen de reuniones; entonces está el botón **Transcribir y resumir**). Trabaja en segundo plano, con prioridad baja y la mitad de los núcleos para que el equipo siga usable; con Ollama, el modelo se descarga de la memoria al terminar. La lista enseña cómo avanza y, si algo falla, el error exacto y **Reintentar**. Si una de las dos pistas no se puede leer, se usa la otra y se avisa. El audio del sistema se escribe por fragmentos de 5 s, así que sigue siendo legible aunque la grabación se corte de golpe:
 
 1. **Transcripción.** Cada pista se transcribe con whisper.cpp y las dos se unen por tiempo, como «Tú» y «Los demás».
-2. **Resumen** (con decisiones y tareas), según la confidencialidad de la reunión:
+2. **Resumen** (con un resumen extendido por temas, decisiones y tareas), según la confidencialidad de la reunión. El modelo recibe también el tipo, el cliente y los participantes:
    - **Normal**: lo hace Claude, con la sesión de Claude Code o con la clave de API.
    - **Solo en este Mac o privada**: lo hace el modelo local elegido en **Ajustes › Voz › Resumen de reuniones**. Puede ser LM Studio (`http://127.0.0.1:1234/v1`), Ollama (`http://127.0.0.1:11434/v1`) o cualquier servidor con la API de chat de OpenAI. Solo se aceptan direcciones de este equipo y nunca se pasa por un proxy. Ajustes parte del servidor que esté abierto y solo ofrece modelos de chat que se ejecutan aquí: descarta los de búsqueda (embeddings) y los «cloud» de Ollama, que se ejecutan en sus servidores; si no queda ninguno, indica cuál descargar (por ejemplo `ollama pull qwen3:14b`). Si no hay ningún modelo elegido, la reunión se queda solo con la transcripción.
    - La transcripción va siempre como dato entre marcas, junto con la fecha de la reunión, para que «el jueves» se entienda bien. Nunca va como instrucciones. La respuesta se valida: tiene que ser JSON y las fechas tienen que ser reales.
@@ -77,8 +77,13 @@ Al parar, la reunión se transcribe y se resume sola (se puede desactivar en Aju
 
 A partir de ahí, nada se escribe sin que lo confirmes:
 
-- **Guardar en el vault…** crea la nota con el mismo mecanismo que el panel del vault. Eliges el vault, la carpeta y el título, y confirmas. Nunca sobrescribe una nota que ya exista. La nota lleva `confidencialidad:` en sus propiedades, para que el cerebro la trate como se marcó la reunión.
+- **Guardar en el vault…** crea la nota con el mismo mecanismo que el panel del vault. Eliges el vault, la carpeta y el título, y confirmas. Nunca sobrescribe una nota que ya exista. El título propuesto ya no lleva caracteres que el vault rechaza (la hora sale como «10.30»). La nota lleva en sus propiedades `tipo:`, `cliente:`, `participantes:` y `confidencialidad:`, para que el cerebro la trate como se marcó la reunión.
+- **Para Claude o Codex**: **Descargar el archivo** deja toda la reunión en un Markdown en Descargas (propiedades, resumen, resumen extendido, decisiones, tareas y transcripción completa) y lo enseña en el Finder; nunca sobrescribe, un nombre repetido lleva «(2)». **Copiar todo** pone lo mismo en el portapapeles. Solo las reuniones normales: las privadas y las de solo en este Mac no salen de AgoraOne.
 - Cada tarea puede pasar a **recordatorio** (en Recordatorios de macOS, a las 9:00 si tiene fecha) o a **encargo del bot central** (una tarjeta del kanban de Hermes). Las dos opciones piden confirmación, tarea a tarea.
+
+## Preguntar a Watson por una reunión
+
+Watson tiene `consultar_reuniones` (por palabras, fechas, tipo, cliente o personas) y `leer_reunion` (la transcripción, en partes, solo de una reunión que ya encontró), en `core/agora_core/meeting_tools.py`. Sabe la fecha de hoy, así que entiende «la semana pasada» o «el martes». Solo ve las reuniones **normales** ya transcritas de tu acceso: las de solo en este Mac y las privadas nunca le llegan. Con lo que encuentra puede redactar en el chat una issue de GitHub, un correo o un acta, listos para copiar; no crea nada fuera de AgoraOne. Las herramientas se apagan con el módulo Reuniones.
 
 ## Rutas del núcleo
 
@@ -88,10 +93,11 @@ Todas pasan por `/api/core`, con la cookie de acceso y el CSRF.
 |---|---|
 | `GET /voice/status`, `PUT /voice/settings` | programas y modelo, encontrados o elegidos |
 | `POST /voice/transcribe` | dictar un clip de hasta 1 MiB; responde 409 si hay otra transcripción en curso |
-| `GET/POST /meetings` | lista de reuniones y empezar una (`mic_type`, `confidentiality`, `system`) |
+| `GET/POST /meetings` | lista de reuniones y empezar una (`mic_type`, `confidentiality`, `system`, `kind`, `client`, `people`) |
 | `POST /meetings/{id}/mic`, `POST /meetings/{id}/stop` | trozos del micrófono, en orden, y parar |
 | `POST /meetings/{id}/process`, `GET /meetings/{id}` | transcribir y resumir (o solo resumir otra vez) y el detalle con la nota |
 | `POST /meetings/{id}/saved`, `DELETE /meetings/{id}` | apuntar la nota creada y borrar el audio |
+| `PATCH /meetings/{id}`, `POST /meetings/{id}/export` | cambiar título, tipo, cliente o personas, y el archivo Markdown en Descargas |
 | `GET/PUT /meetings/settings`, `GET /meetings/local-models` | el modelo local de los resúmenes |
 
 ## Límites conocidos

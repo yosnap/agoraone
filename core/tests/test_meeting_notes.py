@@ -39,7 +39,7 @@ def test_une_las_pistas_y_quita_el_eco():
 
 def test_el_resumen_se_valida():
     reply = 'Aquí tienes: {"resumen": "Se acordó la fecha.", "decisiones": ["Entregar el jueves", 3, ""], "tareas": [{"tarea": "Enviar el presupuesto", "responsable": "Tú", "fecha": "2026-11-20"}, {"tarea": "", "fecha": "mañana"}, {"tarea": "Revisar", "responsable": null, "fecha": "el lunes"}]}'
-    assert meeting_notes.parse_summary(reply) == {"summary": "Se acordó la fecha.", "decisions": ["Entregar el jueves", "3"],
+    assert meeting_notes.parse_summary(reply) == {"summary": "Se acordó la fecha.", "topics": [], "decisions": ["Entregar el jueves", "3"],
         "tasks": [{"title": "Enviar el presupuesto", "who": "Tú", "due": "2026-11-20"}, {"title": "Revisar", "who": None, "due": None}]}
     with pytest.raises(ValueError):
         meeting_notes.parse_summary("no hay JSON")

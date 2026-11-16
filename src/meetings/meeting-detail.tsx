@@ -3,6 +3,7 @@ import { createCard, createVaultNote, getHermesCatalog } from '../api/client';
 import { createReminder, getJobsSettings, getMeeting, markMeetingSaved, type MeetingDetail, type MeetingTask } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { MeetingClassCard, MeetingExport } from './meeting-kind';
 
 type Target = { vaults: { id: string; name: string }[]; central: { id: string; label: string } | null };
 const failed = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
@@ -100,6 +101,9 @@ export function MeetingDetailPanel({ id, onChanged }: { id: number; onChanged: (
     {detail.summary ? <section aria-label="Resumen">
       <h3>Resumen {by && <small className="muted">· {by}</small>}</h3>
       <p>{detail.summary.summary}</p>
+      {!!detail.summary.topics?.length && <details><summary>Resumen extendido ({detail.summary.topics.length} {detail.summary.topics.length === 1 ? 'tema' : 'temas'})</summary>
+        {detail.summary.topics.map((t, n) => <div key={n}><h4>{t.topic}</h4><p>{t.detail}</p></div>)}
+      </details>}
       <h3>Decisiones</h3>
       {detail.summary.decisions.length ? <ul>{detail.summary.decisions.map((d, n) => <li key={n}>{d}</li>)}</ul> : <p className="muted">Ninguna.</p>}
       <h3>Tareas</h3>
@@ -108,6 +112,8 @@ export function MeetingDetailPanel({ id, onChanged }: { id: number; onChanged: (
     <details><summary>Transcripción ({detail.transcript.length} {detail.transcript.length === 1 ? 'frase' : 'frases'})</summary>
       <ol className="meeting-transcript">{detail.transcript.map((s, n) => <li key={n}><span className="muted">{Math.floor(s.start / 60)}:{String(Math.floor(s.start % 60)).padStart(2, '0')}</span> <strong>{s.speaker}:</strong> {s.text}</li>)}</ol>
     </details>
-    <SaveNote detail={detail} vaults={target.vaults} onSaved={() => { void load(); onChanged(); }}/>
+    <MeetingClassCard key={`${detail.kind}:${detail.client}:${detail.people.join(',')}`} detail={detail} onSaved={() => { void load(); onChanged(); }}/>
+    <MeetingExport detail={detail}/>
+    <SaveNote key={detail.draft?.title} detail={detail} vaults={target.vaults} onSaved={() => { void load(); onChanged(); }}/>
   </div>;
 }
