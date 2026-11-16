@@ -36,6 +36,7 @@ from . import calendar_store, calls, tts
 from .routes_alerts import alerts_router
 from .routes_jobs import jobs_router
 from .routes_voice import voice_router
+from .routes_agents import agents_router
 from .routes_meetings import meetings_router
 from .routes_music import music_router
 from .routes_apps import apps_router
@@ -206,4 +207,5 @@ def create_app(
     app.include_router(music_router(settings))
     app.include_router(apps_router(settings))
     app.include_router(doctor_router(settings, secrets))
+    app.include_router(agents_router(settings))
     return app
