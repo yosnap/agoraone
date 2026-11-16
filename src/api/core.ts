@@ -382,8 +382,11 @@ export const putAllowedApps = (allowed: string[]) => core<{ allowed: string[] }>
 export const openApp = (id: string, confirmed = false) => core<{ done: string }>('/apps/open', { id, confirmed });
 
 /** «Oye Watson» (1.5): off by default; the desktop app starts its on-device listener while it is on. */
-export const getWake = () => core<{ enabled: boolean }>('/wake/settings');
-export const putWake = (enabled: boolean) => core<{ enabled: boolean }>('/wake/settings', { enabled }, 'PUT');
+/** How the desktop app's «Oye Watson» listener is doing; null when no desktop app has said anything. */
+export type WakeState = 'off' | 'starting' | 'listening' | 'no_speech_permission' | 'no_mic_permission' | 'no_offline' | 'mic_failed' | 'missing' | 'stopped';
+export type Wake = { enabled: boolean; state: WakeState | null; attempt: number };
+export const getWake = () => core<Wake>('/wake/settings');
+export const putWake = (enabled: boolean) => core<Wake>('/wake/settings', { enabled }, 'PUT');
 
 /** The user's own music (1.5): folders, search, a track to play (fetched with the CSRF header, played from
  * memory) and a YouTube search opened in the browser. */

@@ -86,6 +86,10 @@ nunca.
   - Mientras esté activo, el micrófono queda abierto y macOS enseña su punto naranja.
   - El auxiliar lleva dentro su Info.plist con los motivos de los permisos de micrófono y de reconocimiento
     de voz.
+  - Ajustes › Voz dice si está escuchando o por qué no arranca, con el arreglo: falta el permiso de
+    reconocimiento de voz o de micrófono, este Mac no reconoce el español sin internet (se descarga activando
+    el Dictado en español) o el micrófono no se abre. Tras un fallo la app no lo relanza sola, para que macOS
+    no pida permisos en bucle: se vuelve a intentar con «Reintentar» o al encenderlo otra vez.
 
 ## Rutas del núcleo
 
@@ -93,7 +97,8 @@ nunca.
 |---|---|
 | `GET /music/status`, `POST /music/control`, `POST /music/play` | lo que suena, los controles y «pon…» |
 | `GET /apps`, `PUT /apps/allowed`, `POST /apps/open` | apps instaladas, las permitidas y abrir una (409 si hace falta confirmar) |
-| `GET/PUT /wake/settings` | «Oye Watson» encendido o apagado |
+| `GET/PUT /wake/settings` | «Oye Watson» encendido o apagado, y el estado del oyente |
+| `POST /internal/wake/status` | La app de escritorio cuenta cómo va el oyente (el navegador no llega a `/internal`) |
 | `GET /music/library`, `PUT /music/library/folders`, `POST /music/library/choose`, `GET /music/library/{id}/file` | biblioteca: carpetas, búsqueda y archivo |
 | `POST /music/youtube` | abre una búsqueda de YouTube en el navegador |
 
