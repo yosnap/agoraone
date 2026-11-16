@@ -32,7 +32,7 @@ from .routes_mail_send import mail_send_router
 from .mail_summarizer import SummaryHealth, summary_worker
 from .routes_inbox import inbox_router
 from .routes_fiscal import fiscal_router
-from . import calendar_store, calls
+from . import calendar_store, calls, tts
 from .routes_alerts import alerts_router
 from .routes_jobs import jobs_router
 from .routes_voice import voice_router
@@ -116,6 +116,8 @@ def create_app(
             threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: summary_worker(settings, extract_engines, own, summary_health), stop), daemon=True).start()
             # Clients and servers from Central, read-only, every half hour (user's decision, 14/11/2026).
             threading.Thread(target=modules.gated, args=("trabajos", database_now, lambda own: central_worker(settings, own, central_health), stop), daemon=True).start()
+            # Watson's voice: VoiceStudio opened in the background if it is closed (user's request, 16/11/2026).
+            threading.Thread(target=tts.open_at_start, args=(database_now,), daemon=True).start()
         try:
             yield
         finally:
