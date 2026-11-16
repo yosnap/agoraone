@@ -124,7 +124,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary, onOpen 
   return <section className={`brain${graphWanted ? '' : ' centre-panel'}`} aria-labelledby="brain-title">
     <div className={`brain-stage${graphWanted ? '' : ' panel'}`}>
       <div className="brain-view-switch" role="group" aria-label="Qué ver en el centro">
-        <button type="button" aria-pressed={!graphWanted} onClick={() => { setCentre('panel'); if (focus.length) onFocus([]); setQuery(''); }}>Panel</button>
+        <button type="button" aria-pressed={!graphWanted} onClick={() => { setCentre('panel'); if (focus.length) onFocus([]); setQuery(''); setPicked(null); setPickedArea(null); setFromArea(false); }}>Panel</button>
         <button type="button" aria-pressed={graphWanted} onClick={() => setCentre('grafo')}>Grafo</button>
       </div>
       {!graphWanted ? <HomeBlocks discreet={discreet} onOpen={onOpen}/>

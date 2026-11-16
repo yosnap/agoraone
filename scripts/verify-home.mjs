@@ -12,9 +12,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   page.on('request', r => { // Watson's own claim of mail announcements is not the panel's.
     if (r.method() !== 'GET' && !r.url().endsWith('/api/session') && !r.url().endsWith('/mail/inbox/announce')) writes.push(`${r.method()} ${new URL(r.url()).pathname}`); });
   await page.goto(appUrl(5173, 'cerebro'));
-  await page.getByRole('region', { name: 'Panel de inicio' }).or(page.locator('.home')).first().waitFor({ timeout: 30_000 });
+  await page.getByRole('region', { name: 'Panel de inicio' }).waitFor({ timeout: 30_000 });
   await page.waitForFunction(() => !document.querySelector('.home-empty')?.textContent?.includes('Leyendo') || document.querySelectorAll('.home-block').length > 0, null, { timeout: 30_000 });
-  await page.waitForTimeout(4000);
+  await page.waitForFunction(() => ![...document.querySelectorAll('.home-empty')].some(p => p.textContent === 'Leyendo…'), null, { timeout: 30_000 });
   const blocks = await page.locator('.home-block').evaluateAll(all => all.map(b => `${b.querySelector('h3')?.childNodes[0]?.textContent}: ${b.querySelector('.home-count')?.textContent ?? (b.querySelector('.home-empty')?.textContent?.startsWith('Leyendo') ? 'leyendo' : '0')}`));
   console.log(`${viewport.width}px · ${blocks.join(' | ')}`);
   if (shots) await page.screenshot({ path: `${shots}/home-${viewport.width}.png` });

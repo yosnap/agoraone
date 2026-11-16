@@ -13,8 +13,9 @@ test('el correo más reciente primero y, en modo discreto, solo lo normal', () =
 test('facturas por añadir y archivados que aún piden algo', () => {
   assert.equal(invoicesToFile([mail(1, { kind: 'invoice' }), mail(2)], [], false).mails.length, 1);
   const now = Date.parse('2026-11-16T00:00:00Z');
-  const done = [mail(5, { details: { asks: ['Enviar el contrato'] } }), mail(4), mail(1, { sentAt: '2026-10-01T00:00:00Z', details: { dates: ['1/10'] } })];
+  const done = [mail(5, { details: { asks: ['Enviar el contrato'] } }), mail(4), mail(1, { sentAt: '2026-10-01T00:00:00Z', details: { dates: ['2026-10-01'] } })];
   assert.deepEqual(doneButOpen(done, false, now).map((m: { id: number }) => m.id), [5], 'solo las dos últimas semanas y con peticiones o plazos');
+  assert.deepEqual(doneButOpen([mail(4, { details: { dates: ['2026-11-15'] } }), mail(3, { details: { dates: ['2026-11-20'] } })], false, now).map((m: { id: number }) => m.id), [3], 'un plazo vencido ya no cuenta');
 });
 
 test('agenda por venir, servidores caídos primero y avisos del sistema', () => {
@@ -24,7 +25,11 @@ test('agenda por venir, servidores caídos primero y avisos del sistema', () => 
   assert.deepEqual(next.map(e => [e.id, e.soon]), [['a', true], ['b', false]]);
   const { servers, down } = serversByTrouble([{ name: 'web', status: 'green', provider: null, projects: [] }, { name: 'db', status: 'red', provider: null, projects: [] }]);
   assert.equal(servers[0].name, 'db'); assert.equal(down, 1);
-  const notes = systemNotes([{ key: 'k', kind: 'call', title: 'Llamada perdida', body: 'Ana', at: '' }, { key: 's', kind: 'summary', title: 'Resumen', body: '', at: '' }],
-    ['Sin permiso de calendario', null], [{ id: 'w', name: 'Whisper', state: 'missing', modules: [], detail: null, how: null as never }]);
-  assert.deepEqual(notes.map(n => n.text), ['Sin permiso de calendario', 'Falta Whisper', 'Llamada perdida']);
+  const alerts = [{ key: 'k', kind: 'call' as const, title: 'Llamada perdida de Ana', body: 'Ana', at: '' }, { key: 'm', kind: 'meeting' as const, title: 'Reunión con X', body: '', at: '' },
+    { key: 's', kind: 'summary' as const, title: 'Resumen', body: '', at: '' }];
+  const pieces = [{ id: 'w', name: 'Whisper', state: 'missing' as const, modules: ['Voz', 'Reuniones'], detail: null, how: null as never }];
+  const all = () => true;
+  assert.deepEqual(systemNotes(alerts, ['Sin permiso de calendario', null], pieces, all, false).map(n => n.text), ['Sin permiso de calendario', 'Falta Whisper', 'Llamada perdida de Ana', 'Reunión con X']);
+  const noAgendaNoVoice = (m: string) => !['agenda', 'voz', 'reuniones'].includes(m);
+  assert.deepEqual(systemNotes(alerts, [], pieces, noAgendaNoVoice, true).map(n => [n.text, n.detail]), [['Llamada perdida', undefined]], 'módulos apagados fuera y, en discreto, solo el tipo');
 });

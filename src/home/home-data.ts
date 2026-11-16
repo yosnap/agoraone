@@ -1,4 +1,4 @@
-import type { AlertItem, CalendarEvent, CentralServer, DoctorPiece, InboxItem, Receipt } from '../api/core';
+import type { AlertItem, CalendarEvent, CentralServer, DoctorPiece, InboxItem, ModuleName, Receipt } from '../api/core';
 
 /** What the home blocks show, derived from what the core already reads (no new data, nothing invented). Pure, so
  * the rules are tested apart from the screen. */
@@ -16,11 +16,13 @@ export function invoicesToFile(pending: InboxItem[], receipts: Receipt[], discre
   return { mails: pending.filter(shownLevel(discreet)).filter(item => item.kind === 'invoice' || item.proposal === 'archive_invoice'), receipts };
 }
 
-/** Mails already marked done in the last two weeks that still carry requests or deadlines: they may need doing. */
+/** Mails received in the last two weeks and already marked done that still carry requests, or deadlines that
+ * have not passed (dates come as YYYY-MM-DD): they may still need doing. */
+export const openDates = (item: InboxItem, now = Date.now()) => (item.details.dates ?? []).filter(date => Date.parse(`${date}T23:59:59`) >= now);
 export function doneButOpen(done: InboxItem[], discreet: boolean, now = Date.now()): InboxItem[] {
   return done.filter(shownLevel(discreet))
     .filter(item => now - new Date(item.sentAt).getTime() <= 14 * DAY)
-    .filter(item => (item.details.asks?.length ?? 0) > 0 || (item.details.dates?.length ?? 0) > 0)
+    .filter(item => (item.details.asks?.length ?? 0) > 0 || openDates(item, now).length > 0)
     .sort((a, b) => b.sentAt.localeCompare(a.sentAt)).slice(0, 6);
 }
 
@@ -39,11 +41,21 @@ export function serversByTrouble(servers: CentralServer[]): { servers: CentralSe
 }
 
 export type SystemNote = { key: string; text: string; detail?: string; tone: 'warn' | 'info' };
-/** The system's messages: reminders due now, what could not be read and the pieces that are missing. */
-export function systemNotes(alerts: AlertItem[], problems: (string | null | undefined)[], pieces: DoctorPiece[]): SystemNote[] {
+const KIND_LABEL: Record<AlertItem['kind'], string> = { call: 'Llamada perdida', meeting: 'Reunión próxima', commitment: 'Plazo de un correo', summary: 'Tu día' };
+// The doctor names the modules each piece serves in words; Watson and the brain are always on.
+const MODULE_BY_NAME: Record<string, ModuleName> = { Correo: 'correo', Agenda: 'agenda', Fiscal: 'fiscal', Trabajos: 'trabajos', Reuniones: 'reuniones',
+  Voz: 'voz', 'Música': 'musica', 'Oficina 3D': 'oficina', Conectores: 'conectores' };
+/** The system's messages: what could not be read, the pieces missing for a module that is on, and the reminders due
+ * now (meetings only with the agenda on, mail deadlines only with mail on). In discreet mode a reminder says only
+ * what kind it is: calls, meetings and mail carry their own levels, often «solo en este Mac». */
+export function systemNotes(alerts: AlertItem[], problems: (string | null | undefined)[], pieces: DoctorPiece[], on: (module: ModuleName) => boolean, discreet: boolean): SystemNote[] {
+  const serves = (piece: DoctorPiece) => !piece.modules.length || piece.modules.some(name => !MODULE_BY_NAME[name] || on(MODULE_BY_NAME[name]));
+  const wanted = (alert: AlertItem) => alert.kind === 'call' || (alert.kind === 'meeting' && on('agenda')) || (alert.kind === 'commitment' && on('correo'));
   return [
     ...problems.filter((problem): problem is string => !!problem).map((problem, index) => ({ key: `p${index}`, text: problem, tone: 'warn' as const })),
-    ...pieces.filter(piece => piece.state === 'missing').map(piece => ({ key: `d-${piece.id}`, text: `Falta ${piece.name}`, detail: piece.detail ?? undefined, tone: 'warn' as const })),
-    ...alerts.filter(alert => alert.kind !== 'summary').map(alert => ({ key: alert.key, text: alert.title, detail: alert.body, tone: 'info' as const })),
+    ...pieces.filter(piece => piece.state === 'missing' && serves(piece)).map(piece => ({ key: `d-${piece.id}`, text: `Falta ${piece.name}`, detail: piece.detail ?? undefined, tone: 'warn' as const })),
+    ...alerts.filter(alert => alert.kind !== 'summary' && wanted(alert)).map(alert => discreet
+      ? { key: alert.key, text: KIND_LABEL[alert.kind], tone: 'info' as const }
+      : { key: alert.key, text: alert.title, detail: alert.body, tone: 'info' as const }),
   ];
 }
