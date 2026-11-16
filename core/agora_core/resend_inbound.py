@@ -18,6 +18,7 @@ UIDVALIDITY = 1
 PAGE = 100
 PAUSE = 0.6  # Resend allows a couple of requests per second
 TIMEOUT = 30
+BUDGET = 40.0  # seconds of one reading: «Leer ahora» answers within the backend's time limit
 
 
 class InboundError(RuntimeError):
@@ -45,36 +46,51 @@ def _get(client: httpx.Client, path: str, key: str, params: dict | None = None) 
     if answer.status_code >= 400:
         raise InboundError("error", f"Resend respondió con un error ({answer.status_code}{': ' + said if said else ''}).")
     try:
-        return answer.json()
+        data = answer.json()
     except ValueError as error:
         raise InboundError("error", "Resend devolvió una respuesta que no se entiende.") from error
+    if not isinstance(data, dict):
+        raise InboundError("error", "Resend devolvió una respuesta que no se entiende.")
+    return data
 
 
-def _download(client: httpx.Client, received: dict, limit: int) -> bytes | None:
-    """The original message, from the signed link Resend gives (without the API key)."""
+def _download(client: httpx.Client, received: dict, limit: int) -> tuple[bytes, bool] | None:
+    """The original message and whether it had to be cut at `limit`, from the signed https link Resend gives
+    (without the API key, and following no redirect). None when it cannot be had now."""
     link = ((received.get("raw") or {}).get("download_url")) or ""
     if urlparse(link).scheme != "https":
         return None
     try:
-        with client.stream("GET", link, timeout=TIMEOUT, follow_redirects=True) as answer:
+        with client.stream("GET", link, timeout=TIMEOUT, follow_redirects=False) as answer:
             if answer.status_code != 200:
                 return None
-            data = b""
+            data = bytearray()
             for piece in answer.iter_bytes():
                 data += piece
                 if len(data) > limit:
-                    return data[:limit]
-            return data
+                    return bytes(data[:limit]), True
+            return bytes(data), False
     except httpx.HTTPError:
         return None
 
 
+def _addressed_to(item: dict, address: str) -> bool:
+    """Resend lists everything its team received, on every domain: only what was sent to this account's address."""
+    wanted = address.casefold()
+    for field in ("to", "cc", "bcc"):
+        for value in item.get(field) or []:
+            if wanted in str(value).casefold():
+                return True
+    return False
+
+
 def _new_ids(connection: sqlite3.Connection, account: sqlite3.Row, client: httpx.Client, key: str, batch: int) -> list[str]:
-    """Received emails not kept yet and within the account's age limit, oldest first, at most `batch`."""
+    """Received emails for this address not kept yet and within the account's age limit, oldest first, at most
+    `batch`. The list comes newest first; it stops at the first one already kept or too old (at most 2.000 listed)."""
     known = {r["resend_id"] for r in connection.execute("SELECT resend_id FROM resend_message WHERE account_id = ?", (account["id"],))}
     oldest = datetime.now(UTC) - timedelta(days=account["max_age_days"])
     found, after = [], None
-    for _ in range(20):  # at most 2.000 listed per reading
+    for _ in range(20):
         page = _get(client, "/emails/receiving", key, {"limit": PAGE, **({"after": after} if after else {})})
         items = [i for i in page.get("data") or [] if isinstance(i, dict) and i.get("id")]
         stop = False
@@ -88,7 +104,8 @@ def _new_ids(connection: sqlite3.Connection, account: sqlite3.Row, client: httpx
             if item["id"] in known or created < oldest:
                 stop = True
                 break
-            found.append(item["id"])
+            if _addressed_to(item, account["address"]):
+                found.append(item["id"])
         if stop or not page.get("has_more") or not items:
             break
         after = items[-1]["id"]
@@ -96,21 +113,31 @@ def _new_ids(connection: sqlite3.Connection, account: sqlite3.Row, client: httpx
     return list(reversed(found))[:batch]
 
 
-def sync(connection: sqlite3.Connection, account: sqlite3.Row, key: str, store, limit: int, batch: int, client: httpx.Client | None = None) -> int:
-    """Keeps the new received emails of a Resend account; returns how many. Raises InboundError with the reason."""
+def sync(connection: sqlite3.Connection, account: sqlite3.Row, key: str, store, limit: int, batch: int,
+         client: httpx.Client | None = None, seconds: float = BUDGET) -> int:
+    """Keeps the new received emails of a Resend account, within `seconds` (the rest comes in the next reading);
+    returns how many. Raises InboundError with the reason. An email whose original cannot be downloaded now is
+    not kept (no empty entry): it is tried again next time."""
     own = client is None
     client = client or httpx.Client()
+    began = time.monotonic()
     try:
         added = 0
         for resend_id in _new_ids(connection, account, client, key, batch):
+            if time.monotonic() - began > seconds:
+                break
             time.sleep(PAUSE)
             received = _get(client, f"/emails/receiving/{resend_id}", key)
-            raw = _download(client, received, limit)
+            got = _download(client, received, limit)
+            if got is None:
+                raise InboundError("unreachable", "Resend no dio el original de un correo recibido: se volverá a intentar en la próxima lectura.")
+            raw, cut = got
             with transaction(connection):
                 uid = (connection.execute("SELECT max(uid) FROM resend_message WHERE account_id = ?", (account["id"],)).fetchone()[0] or 0) + 1
-                connection.execute("INSERT OR IGNORE INTO resend_message (account_id, resend_id, uid) VALUES (?, ?, ?)", (account["id"], resend_id, uid))
-                store(connection, account["id"], UIDVALIDITY, uid, raw, len(raw or b""), FOLDER)
-            added += 1
+                kept = connection.execute("INSERT OR IGNORE INTO resend_message (account_id, resend_id, uid) VALUES (?, ?, ?)", (account["id"], resend_id, uid)).rowcount
+                if kept:  # a too large original keeps only what the parser can read, marked as truncated
+                    store(connection, account["id"], UIDVALIDITY, uid, raw, limit + 1 if cut else len(raw), FOLDER)
+            added += kept
         return added
     finally:
         if own:
@@ -125,10 +152,12 @@ def fetch_raw(connection: sqlite3.Connection, account_id: int, uid: int, key: st
     own = client is None
     client = client or httpx.Client()
     try:
-        raw = _download(client, _get(client, f"/emails/receiving/{row['resend_id']}", key), limit)
+        got = _download(client, _get(client, f"/emails/receiving/{row['resend_id']}", key), limit)
     finally:
         if own:
             client.close()
-    if raw is None:
+    if got is None:
         raise InboundError("error", "Resend no devolvió el original de ese correo.")
-    return raw
+    if got[1]:
+        raise InboundError("error", "Ese correo es demasiado grande para abrir sus adjuntos desde AgoraOne.")
+    return got[0]

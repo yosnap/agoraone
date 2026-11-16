@@ -22,6 +22,7 @@ from .mail_parse import parse
 FOLDER = "INBOX"
 BATCH = 200
 MANUAL_BATCH = 40  # «Leer ahora» answers within the backend's time limit; the rest comes in the background
+RESEND_BATCH = 25  # Resend asks for pauses between requests: fewer per reading
 # A first read of a large mailbox answers SEARCH with one very long line; imaplib's default cap is 1 MB.
 imaplib._MAXLINE = 20_000_000
 MAX_MESSAGE = 15 * 1024 * 1024
@@ -175,7 +176,10 @@ def update_account(connection: sqlite3.Connection, account_id: int, changes: dic
         _scope_exists(connection, changes["scopeId"])
     if changes.get("confidentiality", "normal") not in LEVELS:
         raise MailError("Nivel de confidencialidad no válido.")
-    send_only = connection.execute("SELECT kind FROM mail_account WHERE id = ?", (account_id,)).fetchone()["kind"] == "send"
+    current = connection.execute("SELECT kind, smtp_host FROM mail_account WHERE id = ?", (account_id,)).fetchone()
+    send_only = current["kind"] == "send"
+    if changes.get("inbound") and current["smtp_host"] != "smtp.resend.com":
+        raise MailError("Solo las cuentas de Resend leen lo recibido por su API.")
     if send_only and changes.get("smtpHost", "") is None:
         raise MailError("Falta el servidor SMTP.")
     values = {}
@@ -308,10 +312,18 @@ def _sync_resend(connection: sqlite3.Connection, account: sqlite3.Row, key: str 
         _status(connection, account["id"], "auth", "Falta la clave de API de Resend.")
         return {"status": "auth", "added": 0}
     try:
-        added = resend_inbound.sync(connection, account, key, _store, MAX_MESSAGE, batch)
+        added = resend_inbound.sync(connection, account, key, _store, MAX_MESSAGE, min(batch, RESEND_BATCH))
     except resend_inbound.InboundError as error:
+        if error.status == "auth" and "Full access" in str(error):
+            # A sending key: sending still works, so reading is turned off and said, instead of a red account.
+            connection.execute("UPDATE mail_account SET inbound = 0, last_error = ? WHERE id = ?",
+                               (f"{error} Se ha desmarcado «Leer también lo que recibes».", account["id"]))
+            return {"status": "auth", "added": 0}
         _status(connection, account["id"], error.status, str(error))
         return {"status": error.status, "added": 0}
+    except Exception as error:  # noqa: BLE001 - recorded on the account, never raised
+        _status(connection, account["id"], "error", f"Error inesperado al leer Resend ({type(error).__name__}).")
+        return {"status": "error", "added": 0}
     _status(connection, account["id"], "ok", None)
     return {"status": "ok", "added": added}
 
