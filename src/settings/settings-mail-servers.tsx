@@ -28,10 +28,10 @@ export function MailServersForm({ account, busy, onSave }: {
       </>}
       <label className="field">Servidor SMTP<input value={form.smtpHost} onChange={event => setForm({ ...form, smtpHost: event.target.value })} placeholder={mailbox ? 'Para enviar (opcional)' : ''}/></label>
       <label className="field">Puerto SMTP<input type="number" min={1} max={65535} value={form.smtpPort} onChange={event => setForm({ ...form, smtpPort: event.target.value })}/></label>
-    </div>
-    <div className="actions">
+      <div className="actions mail-servers-actions">
       <button type="button" className="button" disabled={!changed || busy || !form.username.trim() || (mailbox ? !form.imapHost.trim() : !form.smtpHost.trim())} onClick={save}>Guardar</button>
       {changed && <button type="button" className="button" onClick={() => setForm(start)}>Deshacer</button>}
+      </div>
     </div>
   </details>;
 }
