@@ -17,6 +17,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await rail.waitFor();
   assert.equal(await rail.getByRole('button', { name: 'Cerebro' }).getAttribute('aria-current'), 'page');
   await page.locator('.brain-stats').waitFor({ timeout: 60_000 });
+  // The centre opens on the home panel; the graph is one click away.
+  await page.getByRole('button', { name: 'Grafo' }).click();
   const graph = graphs.at(-1);
   assert.ok(graph?.nodes.length, 'el grafo trae notas reales');
   const links = graph.edges.filter(edge => edge.kind === 'link').length, near = graph.edges.length - links;
