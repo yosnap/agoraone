@@ -81,7 +81,7 @@ def music_router(settings: Settings) -> APIRouter:
             return JSONResponse({"error": str(error)}, status_code=422)
 
     @router.post("/music/youtube")
-    async def youtube(body: Query):
+    async def youtube_in_browser(body: Query):  # not «youtube»: that name is the module used just above
         return await run(lambda: {"done": music_library.youtube(body.query)})
 
     @router.get("/music/status")

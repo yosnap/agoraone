@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { trackUrl, type LibraryTrack } from '../api/core';
-import { stopYouTube } from './youtube-player';
+import { stopYouTube, youtubeActive } from './youtube-player';
 
 /** AgoraOne's own player for the user's music (1.5): one for the whole app, so it keeps playing across
  * sections. A queue (the search that started it), play/pause, next and previous, and its progress. */
@@ -32,6 +32,7 @@ async function go(index: number) {
   set({ track, error: '', position: 0, duration: 0 });
   try {
     const made = await trackUrl(track.id);
+    if (youtubeActive()) { URL.revokeObjectURL(made); return; }  // YouTube was asked for meanwhile: it wins
     if (url) URL.revokeObjectURL(url);
     url = made;
     const player = element();

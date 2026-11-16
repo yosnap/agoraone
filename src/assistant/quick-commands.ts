@@ -1,6 +1,6 @@
 import { controlMusic, getApps, getLibrary, getMusic, openApp, playMusic, searchYouTube, type MusicAction } from '../api/core';
 import { localActive, localControl, playLocal } from '../brain/local-player';
-import { playYouTube, stopYouTube, youtubeActive, youtubeControl } from '../brain/youtube-player';
+import { askTicket, playYouTube, stopYouTube, youtubeActive, youtubeControl } from '../brain/youtube-player';
 
 /** Quick commands (1.5): what Watson does at once, without a model, when the whole message is one of these.
  * Anything else goes to the model as usual. Words are matched in Spanish, with or without accents. */
@@ -47,10 +47,12 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
       // The original words, not the accent-free ones, are what the player searches.
       const query = text.replace(/^\s*(pon(me)?|reproduce|quiero escuchar|toca)\s+/i, '').replace(/\s+en\s+(spotify|m[uú]sica|apple music|youtube|mi biblioteca|la biblioteca)\s*[.!?]*$/i, '').trim();
       if (where === 'youtube') {
+        const mine = askTicket();
         const { videos } = await searchYouTube(query);
+        const playing = (await getMusic().catch(() => null))?.players[0];
+        if (!playYouTube(videos, query, mine)) return { reply: 'Lo dejo: me has pedido otra cosa mientras buscaba.', failed: false };
         if (localActive()) localControl('pause');
-        if (now?.state === 'playing' && (now.player === 'music' || now.player === 'spotify')) await controlMusic(now.player, 'pause').catch(() => undefined);
-        playYouTube(videos, query);
+        if (playing?.state === 'playing' && (playing.player === 'music' || playing.player === 'spotify')) await controlMusic(playing.player, 'pause').catch(() => undefined);
         return { reply: `Pongo «${videos[0].title}» en YouTube, aquí en AgoraOne.`, failed: false };
       }
       // Unless a player is named, the user's own library first, then the player that is open, then Music.

@@ -64,10 +64,13 @@ def search(query: str) -> list[dict]:
     if not query:
         raise YouTubeError("Di qué quieres escuchar en YouTube.")
     try:
-        answer = httpx.get(SEARCH, params={"search_query": query}, timeout=15, follow_redirects=True,
+        # No redirects: only youtube.com's own results page is read (a consent page elsewhere is not followed).
+        answer = httpx.get(SEARCH, params={"search_query": query}, timeout=15, follow_redirects=False,
                            headers={"User-Agent": AGENT, "Accept-Language": "es-ES,es;q=0.9"})
     except httpx.HTTPError as error:
         raise YouTubeError("YouTube no responde. ¿Hay conexión a internet?") from error
+    if 300 <= answer.status_code < 400:
+        raise YouTubeError("YouTube pide aceptar sus condiciones antes de buscar: ábrelo una vez en el navegador.")
     if answer.status_code != 200:
         raise YouTubeError("YouTube no deja buscar ahora.")
     found = parse(answer.text)

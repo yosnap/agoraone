@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { controlMusic, getLibrary, getMusic, playMusic, searchYouTube, type MusicAction, type MusicState } from '../api/core';
 import { ModernSelect } from '../ui/modern-select';
 import { localControl, playLocal, useLocalPlayer } from './local-player';
-import { playYouTube, stopYouTube, useYouTube, youtubeControl } from './youtube-player';
+import { askTicket, playYouTube, stopYouTube, useYouTube, youtubeControl } from './youtube-player';
 
 const REFRESH = 3000;
 const clock = (seconds: number | null | undefined) => seconds == null ? '–:––' : `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
@@ -52,10 +52,12 @@ export function MusicCard() {
     try {
       const where = target ?? 'music';
       if (where === 'youtube') {
+        const mine = askTicket();
         const { videos } = await searchYouTube(wanted);
+        const playing = (await getMusic().catch(() => null))?.players[0];
+        if (!playYouTube(videos, wanted, mine)) return;  // something else was asked for meanwhile
         if (local.playing) localControl('pause');
-        if (outside?.state === 'playing' && (outside.player === 'music' || outside.player === 'spotify')) await controlMusic(outside.player, 'pause').catch(() => undefined);
-        playYouTube(videos, wanted);
+        if (playing?.state === 'playing' && (playing.player === 'music' || playing.player === 'spotify')) await controlMusic(playing.player, 'pause').catch(() => undefined);
         setMessage(`En YouTube: «${videos[0].title}».`);
       }
       else if (where === 'local') {
