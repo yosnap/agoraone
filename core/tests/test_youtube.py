@@ -26,6 +26,14 @@ def test_lee_solo_videos_validos():
     assert found[0] == {"id": "5g2hT4GmAGU", "title": "Despechá", "channel": "Canal", "length": "3:10"}
     assert youtube.parse("<html>sin datos</html>") == []
     assert len(youtube.parse(page([video(f"abcdefghi{n:02d}") for n in range(20)]))) == 10
+    escaped = json.dumps({"c": [{"videoRenderer": video("5g2hT4GmAGU")}]}).replace("{", "\\x7b").replace("}", "\\x7d")
+    assert youtube.parse(f"<script>var ytInitialData = '{escaped}';</script>")[0]["id"] == "5g2hT4GmAGU", "también la forma escapada"
+
+
+def test_una_pagina_sin_resultados_se_pide_otra_vez(monkeypatch):
+    answers = iter([httpx.Response(200, text="<html>sin datos</html>"), httpx.Response(200, text=page([video("5g2hT4GmAGU")]))])
+    monkeypatch.setattr(youtube.httpx, "get", lambda url, **k: next(answers))
+    assert youtube.search("lofi")[0]["id"] == "5g2hT4GmAGU"
 
 
 def test_busqueda(monkeypatch):

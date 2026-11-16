@@ -36,14 +36,28 @@ def _text(field) -> str:
     return "".join(str(run.get("text", "")) for run in field.get("runs", []) if isinstance(run, dict))
 
 
+def _initial_data(page: str):
+    """The page's data, in any of the forms YouTube serves it: an object, or a string with \\xNN escapes."""
+    match = re.search(r"(?:var ytInitialData|window\[\"ytInitialData\"\])\s*=\s*(\{.*?\});\s*</script>", page, re.S)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except json.JSONDecodeError:
+            pass
+    match = re.search(r"var ytInitialData\s*=\s*'((?:[^'\\]|\\.)*)';", page, re.S)
+    if match:
+        try:
+            text = re.sub(r"\\x([0-9A-Fa-f]{2})", lambda m: chr(int(m.group(1), 16)), match.group(1)).replace("\\'", "'")
+            return json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return None
+
+
 def parse(page: str) -> list[dict]:
     """The videos of a search page (no lives, no shorts without length), in YouTube's order."""
-    match = re.search(r"var ytInitialData = (\{.*?\});</script>", page, re.S)
-    if not match:
-        return []
-    try:
-        data = json.loads(match.group(1))
-    except json.JSONDecodeError:
+    data = _initial_data(page)
+    if data is None:
         return []
     found, seen = [], set()
     for video in _videos(data):
@@ -63,6 +77,15 @@ def search(query: str) -> list[dict]:
     query = " ".join((query or "").split())[:120]
     if not query:
         raise YouTubeError("Di qué quieres escuchar en YouTube.")
+    # Now and then YouTube answers a page without its results: one more try before saying nothing was found.
+    for _ in range(2):
+        found = parse(_page(query))
+        if found:
+            return found
+    raise YouTubeError(f"No encuentro «{query}» en YouTube.")
+
+
+def _page(query: str) -> str:
     try:
         # No redirects: only youtube.com's own results page is read (a consent page elsewhere is not followed).
         answer = httpx.get(SEARCH, params={"search_query": query}, timeout=15, follow_redirects=False,
@@ -73,7 +96,4 @@ def search(query: str) -> list[dict]:
         raise YouTubeError("YouTube pide aceptar sus condiciones antes de buscar: ábrelo una vez en el navegador.")
     if answer.status_code != 200:
         raise YouTubeError("YouTube no deja buscar ahora.")
-    found = parse(answer.text)
-    if not found:
-        raise YouTubeError(f"No encuentro «{query}» en YouTube.")
-    return found
+    return answer.text

@@ -46,7 +46,7 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
       const where = play![2];
       // The original words, not the accent-free ones, are what the player searches.
       const query = text.replace(/^\s*(pon(me)?|reproduce|quiero escuchar|toca)\s+/i, '').replace(/\s+en\s+(spotify|m[uú]sica|apple music|youtube|mi biblioteca|la biblioteca)\s*[.!?]*$/i, '').trim();
-      if (where === 'youtube') {
+      const onYouTube = async (): Promise<QuickResult> => {
         const mine = askTicket();
         const { videos } = await searchYouTube(query);
         const playing = (await getMusic().catch(() => null))?.players[0];
@@ -54,8 +54,10 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
         if (localActive()) localControl('pause');
         if (playing?.state === 'playing' && (playing.player === 'music' || playing.player === 'spotify')) await controlMusic(playing.player, 'pause').catch(() => undefined);
         return { reply: `Pongo «${videos[0].title}» en YouTube, aquí en AgoraOne.`, failed: false };
-      }
-      // Unless a player is named, the user's own library first, then the player that is open, then Music.
+      };
+      if (where === 'youtube') return await onYouTube();
+      // Unless a player is named, the user's own library first, then the player that is open, then Music, and
+      // YouTube when none of them has it (Music only searches the user's own Apple Music library).
       if (!where || where.includes('biblioteca')) {
         const found = await getLibrary(query).catch(() => null);
         if (found?.tracks.length) {
@@ -68,8 +70,13 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
       const wanted = where === 'spotify' ? 'spotify' : where ? 'music' : now && (now.player === 'spotify' || now.player === 'music') ? now.player : 'music';
       if (localActive()) localControl('pause');
       stopYouTube();
-      const done = await playMusic(wanted, query);
-      return { reply: done.done, failed: false };
+      try {
+        const done = await playMusic(wanted, query);
+        return { reply: done.done, failed: false };
+      } catch (failure) {
+        if (where) throw failure;
+        return await onYouTube();
+      }
     } catch (failure) {
       return { reply: failure instanceof Error ? failure.message : 'No se pudo hacer.', failed: true };
     }
