@@ -1,0 +1,40 @@
+/* «Agentes»: a card per agent with what it does now, and the last 24 h on the right. No side stripes: the
+   state shows with the full border, the avatar ring and the colour of its line. */
+.agents > * { max-width:1640px }
+.agents-bar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:0 0 14px }
+.agents-bar .button { margin-left:auto }
+.agents-busy { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.agents-alert { background:#f6d6d2; color:#8e2f24 }
+.agents .agents-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,420px); gap:20px; align-items:start; max-width:none }
+@media (max-width:1100px) { .agents .agents-layout { grid-template-columns:minmax(0,1fr) } }
+.agents-cards { display:grid; gap:12px; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); grid-auto-rows:1fr; min-width:0 }
+.agent-tile { display:flex; flex-direction:column; gap:10px; min-height:190px; height:100% }
+.agent-tile header { display:flex; gap:10px; align-items:center; min-width:0 }
+.agent-tile header > div { display:flex; flex-direction:column; min-width:0 }
+.agent-tile header strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.agent-tile header small { color:var(--c-5f7a71); overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.agents .agent-avatar { flex:none; width:36px; height:36px; border-radius:50%; display:grid; place-items:center; color:#fff; font:700 15px Manrope,sans-serif; box-shadow:0 0 0 3px var(--c-dfe3d6) }
+.agents .agent-avatar.watson { background:var(--deep); color:var(--deep-figure) }
+.agent-tile.state-connected .agent-avatar { box-shadow:0 0 0 3px var(--signal-live) }
+.agent-tile.state-approval, .agent-tile.state-answering, .agent-tile.state-tool, .agent-tile.state-job, .agent-tile.state-live { border-color:var(--signal-amber); box-shadow:0 0 0 2px var(--signal-amber-glow) }
+.agent-tile.state-approval header small, .agent-tile.state-answering header small, .agent-tile.state-tool header small, .agent-tile.state-job header small, .agent-tile.state-live header small { color:var(--c-996a25); font-weight:600 }
+.agent-tile.state-answering .agent-avatar, .agent-tile.state-tool .agent-avatar, .agent-tile.state-live .agent-avatar, .agent-tile.state-job .agent-avatar { box-shadow:0 0 0 3px var(--signal-amber) }
+@media (prefers-reduced-motion: no-preference) {
+  .agent-tile.state-answering .agent-avatar, .agent-tile.state-tool .agent-avatar, .agent-tile.state-live .agent-avatar { animation:agent-pulse 1.6s ease-in-out infinite }
+}
+@keyframes agent-pulse { 50% { box-shadow:0 0 0 6px var(--signal-amber-glow) } }
+.agent-facts { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:var(--c-4c6b62) }
+p.agent-facts { display:block }
+.agent-facts li { overflow-wrap:anywhere }
+.agent-tile .agent-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:auto }
+.agents-log { position:sticky; top:16px; display:flex; flex-direction:column; gap:8px; max-height:calc(100vh - 80px); overflow:auto }
+.agents .agent-log { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; font-size:12.5px }
+.agents .agent-log li { display:grid; grid-template-columns:62px minmax(0,1fr) auto; gap:8px; align-items:baseline; padding:3px 4px; border-radius:6px }
+.agents .agent-log li > span:nth-child(2) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.agents .agent-log small { font-size:11px; color:var(--c-6f8379); white-space:nowrap }
+.agents .agent-log li.fresh { background:var(--c-f3e6c4) }
+@media (prefers-reduced-motion: no-preference) { .agents .agent-log li.fresh { animation:agent-fresh 4s ease-out forwards } }
+@keyframes agent-fresh { to { background:transparent } }
+.agents .agent-outcome { font-size:10px; text-align:center; padding:1px 4px; border-radius:6px; background:var(--c-e6eadf); color:var(--c-355a50) }
+.agents .agent-outcome.hecho { background:var(--c-dcebdc); color:var(--c-24563a) }
+.agents .agent-outcome.falló, .agents .agent-outcome.rechazado { background:var(--c-f3e6c4); color:var(--c-7a5717) }

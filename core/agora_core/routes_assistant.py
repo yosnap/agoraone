@@ -104,6 +104,10 @@ def _logged(event: dict) -> tuple[str, str]:
     return str(event.get("tool") or "herramienta"), "{}"
 
 
+# Answers being written right now, for the «Agentes» section (only how many and since when).
+ANSWERING: dict = {"now": 0, "since": None}
+
+
 def _event(kind: str, data) -> str:
     return f"event: {kind}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -358,6 +362,8 @@ def assistant_router(
 
         async def answer():
             replied = False
+            ANSWERING["now"] += 1
+            ANSWERING["since"] = ANSWERING["since"] or now()
             try:
                 yield _event("stage", {"stage": "recuerda"})
                 # Every engine runs outside this Mac: only what the external audience may see.
@@ -427,6 +433,9 @@ def assistant_router(
                 print(f"AgoraOne núcleo: fallo al responder ({type(error).__name__}: {error}).", file=sys.stderr)
                 yield _event("error", {"error": "No se pudo completar la respuesta."})
             finally:
+                ANSWERING["now"] = max(0, ANSWERING["now"] - 1)
+                if not ANSWERING["now"]:
+                    ANSWERING["since"] = None
                 if not replied:
                     try:
                         await store(None, [], None, None)
