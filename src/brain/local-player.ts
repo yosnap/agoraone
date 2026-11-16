@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { trackUrl, type LibraryTrack } from '../api/core';
+import { stopYouTube } from './youtube-player';
 
 /** AgoraOne's own player for the user's music (1.5): one for the whole app, so it keeps playing across
  * sections. A queue (the search that started it), play/pause, next and previous, and its progress. */
@@ -40,7 +41,7 @@ async function go(index: number) {
 }
 
 /** Plays these tracks from the first (or the one given). */
-export function playLocal(tracks: LibraryTrack[], start = 0) { queue = tracks.slice(0, 200); void go(start); }
+export function playLocal(tracks: LibraryTrack[], start = 0) { stopYouTube(); queue = tracks.slice(0, 200); void go(start); }
 export const localActive = () => state.track !== null;
 export function localControl(action: 'toggle' | 'play' | 'pause' | 'next' | 'previous' | 'louder' | 'quieter') {
   const player = element();

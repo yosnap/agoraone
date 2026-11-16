@@ -66,3 +66,9 @@ body { background:var(--c-eef0e6) }
 .first-run-foot .button { font-size:15px; padding:10px 20px }
 .first-run-body .card { box-shadow:none; border:0; padding:0; background:transparent }
 .first-run-foot { display:flex; justify-content:flex-end; gap:8px; padding-top:8px }
+/* YouTube inside AgoraOne: a small player above everything while something plays, in every section. */
+.yt-mini { position:fixed; left:calc(84px + 16px); bottom:16px; z-index:30; width:256px; background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:12px; box-shadow:0 12px 30px var(--c-193f4033); padding:6px; display:flex; flex-direction:column; gap:6px }
+.yt-head { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--c-173d3c) }
+.yt-head strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.yt-mini iframe { width:100%; aspect-ratio:16 / 9; border:0; border-radius:8px; background:#000 }
+@media (max-width:850px) { .yt-mini { left:auto; right:12px; bottom:76px; width:200px } }

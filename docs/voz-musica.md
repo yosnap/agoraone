@@ -34,8 +34,12 @@ para pedir algo.
   - si no nombras dónde, busca primero en tu biblioteca, después en el reproductor que esté abierto y por
     último en Música;
   - «en Spotify», «en Música» o «en mi biblioteca» lo fuerzan;
-  - «en YouTube» abre la búsqueda en el navegador, sin incrustar ni descargar nada (en Windows, con
-    `os.startfile`, nunca a través de `cmd`).
+  - «en YouTube» (1.7) suena dentro de AgoraOne, en un reproductor pequeño que sigue en todas las secciones y solo
+    se maneja desde la app (tarjeta de música, Watson y su ✕). El núcleo busca en la página pública de YouTube, sin
+    cuenta ni clave (`core/agora_core/youtube.py`), y solo se queda con identificador, título, canal y duración. El
+    vídeo es el de YouTube sin cookies, manejado por mensajes (`src/brain/youtube-player.tsx`): el script de
+    YouTube nunca corre dentro de AgoraOne. Los vídeos que su dueño no deja incrustar (lo habitual en los de las
+    discográficas) se saltan; si no queda ninguno, se ofrece «Abrir en YouTube» en el navegador.
 - En la tarjeta de música, el desplegable elige la fuente.
 
 ## Órdenes rápidas, sin modelo
@@ -115,6 +119,7 @@ queda para más adelante: genera en segundo plano y necesita descargar antes su 
 | `GET/PUT /wake/settings` | «Oye Watson» encendido o apagado, y el estado del oyente |
 | `POST /internal/wake/status` | La app de escritorio cuenta cómo va el oyente (el navegador no llega a `/internal`) |
 | `GET /music/library`, `PUT /music/library/folders`, `POST /music/library/choose`, `GET /music/library/{id}/file` | biblioteca: carpetas, búsqueda y archivo |
+| `GET /music/youtube/search` | vídeos de YouTube para el reproductor de AgoraOne |
 | `POST /music/youtube` | abre una búsqueda de YouTube en el navegador |
 
 ## Pendiente

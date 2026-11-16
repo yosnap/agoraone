@@ -406,6 +406,9 @@ export const putWake = (enabled: boolean) => core<Wake>('/wake/settings', { enab
 /** The user's own music (1.5): folders, search, a track to play (fetched with the CSRF header, played from
  * memory) and a YouTube search opened in the browser. */
 export type LibraryTrack = { id: string; title: string; artist: string | null; album: string | null };
+/** YouTube videos for «pon … en YouTube», played inside AgoraOne (only the words asked for go to YouTube). */
+export type Video = { id: string; title: string; channel: string | null; length: string };
+export const searchYouTube = (query: string) => core<{ videos: Video[] }>(`/music/youtube/search?q=${encodeURIComponent(query)}`);
 export const getLibrary = (q = '') => core<{ folders: string[]; tracks: LibraryTrack[]; total: number }>(`/music/library?q=${encodeURIComponent(q)}`);
 export const putLibraryFolders = (folders: string[]) => core<{ folders: string[] }>('/music/library/folders', { folders }, 'PUT');
 export const chooseLibraryFolder = () => core<{ path: string | null }>('/music/library/choose', {});

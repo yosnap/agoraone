@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
-import { controlMusic, getLibrary, getMusic, openYouTube, playMusic, type MusicAction, type MusicState } from '../api/core';
+import { controlMusic, getLibrary, getMusic, playMusic, searchYouTube, type MusicAction, type MusicState } from '../api/core';
 import { ModernSelect } from '../ui/modern-select';
 import { localControl, playLocal, useLocalPlayer } from './local-player';
+import { playYouTube, stopYouTube, useYouTube, youtubeControl } from './youtube-player';
 
 const REFRESH = 3000;
 const clock = (seconds: number | null | undefined) => seconds == null ? '–:––' : `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
@@ -11,8 +12,8 @@ const targets: { value: Target; label: string }[] = [
 ];
 
 /** The music card at the brain's foot (1.5): what plays (the user's own library in AgoraOne's player, or Apple
- * Music or Spotify), its controls and «pon …» in the source the user picks. Players are only read when already
- * open; YouTube opens in the browser. */
+ * Music or Spotify, or YouTube in AgoraOne's own small player), its controls and «pon …» in the source the user
+ * picks. Players are only read when already open. */
 export function MusicCard() {
   const [state, setState] = useState<MusicState | null>(null);
   const [query, setQuery] = useState('');
@@ -20,6 +21,7 @@ export function MusicCard() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const local = useLocalPlayer();
+  const tube = useYouTube();
   const timer = useRef(0);
   const alive = useRef(false);
   const read = useCallback(() => {
@@ -38,6 +40,7 @@ export function MusicCard() {
   const outside = state?.players[0];
   const act = async (action: MusicAction) => {
     setError('');
+    if (tube.video) { youtubeControl(action); return; }
     if (local.track) { localControl(action); return; }
     if (!outside) return;
     try { setState(await controlMusic(outside.player, action)); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo.'); }
@@ -48,7 +51,13 @@ export function MusicCard() {
     setError(''); setMessage('');
     try {
       const where = target ?? 'music';
-      if (where === 'youtube') setMessage((await openYouTube(wanted)).done);
+      if (where === 'youtube') {
+        const { videos } = await searchYouTube(wanted);
+        if (local.playing) localControl('pause');
+        if (outside?.state === 'playing' && (outside.player === 'music' || outside.player === 'spotify')) await controlMusic(outside.player, 'pause').catch(() => undefined);
+        playYouTube(videos, wanted);
+        setMessage(`En YouTube: «${videos[0].title}».`);
+      }
       else if (where === 'local') {
         const found = await getLibrary(wanted);
         if (!found.folders.length) throw new Error('Elige primero tu carpeta de música en Ajustes › Voz.');
@@ -58,13 +67,16 @@ export function MusicCard() {
         setMessage(`Reproduciendo ${found.tracks.length === 1 ? '1 canción' : `${found.tracks.length} canciones`} de tu biblioteca.`);
       } else {
         if (local.playing) localControl('pause');
+        stopYouTube();
         const done = await playMusic(where, wanted);
         setMessage(done.done); setState(done);
       }
       setQuery('');
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo.'); }
   };
-  const showing = local.track
+  const showing = tube.video
+    ? { title: tube.video.title, artist: tube.video.channel, source: 'YouTube', playing: tube.playing, position: tube.position, duration: tube.duration }
+    : local.track
     ? { title: local.track.title, artist: local.track.artist, source: 'Tu biblioteca', playing: local.playing, position: local.position, duration: local.duration }
     : outside?.title ? { title: outside.title, artist: outside.artist ?? null, source: outside.name, playing: outside.state === 'playing', position: outside.position ?? null, duration: outside.duration ?? null }
     : null;
