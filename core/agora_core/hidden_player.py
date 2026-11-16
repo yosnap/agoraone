@@ -55,6 +55,8 @@ class Relay:
         """The orders after `seq`, waiting up to `wait` seconds for one. A desktop app that starts (seq < 0) only
         learns where the count is: an old order is never played again."""
         self.seen = time.monotonic()
+        if seq > self.seq:  # the core started again (its count went back): follow it, without waiting
+            return {"seq": self.seq, "commands": []}
         if seq >= 0 and not self.after(seq):
             changed = self.changed
             try:

@@ -1,10 +1,12 @@
 //! YouTube in a hidden window (1.7): the videos whose owners do not allow the embed (most record labels) play in a
 //! window of this app that is never shown, with YouTube's own page. AgoraOne's screen leaves its orders in the core and
 //! this collects them by asking and waiting; how the video goes is read from the window every second and handed to
-//! AgoraOne's window as an event. The YouTube window has no native commands (the app grants none to any window),
-//! keeps nothing between launches (private data store), only goes to YouTube's pages and opens no other window.
+//! AgoraOne's window as an event. The YouTube window has no native commands (the app grants none to any window), is
+//! refused the microphone, camera and every other permission, keeps nothing between launches (private data store),
+//! only goes to YouTube's pages and opens no other window. Stopping leaves it on an empty page (never destroyed while
+//! orders may follow), and it goes blank too whenever AgoraOne's window loads again, so it never plays unseen.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::webview::NewWindowResponse;
@@ -12,11 +14,26 @@ use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBui
 
 const LABEL: &str = "youtube";
 const SCRIPT: &str = include_str!("youtube-window.js");
+/// The last state handed over, so the same one is not sent every second; emptied with each new order.
+static LAST: Mutex<String> = Mutex::new(String::new());
 
-/// Only YouTube's own pages (and its cookie consent) load in the hidden window.
+/// Only YouTube's own pages (and its cookie consent) load in the hidden window, besides the empty page.
 fn youtube_page(url: &Url) -> bool {
-    url.scheme() == "https"
-        && matches!(url.host_str(), Some("www.youtube.com" | "youtube.com" | "m.youtube.com" | "consent.youtube.com"))
+    url.as_str() == "about:blank"
+        || url.scheme() == "https"
+            && matches!(url.host_str(), Some("www.youtube.com" | "youtube.com" | "m.youtube.com" | "consent.youtube.com"))
+}
+
+fn forget() {
+    LAST.lock().unwrap_or_else(|p| p.into_inner()).clear();
+}
+
+/// Silence: the hidden window goes to the empty page (AgoraOne's window loading again, or «stop»).
+pub fn silence(app: &AppHandle) {
+    forget();
+    if let (Some(window), Ok(blank)) = (app.get_webview_window(LABEL), Url::parse("about:blank")) {
+        let _ = window.navigate(blank);
+    }
 }
 
 fn valid_id(id: &str) -> bool {
@@ -56,6 +73,7 @@ fn open(app: &AppHandle, url: Url) -> tauri::Result<WebviewWindow> {
         .inner_size(960.0, 600.0)
         .initialization_script(SCRIPT)
         .on_navigation(youtube_page)
+        .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
         .on_new_window(|_, _| NewWindowResponse::Deny)
         .build()
 }
@@ -67,6 +85,7 @@ fn apply(app: &AppHandle, command: &serde_json::Value) {
         "play" => {
             let Some(id) = command.get("id").and_then(|i| i.as_str()).filter(|i| valid_id(i)) else { return };
             let Ok(url) = Url::parse(&format!("https://www.youtube.com/watch?v={id}")) else { return };
+            forget();
             let played = match window {
                 Some(window) => window.navigate(url).is_ok(),
                 None => open(app, url).is_ok(),
@@ -76,9 +95,7 @@ fn apply(app: &AppHandle, command: &serde_json::Value) {
             }
         }
         "stop" => {
-            if let Some(window) = window {
-                let _ = window.destroy();
-            }
+            silence(app);
             tell(app, &serde_json::json!({ "id": "", "state": "stopped", "t": 0, "d": 0, "title": "", "ad": false, "volume": 100 }));
         }
         "pause" | "resume" => {
@@ -122,16 +139,15 @@ pub fn youtube_loop(app: AppHandle, link: agora_server::core::CoreLink) {
             }
         }
     });
-    let last = Arc::new(Mutex::new(String::new()));
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
             let Some(window) = app.get_webview_window(LABEL) else { continue };
-            let (app, last) = (app.clone(), last.clone());
+            let app = app.clone();
             let _ = window.eval_with_callback("window.__agora ? window.__agora.state() : null", move |raw| {
                 let Some(state) = clean(&raw) else { return };
                 let text = state.to_string();
-                let mut previous = last.lock().unwrap_or_else(|p| p.into_inner());
+                let mut previous = LAST.lock().unwrap_or_else(|p| p.into_inner());
                 if *previous != text {
                     *previous = text;
                     tell(&app, &state);
@@ -149,6 +165,8 @@ mod tests {
     fn solo_paginas_de_youtube() {
         assert!(youtube_page(&Url::parse("https://www.youtube.com/watch?v=5g2hT4GmAGU").unwrap()));
         assert!(youtube_page(&Url::parse("https://consent.youtube.com/m?continue=x").unwrap()));
+        assert!(youtube_page(&Url::parse("about:blank").unwrap()));
+        assert!(!youtube_page(&Url::parse("about:srcdoc").unwrap()));
         assert!(!youtube_page(&Url::parse("http://www.youtube.com/").unwrap()));
         assert!(!youtube_page(&Url::parse("https://evil.example/youtube.com").unwrap()));
         assert!(!youtube_page(&Url::parse("http://127.0.0.1:4318/").unwrap()));

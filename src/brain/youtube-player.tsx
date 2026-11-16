@@ -25,11 +25,18 @@ export const askTicket = () => ++ticket;
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
 const send = (func: string, args: unknown[] = []) => frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), EMBED);
-const order = (command: HiddenCommand) => { void hiddenYouTube(command).catch(() => undefined); };
+// One after another, in the order given: «siguiente» twice never leaves the window on the wrong video.
+let orders: Promise<unknown> = Promise.resolve();
+const order = (command: HiddenCommand) => { orders = orders.then(() => hiddenYouTube(command)).catch(() => undefined); };
+// Only the desktop app's own window can hear the hidden window (a browser tab would steer it blind).
+const desktop = () => (window as { __agoraDesktop?: boolean }).__agoraDesktop === true;
 const BLOCKED = 'Ninguno de estos vídeos deja reproducirse fuera de YouTube: las discográficas suelen bloquearlo.';
 // The hidden window has this long to say the video plays before AgoraOne gives up on it.
 let started = '';
 let watchdog = 0;
+// While it plays the window reports every second; silence for this long means it stopped without saying so.
+let alive = 0;
+const SILENT = 12000;
 
 function go(index: number) {
   const video = queue[index];
@@ -53,7 +60,7 @@ function playHidden(video: Video) {
 function fail(error: string) {
   if (state.hidden) order({ action: 'stop' });
   frame = null;
-  window.clearTimeout(watchdog);
+  window.clearTimeout(watchdog); window.clearTimeout(alive);
   set({ video: null, playing: false, error, hidden: false, ad: false });
 }
 
@@ -62,8 +69,9 @@ function fail(error: string) {
 async function refused() {
   const mine = ticket;
   const video = state.video;
-  const there = await hiddenYouTubeAvailable().then(answer => answer.available, () => false);
-  if (mine !== ticket || state.video !== video || !video) return;
+  if (state.hidden || !video) return;  // already handed over (the embed can say it twice)
+  const there = desktop() && await hiddenYouTubeAvailable().then(answer => answer.available, () => false);
+  if (mine !== ticket || state.video !== video || state.hidden) return;
   if (there) { frame = null; set({ hidden: true }); playHidden(video); return; }
   if (at + 1 < queue.length) go(at + 1);
   else fail(BLOCKED);
@@ -81,7 +89,7 @@ export function playYouTube(videos: Video[], query = '', mine = ticket): boolean
 }
 export const youtubeActive = () => state.video !== null && !state.error;
 export function stopYouTube() {
-  ticket += 1; queue = []; at = -1; frame = null; window.clearTimeout(watchdog);
+  ticket += 1; queue = []; at = -1; frame = null; window.clearTimeout(watchdog); window.clearTimeout(alive);
   if (state.hidden) order({ action: 'stop' });
   set({ video: null, playing: false, position: 0, duration: 0, error: '', hidden: false, ad: false });
 }
@@ -109,10 +117,16 @@ type Hidden = { id: string; state: string; t: number; d: number; title: string; 
 if (typeof window !== 'undefined') window.addEventListener('agora:youtube', event => {
   const info = (event as CustomEvent<Hidden>).detail;
   if (!state.hidden || !state.video || !info || info.id !== state.video.id) return;
-  if (info.state === 'playing' || info.state === 'paused') started = info.id;
+  window.clearTimeout(alive);
+  if (info.state === 'playing') { const mine = ticket; alive = window.setTimeout(() => { if (mine === ticket && state.hidden) fail('YouTube ha dejado de responder.'); }, SILENT); }
+  if ((info.state === 'playing' || info.state === 'paused') && started !== info.id) {
+    started = info.id;
+    // A new page starts at YouTube's volume: the one chosen in AgoraOne carries on.
+    if (Math.abs(info.volume - state.volume) > 1) order({ action: 'volume', volume: state.volume });
+  }
   if (info.state === 'ended') { if (at + 1 < queue.length) go(at + 1); else stopYouTube(); return; }
   if (info.state === 'error') { if (at + 1 < queue.length) go(at + 1); else fail('YouTube no deja reproducir este vídeo.'); return; }
-  set({ playing: info.state === 'playing', ad: info.ad, volume: info.volume, ...(info.ad ? {} : { position: info.t, ...(info.d > 0 ? { duration: info.d } : {}) }) });
+  set({ playing: info.state === 'playing', ad: info.ad, ...(info.ad ? {} : { position: info.t, ...(info.d > 0 ? { duration: info.d } : {}) }) });
 });
 
 // What the player says: progress, state and errors. Only from YouTube's embed and only from our own frame.

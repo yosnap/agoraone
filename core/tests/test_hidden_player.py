@@ -37,6 +37,10 @@ def test_el_relevo_espera_y_no_repite():
         got = await waiting
         assert got["commands"] == [{"seq": 2, "action": "pause"}]
         assert (await relay.next(2, wait=0.01))["commands"] == []
+        restarted = hidden_player.Relay()
+        assert await asyncio.wait_for(restarted.next(57, wait=5), 1) == {"seq": 0, "commands": []}, "un núcleo nuevo no hace esperar"
+        restarted.push({"action": "pause"})
+        assert (await restarted.next(0, wait=0.01))["commands"] == [{"seq": 1, "action": "pause"}], "y su primera orden llega"
     asyncio.run(scenario())
 
 

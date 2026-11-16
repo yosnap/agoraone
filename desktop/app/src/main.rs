@@ -266,6 +266,14 @@ fn main() {
                 .title("AgoraOne")
                 .inner_size(1440.0, 900.0)
                 .min_inner_size(1024.0, 680.0)
+                // Only this window may hand videos to the hidden YouTube window (a browser tab cannot hear it).
+                .initialization_script("window.__agoraDesktop = true;")
+                // Loading again (or the page failing) leaves nothing playing that it could not stop.
+                .on_page_load(|window, load| {
+                    if load.event() == tauri::webview::PageLoadEvent::Started {
+                        youtube_window::silence(window.app_handle());
+                    }
+                })
                 .on_navigation(|url| {
                     if own(url) {
                         return true;
