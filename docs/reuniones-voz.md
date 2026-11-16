@@ -39,7 +39,7 @@ Cómo se comporta:
 
 En la sección **Reuniones**:
 
-1. Elige qué es (reunión, formación, entrevista, llamada u otra), el cliente y el proyecto (de las listas de Central; el núcleo rechaza los que no estén, y un proyecto tiene que ser de ese cliente) y con quién, todo opcional y editable después en **Ver**. Escribe un título si quieres; si no, se compone con el tipo, el cliente y la hora («Formación con Acme · 10.30»). Elige la confidencialidad: normal, solo en este Mac o privada.
+1. Elige qué es (reunión, formación, entrevista, llamada u otra), el cliente y el proyecto (de las listas de Central; el núcleo rechaza los que no estén, y un proyecto tiene que ser de ese cliente) y con quién (se busca en los Contactos del Mac, que incluyen las cuentas de iCloud, Google y Microsoft añadidas en Ajustes del Sistema › Cuentas de Internet, y quien no esté se escribe con comas; los elegidos de Contactos se guardan con su correo y la nota lo lleva, pero a Watson, al resumen y al archivo para Claude o Codex solo les llegan los nombres; un correo pegado junto al nombre se separa; los contactos sin nombre ni empresa no salen en la búsqueda), todo opcional y editable después en **Ver**. Escribe un título si quieres; si no, se compone con el tipo, el cliente y la hora («Formación con Acme · 10.30»). Elige la confidencialidad: normal, solo en este Mac o privada.
 2. Indica si quieres grabar también el audio del sistema, es decir, lo que dicen los demás.
 3. Pulsa **Empezar a grabar**.
 

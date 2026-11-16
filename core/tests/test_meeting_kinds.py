@@ -24,7 +24,7 @@ def test_el_titulo_de_la_nota_vale_para_el_vault():
 
 
 def test_tipo_cliente_y_personas_se_validan():
-    assert meetings.classify("training", "  Acme   SL ", ["Ana", "ana", " Luis ", ""]) == ("training", "Acme SL", ["Ana", "Luis"])
+    assert meetings.classify("training", "  Acme   SL ", ["Ana", "ana", " Luis ", ""]) == ("training", "Acme SL", [{"name": "Ana", "email": None}, {"name": "Luis", "email": None}])
     with pytest.raises(meetings.MeetingError):
         meetings.classify("fiesta", None, [])
     with pytest.raises(meetings.MeetingError):
@@ -54,20 +54,21 @@ def test_clasificada_resumida_y_exportada(client, monkeypatch, tmp_path):  # noq
     started = client.post("/meetings", json={"mic_type": "audio/webm", "kind": "training", "client": "acme", "people": ["Ana"]}, headers=H).json()
     assert started["client"] == "Acme", "con el nombre de Central"
     assert client.patch(f"/meetings/{started['id']}", json={"client": "Inventado"}, headers=H).status_code == 422
-    assert started["title"].startswith("Formación con Acme") and started["kind"] == "training" and started["people"] == ["Ana"]
+    assert started["title"].startswith("Formación con Acme") and started["kind"] == "training" and started["people"] == [{"name": "Ana", "email": None}]
     assert client.post("/meetings", json={"mic_type": "audio/webm", "kind": "fiesta"}, headers=H).status_code == 422
-    changed = client.patch(f"/meetings/{started['id']}", json={"people": ["Ana", "Luis"], "title": "Formación: el panel"}, headers=H).json()
-    assert changed["people"] == ["Ana", "Luis"] and changed["client"] == "Acme" and changed["title"] == "Formación: el panel"
+    changed = client.patch(f"/meetings/{started['id']}", json={"people": ["Ana", {"name": "Luis Pérez", "email": "Luis@Beta.com"}, {"name": "Mal", "email": "no-es-correo"}], "title": "Formación: el panel"}, headers=H).json()
+    assert changed["people"] == [{"name": "Ana", "email": None}, {"name": "Luis Pérez", "email": "luis@beta.com"}, {"name": "Mal", "email": None}]
+    assert changed["client"] == "Acme" and changed["title"] == "Formación: el panel"
     assert client.patch(f"/meetings/{started['id']}", json={"kind": "x"}, headers={**H, "x-agora-owner": OTHER}).status_code == 404, "solo el dueño"
     client.post(f"/meetings/{started['id']}/mic", content=b"m" * 2000, headers=H)
     assert client.post(f"/meetings/{started['id']}/export", headers=H).status_code == 422, "sin transcripción no hay archivo"
     client.post(f"/meetings/{started['id']}/stop", headers=H)
     client.post(f"/meetings/{started['id']}/process", json={}, headers=H)
     detail = _done(client, started["id"])
-    assert "Tipo: Formación" in heard["title"] and "Cliente: Acme" in heard["title"] and "Participantes: Ana, Luis" in heard["title"]
+    assert "Tipo: Formación" in heard["title"] and "Cliente: Acme" in heard["title"] and "Participantes: Ana, Luis Pérez, Mal" in heard["title"]
     content, title = detail["draft"]["content"], detail["draft"]["title"]
     assert ":" not in title and title.endswith("Formación. el panel")
-    assert "tipo: formación" in content and 'cliente: "Acme"' in content and '  - "Luis"' in content
+    assert "tipo: formación" in content and 'cliente: "Acme"' in content and '  - "Luis Pérez <luis@beta.com>"' in content
     assert "## Resumen extendido" in content and "### Panel" in content and "Cómo se crean usuarios." in content
     folder = tmp_path / "Descargas"
     folder.mkdir()
@@ -77,7 +78,7 @@ def test_clasificada_resumida_y_exportada(client, monkeypatch, tmp_path):  # noq
     first = client.post(f"/meetings/{started['id']}/export", headers=H).json()
     second = client.post(f"/meetings/{started['id']}/export", headers=H).json()
     assert first["name"] == f"{title}.md" and second["name"] == f"{title} (2).md", "nunca sobrescribe"
-    assert (folder / first["name"]).read_text() == content and shown[0] == (folder, first["name"], True)
+    assert (folder / first["name"]).read_text() == content.replace(" <luis@beta.com>", "") and shown[0] == (folder, first["name"], True)
 
 
 @pytest.fixture
@@ -143,7 +144,7 @@ def test_watson_busca_con_cuidado(database):
 
 
 def test_nombres_sin_controles_y_exportar_solo_normales(client, monkeypatch, tmp_path):  # noqa: F811
-    assert meetings.classify("meeting", "Acme\x7f\x9b SL", ["A​na"] * 3 + [f"p{n}" for n in range(100)])[1:] == ("Acme SL", ["A na"] + [f"p{n}" for n in range(29)])
+    assert meetings.classify("meeting", "Acme\x7f\x9b SL", ["A​na"] * 3 + [f"p{n}" for n in range(100)])[1:] == ("Acme SL", [{"name": n, "email": None} for n in ["A na"] + [f"p{n}" for n in range(29)]])
     assert meeting_notes.note_title(". . x") == "x"
     started = client.post("/meetings", json={"mic_type": "audio/webm", "confidentiality": "private"}, headers=H).json()
     client.post(f"/meetings/{started['id']}/stop", headers=H)
@@ -153,3 +154,23 @@ def test_nombres_sin_controles_y_exportar_solo_normales(client, monkeypatch, tmp
     database.close()
     refused = client.post(f"/meetings/{started['id']}/export", headers=H)
     assert refused.status_code == 403 and "no salen" in refused.json()["error"]
+
+
+def test_contactos_para_con_quien(client, monkeypatch):  # noqa: F811
+    from agora_core import calls
+    people = [{"name": "Ana López", "org": "Acme", "emails": ["ana@acme.com"]}, {"name": "Juan Anaya", "org": None, "emails": []},
+              {"name": "Luis", "org": "Beta", "emails": ["l@beta.com"]}]
+    book = calls.FakeContacts(people=people)
+    monkeypatch.setattr(calls, "shared_contacts", lambda: book)
+    found = client.get("/meetings/contacts?q=ana", headers=H).json()
+    assert found["status"] == "granted" and [c["name"] for c in found["contacts"]] == ["Ana López", "Juan Anaya"], "la palabra que empieza va primero"
+    assert found["contacts"][0] == {"name": "Ana López", "org": "Acme", "email": "ana@acme.com"}
+    assert [c["name"] for c in client.get("/meetings/contacts?q=beta.com", headers=H).json()["contacts"]] == ["Luis"]
+    monkeypatch.setattr(calls, "shared_contacts", lambda: calls.FakeContacts(people=people, status="denied"))
+    assert client.get("/meetings/contacts?q=ana", headers=H).json() == {"status": "denied", "contacts": []}
+    assert meetings.people_of('["Ana"]') == [{"name": "Ana", "email": None}], "las guardadas antes eran solo nombres"
+
+
+def test_un_correo_pegado_no_se_queda_en_el_nombre():
+    people = meetings.classify("meeting", None, ["Ana López <Ana@Acme.com>", "l@beta.com", {"name": "Rus", "email": "x@correo.xn--p1ai"}])[2]
+    assert people == [{"name": "Ana López", "email": "ana@acme.com"}, {"name": "l", "email": "l@beta.com"}, {"name": "Rus", "email": "x@correo.xn--p1ai"}]

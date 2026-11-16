@@ -1,11 +1,10 @@
 import { useRef, useState, useSyncExternalStore } from 'react';
-import { exportMeeting, getCentral, kindLabels, updateMeeting, type MeetingClass, type MeetingDetail, type MeetingKind } from '../api/core';
+import { exportMeeting, getCentral, kindLabels, updateMeeting, type MeetingClass, type MeetingDetail, type MeetingKind, type MeetingPerson } from '../api/core';
+import { PeopleField } from './people-field';
 import { ModernSelect } from '../ui/modern-select';
 
 const kinds = (Object.keys(kindLabels) as MeetingKind[]).map(value => ({ value, label: kindLabels[value] }));
 const failed = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
-/** «Ana, Luis Pérez» → ['Ana', 'Luis Pérez']. */
-export const peopleOf = (text: string) => text.split(/[,;\n]/).map(name => name.trim()).filter(Boolean);
 
 // Central's clients, read once for every form of the section: null while reading, [] when Central is not connected.
 type Client = { name: string; projects: { name: string; repo?: string | null }[] };
@@ -26,9 +25,9 @@ function useCentralClients() {
 
 /** What the meeting was, the client it was about (one of Central's) and who was in it: in the note's
  * properties, and what Watson finds it by later. */
-export type Fields = { kind: MeetingKind; client: string; project: string; people: string };
-export const emptyFields: Fields = { kind: 'meeting', client: '', project: '', people: '' };
-export function KindFields({ value, onChange }: { value: Fields; onChange: (next: Fields) => void }) {
+export type Fields = { kind: MeetingKind; client: string; project: string; people: MeetingPerson[] };
+export const emptyFields: Fields = { kind: 'meeting', client: '', project: '', people: [] };
+export function KindFields({ value, onChange, onTyping }: { value: Fields; onChange: (next: Fields) => void; onTyping?: (text: string) => void }) {
   const clients = useCentralClients();
   const names = (clients ?? []).map(c => c.name);
   const projects = (clients ?? []).find(c => c.name === value.client)?.projects ?? [];
@@ -42,19 +41,20 @@ export function KindFields({ value, onChange }: { value: Fields; onChange: (next
     <label className="field">Tipo<ModernSelect value={value.kind} options={kinds} onChange={kind => onChange({ ...value, kind: kind as MeetingKind })}/></label>
     <label className="field">Cliente (de Central)<ModernSelect value={value.client} options={options} disabled={!names.length && !value.client} onChange={client => onChange({ ...value, client, project: client === value.client ? value.project : '' })}/></label>
     <label className="field">Proyecto (de Central)<ModernSelect value={value.project} options={projectOptions} disabled={!value.client} onChange={project => onChange({ ...value, project })}/></label>
-    <label className="field">Con quién<input value={value.people} onChange={event => onChange({ ...value, people: event.target.value })} maxLength={1000} placeholder="Ana, Luis… (opcional)"/></label>
+    <PeopleField value={value.people} onChange={people => onChange({ ...value, people })} onTyping={onTyping}/>
   </div>;
 }
 
 export const asClass = (fields: Fields): MeetingClass =>
-  ({ kind: fields.kind, client: fields.client.trim() || null, project: fields.project || null, people: peopleOf(fields.people) });
+  ({ kind: fields.kind, client: fields.client.trim() || null, project: fields.project || null, people: fields.people });
 
 /** Changing the kind, client or people of a recorded meeting. The vault note and the file use the new ones. */
 export function MeetingClassCard({ detail, onSaved }: { detail: MeetingDetail; onSaved: () => void }) {
-  const [fields, setFields] = useState<Fields>({ kind: detail.kind, client: detail.client ?? '', project: detail.project ?? '', people: detail.people.join(', ') });
+  const [fields, setFields] = useState<Fields>({ kind: detail.kind, client: detail.client ?? '', project: detail.project ?? '', people: detail.people });
   const [state, setState] = useState<{ saving: boolean; done: string; error: string }>({ saving: false, done: '', error: '' });
   const wanted = asClass(fields);
-  const same = wanted.kind === detail.kind && wanted.client === detail.client && wanted.project === detail.project && wanted.people.join('\n') === detail.people.join('\n');
+  const [typing, setTyping] = useState('');
+  const same = typing.trim() === '' && wanted.kind === detail.kind && wanted.client === detail.client && wanted.project === detail.project && JSON.stringify(wanted.people) === JSON.stringify(detail.people);
   const save = async () => {
     setState({ saving: true, done: '', error: '' });
     try { await updateMeeting(detail.id, wanted); setState({ saving: false, done: 'Guardado.', error: '' }); onSaved(); }
@@ -62,7 +62,7 @@ export function MeetingClassCard({ detail, onSaved }: { detail: MeetingDetail; o
   };
   return <section aria-label="Clasificación" className="meeting-save">
     <h3>Qué fue y con quién</h3>
-    <KindFields value={fields} onChange={next => { setFields(next); setState({ saving: false, done: '', error: '' }); }}/>
+    <KindFields value={fields} onTyping={setTyping} onChange={next => { setFields(next); setState({ saving: false, done: '', error: '' }); }}/>
     <span className="meeting-actions">
       <button type="button" className="button" disabled={same || state.saving} onClick={() => void save()}>{state.saving ? 'Guardando…' : 'Guardar'}</button>
       {state.done && <small className="ok-note" role="status">{state.done}</small>}

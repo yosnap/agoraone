@@ -21,7 +21,7 @@ from pathlib import Path
 from . import local_model, transcribe
 from .db import now, transaction
 from .engines import Engine, Turn, usable
-from .meetings import KINDS
+from .meetings import KINDS, names_of, people_of
 
 SETTING = "meetings"
 DEFAULTS = {"local_url": None, "local_model": None, "auto": True}
@@ -187,16 +187,20 @@ def note_title(text: str) -> str:
     return clean.encode()[:240].decode(errors="ignore").strip() or "Reunión"
 
 
+def _person(person: dict) -> str:
+    return f"{person['name']} <{person['email']}>" if person["email"] else person["name"]
+
+
 def _quoted(text: str) -> str:
     return json.dumps(text, ensure_ascii=False)
 
 
-def note(row: sqlite3.Row) -> dict:
+def note(row: sqlite3.Row, addresses: bool = True) -> dict:
     """The vault note of a meeting (title and Markdown): what kind it was, the client and the people in its
     properties, and its confidentiality, so the brain keeps treating it as the meeting was marked."""
     lines = json.loads(row["transcript"] or "[]")
     summary = json.loads(row["summary"]) if row["summary"] else None
-    people = json.loads(row["people"] or "[]")
+    people = people_of(row["people"])
     day = _parse(row["started_at"])
     minutes = max(1, round(((_parse(row["ended_at"]) - day).total_seconds() if row["ended_at"] else 0) / 60))
     title = note_title(f"{day.astimezone().strftime('%Y-%m-%d')} {row['title']}")
@@ -206,7 +210,7 @@ def note(row: sqlite3.Row) -> dict:
     if row["project"]:
         out.append(f"proyecto: {_quoted(row['project'])}")
     if people:
-        out += ["participantes:", *(f"  - {_quoted(p)}" for p in people)]
+        out += ["participantes:", *(f"  - {_quoted(_person(p) if addresses else p['name'])}" for p in people)]
     out += [f"confidencialidad: {row['confidentiality']}", "fuente: AgoraOne", "---", "", f"# {row['title']}", ""]
     if summary:
         out += ["## Resumen", "", summary["summary"] or "—", ""]
@@ -227,8 +231,9 @@ def note(row: sqlite3.Row) -> dict:
 
 def export(row: sqlite3.Row, folder: Path) -> Path:
     """The whole meeting (properties, summaries, tasks and transcript) as a Markdown file in `folder`, to hand
-    to Claude, Codex or anyone. It never overwrites a file: a taken name gets a number."""
-    made = note(row)
+    to Claude, Codex or anyone: like Watson, it carries the people's names, never their addresses. It never
+    overwrites a file: a taken name gets a number."""
+    made = note(row, addresses=False)
     for number in range(1, 1000):
         path = folder / (f"{made['title']}.md" if number == 1 else f"{made['title']} ({number}).md")
         try:
@@ -287,7 +292,7 @@ class Worker:
             day = _parse(row["started_at"]).astimezone()
             heading = f"{row['title']} (celebrada el {WEEKDAYS[day.weekday()]} {day.strftime('%Y-%m-%d')}; usa esa fecha para entender «el jueves», «mañana»…)"
             heading += "".join(filter(None, [f"\nTipo: {KINDS[row['kind']]}", row["client"] and f"\nCliente: {row['client']}", row["project"] and f"\nProyecto: {row['project']}",
-                                             json.loads(row["people"] or "[]") and f"\nParticipantes: {', '.join(json.loads(row['people']))}"]))
+                                             names_of(row["people"]) and f"\nParticipantes: {', '.join(names_of(row['people']))}"]))
             made, by, why = summarize(row["confidentiality"], heading, as_text(lines), self.make_engines(), settings(connection))
             if lost:
                 why = " ".join(filter(None, [f"No se pudo leer {' ni '.join(lost)}; se ha usado el resto.", why]))

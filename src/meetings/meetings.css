@@ -19,3 +19,11 @@
 .meeting-save-fields { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px }
 .meeting-engine { font-size:12px; color:var(--c-355a50) }
 .meeting-detail h4 { font:600 13px Manrope,sans-serif; margin:8px 0 0 }
+.people-field { position:relative; grid-column:1 / -1 }
+.people-box { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-height:42px; padding:5px 8px; border:1px solid var(--c-cbd6c9); border-radius:9px; background:var(--c-fffffa) }
+.people-field .people-box input { flex:1 1 160px; border:0; outline:0; padding:4px; background:transparent; min-width:120px; padding:4px; font:inherit }
+.people-tag { display:inline-flex; align-items:center; gap:4px; padding:2px 4px 2px 10px; border-radius:999px; background:var(--c-edf0e8); font-size:12px }
+.people-tag button { border:0; background:transparent; cursor:pointer; font-size:11px; padding:2px 6px; border-radius:999px }
+.people-list { position:absolute; z-index:20; left:0; right:0; top:100%; margin-top:4px; display:flex; flex-direction:column; max-height:260px; overflow:auto; background:var(--c-fffdf4); border:1px solid var(--c-ccd5c6); border-radius:9px; box-shadow:0 14px 34px var(--c-26423e2e) }
+.people-list button { text-align:left; border:0; background:transparent; padding:8px 12px; cursor:pointer; font-size:13px }
+.people-list button.active, .people-list button:hover { background:var(--c-edf0e8) }

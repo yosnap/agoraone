@@ -7,6 +7,7 @@ marked interrupted on the next start. The audio lives in AgoraOne's data, never 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sqlite3
 import threading
@@ -53,7 +54,7 @@ class Recorder:
     def view(self, row: sqlite3.Row) -> dict:
         item = {k: row[k] for k in ("id", "title", "confidentiality", "status", "started_at", "ended_at", "mic_bytes", "system_source", "system_bytes", "note",
                                     "work", "work_error", "summary_by", "kind", "client", "project")}
-        item["people"] = json.loads(row["people"] or "[]")
+        item["people"] = people_of(row["people"])
         item["has_transcript"] = bool(row["transcript"])
         item["saved_note"] = json.loads(row["saved_note"]) if row["saved_note"] else None
         ended = row["ended_at"] or now()
@@ -85,7 +86,7 @@ class Recorder:
         """The user changes the title, kind, client, project or people of a meeting (at any time, even while recording)."""
         row = self.owned(connection, owner, meeting_id)
         kind, client, people = classify(changes.get("kind", row["kind"]), changes.get("client", row["client"]),
-                                        changes["people"] if "people" in changes else json.loads(row["people"] or "[]"))
+                                        changes["people"] if "people" in changes else people_of(row["people"]))
         if "client" not in changes:
             client = row["client"]  # unchanged as it was saved (Central's own spelling), never normalized again
         elif client != row["client"]:
@@ -102,7 +103,7 @@ class Recorder:
 
     # --- recording -----------------------------------------------------------------------------------------
     def start(self, connection: sqlite3.Connection, owner: str, title: str, confidentiality: str, mic_type: str, system: bool,
-              kind: str = "meeting", client: str | None = None, people: list[str] | None = None, project: str | None = None) -> dict:
+              kind: str = "meeting", client: str | None = None, people: list | None = None, project: str | None = None) -> dict:
         kind, client, people = classify(kind, client, people)
         client = central_client(connection, client)
         project = central_project(connection, client, project)
@@ -221,8 +222,21 @@ class Recorder:
             connection.execute("DELETE FROM meeting WHERE id = ? AND owner = ?", (meeting_id, owner))
 
 
-def classify(kind, client, people) -> tuple[str, str | None, list[str]]:
-    """A known kind, a client name (or none) and up to MAX_PEOPLE names, each on one line and of bounded size."""
+EMAIL = re.compile(r"[^@\s<>\"(),;]{1,64}@[^@\s<>\"(),;]{1,190}\.[A-Za-z0-9-]{2,63}")
+
+
+def people_of(raw: str | None) -> list[dict]:
+    """The people of a meeting as {name, email}; those saved before 1.7.0-alpha.18 were only names."""
+    return [p if isinstance(p, dict) else {"name": str(p), "email": None} for p in json.loads(raw or "[]")]
+
+
+def names_of(raw: str | None) -> list[str]:
+    return [p["name"] for p in people_of(raw)]
+
+
+def classify(kind, client, people) -> tuple[str, str | None, list[dict]]:
+    """A known kind, a client name (or none) and up to MAX_PEOPLE people ({name, email}: a name alone, or one
+    picked from Contacts with its address), each on one line and of bounded size."""
     if kind not in KINDS:
         raise MeetingError("Tipo de reunión no válido.")
     def one_line(text, size):  # no control or invisible characters: they would break the note's properties
@@ -230,16 +244,24 @@ def classify(kind, client, people) -> tuple[str, str | None, list[str]]:
         return " ".join(visible.split())[:size]
     if people is not None and not isinstance(people, list):
         raise MeetingError("Las personas van en una lista.")
-    names: list[str] = []
+    chosen: list[dict] = []
     seen: set[str] = set()
-    for name in (people or [])[:MAX_PEOPLE * 4]:
-        name = one_line(name, 100)
-        if name and name.casefold() not in seen:
-            seen.add(name.casefold())
-            names.append(name)
-            if len(names) == MAX_PEOPLE:
+    for person in (people or [])[:MAX_PEOPLE * 4]:
+        given = person if isinstance(person, dict) else {"name": person}
+        name, email = one_line(given.get("name"), 300), one_line(given.get("email"), 254).lower()
+        email = email if EMAIL.fullmatch(email) else None
+        pasted = EMAIL.search(name)  # «Ana López <ana@acme.com>» pasted from a mail: the address never stays in the name
+        if pasted:
+            email = email or pasted[0].lower()
+            name = " ".join(EMAIL.sub(" ", name).replace("<", " ").replace(">", " ").replace("()", " ").split()) or pasted[0].split("@")[0]
+        name = name[:100]
+        key = (email or name).casefold()
+        if name and key not in seen:
+            seen.add(key)
+            chosen.append({"name": name, "email": email})
+            if len(chosen) == MAX_PEOPLE:
                 break
-    return kind, one_line(client, 200) or None, names
+    return kind, one_line(client, 200) or None, chosen
 
 
 def central_client(connection: sqlite3.Connection, name: str | None) -> str | None:

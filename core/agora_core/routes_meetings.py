@@ -35,6 +35,11 @@ class LocalSettings(BaseModel):
     auto: bool | None = None
 
 
+class Person(BaseModel):
+    name: str
+    email: str | None = None
+
+
 class NewMeeting(BaseModel):
     title: str = ""
     confidentiality: str = "normal"
@@ -43,7 +48,7 @@ class NewMeeting(BaseModel):
     kind: str = "meeting"
     client: str | None = None
     project: str | None = None
-    people: list[str] = []
+    people: list[str | Person] = []
 
 
 class Changes(BaseModel):
@@ -51,7 +56,7 @@ class Changes(BaseModel):
     kind: str | None = None
     client: str | None = None
     project: str | None = None
-    people: list[str] | None = None
+    people: list[str | Person] | None = None
 
 
 def downloads() -> Path:
@@ -103,6 +108,16 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
     @router.put("/meetings/settings")
     async def put_local(request: Request, body: LocalSettings):
         return await run(request, lambda c, o: meeting_notes.save_settings(c, body.model_dump(exclude_unset=True)))
+
+    @router.get("/meetings/contacts")
+    async def contacts(request: Request, q: str = ""):
+        """People from the Mac's Contacts (with the iCloud, Google and Microsoft accounts added to the system) for «Con quién»."""
+        from . import calls
+        def work(connection, owner):
+            book = calls.shared_contacts()
+            state = book.status()
+            return {"status": state, "contacts": calls.find_people(book, q[:100]) if state == "granted" else []}
+        return await run(request, work)
 
     @router.get("/meetings/summarizers")
     async def who(request: Request):
@@ -164,7 +179,7 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
 
     @router.post("/meetings")
     async def start(request: Request, body: NewMeeting):
-        return await run(request, lambda c, o: recorder.start(c, o, body.title, body.confidentiality, body.mic_type, body.system, body.kind, body.client, body.people, body.project))
+        return await run(request, lambda c, o: recorder.start(c, o, body.title, body.confidentiality, body.mic_type, body.system, body.kind, body.client, body.model_dump()["people"], body.project))
 
     @router.post("/meetings/{meeting_id}/mic")
     async def piece(request: Request, meeting_id: int):
