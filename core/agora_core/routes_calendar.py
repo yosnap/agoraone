@@ -3,10 +3,10 @@ overlaps, and creating an event or a reminder, only after the user confirms it i
 
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
@@ -105,11 +105,17 @@ def calendar_router(settings: Settings) -> APIRouter:
         return {"ok": True} if await db(work) else refuse("Ese ámbito no existe.")
 
     @router.get("/calendar/agenda")
-    async def agenda(when: Literal["hoy", "mañana", "semana"] = "hoy"):
+    async def agenda(when: Literal["hoy", "mañana", "semana"] = "hoy", first: date | None = Query(default=None, alias="from"),
+                     last: date | None = Query(default=None, alias="to")):
+        """«hoy», «mañana» or «semana», or any period from `from` to `to` (local days, both included) for the
+        calendar views (day, week, month, year)."""
         store = calendar_store.shared()
         if problem := ready(store):
             return {"events": [], "reminders": [], "overlaps": [], "problem": problem}
-        start, end = calendar_store.day_range(when)
+        try:
+            start, end = calendar_store.dates_range(first, last) if first and last else calendar_store.day_range(when)
+        except calendar_store.CalendarError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
         try:
             found = await db(lambda c: calendar_store.agenda(c, store, start, end))
         except calendar_store.CalendarError as error:

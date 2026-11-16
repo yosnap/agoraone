@@ -3,8 +3,9 @@
 AgoraOne lee tus calendarios, tus recordatorios y el historial de llamadas del Mac, con los permisos de macOS que tú concedes, y te avisa de lo que no conviene olvidar. Solo crea un evento o un recordatorio cuando lo confirmas, y nunca borra ninguno.
 
 ## Agenda
-- Hoy, mañana o la semana, con los calendarios de macOS (iCloud, Google, Exchange… los que tengas en Calendario) y los recordatorios pendientes. Los eventos que coinciden en el tiempo van marcados como solape.
-- Arriba se ven el resumen de la mañana y los avisos de ahora.
+- **Lista** (hoy, mañana o la semana) o **Calendario** por día, semana, mes o año (1.7.0-alpha.22), con los calendarios de macOS (iCloud, Google, Exchange… los que tengas en Calendario) y los recordatorios pendientes. En el calendario se cambia de periodo con ‹ › y «Hoy», y al pulsar un día se abre su vista de día. Los eventos que coinciden en el tiempo van marcados como solape.
+- Cada evento y recordatorio dice de qué calendario, cuenta y ámbito es (el ámbito se pone en Ajustes › Calendarios), con su color. El núcleo da cualquier periodo de hasta 400 días (`GET /calendar/agenda?from=…&to=…`).
+- A la derecha, en una columna más estrecha, el resumen de la mañana y los avisos de ahora (llamadas perdidas, reuniones a punto de empezar, plazos).
 - «Nuevo evento o recordatorio», y «Crear el evento» en una tarjeta de la Bandeja, crean solo al pulsar el botón. Si el evento choca con otros, los enseña y pide un segundo sí («Crear de todos modos»). Un recordatorio con fecha lleva su alarma.
 - En modo discreto los títulos se ocultan.
 

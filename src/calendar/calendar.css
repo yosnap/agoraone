@@ -1,5 +1,6 @@
 .agenda > * { max-width:1100px }
-.agenda-day h2, .agenda h2 { margin:24px 0 10px; font-size:15px; text-transform:capitalize }
+.agenda-day h2, .agenda h2 { margin:24px 0 10px; font-size:15px }
+.agenda h2::first-letter { text-transform:uppercase }
 .agenda-list { list-style:none; margin:0; padding:0; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fbfaf3) }
 .agenda-list li { display:flex; gap:12px; align-items:baseline; padding:9px 12px; border-bottom:1px solid var(--c-dfe3d6); font-size:13px }
 .agenda-list li:last-child { border-bottom:0 }
@@ -10,3 +11,37 @@
 .event-form textarea { width:100%; font:inherit; font-size:12px; resize:vertical }
 .calendar-clash { font-size:12px; padding:9px 11px; border-radius:8px; background:var(--c-f3e6c4); color:var(--c-7a5717) }
 .calendar-clash ul { margin:4px 0 0; padding-left:18px }
+/* Two columns: the agenda on the left, the notices of now narrower on the right (one column on narrow screens). */
+.agenda .agenda-layout { display:grid; grid-template-columns:minmax(0,1fr) 280px; gap:24px; align-items:start; max-width:1240px }
+.agenda .agenda-layout.alone { grid-template-columns:minmax(0,1fr) }
+@media (max-width: 960px) { .agenda .agenda-layout { grid-template-columns:minmax(0,1fr) } }
+.agenda-side { position:sticky; top:16px; display:flex; flex-direction:column; gap:8px }
+.agenda-side h2 { margin:0 0 2px; font-size:13px }
+.agenda-side p { margin:0; font-size:12px; line-height:1.45 }
+.agenda-bar { flex-wrap:wrap; gap:12px }
+.agenda-nav { display:flex; align-items:center; gap:8px; margin:14px 0 10px }
+.agenda-nav h2 { margin:0 0 0 8px; font-size:15px }
+.agenda-what { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0 }
+.agenda-origin { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--c-4c6b62) }
+.agenda-origin i { width:8px; height:8px; border-radius:50%; background:var(--c-cbd6c9); flex:none }
+.cal-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); border:1px solid var(--c-dfe3d6); border-radius:12px; overflow:hidden; background:var(--c-fbfaf3) }
+.cal-head { padding:6px 8px; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--c-4c6b62); border-bottom:1px solid var(--c-dfe3d6) }
+.cal-cell { min-height:96px; padding:4px 6px 6px; border-right:1px solid var(--c-dfe3d6); border-bottom:1px solid var(--c-dfe3d6); display:flex; flex-direction:column; gap:3px; min-width:0 }
+.cal-grid.semana .cal-cell { min-height:260px }
+.cal-cell:nth-child(7n) { border-right:0 }
+.cal-cell.outside { background:var(--c-edf0e8); opacity:.7 }
+.cal-cell.today .cal-day { background:var(--c-173d3c); color:var(--c-fffffa) }
+.cal-day { align-self:flex-start; border:0; background:transparent; border-radius:999px; min-width:24px; height:24px; font:inherit; font-size:12px; cursor:pointer }
+.cal-chip { display:block; font-size:11px; padding:2px 6px; border-radius:6px; background:var(--c-edf0e8); border:1px solid var(--c-dfe3d6); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.cal-chip.clash { background:var(--c-f3e6c4) }
+.cal-chip small { color:var(--c-4c6b62) }
+.cal-more { border:0; background:transparent; font-size:11px; color:var(--c-355a50); text-align:left; cursor:pointer; padding:0 4px }
+.cal-year { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px }
+.cal-mini { border:1px solid var(--c-dfe3d6); border-radius:12px; padding:8px; background:var(--c-fbfaf3) }
+.cal-mini-title { border:0; background:transparent; font:600 13px Manrope,sans-serif; text-transform:capitalize; cursor:pointer; padding:2px 4px; margin-bottom:4px }
+.cal-mini-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; text-align:center }
+.cal-mini-grid small { font-size:10px; color:var(--c-4c6b62) }
+.cal-mini-grid button { border:0; background:transparent; font:inherit; font-size:11px; height:22px; border-radius:6px; cursor:pointer }
+.cal-mini-grid button:disabled { cursor:default }
+.cal-mini-grid button.busy { background:var(--c-edf0e8); font-weight:700 }
+.cal-mini-grid button.today { outline:2px solid var(--c-173d3c) }

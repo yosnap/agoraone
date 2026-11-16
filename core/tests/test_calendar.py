@@ -49,6 +49,13 @@ def test_agenda_crear_y_lo_que_ve_watson(tmp_path):
         day = client.get("/calendar/agenda?when=hoy", headers=headers).json()
         assert [e["title"] for e in day["events"]] == ["Reunión con Artilabs", "Llamada", "Dentista"] and day["overlaps"] == [["e1", "e2"]]
         assert [r["title"] for r in day["reminders"]] == ["Enviar presupuesto"]
+        listed_day = client.get("/calendar/agenda?when=hoy", headers=headers).json()["events"][0]
+        assert listed_day["calendar"] == "Trabajo" and listed_day["account"] == "iCloud" and "scope" in listed_day, "cada evento dice de qué calendario y ámbito es"
+        today = datetime.now().astimezone().date()
+        month = client.get(f"/calendar/agenda?from={today.replace(day=1).isoformat()}&to={today.isoformat()}", headers=headers)
+        assert month.status_code == 200 and isinstance(month.json()["events"], list)
+        assert client.get(f"/calendar/agenda?from={today.isoformat()}&to={(today + timedelta(days=500)).isoformat()}", headers=headers).status_code == 422
+        assert client.get(f"/calendar/agenda?from={today.isoformat()}&to={(today - timedelta(days=1)).isoformat()}", headers=headers).status_code == 422
         assert client.put("/calendar/calendars/medico", json={"confidentiality": "private"}, headers=headers).json() == {"ok": True}
         assert client.put("/calendar/calendars/trabajo", json={"scopeId": 999}, headers=headers).status_code == 422
         listed = {c["id"]: c for c in client.get("/calendar/calendars", headers=headers).json()["calendars"]}
