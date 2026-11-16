@@ -19,6 +19,7 @@
 .rail-item:hover { background:var(--c-ffffff14) }
 .rail-item[aria-current="page"] { background:var(--deep-active); color:var(--deep-active-text) }
 .rail-icon { font-size:calc(18px * var(--ui-zoom, 1)); line-height:1 }
+.rail-svg { width:1em; height:1em; display:block }
 .rail-pending { opacity:.55 }
 .rail-pending .rail-label::after { content:'·'; margin-left:2px }
 .rail-discreet[aria-pressed="true"] { border-color:var(--c-e2bf72); color:var(--c-f3d690) }
