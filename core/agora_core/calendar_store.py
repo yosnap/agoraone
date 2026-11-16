@@ -4,7 +4,7 @@ only happens after the user confirms it, and nothing is ever deleted. `FakeStore
 tests and wherever it is missing."""
 
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 STATUS = {0: "undetermined", 1: "restricted", 2: "denied", 3: "granted", 4: "write_only"}
 WAIT = 25  # seconds per macOS prompt: two prompts stay within the backend's 60 s limit
@@ -233,6 +233,17 @@ def day_range(when: str, now: datetime | None = None) -> tuple[datetime, datetim
     return midnight(first), midnight(last)
 
 
+MAX_RANGE_DAYS = 400  # a year view and a little margin
+
+
+def dates_range(first: date, last: date) -> tuple[datetime, datetime]:
+    """From the start of `first` to the end of `last` (both included), local midnights; at most MAX_RANGE_DAYS."""
+    if last < first or (last - first).days >= MAX_RANGE_DAYS or not 1900 <= first.year <= 9998 or not 1900 <= last.year <= 9998:
+        raise CalendarError(f"Elige un periodo de hasta {MAX_RANGE_DAYS} días.")
+    midnight = lambda day: datetime(day.year, day.month, day.day).astimezone()  # noqa: E731
+    return midnight(first), midnight(last + timedelta(days=1))
+
+
 _SHARED = None
 _SHARED_LOCK = threading.Lock()
 
@@ -258,7 +269,7 @@ def settings(connection) -> dict[str, dict]:
             for r in connection.execute("SELECT calendar_id, scope_id, confidentiality, hidden FROM calendar_setting")}
 
 
-def agenda(connection, store, start: datetime, end: datetime, audience: str = "owner") -> dict:
+def agenda(connection, store, start: datetime, end: datetime, audience: str = "owner", describe: bool = False) -> dict:
     """Events and pending reminders between start and end, with overlaps. For an external audience (a remote
     model), only calendars marked normal; hidden calendars never."""
     chosen = settings(connection)
@@ -275,4 +286,16 @@ def agenda(connection, store, start: datetime, end: datetime, audience: str = "o
         raise
     except Exception as error:  # noqa: BLE001 - EventKit or PyObjC failing says so instead of breaking the page
         raise CalendarError("No se pudo leer el calendario de macOS.") from error
+    if describe and audience == "owner":  # for the Agenda screen only: whose calendar, which account and which scope
+        try:
+            known = {c["id"]: c for c in store.calendars()}
+            scopes = {r["id"]: {"name": r["name"], "color": r["color"]} for r in connection.execute("SELECT id, name, color FROM scope")}
+        except Exception:  # noqa: BLE001 - the names are a help, never a reason to fail
+            known, scopes = {}, {}
+        events, reminders = [dict(e) for e in events], [dict(r) for r in reminders]  # copies: the store's own items stay as they are
+        for item in [*events, *reminders]:
+            calendar = known.get(item["calendarId"], {})
+            item["calendar"] = calendar.get("title") or None
+            item["account"] = calendar.get("account") or None
+            item["scope"] = scopes.get(chosen.get(item["calendarId"], {}).get("scopeId"))
     return {"events": events, "reminders": reminders, "overlaps": overlaps(events)}
