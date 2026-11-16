@@ -91,6 +91,12 @@ def _logged(event: dict) -> tuple[str, str]:
         return "proponer_nota", json.dumps({"carpeta": event["note"].get("folder") or ""}, ensure_ascii=False)
     if event["tool"] == "rule_proposal":  # what kind of rule, not its sender or words
         return "proponer_regla", json.dumps({"action": event["rule"].get("action")}, ensure_ascii=False)
+    if event["tool"] == "issue_proposal":  # which repository, not what it says
+        return "proponer_issue", json.dumps({"repositorio": event["issue"].get("repo")}, ensure_ascii=False)
+    if event["tool"] == "meetings":  # how many, not the words searched
+        return "consultar_reuniones", json.dumps({"reuniones": event["count"]}, ensure_ascii=False)
+    if event["tool"] == "meeting":
+        return "leer_reunion", json.dumps({"parte": event.get("part")}, ensure_ascii=False)
     if event["tool"] in ("projects", "agenda", "day"):
         return event["tool"], json.dumps({k: v for k, v in event.items() if k != "tool"}, ensure_ascii=False, default=str)
     if event["tool"] == "read":
@@ -231,6 +237,21 @@ def assistant_router(
         except (central.CentralError, Exception) as error:  # noqa: BLE001 - Central's own message, or that it failed
             return JSONResponse({"error": str(error) if isinstance(error, central.CentralError) else "Central no pudo crear el presupuesto."}, status_code=422)
         return {"created": made}
+
+    @router.post("/proposals/{proposal_id}/issue", status_code=201)
+    async def create_issue(proposal_id: str, request: Request):
+        """Creates on GitHub, with the user's own `gh`, the very issue Watson proposed, once, for its owner."""
+        from . import github_issues
+        owner = owner_of(request)
+        found = proposals.get(proposal_id)
+        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "issue" not in found:
+            return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        proposals.pop(proposal_id, None)  # taken before any wait: a double click creates one issue
+        try:
+            url = await run_in_threadpool(github_issues.create, found["issue"])
+        except github_issues.IssueError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
+        return {"url": url, "repo": found["issue"]["repo"]}
 
     @router.post("/proposals/{proposal_id}/mail")
     async def clean_mail(proposal_id: str, request: Request, body: CleanupChoice):

@@ -90,6 +90,15 @@ def _domain(value: str | None) -> str | None:
     return host if re.fullmatch(r"(?:[a-z0-9-]+\.)+[a-z]{2,63}", host or "") else None
 
 
+_GITHUB = re.compile(r"(?:https://(?:www\.)?github\.com/|git@github\.com:)((?!-)[A-Za-z0-9-]{1,39})/([A-Za-z0-9._-]{1,100}?)(?:\.git)?/?")
+
+
+def github_repo(value) -> str | None:
+    """«owner/name» of a project's GitHub repository, from the address Central keeps; None for anything else."""
+    found = _GITHUB.fullmatch(str(value or "").strip())
+    return f"{found[1]}/{found[2]}" if found and found[2] not in (".", "..") else None
+
+
 def shape(raw: dict) -> dict:
     """The snapshot AgoraOne keeps: clients with contact, domains and projects; servers with their state."""
     by_client: dict[str, dict] = {}
@@ -113,7 +122,8 @@ def shape(raw: dict) -> dict:
     for project in raw.get("projects", []):
         client = by_client.get(project.get("client") or "")
         if client:
-            client["projects"].append({"name": project.get("name"), "status": project.get("status"), "phase": project.get("phase")})
+            client["projects"].append({"name": project.get("name"), "status": project.get("status"), "phase": project.get("phase"),
+                                       "repo": github_repo(project.get("repo"))})
     servers = [{"name": s.get("name"), "status": s.get("status") or s.get("liveStatus"), "provider": s.get("provider"),
                 "projects": [p.get("name") if isinstance(p, dict) else p for p in (s.get("projects") or [])][:20]}
                for s in raw.get("servers", []) if isinstance(s, dict) and s.get("name")]

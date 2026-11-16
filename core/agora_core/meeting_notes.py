@@ -203,6 +203,8 @@ def note(row: sqlite3.Row) -> dict:
     out = ["---", f"tipo: {KINDS[row['kind']].lower()}", f"fecha: {day.astimezone().strftime('%Y-%m-%d %H:%M')}", f"duración: {minutes} min"]
     if row["client"]:
         out.append(f"cliente: {_quoted(row['client'])}")
+    if row["project"]:
+        out.append(f"proyecto: {_quoted(row['project'])}")
     if people:
         out += ["participantes:", *(f"  - {_quoted(p)}" for p in people)]
     out += [f"confidencialidad: {row['confidentiality']}", "fuente: AgoraOne", "---", "", f"# {row['title']}", ""]
@@ -284,7 +286,7 @@ class Worker:
                 connection.execute("UPDATE meeting SET transcript = ?, work = 'summarizing' WHERE id = ?", (json.dumps(lines, ensure_ascii=False), meeting_id))
             day = _parse(row["started_at"]).astimezone()
             heading = f"{row['title']} (celebrada el {WEEKDAYS[day.weekday()]} {day.strftime('%Y-%m-%d')}; usa esa fecha para entender «el jueves», «mañana»…)"
-            heading += "".join(filter(None, [f"\nTipo: {KINDS[row['kind']]}", row["client"] and f"\nCliente: {row['client']}",
+            heading += "".join(filter(None, [f"\nTipo: {KINDS[row['kind']]}", row["client"] and f"\nCliente: {row['client']}", row["project"] and f"\nProyecto: {row['project']}",
                                              json.loads(row["people"] or "[]") and f"\nParticipantes: {', '.join(json.loads(row['people']))}"]))
             made, by, why = summarize(row["confidentiality"], heading, as_text(lines), self.make_engines(), settings(connection))
             if lost:

@@ -6,6 +6,7 @@ import json
 import sqlite3
 from datetime import UTC, date, datetime, timedelta
 
+from .github_issues import repos
 from .meeting_notes import WEEKDAYS, as_text
 from .meetings import KINDS
 
@@ -50,6 +51,20 @@ SPECS = [
         },
     },
 ]
+SPECS.append({
+    "name": "proponer_issue",
+    "description": ("Propone una issue de GitHub en el repositorio del proyecto de Central de una reunión (pasa su id en "
+                    "«reunion», ya encontrada con consultar_reuniones) o de un proyecto que nombres. Aparece en la pantalla "
+                    "del usuario y solo se crea si pulsa «Crear la issue». Úsala solo cuando él lo pida. Escribe el cuerpo en "
+                    "Markdown con lo que se dijo (contexto, qué hay que hacer, criterios), sin inventar."),
+    "schema": {"type": "object", "properties": {
+        "reunion": {"type": "integer", "description": "Id de la reunión de la que sale (opcional si nombras el proyecto)."},
+        "proyecto": {"type": "string", "description": "Proyecto de Central, si no es el de la reunión (opcional)."},
+        "cliente": {"type": "string", "description": "Cliente del proyecto, si hay varios con ese nombre (opcional)."},
+        "titulo": {"type": "string", "description": "Título de la issue."},
+        "cuerpo": {"type": "string", "description": "Cuerpo en Markdown."}},
+        "required": ["titulo", "cuerpo"]},
+})
 NAMES = {spec["name"] for spec in SPECS}
 
 
@@ -82,7 +97,7 @@ def _rows(connection: sqlite3.Connection, owner: str, first: date | None, last: 
         where.append("kind = ?")
         args.append(kind)
     if words:
-        fields = "lower(title || ' ' || coalesce(client, '') || ' ' || people || ' ' || coalesce(summary, '') || ' ' || transcript)"
+        fields = "lower(title || ' ' || coalesce(client, '') || ' ' || coalesce(project, '') || ' ' || people || ' ' || coalesce(summary, '') || ' ' || transcript)"
         where.append("(" + " OR ".join(f"instr({fields}, ?) > 0" for _ in words) + ")")
         args += words
     return connection.execute(f"SELECT * FROM meeting WHERE {' AND '.join(where)} ORDER BY started_at DESC, id DESC LIMIT 300", args).fetchall()
@@ -106,6 +121,7 @@ def find(connection: sqlite3.Connection, owner: str, query: str = "", since: str
             raise ValueError("Tipo no válido: reunión, formación, entrevista, llamada u otra.")
     words = [w for w in str(query or "").casefold().split() if len(w) > 2 and w not in STOPWORDS][:12]
     found = []
+    known_repos = repos(connection)
     for row in _rows(connection, owner, first, last, wanted, words):
         held = _local(row["started_at"])
         if (first and held.date() < first) or (last and held.date() > last):
@@ -113,14 +129,15 @@ def find(connection: sqlite3.Connection, owner: str, query: str = "", since: str
         people = json.loads(row["people"] or "[]")
         summary = json.loads(row["summary"]) if row["summary"] else None
         lines = json.loads(row["transcript"] or "[]")
-        about = " ".join([row["title"], row["client"] or "", *people, KINDS[row["kind"]], _summary_text(summary)]).casefold()
+        about = " ".join([row["title"], row["client"] or "", row["project"] or "", *people, KINDS[row["kind"]], _summary_text(summary)]).casefold()
         heard = [line for line in lines if any(w in line["text"].casefold() for w in words)] if words else []
         score = sum(3 for w in words if w in about) + min(len(heard), 10)
         if words and not score:
             continue
         found.append((score, {
             "id": row["id"], "fecha": f"{WEEKDAYS[held.weekday()]} {held.strftime('%Y-%m-%d %H:%M')}", "titulo": row["title"],
-            "tipo": KINDS[row["kind"]], "cliente": row["client"], "participantes": people,
+            "tipo": KINDS[row["kind"]], "cliente": row["client"], "proyecto": row["project"],
+            "repositorio": known_repos.get((row["client"] or "", row["project"] or "")), "participantes": people,
             "minutos": max(1, round((_local(row["ended_at"]) - held).total_seconds() / 60)) if row["ended_at"] else None,
             "resumen": summary["summary"] if summary else None,
             "temas": [{"tema": t["topic"], "detalle": t["detail"]} for t in (summary or {}).get("topics", [])],

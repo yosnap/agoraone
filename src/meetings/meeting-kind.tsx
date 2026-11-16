@@ -8,14 +8,16 @@ const failed = (failure: unknown, fallback: string) => failure instanceof Error 
 export const peopleOf = (text: string) => text.split(/[,;\n]/).map(name => name.trim()).filter(Boolean);
 
 // Central's clients, read once for every form of the section: null while reading, [] when Central is not connected.
-let centralClients: string[] | null = null;
+type Client = { name: string; projects: { name: string; repo?: string | null }[] };
+let centralClients: Client[] | null = null;
 let centralAsked = false;
 const listeners = new Set<() => void>();
 function readCentral() {
   if (centralAsked) return;
   centralAsked = true;
-  void getCentral().then(state => (state.snapshot?.clients ?? []).map(c => c.name).sort((a, b) => a.localeCompare(b, 'es')))
-    .catch(() => [] as string[]).then(names => { centralClients = names; listeners.forEach(listener => listener()); });
+  void getCentral().then(state => (state.snapshot?.clients ?? []).map(c => ({ name: c.name, projects: c.projects.filter(p => p.name) }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'es')))
+    .catch(() => [] as Client[]).then(found => { centralClients = found; listeners.forEach(listener => listener()); });
 }
 function useCentralClients() {
   readCentral();
@@ -24,28 +26,35 @@ function useCentralClients() {
 
 /** What the meeting was, the client it was about (one of Central's) and who was in it: in the note's
  * properties, and what Watson finds it by later. */
-export function KindFields({ value, onChange }: { value: { kind: MeetingKind; client: string; people: string }; onChange: (next: { kind: MeetingKind; client: string; people: string }) => void }) {
+export type Fields = { kind: MeetingKind; client: string; project: string; people: string };
+export const emptyFields: Fields = { kind: 'meeting', client: '', project: '', people: '' };
+export function KindFields({ value, onChange }: { value: Fields; onChange: (next: Fields) => void }) {
   const clients = useCentralClients();
-  const names = clients ?? [];
+  const names = (clients ?? []).map(c => c.name);
+  const projects = (clients ?? []).find(c => c.name === value.client)?.projects ?? [];
+  const projectOptions = [{ value: '', label: !value.client ? 'Elige antes el cliente' : projects.length ? 'Sin proyecto' : 'Sin proyectos en Central' },
+    ...[...projects.map(p => p.name), ...(value.project && !projects.some(p => p.name === value.project) ? [value.project] : [])]
+      .map(name => ({ value: name, label: `${name}${projects.find(p => p.name === name)?.repo ? ' · GitHub' : ''}` }))];
   // A client saved before (or renamed in Central since) stays visible as it is.
   const options = [{ value: '', label: clients === null ? 'Leyendo Central…' : names.length ? 'Sin cliente' : 'Sin clientes en Central' },
     ...[...names, ...(value.client && !names.includes(value.client) ? [value.client] : [])].map(name => ({ value: name, label: name }))];
   return <div className="meeting-save-fields">
     <label className="field">Tipo<ModernSelect value={value.kind} options={kinds} onChange={kind => onChange({ ...value, kind: kind as MeetingKind })}/></label>
-    <label className="field">Cliente (de Central)<ModernSelect value={value.client} options={options} disabled={!names.length && !value.client} onChange={client => onChange({ ...value, client })}/></label>
+    <label className="field">Cliente (de Central)<ModernSelect value={value.client} options={options} disabled={!names.length && !value.client} onChange={client => onChange({ ...value, client, project: client === value.client ? value.project : '' })}/></label>
+    <label className="field">Proyecto (de Central)<ModernSelect value={value.project} options={projectOptions} disabled={!value.client} onChange={project => onChange({ ...value, project })}/></label>
     <label className="field">Con quién<input value={value.people} onChange={event => onChange({ ...value, people: event.target.value })} maxLength={1000} placeholder="Ana, Luis… (opcional)"/></label>
   </div>;
 }
 
-export const asClass = (fields: { kind: MeetingKind; client: string; people: string }): MeetingClass =>
-  ({ kind: fields.kind, client: fields.client.trim() || null, people: peopleOf(fields.people) });
+export const asClass = (fields: Fields): MeetingClass =>
+  ({ kind: fields.kind, client: fields.client.trim() || null, project: fields.project || null, people: peopleOf(fields.people) });
 
 /** Changing the kind, client or people of a recorded meeting. The vault note and the file use the new ones. */
 export function MeetingClassCard({ detail, onSaved }: { detail: MeetingDetail; onSaved: () => void }) {
-  const [fields, setFields] = useState({ kind: detail.kind, client: detail.client ?? '', people: detail.people.join(', ') });
+  const [fields, setFields] = useState<Fields>({ kind: detail.kind, client: detail.client ?? '', project: detail.project ?? '', people: detail.people.join(', ') });
   const [state, setState] = useState<{ saving: boolean; done: string; error: string }>({ saving: false, done: '', error: '' });
   const wanted = asClass(fields);
-  const same = wanted.kind === detail.kind && wanted.client === detail.client && wanted.people.join('\n') === detail.people.join('\n');
+  const same = wanted.kind === detail.kind && wanted.client === detail.client && wanted.project === detail.project && wanted.people.join('\n') === detail.people.join('\n');
   const save = async () => {
     setState({ saving: true, done: '', error: '' });
     try { await updateMeeting(detail.id, wanted); setState({ saving: false, done: 'Guardado.', error: '' }); onSaved(); }

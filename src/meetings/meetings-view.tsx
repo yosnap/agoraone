@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react';
-import { deleteMeeting, getMeetings, getSummarizers, kindLabels, levelLabels, processMeeting, stopMeeting, type Summarizer, type Level, type Meeting, type MeetingKind, type MeetingList } from '../api/core';
+import { deleteMeeting, getMeetings, getSummarizers, kindLabels, levelLabels, processMeeting, stopMeeting, type Summarizer, type Level, type Meeting, type MeetingList } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { MeetingDetailPanel } from './meeting-detail';
-import { asClass, KindFields } from './meeting-kind';
+import { asClass, emptyFields, KindFields, type Fields } from './meeting-kind';
 import { lastChoice, rememberChoice, startRecording, stopRecording, useMeetingRecorder } from './meeting-recorder';
 import './meetings.css';
 
@@ -38,7 +38,7 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned }: 
     <div className="meeting-main">
       <strong>{hidden ? 'Reunión' : meeting.title}</strong>
       <small>{when(meeting.started_at)} · {clock(meeting.seconds)} · {levelLabels[meeting.confidentiality]}</small>
-      {!hidden && <small className="muted">{[kindLabels[meeting.kind], meeting.client, meeting.people.length ? `con ${meeting.people.join(', ')}` : ''].filter(Boolean).join(' · ')}</small>}
+      {!hidden && <small className="muted">{[kindLabels[meeting.kind], meeting.client, meeting.project, meeting.people.length ? `con ${meeting.people.join(', ')}` : ''].filter(Boolean).join(' · ')}</small>}
       <small className="muted">Tu micrófono: {meeting.mic_bytes ? size(meeting.mic_bytes) : 'vacío'} · Audio del sistema: {meeting.system_source ? (meeting.system_bytes ? size(meeting.system_bytes) : meeting.status === 'recording' ? 'grabando' : 'vacío') : 'no grabado'}</small>
       {meeting.note && !hidden && <small className="muted">{meeting.note}</small>}
       {meeting.work_error && !hidden && <small className={meeting.work === 'failed' ? 'dictation-error' : 'muted'} role={meeting.work === 'failed' ? 'alert' : undefined}>
@@ -76,7 +76,7 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
   const [title, setTitle] = useState('');
   const [level, setLevel] = useState<Level>(() => lastChoice().confidentiality);
   const [system, setSystem] = useState(() => lastChoice().system);
-  const [about, setAbout] = useState<{ kind: MeetingKind; client: string; people: string }>({ kind: 'meeting', client: '', people: '' });
+  const [about, setAbout] = useState<Fields>(emptyFields);
   const loaded = useRef<string | null>(null);
   const [who, setWho] = useState<Record<Level, Summarizer> | null>(null);
   const askedWho = useRef(false);
@@ -104,7 +104,7 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
         {recorder.note && <p className="fiscal-warning">{recorder.note}</p>}
         <p className="muted">Puedes cambiar de sección: la grabación sigue y la barra lateral lo indica. Con altavoces, tu micrófono también recoge a los demás; con auriculares las pistas salen limpias.</p>
         <button type="button" className="button primary" onClick={stopRecording} disabled={recorder.phase === 'stopping'}>{recorder.phase === 'stopping' ? 'Cerrando…' : 'Parar la grabación'}</button>
-      </> : <form onSubmit={event => { event.preventDefault(); rememberChoice({ confidentiality: level, system }); void startRecording(title, level, system, asClass(about)).then(() => { setTitle(''); setAbout({ kind: 'meeting', client: '', people: '' }); }); }}>
+      </> : <form onSubmit={event => { event.preventDefault(); rememberChoice({ confidentiality: level, system }); void startRecording(title, level, system, asClass(about)).then(() => { setTitle(''); setAbout(emptyFields); }); }}>
         <label className="field">Título<input value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder="Opcional (si no, el tipo, el cliente y la hora)"/></label>
         <KindFields value={about} onChange={setAbout}/>
         <label className="field">Confidencialidad<ModernSelect value={level} options={levels} onChange={value => setLevel(value as Level)}/></label>
