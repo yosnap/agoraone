@@ -34,8 +34,12 @@ para pedir algo.
   - si no nombras dónde, busca primero en tu biblioteca, después en el reproductor que esté abierto y por
     último en Música;
   - «en Spotify», «en Música» o «en mi biblioteca» lo fuerzan;
-  - «en YouTube» abre la búsqueda en el navegador, sin incrustar ni descargar nada (en Windows, con
-    `os.startfile`, nunca a través de `cmd`).
+  - «en YouTube» (1.7) suena dentro de AgoraOne, en un reproductor pequeño que sigue en todas las secciones y solo
+    se maneja desde la app (tarjeta de música, Watson y su ✕). El núcleo busca en la página pública de YouTube, sin
+    cuenta ni clave (`core/agora_core/youtube.py`), y solo se queda con identificador, título, canal y duración. El
+    vídeo es el de YouTube sin cookies, manejado por mensajes (`src/brain/youtube-player.tsx`): el script de
+    YouTube nunca corre dentro de AgoraOne. Los vídeos que su dueño no deja incrustar (lo habitual en los de las
+    discográficas) se saltan; si no queda ninguno, se ofrece «Abrir en YouTube» en el navegador.
 - En la tarjeta de música, el desplegable elige la fuente.
 
 ## Órdenes rápidas, sin modelo
@@ -72,6 +76,19 @@ español si la hay. Lee la respuesta sin el formato Markdown y sin las citas, co
 700 caracteres. En Ajustes › Voz se elige cuándo: cuando le hablas con el micrófono (por defecto), siempre o
 nunca.
 
+## La voz de Watson (1.7)
+
+En Ajustes › Voz › «Voz de Watson» se elige quién lee las respuestas:
+- Automática (por defecto): el perfil «Watson (AgoraOne)» de VoiceStudio cuando la app está abierta; si no, macOS.
+- Una voz de VoiceStudio (sus perfiles) o una voz de macOS en español.
+- Velocidad y «Probar».
+
+VoiceStudio (OmniVoice) corre en este Mac, en `127.0.0.1:3900`, una dirección fija en el núcleo (`core/agora_core/tts.py`).
+El texto de la respuesta no sale del equipo. La pantalla corta la respuesta en frases mientras llega
+(`src/assistant/voice-pieces.ts`): la primera suena en cuanto está escrita y las siguientes se preparan mientras habla
+(`src/assistant/voice-player.ts`). Si VoiceStudio no responde, sigue la voz de macOS y Ajustes lo dice. Voicebox
+queda para más adelante: genera en segundo plano y necesita descargar antes su modelo.
+
 ## Llamar a Watson
 
 - ⌃⌥W desde cualquier app (lo registra la app de escritorio con el plugin de atajos globales de Tauri): AgoraOne
@@ -97,9 +114,12 @@ nunca.
 |---|---|
 | `GET /music/status`, `POST /music/control`, `POST /music/play` | lo que suena, los controles y «pon…» |
 | `GET /apps`, `PUT /apps/allowed`, `POST /apps/open` | apps instaladas, las permitidas y abrir una (409 si hace falta confirmar) |
+| `GET/PUT /voice/tts` | Voz de Watson: lo elegido, lo que habla ahora y las voces de VoiceStudio |
+| `POST /voice/speak` | Un trozo de respuesta dicho por VoiceStudio (audio WAV) |
 | `GET/PUT /wake/settings` | «Oye Watson» encendido o apagado, y el estado del oyente |
 | `POST /internal/wake/status` | La app de escritorio cuenta cómo va el oyente (el navegador no llega a `/internal`) |
 | `GET /music/library`, `PUT /music/library/folders`, `POST /music/library/choose`, `GET /music/library/{id}/file` | biblioteca: carpetas, búsqueda y archivo |
+| `GET /music/youtube/search` | vídeos de YouTube para el reproductor de AgoraOne |
 | `POST /music/youtube` | abre una búsqueda de YouTube en el navegador |
 
 ## Pendiente

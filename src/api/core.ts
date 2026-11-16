@@ -311,6 +311,21 @@ export type VoiceSettings = { binary: string | null; ffmpeg: string | null; mode
 export type VoiceStatus = VoiceSettings & { chosen: VoiceSettings; binaries: string[]; ffmpegs: string[];
   models: { name: string; path: string; bytes: number }[]; ready: boolean; platform: string; missing: ('binary' | 'ffmpeg' | 'model')[] };
 export const getVoiceStatus = () => core<VoiceStatus>('/voice/status');
+/** Watson's voice (1.7): the engine and voice chosen, what speaks now (macOS when VoiceStudio is closed) and the
+ * voices VoiceStudio offers (null when it is not open). */
+export type TtsEngine = 'auto' | 'macos' | 'voicestudio';
+export type TtsSettings = { engine: TtsEngine; voice: string | null; speed: number; macVoice: string | null };
+export type TtsNow = { engine: 'macos' | 'voicestudio'; voice: string | null; speed: number; macVoice: string | null; problem: string | null };
+export type TtsView = { settings: TtsSettings; now: TtsNow; voicestudio: { id: string; name: string; language: string | null }[] | null };
+export const getTts = () => core<TtsView>('/voice/tts');
+export const putTts = (changes: Partial<TtsSettings>) => core<TtsView>('/voice/tts', changes, 'PUT');
+/** One piece of an answer spoken by VoiceStudio on this Mac, as audio in memory (a blob: URL the caller revokes). */
+export async function speakPiece(text: string, signal?: AbortSignal): Promise<string> {
+  const response = await fetch('/api/core/voice/speak', { method: 'POST', signal, body: JSON.stringify({ text }),
+    headers: { 'Content-Type': 'application/json', ...(csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {}) } });
+  if (!response.ok) throw new ApiError(((await response.json().catch(() => ({}))) as { error?: string }).error || 'La voz no responde.', response.status, {});
+  return URL.createObjectURL(await response.blob());
+}
 export const putVoiceSettings = (changes: Partial<VoiceSettings>) => core<VoiceSettings>('/voice/settings', changes, 'PUT');
 /** A short recorded clip to text, on this machine (the audio goes to the core only). */
 export async function transcribeVoice(audio: Blob): Promise<{ text: string; language: string | null; seconds: number }> {
@@ -391,6 +406,9 @@ export const putWake = (enabled: boolean) => core<Wake>('/wake/settings', { enab
 /** The user's own music (1.5): folders, search, a track to play (fetched with the CSRF header, played from
  * memory) and a YouTube search opened in the browser. */
 export type LibraryTrack = { id: string; title: string; artist: string | null; album: string | null };
+/** YouTube videos for «pon … en YouTube», played inside AgoraOne (only the words asked for go to YouTube). */
+export type Video = { id: string; title: string; channel: string | null; length: string };
+export const searchYouTube = (query: string) => core<{ videos: Video[] }>(`/music/youtube/search?q=${encodeURIComponent(query)}`);
 export const getLibrary = (q = '') => core<{ folders: string[]; tracks: LibraryTrack[]; total: number }>(`/music/library?q=${encodeURIComponent(q)}`);
 export const putLibraryFolders = (folders: string[]) => core<{ folders: string[] }>('/music/library/folders', { folders }, 'PUT');
 export const chooseLibraryFolder = () => core<{ path: string | null }>('/music/library/choose', {});

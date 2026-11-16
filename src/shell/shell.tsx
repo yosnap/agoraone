@@ -12,6 +12,7 @@ import { AlertToasts } from './alert-toasts';
 import { UploadNotice } from '../fiscal/upload-watch';
 import { FirstRun } from './first-run';
 import { requestListen } from '../assistant/listen';
+import { YouTubeMini } from '../brain/youtube-player';
 import { readShell, writeShell, type Section } from './shell-state';
 import './shell.css';
 import './page.css';
@@ -53,6 +54,7 @@ export function Shell() {
     <ShellNav section={section} onSection={go} discreet={discreet} onDiscreet={setDiscreet} waiting={waiting}/>
     {ready && <AlertToasts discreet={discreet}/>}
     <UploadNotice onOpen={() => go('fiscal')}/>
+    <YouTubeMini/>
     {ready && <FirstRun/>}
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting} onWatson={() => go('brain')}/>}

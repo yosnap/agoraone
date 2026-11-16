@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { getVoiceStatus, getWake, putVoiceSettings, putWake, type VoiceSettings, type VoiceStatus, type Wake } from '../api/core';
 import { wakeStatus } from './wake-status';
+import { WatsonVoiceChoice } from './watson-voice-choice';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { setVoiceMode, voiceMode, type VoiceMode } from '../assistant/speech';
@@ -56,6 +57,7 @@ export function VoiceSettingsCard() {
       <PathChoice label="Modelo" value={state.chosen.model} describe="/ruta/a/ggml-large-v3-turbo.bin"
         found={state.models.map(m => ({ path: m.path, text: `${m.name} · ${size(m.bytes)} · ${fileName(m.path)}` }))} onSave={path => void save({ model: path })}/>
       <WatsonVoice/>
+      <WatsonVoiceChoice/>
       <WakeWord/>
       <label className="field">Idioma<ModernSelect value={state.chosen.language} options={languages} onChange={value => void save({ language: value })}/></label>
       {!state.ready && <p className="fiscal-warning">{state.missing.length ? `Lo elegido ya no está (${state.missing.map(k => k === 'binary' ? 'whisper-cli' : k === 'model' ? 'el modelo' : 'ffmpeg').join(', ')}): ¿se desinstaló o actualizó? Elígelo de nuevo.`

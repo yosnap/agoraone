@@ -7,7 +7,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
-from . import music, music_library
+from . import music, music_library, youtube
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -73,8 +73,15 @@ def music_router(settings: Settings) -> APIRouter:
             return found
         return FileResponse(found[0], media_type=found[1], headers={"Cache-Control": "no-store"})
 
+    @router.get("/music/youtube/search")
+    async def youtube_search(q: str = ""):
+        try:
+            return {"videos": await run_in_threadpool(youtube.search, q)}
+        except youtube.YouTubeError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
+
     @router.post("/music/youtube")
-    async def youtube(body: Query):
+    async def youtube_in_browser(body: Query):  # not «youtube»: that name is the module used just above
         return await run(lambda: {"done": music_library.youtube(body.query)})
 
     @router.get("/music/status")
