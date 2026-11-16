@@ -195,7 +195,7 @@ def _quoted(text: str) -> str:
     return json.dumps(text, ensure_ascii=False)
 
 
-def note(row: sqlite3.Row) -> dict:
+def note(row: sqlite3.Row, addresses: bool = True) -> dict:
     """The vault note of a meeting (title and Markdown): what kind it was, the client and the people in its
     properties, and its confidentiality, so the brain keeps treating it as the meeting was marked."""
     lines = json.loads(row["transcript"] or "[]")
@@ -210,7 +210,7 @@ def note(row: sqlite3.Row) -> dict:
     if row["project"]:
         out.append(f"proyecto: {_quoted(row['project'])}")
     if people:
-        out += ["participantes:", *(f"  - {_quoted(_person(p))}" for p in people)]
+        out += ["participantes:", *(f"  - {_quoted(_person(p) if addresses else p['name'])}" for p in people)]
     out += [f"confidencialidad: {row['confidentiality']}", "fuente: AgoraOne", "---", "", f"# {row['title']}", ""]
     if summary:
         out += ["## Resumen", "", summary["summary"] or "—", ""]
@@ -231,8 +231,9 @@ def note(row: sqlite3.Row) -> dict:
 
 def export(row: sqlite3.Row, folder: Path) -> Path:
     """The whole meeting (properties, summaries, tasks and transcript) as a Markdown file in `folder`, to hand
-    to Claude, Codex or anyone. It never overwrites a file: a taken name gets a number."""
-    made = note(row)
+    to Claude, Codex or anyone: like Watson, it carries the people's names, never their addresses. It never
+    overwrites a file: a taken name gets a number."""
+    made = note(row, addresses=False)
     for number in range(1, 1000):
         path = folder / (f"{made['title']}.md" if number == 1 else f"{made['title']} ({number}).md")
         try:

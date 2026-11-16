@@ -78,7 +78,7 @@ def test_clasificada_resumida_y_exportada(client, monkeypatch, tmp_path):  # noq
     first = client.post(f"/meetings/{started['id']}/export", headers=H).json()
     second = client.post(f"/meetings/{started['id']}/export", headers=H).json()
     assert first["name"] == f"{title}.md" and second["name"] == f"{title} (2).md", "nunca sobrescribe"
-    assert (folder / first["name"]).read_text() == content and shown[0] == (folder, first["name"], True)
+    assert (folder / first["name"]).read_text() == content.replace(" <luis@beta.com>", "") and shown[0] == (folder, first["name"], True)
 
 
 @pytest.fixture
@@ -169,3 +169,8 @@ def test_contactos_para_con_quien(client, monkeypatch):  # noqa: F811
     monkeypatch.setattr(calls, "shared_contacts", lambda: calls.FakeContacts(people=people, status="denied"))
     assert client.get("/meetings/contacts?q=ana", headers=H).json() == {"status": "denied", "contacts": []}
     assert meetings.people_of('["Ana"]') == [{"name": "Ana", "email": None}], "las guardadas antes eran solo nombres"
+
+
+def test_un_correo_pegado_no_se_queda_en_el_nombre():
+    people = meetings.classify("meeting", None, ["Ana López <Ana@Acme.com>", "l@beta.com", {"name": "Rus", "email": "x@correo.xn--p1ai"}])[2]
+    assert people == [{"name": "Ana López", "email": "ana@acme.com"}, {"name": "l", "email": "l@beta.com"}, {"name": "Rus", "email": "x@correo.xn--p1ai"}]

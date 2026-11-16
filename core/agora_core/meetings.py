@@ -222,7 +222,7 @@ class Recorder:
             connection.execute("DELETE FROM meeting WHERE id = ? AND owner = ?", (meeting_id, owner))
 
 
-EMAIL = re.compile(r"[^@\s<>\"]{1,64}@[^@\s<>\"]{1,190}\.[A-Za-z]{2,63}")
+EMAIL = re.compile(r"[^@\s<>\"(),;]{1,64}@[^@\s<>\"(),;]{1,190}\.[A-Za-z0-9-]{2,63}")
 
 
 def people_of(raw: str | None) -> list[dict]:
@@ -248,8 +248,13 @@ def classify(kind, client, people) -> tuple[str, str | None, list[dict]]:
     seen: set[str] = set()
     for person in (people or [])[:MAX_PEOPLE * 4]:
         given = person if isinstance(person, dict) else {"name": person}
-        name, email = one_line(given.get("name"), 100), one_line(given.get("email"), 254).lower()
+        name, email = one_line(given.get("name"), 300), one_line(given.get("email"), 254).lower()
         email = email if EMAIL.fullmatch(email) else None
+        pasted = EMAIL.search(name)  # «Ana López <ana@acme.com>» pasted from a mail: the address never stays in the name
+        if pasted:
+            email = email or pasted[0].lower()
+            name = " ".join(EMAIL.sub(" ", name).replace("<", " ").replace(">", " ").replace("()", " ").split()) or pasted[0].split("@")[0]
+        name = name[:100]
         key = (email or name).casefold()
         if name and key not in seen:
             seen.add(key)

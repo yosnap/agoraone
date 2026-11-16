@@ -5,7 +5,6 @@ import { ModernSelect } from '../ui/modern-select';
 
 const kinds = (Object.keys(kindLabels) as MeetingKind[]).map(value => ({ value, label: kindLabels[value] }));
 const failed = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
-/** «Ana, Luis Pérez» → ['Ana', 'Luis Pérez']. */
 
 // Central's clients, read once for every form of the section: null while reading, [] when Central is not connected.
 type Client = { name: string; projects: { name: string; repo?: string | null }[] };
@@ -28,7 +27,7 @@ function useCentralClients() {
  * properties, and what Watson finds it by later. */
 export type Fields = { kind: MeetingKind; client: string; project: string; people: MeetingPerson[] };
 export const emptyFields: Fields = { kind: 'meeting', client: '', project: '', people: [] };
-export function KindFields({ value, onChange }: { value: Fields; onChange: (next: Fields) => void }) {
+export function KindFields({ value, onChange, onTyping }: { value: Fields; onChange: (next: Fields) => void; onTyping?: (text: string) => void }) {
   const clients = useCentralClients();
   const names = (clients ?? []).map(c => c.name);
   const projects = (clients ?? []).find(c => c.name === value.client)?.projects ?? [];
@@ -42,7 +41,7 @@ export function KindFields({ value, onChange }: { value: Fields; onChange: (next
     <label className="field">Tipo<ModernSelect value={value.kind} options={kinds} onChange={kind => onChange({ ...value, kind: kind as MeetingKind })}/></label>
     <label className="field">Cliente (de Central)<ModernSelect value={value.client} options={options} disabled={!names.length && !value.client} onChange={client => onChange({ ...value, client, project: client === value.client ? value.project : '' })}/></label>
     <label className="field">Proyecto (de Central)<ModernSelect value={value.project} options={projectOptions} disabled={!value.client} onChange={project => onChange({ ...value, project })}/></label>
-    <PeopleField value={value.people} onChange={people => onChange({ ...value, people })}/>
+    <PeopleField value={value.people} onChange={people => onChange({ ...value, people })} onTyping={onTyping}/>
   </div>;
 }
 
@@ -54,7 +53,8 @@ export function MeetingClassCard({ detail, onSaved }: { detail: MeetingDetail; o
   const [fields, setFields] = useState<Fields>({ kind: detail.kind, client: detail.client ?? '', project: detail.project ?? '', people: detail.people });
   const [state, setState] = useState<{ saving: boolean; done: string; error: string }>({ saving: false, done: '', error: '' });
   const wanted = asClass(fields);
-  const same = wanted.kind === detail.kind && wanted.client === detail.client && wanted.project === detail.project && JSON.stringify(wanted.people) === JSON.stringify(detail.people);
+  const [typing, setTyping] = useState('');
+  const same = typing.trim() === '' && wanted.kind === detail.kind && wanted.client === detail.client && wanted.project === detail.project && JSON.stringify(wanted.people) === JSON.stringify(detail.people);
   const save = async () => {
     setState({ saving: true, done: '', error: '' });
     try { await updateMeeting(detail.id, wanted); setState({ saving: false, done: 'Guardado.', error: '' }); onSaved(); }
@@ -62,7 +62,7 @@ export function MeetingClassCard({ detail, onSaved }: { detail: MeetingDetail; o
   };
   return <section aria-label="Clasificación" className="meeting-save">
     <h3>Qué fue y con quién</h3>
-    <KindFields value={fields} onChange={next => { setFields(next); setState({ saving: false, done: '', error: '' }); }}/>
+    <KindFields value={fields} onTyping={setTyping} onChange={next => { setFields(next); setState({ saving: false, done: '', error: '' }); }}/>
     <span className="meeting-actions">
       <button type="button" className="button" disabled={same || state.saving} onClick={() => void save()}>{state.saving ? 'Guardando…' : 'Guardar'}</button>
       {state.done && <small className="ok-note" role="status">{state.done}</small>}

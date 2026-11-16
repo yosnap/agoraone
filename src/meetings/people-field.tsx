@@ -7,30 +7,34 @@ export const personLabel = (person: MeetingPerson) => person.email ? `${person.n
 
 /** «Con quién»: people picked from the Mac's Contacts (with their address) as tags, or names typed and
  * separated by commas for those who are not there. The list of contacts never leaves this machine. */
-export function PeopleField({ value, onChange }: { value: MeetingPerson[]; onChange: (next: MeetingPerson[]) => void }) {
+export function PeopleField({ value, onChange, onTyping }: { value: MeetingPerson[]; onChange: (next: MeetingPerson[]) => void; onTyping?: (text: string) => void }) {
   const [text, setText] = useState('');
   const [found, setFound] = useState<ContactMatch[]>([]);
   const [active, setActive] = useState(-1);
   const [access, setAccess] = useState<string | null>(null);
   const timer = useRef(0);
   const asked = useRef(0);
+  // Any answer still on its way is for an older text: it is dropped, so Enter never picks someone else.
+  const cancel = () => { window.clearTimeout(timer.current); asked.current++; setFound([]); setActive(-1); };
+  const write = (next: string) => { setText(next); onTyping?.(next); };
   const add = (people: MeetingPerson[]) => {
+    cancel();
     const keys = new Set(value.map(p => (p.email ?? p.name).toLowerCase()));
     onChange([...value, ...people.filter(p => !keys.has((p.email ?? p.name).toLowerCase()))]);
-    setText(''); setFound([]); setActive(-1);
+    write('');
   };
   const search = (query: string) => {
-    window.clearTimeout(timer.current);
-    if (query.trim().length < 2) { setFound([]); return; }
-    const mine = ++asked.current;
+    cancel();
+    if (query.trim().length < 2) return;
+    const mine = asked.current;
     timer.current = window.setTimeout(() => void findContacts(query.trim()).then(result => {
       if (mine !== asked.current) return;
       setAccess(result.status); setFound(result.contacts); setActive(result.contacts.length ? 0 : -1);
-    }).catch(() => setFound([])), 200);
+    }).catch(() => { if (mine === asked.current) setFound([]); }), 200);
   };
   const type = (next: string) => {
     if (/[,;]/.test(next)) { add(typedPeople(next)); return; }
-    setText(next); search(next);
+    write(next); search(next);
   };
   const pick = (contact: ContactMatch) => add([{ name: contact.name, email: contact.email }]);
   const allow = async () => { try { setAccess((await askContactsAccess()).contacts); if (text) search(text); } catch { setAccess('denied'); } };
@@ -44,17 +48,17 @@ export function PeopleField({ value, onChange }: { value: MeetingPerson[]; onCha
       <input value={text} maxLength={200} placeholder={value.length ? '' : 'Busca en tus contactos o escribe nombres separados por comas'}
         role="combobox" aria-expanded={found.length > 0} aria-autocomplete="list" aria-label="Con quién"
         onChange={event => type(event.target.value)}
-        onBlur={() => { if (text.trim()) add(typedPeople(text)); }}
+        onBlur={() => { if (text.trim()) add(typedPeople(text)); else cancel(); }}
         onKeyDown={event => {
           if (event.key === 'ArrowDown' && found.length) { event.preventDefault(); setActive(i => Math.min(found.length - 1, i + 1)); }
           else if (event.key === 'ArrowUp' && found.length) { event.preventDefault(); setActive(i => Math.max(0, i - 1)); }
           else if (event.key === 'Enter') { event.preventDefault(); if (found[active]) pick(found[active]); else if (text.trim()) add(typedPeople(text)); }
-          else if (event.key === 'Escape') setFound([]);
+          else if (event.key === 'Escape') cancel();
           else if (event.key === 'Backspace' && !text && value.length) onChange(value.slice(0, -1));
         }}/>
     </div>
     {found.length > 0 && <div className="people-list" role="listbox" aria-label="Contactos">
-      {found.map((contact, n) => <button type="button" key={`${contact.name}:${contact.email}`} role="option" aria-selected={n === active}
+      {found.map((contact, n) => <button type="button" key={n} role="option" aria-selected={n === active}
         className={n === active ? 'active' : ''} onMouseDown={event => { event.preventDefault(); pick(contact); }}>
         <strong>{contact.name}</strong>{contact.org && <small> · {contact.org}</small>}{contact.email && <small className="muted"> · {contact.email}</small>}
       </button>)}
