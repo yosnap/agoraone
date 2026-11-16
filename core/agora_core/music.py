@@ -10,8 +10,8 @@ import shutil
 import subprocess
 import sys
 
-PLAYERS = {"music": {"name": "Apple Music", "process": "Music", "app": "Music"},
-           "spotify": {"name": "Spotify", "process": "Spotify", "app": "Spotify"}}
+PLAYERS = {"music": {"name": "Apple Music", "process": "Music", "app": "Music", "bundle": "com.apple.Music"},
+           "spotify": {"name": "Spotify", "process": "Spotify", "app": "Spotify", "bundle": "com.spotify.client"}}
 ACTIONS = {"toggle", "play", "pause", "next", "previous", "louder", "quieter"}
 TIMEOUT = 8
 
@@ -37,6 +37,18 @@ def _running(process: str) -> bool:
         return subprocess.run(["/usr/bin/pgrep", "-x", process], capture_output=True, timeout=3, check=False).returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         return False
+
+
+def _installed(player: str) -> bool:
+    """Whether the player is on this Mac (asking AppleScript for a missing app would open «Where is…?»)."""
+    if player == "music":
+        return True  # part of macOS
+    bundle = PLAYERS[player]["bundle"]
+    try:
+        found = subprocess.run(["/usr/bin/mdfind", f"kMDItemCFBundleIdentifier == '{bundle}'"], capture_output=True, text=True, timeout=3, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return _running(PLAYERS[player]["process"])
+    return bool(found.stdout.strip()) or _running(PLAYERS[player]["process"])
 
 
 # --- macOS ---------------------------------------------------------------------------------------------------
@@ -165,10 +177,12 @@ def play(player: str, query: str) -> str:
         raise MusicError("Di qué quieres escuchar.")
     if available()["adapter"] != "macos" or player not in PLAYERS:
         raise MusicError("Pedir una canción por su nombre solo funciona de momento con Música y Spotify en macOS.")
+    if not _installed(player):
+        raise MusicError(f"{PLAYERS[player]['name']} no está instalado en este Mac. Prueba con YouTube.")
     if player == "music":
         result = _osascript(SEARCH_MUSIC, query)
         if result == "none":
-            raise MusicError(f"No encuentro «{query}» en tu biblioteca de Música.")
+            raise MusicError(f"No encuentro «{query}» en tu biblioteca de Apple Music (solo busca en ella). Prueba con YouTube.")
         return f"Reproduciendo «{query}» en Música."
     _osascript(SEARCH_SPOTIFY, query)
     return f"Abierta la búsqueda de «{query}» en Spotify: elige qué poner."

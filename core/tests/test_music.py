@@ -47,3 +47,12 @@ def test_la_biblioteca_de_musica_no_depende_del_idioma():
     # En un Mac en español la lista se llama «Biblioteca»: buscar «Library» por nombre fallaba siempre.
     from agora_core import music
     assert "library playlist 1" in music.SEARCH_MUSIC and '"Library"' not in music.SEARCH_MUSIC
+
+
+def test_spotify_sin_instalar_no_se_le_pregunta(mac, monkeypatch):
+    # Preguntar por AppleScript a una app que no está abriría el «¿Dónde está Spotify?» de macOS.
+    monkeypatch.setattr(music, "_installed", lambda player: player == "music")
+    before = len(mac)
+    with pytest.raises(music.MusicError, match="no está instalado"):
+        music.play("spotify", "jazz")
+    assert len(mac) == before
