@@ -46,7 +46,14 @@ def test_clasificada_resumida_y_exportada(client, monkeypatch, tmp_path):  # noq
     heard = {}
     monkeypatch.setattr(meeting_notes, "summarize", lambda level, title, text, engines, chosen: heard.update(title=title) or (
         {"summary": "Se explicó el panel.", "topics": [{"topic": "Panel", "detail": "Cómo se crean usuarios."}], "decisions": [], "tasks": []}, "claude", None))
-    started = client.post("/meetings", json={"mic_type": "audio/webm", "kind": "training", "client": "Acme", "people": ["Ana"]}, headers=H).json()
+    assert client.post("/meetings", json={"mic_type": "audio/webm", "client": "Acme"}, headers=H).status_code == 422, "sin Central no hay clientes"
+    database = connect(client.data / DB_NAME)
+    database.execute("INSERT INTO setting (key, value) VALUES ('central.snapshot', ?)", (json.dumps({"clients": [{"name": "Acme"}, {"name": "Beta"}]}),))
+    database.commit()
+    database.close()
+    started = client.post("/meetings", json={"mic_type": "audio/webm", "kind": "training", "client": "acme", "people": ["Ana"]}, headers=H).json()
+    assert started["client"] == "Acme", "con el nombre de Central"
+    assert client.patch(f"/meetings/{started['id']}", json={"client": "Inventado"}, headers=H).status_code == 422
     assert started["title"].startswith("Formación con Acme") and started["kind"] == "training" and started["people"] == ["Ana"]
     assert client.post("/meetings", json={"mic_type": "audio/webm", "kind": "fiesta"}, headers=H).status_code == 422
     changed = client.patch(f"/meetings/{started['id']}", json={"people": ["Ana", "Luis"], "title": "Formación: el panel"}, headers=H).json()

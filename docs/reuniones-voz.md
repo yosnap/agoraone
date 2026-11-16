@@ -39,7 +39,7 @@ Cómo se comporta:
 
 En la sección **Reuniones**:
 
-1. Elige qué es (reunión, formación, entrevista, llamada u otra), el cliente y con quién, todo opcional y editable después en **Ver**. Escribe un título si quieres; si no, se compone con el tipo, el cliente y la hora («Formación con Acme · 10.30»). Elige la confidencialidad: normal, solo en este Mac o privada.
+1. Elige qué es (reunión, formación, entrevista, llamada u otra), el cliente (de la lista de clientes de Central; el núcleo rechaza uno que no esté) y con quién, todo opcional y editable después en **Ver**. Escribe un título si quieres; si no, se compone con el tipo, el cliente y la hora («Formación con Acme · 10.30»). Elige la confidencialidad: normal, solo en este Mac o privada.
 2. Indica si quieres grabar también el audio del sistema, es decir, lo que dicen los demás.
 3. Pulsa **Empezar a grabar**.
 

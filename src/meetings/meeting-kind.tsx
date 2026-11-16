@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { exportMeeting, kindLabels, updateMeeting, type MeetingClass, type MeetingDetail, type MeetingKind } from '../api/core';
+import { useRef, useState, useSyncExternalStore } from 'react';
+import { exportMeeting, getCentral, kindLabels, updateMeeting, type MeetingClass, type MeetingDetail, type MeetingKind } from '../api/core';
 import { ModernSelect } from '../ui/modern-select';
 
 const kinds = (Object.keys(kindLabels) as MeetingKind[]).map(value => ({ value, label: kindLabels[value] }));
@@ -7,12 +7,32 @@ const failed = (failure: unknown, fallback: string) => failure instanceof Error 
 /** «Ana, Luis Pérez» → ['Ana', 'Luis Pérez']. */
 export const peopleOf = (text: string) => text.split(/[,;\n]/).map(name => name.trim()).filter(Boolean);
 
-/** What the meeting was, the client it was about and who was in it: in the note's properties, and what Watson
- * finds it by later. */
+// Central's clients, read once for every form of the section: null while reading, [] when Central is not connected.
+let centralClients: string[] | null = null;
+let centralAsked = false;
+const listeners = new Set<() => void>();
+function readCentral() {
+  if (centralAsked) return;
+  centralAsked = true;
+  void getCentral().then(state => (state.snapshot?.clients ?? []).map(c => c.name).sort((a, b) => a.localeCompare(b, 'es')))
+    .catch(() => [] as string[]).then(names => { centralClients = names; listeners.forEach(listener => listener()); });
+}
+function useCentralClients() {
+  readCentral();
+  return useSyncExternalStore(listener => { listeners.add(listener); return () => listeners.delete(listener); }, () => centralClients);
+}
+
+/** What the meeting was, the client it was about (one of Central's) and who was in it: in the note's
+ * properties, and what Watson finds it by later. */
 export function KindFields({ value, onChange }: { value: { kind: MeetingKind; client: string; people: string }; onChange: (next: { kind: MeetingKind; client: string; people: string }) => void }) {
+  const clients = useCentralClients();
+  const names = clients ?? [];
+  // A client saved before (or renamed in Central since) stays visible as it is.
+  const options = [{ value: '', label: clients === null ? 'Leyendo Central…' : names.length ? 'Sin cliente' : 'Sin clientes en Central' },
+    ...[...names, ...(value.client && !names.includes(value.client) ? [value.client] : [])].map(name => ({ value: name, label: name }))];
   return <div className="meeting-save-fields">
     <label className="field">Tipo<ModernSelect value={value.kind} options={kinds} onChange={kind => onChange({ ...value, kind: kind as MeetingKind })}/></label>
-    <label className="field">Cliente<input value={value.client} onChange={event => onChange({ ...value, client: event.target.value })} maxLength={200} placeholder="Opcional"/></label>
+    <label className="field">Cliente (de Central)<ModernSelect value={value.client} options={options} disabled={!names.length && !value.client} onChange={client => onChange({ ...value, client })}/></label>
     <label className="field">Con quién<input value={value.people} onChange={event => onChange({ ...value, people: event.target.value })} maxLength={1000} placeholder="Ana, Luis… (opcional)"/></label>
   </div>;
 }
