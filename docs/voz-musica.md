@@ -46,7 +46,7 @@ para pedir algo.
     pantalla ya revisado. En el navegador, sin esa ventana, se saltan; si no queda ninguno, se ofrece «Abrir en
     YouTube».
 - En la tarjeta de música, el desplegable elige la fuente: tu biblioteca si tienes carpetas de música, YouTube si
-  no. Cuando nada suena, la tarjeta dice qué reproductor está abierto. Un reproductor que no está instalado (Spotify)
+  no. Con «Tu biblioteca», lo que no está en ella se busca en YouTube y se dice. Cuando nada suena, la tarjeta dice qué reproductor está abierto. Un reproductor que no está instalado (Spotify)
   se avisa sin preguntarle a macOS, que abriría «¿Dónde está…?».
 - La búsqueda de YouTube lee sus resultados en las dos formas en que YouTube los sirve y, si una página llega sin
   ellos, repite una vez.
@@ -57,7 +57,7 @@ Si todo el mensaje a Watson, escrito o dicho, es una de estas órdenes, la hace 
 como «Orden rápida, sin modelo»:
 
 - pausa, sigue, siguiente, anterior, sube o baja el volumen;
-- «pon …» (como mucho 7 palabras);
+- «pon …» (como mucho 10 palabras), también dicho con naturalidad: con «Watson» u «Oye Watson» delante, «¿me puedes poner…?» o «por favor» al final (1.7.0-alpha.23). «Pon música» o «ponme algo», sin decir qué, reanuda lo que estaba sonando (tu biblioteca, YouTube, Música o Spotify) y, si no hay nada abierto, pone música tranquila en YouTube;
 - «abre …».
 
 No cuentan como órdenes rápidas, y van a Watson:
