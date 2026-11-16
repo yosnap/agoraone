@@ -7,7 +7,7 @@ import { EventProposals, useEventProposals } from './event-proposals';
 import { QuoteProposals, useQuoteProposals } from './quote-proposals';
 import { CleanupProposals, useCleanupProposals } from './cleanup-proposals';
 import { ReorgProposals, useReorgProposals } from './reorg-proposals';
-import { speak, stopSpeaking, useSpeaking } from './speech';
+import { answerSoFar, beginAnswer, speak, stopSpeaking, useSpeaking } from './speech';
 
 // The conversation last open (its number only, in this browser), opened again when coming back to the chat.
 const LAST = 'agora-watson-conversation';
@@ -92,6 +92,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const talking = useSpeaking();
   const send = useCallback(async (text: string, into: number | null) => {
     let id = into;
+    let spokeFinal = false;
     setError('');
     try {
       if (id === null) { id = (await createAssistantConversation()).id; shownId.current = id; setCurrent(id); writeLast(id); setMessages([]); }
@@ -99,8 +100,12 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       abort.current = controller;
       setLive({ question: text, stage: null, sources: [], text: '', steps: [] });
       play('send');
+      // The voice gets ready now and starts with the first whole sentence while the rest is written.
+      beginAnswer(spokenTurn.current);
+      let soFar = '';
       const reading: string[] = [];
       await askAssistant(id, text, event => {
+        if (event.kind === 'delta') answerSoFar(soFar += event.text);
         if (event.kind === 'done') play('receive');
         if (event.kind === 'stage') onThinking?.({ stage: event.stage, label: stageLabels[event.stage], reading });
         else if (event.kind === 'tool' && event.tool === 'search') onThinking?.({ stage: 'busca', label: `Buscando «${event.query}»`, reading });
@@ -131,9 +136,11 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
           const found = (await getAssistantConversation(id)).messages;
           setMessages(found);
           const last = found.at(-1);
-          if (last?.role === 'assistant' && !last.failed) speak(last.content, spokenTurn.current);
+          if (last?.role === 'assistant' && !last.failed) { speak(last.content, spokenTurn.current); spokeFinal = true; }
         } catch { /* the error above is enough */ }
       }
+      // No answer to finish (an error, another conversation on screen): the voice waiting for it lets go.
+      if (!spokeFinal) stopSpeaking();
       if (id === null || shownId.current === id) setLive(null);
       void refreshList();
     }

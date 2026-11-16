@@ -1,6 +1,9 @@
-/** Watson speaking its answers (1.5) with the system's own voices (the browser's speech synthesis: on this
- * computer, nothing sent anywhere). By default it speaks when it was spoken to; the choice is per viewer. */
+/** Watson speaking its answers (1.5; voice to choose in 1.7): with the system's own voices or with VoiceStudio on
+ * this Mac (voice-player.ts). Nothing is sent outside this computer. By default it speaks when it was spoken to;
+ * the choice is per viewer. */
 import { useSyncExternalStore } from 'react';
+import { player } from './voice-player';
+import { MAX_SPOKEN, plainWords } from './voice-pieces';
 
 export type VoiceMode = 'spoken' | 'always' | 'never';
 // Whether Watson is speaking now, so the panel can offer to stop it.
@@ -9,7 +12,7 @@ const listeners = new Set<() => void>();
 const setSpeaking = (now: boolean) => { if (speaking !== now) { speaking = now; listeners.forEach(listener => listener()); } };
 export const useSpeaking = () => useSyncExternalStore(cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, () => speaking);
 const KEY = 'agora-watson-voice';
-const MAX = 700;
+const MAX = MAX_SPOKEN;
 
 export function voiceMode(): VoiceMode {
   try { const saved = localStorage.getItem(KEY); return saved === 'always' || saved === 'never' ? saved : 'spoken'; } catch { return 'spoken'; }
@@ -21,31 +24,38 @@ export function setVoiceMode(mode: VoiceMode) {
 
 /** Plain words: no Markdown, links or citation marks, cut at a sentence near the limit. */
 export function speakable(text: string): string {
-  const plain = text.replace(/```[\s\S]*?```/g, ' ').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string, alias?: string) => alias ?? target)
-    .replace(/\[[^\]]{1,40}\]/g, '').replace(/[*_#>`|~]/g, '').replace(/\s+/g, ' ').trim();
+  const plain = plainWords(text);
   if (plain.length <= MAX) return plain;
   const cut = plain.slice(0, MAX);
   const end = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('? '), cut.lastIndexOf('! '));
   return end > MAX / 2 ? cut.slice(0, end + 1) : `${cut}…`;
 }
 
+const wants = (spokenTo: boolean) => { const mode = voiceMode(); return mode === 'always' || (mode === 'spoken' && spokenTo); };
+
+/** A question was sent: if Watson will speak the answer, the voice gets ready and starts with the first sentence
+ * while the rest is still being written (with VoiceStudio; macOS speaks the whole answer at the end). */
+export function beginAnswer(spokenTo: boolean) {
+  stopSpeaking();
+  if (wants(spokenTo)) player.begin(setSpeaking);
+}
+/** The answer as written so far. */
+export const answerSoFar = (text: string) => player.feed(text, false);
+
+/** The finished answer (or a quick command's reply): spoken, or finished if it was already being spoken. */
 export function speak(text: string, spokenTo: boolean) {
-  const mode = voiceMode();
-  if (mode === 'never' || (mode === 'spoken' && !spokenTo) || typeof speechSynthesis === 'undefined') return;
-  const words = speakable(text);
-  if (!words) return;
-  speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(words);
-  utterance.lang = 'es-ES';
-  const voice = speechSynthesis.getVoices().find(v => v.lang === 'es-ES' && v.localService) ?? speechSynthesis.getVoices().find(v => v.lang.startsWith('es'));
-  if (voice) utterance.voice = voice;
-  utterance.onend = () => setSpeaking(false);
-  utterance.onerror = () => setSpeaking(false);
-  setSpeaking(true);
-  speechSynthesis.speak(utterance);
+  if (!player.active() && wants(spokenTo)) player.begin(setSpeaking);
+  if (player.active()) player.feed(text, true);
 }
 
 export function stopSpeaking() {
-  if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  player.stop();
   setSpeaking(false);
+}
+
+/** «Probar» in Ajustes: says this with the chosen voice, whatever the «responde hablando» choice is. */
+export function tryVoice(text: string) {
+  stopSpeaking();
+  player.begin(setSpeaking);
+  player.feed(text, true);
 }

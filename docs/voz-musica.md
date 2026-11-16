@@ -72,6 +72,19 @@ español si la hay. Lee la respuesta sin el formato Markdown y sin las citas, co
 700 caracteres. En Ajustes › Voz se elige cuándo: cuando le hablas con el micrófono (por defecto), siempre o
 nunca.
 
+## La voz de Watson (1.7)
+
+En Ajustes › Voz › «Voz de Watson» se elige quién lee las respuestas:
+- Automática (por defecto): el perfil «Watson (AgoraOne)» de VoiceStudio cuando la app está abierta; si no, macOS.
+- Una voz de VoiceStudio (sus perfiles) o una voz de macOS en español.
+- Velocidad y «Probar».
+
+VoiceStudio (OmniVoice) corre en este Mac, en `127.0.0.1:3900`, una dirección fija en el núcleo (`core/agora_core/tts.py`).
+El texto de la respuesta no sale del equipo. La pantalla corta la respuesta en frases mientras llega
+(`src/assistant/voice-pieces.ts`): la primera suena en cuanto está escrita y las siguientes se preparan mientras habla
+(`src/assistant/voice-player.ts`). Si VoiceStudio no responde, sigue la voz de macOS y Ajustes lo dice. Voicebox
+queda para más adelante: genera en segundo plano y necesita descargar antes su modelo.
+
 ## Llamar a Watson
 
 - ⌃⌥W desde cualquier app (lo registra la app de escritorio con el plugin de atajos globales de Tauri): AgoraOne
@@ -97,6 +110,8 @@ nunca.
 |---|---|
 | `GET /music/status`, `POST /music/control`, `POST /music/play` | lo que suena, los controles y «pon…» |
 | `GET /apps`, `PUT /apps/allowed`, `POST /apps/open` | apps instaladas, las permitidas y abrir una (409 si hace falta confirmar) |
+| `GET/PUT /voice/tts` | Voz de Watson: lo elegido, lo que habla ahora y las voces de VoiceStudio |
+| `POST /voice/speak` | Un trozo de respuesta dicho por VoiceStudio (audio WAV) |
 | `GET/PUT /wake/settings` | «Oye Watson» encendido o apagado, y el estado del oyente |
 | `POST /internal/wake/status` | La app de escritorio cuenta cómo va el oyente (el navegador no llega a `/internal`) |
 | `GET /music/library`, `PUT /music/library/folders`, `POST /music/library/choose`, `GET /music/library/{id}/file` | biblioteca: carpetas, búsqueda y archivo |
