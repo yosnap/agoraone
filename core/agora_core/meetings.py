@@ -86,6 +86,8 @@ class Recorder:
         row = self.owned(connection, owner, meeting_id)
         kind, client, people = classify(changes.get("kind", row["kind"]), changes.get("client", row["client"]),
                                         changes["people"] if "people" in changes else json.loads(row["people"] or "[]"))
+        if client != row["client"]:
+            client = central_client(connection, client)
         title = " ".join(str(changes.get("title") or row["title"]).split())[:200] or row["title"]
         with transaction(connection):
             connection.execute("UPDATE meeting SET title = ?, kind = ?, client = ?, people = ? WHERE id = ?",
@@ -96,6 +98,7 @@ class Recorder:
     def start(self, connection: sqlite3.Connection, owner: str, title: str, confidentiality: str, mic_type: str, system: bool,
               kind: str = "meeting", client: str | None = None, people: list[str] | None = None) -> dict:
         kind, client, people = classify(kind, client, people)
+        client = central_client(connection, client)
         title = " ".join((title or "").split())[:200] or default_title(kind, client)
         if confidentiality not in LEVELS:
             raise MeetingError("Nivel de confidencialidad no válido.")
@@ -230,6 +233,18 @@ def classify(kind, client, people) -> tuple[str, str | None, list[str]]:
             if len(names) == MAX_PEOPLE:
                 break
     return kind, one_line(client, 200) or None, names
+
+
+def central_client(connection: sqlite3.Connection, name: str | None) -> str | None:
+    """The client as Central names it: a meeting's client is always one of Central's clients (or none)."""
+    if not name:
+        return None
+    from .central import snapshot
+
+    known = {str(c.get("name") or "").casefold(): c["name"] for c in ((snapshot(connection) or {}).get("clients") or []) if c.get("name")}
+    if name.casefold() not in known:
+        raise MeetingError("Ese cliente no está en Central: elige uno de la lista.")
+    return known[name.casefold()]
 
 
 def default_title(kind: str, client: str | None) -> str:
