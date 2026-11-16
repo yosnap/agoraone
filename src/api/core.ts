@@ -81,6 +81,7 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'event_proposal'; id: string; event: { title: string; start: string; end: string; allDay: boolean; location: string | null; notes: string | null; calendar: string | null } }
   | { kind: 'tool'; tool: 'note_proposal'; id: string; note: { title: string; folder: string; content: string } }
   | { kind: 'tool'; tool: 'meetings'; query: string; count: number }
+  | { kind: 'tool'; tool: 'issue_proposal'; id: string; issue: ProposedIssue }
   | { kind: 'tool'; tool: 'meeting'; title: string; part: number }
   | { kind: 'tool'; tool: 'agenda' | 'day' | 'projects'; [key: string]: unknown }
   | { kind: 'done'; engine: string; model: string };
@@ -245,7 +246,7 @@ export const getQuarter = (folderId: number, year: number, quarter: number) => c
 export const makeQuarterExcel = (folderId: number, year: number, quarter: number) => core<{ path: string }>(`/fiscal/folders/${folderId}/excel`, { year, quarter });
 export const openFiscalFile = (folderId: number, path: string | null, reveal = false) => core<{ ok: true }>(`/fiscal/folders/${folderId}/open`, { path, reveal });
 export type CentralClient = { name: string; company: string | null; domains: string[];
-  projects: { name: string; status: string; phase: string | null }[]; websites: { url: string; status: string | null }[] };
+  projects: { name: string; status: string; phase: string | null; repo?: string | null }[]; websites: { url: string; status: string | null }[] };
 export type CentralServer = { name: string; status: string | null; provider: string | null; projects: string[] };
 export type CentralState = { configured: boolean; snapshot: { clients: CentralClient[]; servers: CentralServer[]; fetchedAt: string } | null; problem: string | null };
 export const getCentral = () => core<CentralState>('/central');
@@ -353,10 +354,10 @@ export const sendMail = (draft: MailDraft, digest: string) => core<{ sent: boole
 export type Meeting = { id: number; title: string; confidentiality: Level; status: 'recording' | 'recorded' | 'interrupted';
   started_at: string; ended_at: string | null; seconds: number; mic_bytes: number; system_source: string | null; system_bytes: number; note: string | null;
   work: 'none' | 'transcribing' | 'summarizing' | 'done' | 'failed'; work_error: string | null; summary_by: 'claude' | 'local' | 'none' | null;
-  has_transcript: boolean; saved_note: { vault: string; note: string } | null; kind: MeetingKind; client: string | null; people: string[] };
+  has_transcript: boolean; saved_note: { vault: string; note: string } | null; kind: MeetingKind; client: string | null; project: string | null; people: string[] };
 export type MeetingKind = 'meeting' | 'training' | 'interview' | 'call' | 'other';
 export const kindLabels: Record<MeetingKind, string> = { meeting: 'Reunión', training: 'Formación', interview: 'Entrevista', call: 'Llamada', other: 'Otra' };
-export type MeetingClass = { kind: MeetingKind; client: string | null; people: string[] };
+export type MeetingClass = { kind: MeetingKind; client: string | null; project: string | null; people: string[] };
 export type MeetingTask = { title: string; who: string | null; due: string | null };
 export type MeetingDetail = Meeting & { transcript: { start: number; end: number; text: string; speaker: string }[];
   summary: { summary: string; topics?: { topic: string; detail: string }[]; decisions: string[]; tasks: MeetingTask[] } | null; draft: { title: string; content: string } | null };
@@ -450,6 +451,9 @@ export type VaultReview = { notes: number; folders: number; root: ReviewNote[]; 
   lonelyFolders: string[]; lonelyCount: number; crowdedFolders: { folder: string; notes: number }[]; deepFolders: string[]; deepCount: number;
   secrets: ReviewNote[]; secretCount: number };
 export const getVaultReview = (discreet: boolean) => core<VaultReview>(`/brain/review?discreet=${+discreet}`);
+/** A GitHub issue Watson proposed for a Central project's repository, created with the user's `gh` once confirmed. */
+export type ProposedIssue = { repo: string; client: string | null; project: string; title: string; body: string; meeting: string | null };
+export const createIssueFromProposal = (id: string) => core<{ url: string; repo: string }>(`/assistant/proposals/${encodeURIComponent(id)}/issue`, {});
 /** A quote Watson proposed, created in Central as a draft once confirmed (1.7). */
 export type ProposedQuote = { client: string; title: string; items: { description: string; details?: string; unitPrice: number; priceMax?: number; quantity: number; unit?: string }[];
   phases?: { name: string; percent?: number }[]; vat?: number; validDays?: number };

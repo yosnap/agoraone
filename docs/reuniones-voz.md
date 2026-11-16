@@ -39,7 +39,7 @@ Cómo se comporta:
 
 En la sección **Reuniones**:
 
-1. Elige qué es (reunión, formación, entrevista, llamada u otra), el cliente (de la lista de clientes de Central; el núcleo rechaza uno que no esté) y con quién, todo opcional y editable después en **Ver**. Escribe un título si quieres; si no, se compone con el tipo, el cliente y la hora («Formación con Acme · 10.30»). Elige la confidencialidad: normal, solo en este Mac o privada.
+1. Elige qué es (reunión, formación, entrevista, llamada u otra), el cliente y el proyecto (de las listas de Central; el núcleo rechaza los que no estén, y un proyecto tiene que ser de ese cliente) y con quién, todo opcional y editable después en **Ver**. Escribe un título si quieres; si no, se compone con el tipo, el cliente y la hora («Formación con Acme · 10.30»). Elige la confidencialidad: normal, solo en este Mac o privada.
 2. Indica si quieres grabar también el audio del sistema, es decir, lo que dicen los demás.
 3. Pulsa **Empezar a grabar**.
 
@@ -83,7 +83,7 @@ A partir de ahí, nada se escribe sin que lo confirmes:
 
 ## Preguntar a Watson por una reunión
 
-Watson tiene `consultar_reuniones` (por palabras, fechas, tipo, cliente o personas) y `leer_reunion` (la transcripción, en partes, solo de una reunión que ya encontró), en `core/agora_core/meeting_tools.py`. Sabe la fecha de hoy, así que entiende «la semana pasada» o «el martes». Solo ve las reuniones **normales** ya transcritas de tu acceso: las de solo en este Mac y las privadas nunca le llegan. Con lo que encuentra puede redactar en el chat una issue de GitHub, un correo o un acta, listos para copiar; no crea nada fuera de AgoraOne. Las herramientas se apagan con el módulo Reuniones.
+Watson tiene `consultar_reuniones` (por palabras, fechas, tipo, cliente o personas) y `leer_reunion` (la transcripción, en partes, solo de una reunión que ya encontró), en `core/agora_core/meeting_tools.py`. Sabe la fecha de hoy, así que entiende «la semana pasada» o «el martes». Solo ve las reuniones **normales** ya transcritas de tu acceso: las de solo en este Mac y las privadas nunca le llegan. Con lo que encuentra redacta en el chat un correo o un acta, listos para copiar. Una **issue de GitHub** la propone con `proponer_issue` para el repositorio que Central guarda del proyecto de la reunión (o de un proyecto que se le nombre); la tarjeta enseña repositorio, título y cuerpo, y solo se crea con **Crear la issue**, mediante el GitHub CLI del usuario (`gh`, `core/agora_core/github_issues.py`). Si el proyecto no tiene repositorio en Central, lo dice. Las herramientas se apagan con el módulo Reuniones.
 
 ## Rutas del núcleo
 

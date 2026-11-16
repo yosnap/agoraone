@@ -52,7 +52,7 @@ class Recorder:
     # --- reading -------------------------------------------------------------------------------------------
     def view(self, row: sqlite3.Row) -> dict:
         item = {k: row[k] for k in ("id", "title", "confidentiality", "status", "started_at", "ended_at", "mic_bytes", "system_source", "system_bytes", "note",
-                                    "work", "work_error", "summary_by", "kind", "client")}
+                                    "work", "work_error", "summary_by", "kind", "client", "project")}
         item["people"] = json.loads(row["people"] or "[]")
         item["has_transcript"] = bool(row["transcript"])
         item["saved_note"] = json.loads(row["saved_note"]) if row["saved_note"] else None
@@ -82,23 +82,28 @@ class Recorder:
                                        (now(), "AgoraOne se cerró mientras grababa; se conserva lo grabado hasta entonces.", row["id"]))
 
     def update(self, connection: sqlite3.Connection, owner: str, meeting_id: int, changes: dict) -> dict:
-        """The user changes the title, kind, client or people of a meeting (at any time, even while recording)."""
+        """The user changes the title, kind, client, project or people of a meeting (at any time, even while recording)."""
         row = self.owned(connection, owner, meeting_id)
         kind, client, people = classify(changes.get("kind", row["kind"]), changes.get("client", row["client"]),
                                         changes["people"] if "people" in changes else json.loads(row["people"] or "[]"))
         if client != row["client"]:
             client = central_client(connection, client)
+        # Another client takes the project away unless a project of that client comes with it.
+        project = changes.get("project", row["project"] if client == row["client"] else None) or None
+        if project != row["project"] or client != row["client"]:
+            project = central_project(connection, client, project)
         title = " ".join(str(changes.get("title") or row["title"]).split())[:200] or row["title"]
         with transaction(connection):
-            connection.execute("UPDATE meeting SET title = ?, kind = ?, client = ?, people = ? WHERE id = ?",
-                               (title, kind, client, json.dumps(people, ensure_ascii=False), meeting_id))
+            connection.execute("UPDATE meeting SET title = ?, kind = ?, client = ?, project = ?, people = ? WHERE id = ?",
+                               (title, kind, client, project, json.dumps(people, ensure_ascii=False), meeting_id))
         return self.view(self.owned(connection, owner, meeting_id))
 
     # --- recording -----------------------------------------------------------------------------------------
     def start(self, connection: sqlite3.Connection, owner: str, title: str, confidentiality: str, mic_type: str, system: bool,
-              kind: str = "meeting", client: str | None = None, people: list[str] | None = None) -> dict:
+              kind: str = "meeting", client: str | None = None, people: list[str] | None = None, project: str | None = None) -> dict:
         kind, client, people = classify(kind, client, people)
         client = central_client(connection, client)
+        project = central_project(connection, client, project)
         title = " ".join((title or "").split())[:200] or default_title(kind, client)
         if confidentiality not in LEVELS:
             raise MeetingError("Nivel de confidencialidad no válido.")
@@ -110,8 +115,8 @@ class Recorder:
                 raise MeetingError("Ya hay una reunión grabándose.", 409)
             with transaction(connection):
                 meeting_id = connection.execute(
-                    "INSERT INTO meeting (owner, title, confidentiality, status, started_at, mic_type, kind, client, people) VALUES (?, ?, ?, 'recording', ?, ?, ?, ?, ?)",
-                    (owner, title, confidentiality, now(), audio, kind, client, json.dumps(people, ensure_ascii=False))).lastrowid
+                    "INSERT INTO meeting (owner, title, confidentiality, status, started_at, mic_type, kind, client, project, people) VALUES (?, ?, ?, 'recording', ?, ?, ?, ?, ?, ?)",
+                    (owner, title, confidentiality, now(), audio, kind, client, project, json.dumps(people, ensure_ascii=False))).lastrowid
             folder = self.folder(meeting_id)
             folder.mkdir(parents=True, mode=0o700)
             (folder / f"microfono.{audio}").touch(mode=0o600)
@@ -244,6 +249,22 @@ def central_client(connection: sqlite3.Connection, name: str | None) -> str | No
     known = {str(c.get("name") or "").casefold(): c["name"] for c in ((snapshot(connection) or {}).get("clients") or []) if c.get("name")}
     if name.casefold() not in known:
         raise MeetingError("Ese cliente no está en Central: elige uno de la lista.")
+    return known[name.casefold()]
+
+
+def central_project(connection: sqlite3.Connection, client: str | None, name) -> str | None:
+    """The project as Central names it, and always one of the meeting's client's projects (or none)."""
+    name = " ".join(str(name or "").split())[:200]
+    if not name:
+        return None
+    from .central import snapshot
+
+    if not client:
+        raise MeetingError("Elige antes el cliente del proyecto.")
+    found = next((c for c in ((snapshot(connection) or {}).get("clients") or []) if c.get("name") == client), None)
+    known = {str(p.get("name") or "").casefold(): p["name"] for p in ((found or {}).get("projects") or []) if p.get("name")}
+    if name.casefold() not in known:
+        raise MeetingError(f"Ese proyecto no es de {client} en Central: elige uno de la lista.")
     return known[name.casefold()]
 
 

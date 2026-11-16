@@ -364,6 +364,8 @@ class Toolbox:
             self.meetings_seen.update(m["id"] for m in found)
             self._record({"tool": "meetings", "query": query, "count": len(found)})
             return json.dumps({"reuniones": found, "aviso": meeting_tools.NOTICE}, ensure_ascii=False)
+        if name == "proponer_issue":
+            return await self._propose_issue(args)
         meeting_id = int(args.get("id"))
         if meeting_id not in self.meetings_seen:
             return json.dumps({"error": "Busca antes la reunión con consultar_reuniones."}, ensure_ascii=False)
@@ -376,6 +378,28 @@ class Toolbox:
             return json.dumps({"error": "Esa reunión ya no está disponible."}, ensure_ascii=False)
         self._record({"tool": "meeting", "title": found["titulo"], "part": found["parte"]})
         return json.dumps({**found, "aviso": meeting_tools.NOTICE}, ensure_ascii=False)
+
+    async def _propose_issue(self, args: dict) -> str:
+        """Keeps an issue Watson prepared as a proposal; «Crear la issue» creates it (POST /assistant/proposals/<id>/issue)."""
+        import secrets as random
+        import time
+
+        from . import github_issues
+
+        owner, seen = self.owner, set(self.meetings_seen)
+
+        def check():
+            with self.database() as connection:
+                return github_issues.propose(connection, owner, args, seen)
+        try:
+            issue = await run_in_threadpool(check)
+        except github_issues.IssueError as error:
+            return json.dumps({"error": str(error)}, ensure_ascii=False)
+        proposal_id = random.token_urlsafe(12)
+        self.proposals[proposal_id] = {"owner": owner, "issue": issue, "expires": time.time() + PROPOSAL_SECONDS}
+        self._record({"tool": "issue_proposal", "id": proposal_id, "issue": issue})
+        return json.dumps({"propuesta": {"repositorio": issue["repo"], "titulo": issue["title"]},
+                           "estado": "En la pantalla del usuario, esperando «Crear la issue». No está creada."}, ensure_ascii=False)
 
     async def _inbox(self, tipo: str, sender: str = "") -> str:
         from . import mail_inbox

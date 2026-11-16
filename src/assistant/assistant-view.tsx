@@ -5,6 +5,7 @@ import { isYes, quickCommand, type QuickResult } from './quick-commands';
 import { NoteProposals, useNoteProposals } from './note-proposals';
 import { EventProposals, useEventProposals } from './event-proposals';
 import { QuoteProposals, useQuoteProposals } from './quote-proposals';
+import { IssueProposals, useIssueProposals } from './issue-proposals';
 import { CleanupProposals, useCleanupProposals } from './cleanup-proposals';
 import { ReorgProposals, useReorgProposals } from './reorg-proposals';
 import { answerSoFar, beginAnswer, speak, stopSpeaking, useSpeaking } from './speech';
@@ -60,6 +61,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const notes = useNoteProposals();
   const events = useEventProposals();
   const quotes = useQuoteProposals();
+  const issues = useIssueProposals();
   const cleanups = useCleanupProposals();
   const reorgs = useReorgProposals();
   const abort = useRef<AbortController | null>(null);
@@ -117,6 +119,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         else if (event.kind === 'tool' && event.tool === 'note_proposal') notes.add(event.id, event.note);
         else if (event.kind === 'tool' && event.tool === 'event_proposal') events.add(event.id, event.event);
         else if (event.kind === 'tool' && event.tool === 'quote_proposal') quotes.add(event.id, event.quote);
+        else if (event.kind === 'tool' && event.tool === 'issue_proposal') issues.add(event.id, event.issue);
         else if (event.kind === 'tool' && event.tool === 'cleanup_proposal') cleanups.add(event.id, event.action, event.messages);
         else if (event.kind === 'tool' && event.tool === 'reorg_proposal') reorgs.add(event.id, event.summary, event.moves);
         else if (event.kind === 'tool' && event.tool === 'vault_outline') onThinking?.({ stage: 'busca', label: 'Revisando el vault', reading });
@@ -125,7 +128,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         event.kind === 'stage' ? { ...previous, stage: event.stage, engine: event.engine ?? previous.engine, model: event.model ?? previous.model }
           : event.kind === 'sources' ? (onSources?.(event.sources.map(sourceId)), { ...previous, sources: event.sources })
           : event.kind === 'delta' ? { ...previous, text: previous.text + event.text }
-          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? `Consultó la Bandeja · ${event.count} correos` : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'meetings' ? `Buscó en las reuniones · ${event.count}` : event.tool === 'meeting' ? `Leyó la reunión «${event.title}»` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'note_proposal' ? `Propuso la nota «${event.note.title}»` : event.tool === 'event_proposal' ? `Propuso el evento «${event.event.title}»` : event.tool === 'quote_proposal' ? `Propuso el presupuesto «${event.quote.title}»` : event.tool === 'cleanup_proposal' ? `Preparó ${event.messages.length} correos para ${event.action === 'trash' ? 'la Papelera' : 'archivar'}` : event.tool === 'reorg_proposal' ? `Propuso ${event.moves.length} cambios para ordenar el vault` : event.tool === 'vault_outline' ? `Revisó el vault · ${event.notes} notas en ${event.folders} carpetas` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
+          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? `Consultó la Bandeja · ${event.count} correos` : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'meetings' ? `Buscó en las reuniones · ${event.count}` : event.tool === 'meeting' ? `Leyó la reunión «${event.title}»` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'note_proposal' ? `Propuso la nota «${event.note.title}»` : event.tool === 'event_proposal' ? `Propuso el evento «${event.event.title}»` : event.tool === 'quote_proposal' ? `Propuso el presupuesto «${event.quote.title}»` : event.tool === 'issue_proposal' ? `Propuso una issue en ${event.issue.repo}` : event.tool === 'cleanup_proposal' ? `Preparó ${event.messages.length} correos para ${event.action === 'trash' ? 'la Papelera' : 'archivar'}` : event.tool === 'reorg_proposal' ? `Propuso ${event.moves.length} cambios para ordenar el vault` : event.tool === 'vault_outline' ? `Revisó el vault · ${event.notes} notas en ${event.folders} carpetas` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
           : previous));
       }, controller.signal);
     } catch (failure) {
@@ -237,6 +240,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <NoteProposals state={notes}/>
         <EventProposals state={events}/>
         <QuoteProposals state={quotes}/>
+        <IssueProposals state={issues}/>
         <CleanupProposals state={cleanups} discreet={discreet}/>
         <ReorgProposals state={reorgs}/>
         {error && <LoadError message={error}/>}

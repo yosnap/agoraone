@@ -42,6 +42,7 @@ class NewMeeting(BaseModel):
     system: bool = True
     kind: str = "meeting"
     client: str | None = None
+    project: str | None = None
     people: list[str] = []
 
 
@@ -49,6 +50,7 @@ class Changes(BaseModel):
     title: str | None = None
     kind: str | None = None
     client: str | None = None
+    project: str | None = None
     people: list[str] | None = None
 
 
@@ -162,7 +164,7 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
 
     @router.post("/meetings")
     async def start(request: Request, body: NewMeeting):
-        return await run(request, lambda c, o: recorder.start(c, o, body.title, body.confidentiality, body.mic_type, body.system, body.kind, body.client, body.people))
+        return await run(request, lambda c, o: recorder.start(c, o, body.title, body.confidentiality, body.mic_type, body.system, body.kind, body.client, body.people, body.project))
 
     @router.post("/meetings/{meeting_id}/mic")
     async def piece(request: Request, meeting_id: int):
