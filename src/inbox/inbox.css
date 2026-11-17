@@ -92,3 +92,7 @@
   :root:not([data-theme="light"]) .chip.kind-appointment { background:#3b2148; color:#e2bdf2 }
   :root:not([data-theme="light"]) .chip.kind-personal { background:#1b3a26; color:#b5e0c0 }
 }
+.note-files { display:flex; flex-direction:column; gap:6px; border:1px solid var(--c-dfe3d6); border-radius:9px; padding:8px 12px; margin:0 }
+.note-files legend { font-size:13px; padding:0 4px }
+.note-files small { overflow-wrap:anywhere }
+.note-extra { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; max-height:220px; overflow:auto; background:var(--c-edf0e8); padding:10px; border-radius:8px }

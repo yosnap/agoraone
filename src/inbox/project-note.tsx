@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react';
 import { useAssistantName } from '../assistant/assistant-name';
 import { createVaultNote, getHermesCatalog, listVaultNotes } from '../api/client';
-import { createRepoNote, decideInbox, getCentral, type CentralClient, type InboxItem } from '../api/core';
+import { createRepoNote, decideInbox, getCentral, type CentralClient, type InboxItem, type MailSources } from '../api/core';
 import { OrcaLaunch } from '../orca/orca-launch';
 import { clientProjects, useOrcaProjects } from '../orca/orca-projects';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { VaultFolderBrowser } from '../ui/vault-folder-browser';
 import { noteContent, noteTitle, projectsBase, withLevel } from './project-note-text';
+import { filesSection, NoteFiles, saveFiles, type Chosen } from './note-files';
 import { RepoFolderPicker } from './repo-note';
 
 type Vault = { id: string; name: string; folders: string[] };
@@ -34,6 +35,9 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
   const [saved, setSaved] = useState<Saved | null>(null);
   const [orca, setOrca] = useState(false);
   const orcaChoices = useOrcaProjects();
+  const [sources, setSources] = useState<MailSources | null>(null);
+  const [chosen, setChosen] = useState<Chosen>({ parts: [], urls: [] });
+  const filesDone = useRef(new Set<string>());  // saved already: a retry does not save them twice
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [touched, setTouched] = useState({ title: false, content: false, folder: false });
@@ -83,15 +87,19 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
     const chosen = next.includes(project) ? project : next[0] ?? NO_PROJECT;
     setClient(name); setProject(chosen); setRepoFolder(null); suggest(name, chosen);
   };
+  const extra = filesSection(sources, chosen, title, where === 'repo');
+  const problems = (failed: string[]) => failed.length ? ` No se pudieron guardar ${failed.length === 1 ? 'un archivo' : `${failed.length} archivos`}: ${failed.join('; ')}.` : '';
   const create = async () => {
     if (where === 'repo') return saveInRepo();
     if (!vault || folder === null) return;
     setBusy(true); setError('');
     try {
-      const note = made ?? await createVaultNote(vault.id, folder, title.trim(), withLevel(content, item.confidentiality));
+      const note = made ?? await createVaultNote(vault.id, folder, title.trim(), withLevel(content + extra, item.confidentiality));
       setMade(note);
+      const failed = sources ? await saveFiles(item.id, sources, chosen, title, { kind: 'vault', vaultId: vault.id, folder: note.folder }, filesDone.current) : [];
+      if (failed.length) { setError(`La nota está creada.${problems(failed)}`); return; }  // the card stays: retry, or finish without them
       await decideInbox(item.id, 'done');
-      onDone(`Nota creada en ${note.folder}: «${note.title}». La tarjeta pasa a «Hechos».`);
+      onDone(`Nota creada en ${note.folder}: «${note.title}»${filesDone.current.size ? `, con ${filesDone.current.size === 1 ? 'un archivo' : `${filesDone.current.size} archivos`} al lado` : ''}. La tarjeta pasa a «Hechos».`);
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo crear la nota.'); }
     finally { setBusy(false); }
   };
@@ -99,10 +107,18 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
     if (repoFolder === null) return;
     setBusy(true); setError('');
     try {
-      const note = saved ?? await createRepoNote({ client, project, folder: repoFolder, title: title.trim(), content, inboxId: item.id });
+      const note = saved ?? await createRepoNote({ client, project, folder: repoFolder, title: title.trim(), content: content + extra, inboxId: item.id });
       setSaved(note);
+      const failed = sources ? await saveFiles(item.id, sources, chosen, title, { kind: 'repo', client, project, folder: note.path.split('/').slice(0, -1).join('/') }, filesDone.current) : [];
+      if (failed.length) { setError(`La nota está guardada.${problems(failed)}`); return; }
       await decideInbox(item.id, 'done');
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar la nota en el repositorio.'); }
+    finally { setBusy(false); }
+  };
+  const finish = async () => {  // the note exists; the files that failed are left out
+    setBusy(true);
+    try { await decideInbox(item.id, 'done'); setError(''); if (!saved) onDone(`Nota creada${made ? ` en ${made.folder}: «${made.title}»` : ''}. La tarjeta pasa a «Hechos».`); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo marcar la tarjeta.'); }
     finally { setBusy(false); }
   };
   const repoMessage = saved && `Nota guardada en ${saved.repo} › ${saved.path} (sin commit). La tarjeta pasa a «Hechos».`;
@@ -110,7 +126,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
   if (vaults === null && !error) return <Loading label="Buscando la carpeta del cliente en el vault" lines={2}/>;
   if (vaults?.length === 0 && !repoOk) return <p className="muted">No hay ningún vault de Obsidian disponible.</p>;
   if (saved && !busy && !error) return <div className="project-note" role="status">
-    <p className="ok-note">{repoMessage}</p>
+    <p className="ok-note">{repoMessage}{filesDone.current.size ? ` Con ${filesDone.current.size === 1 ? 'un archivo' : `${filesDone.current.size} archivos`} al lado.` : ''}</p>
     {orca ? <OrcaLaunch choices={clientProjects(orcaChoices, client)} client={client} project={project} source={{ kind: 'project' }}
         task={`Lee la nota ${saved.root}/${saved.path} (está en la copia principal del repositorio, sin commit) y haz lo que plantea.`} onClose={() => setOrca(false)}/>
       : <div className="inbox-actions">
@@ -138,8 +154,10 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
       value={repoFolder} onChange={(from, of, next) => { if (from === client && of === project) setRepoFolder(next); }}/></div>}
     {where === 'vault' && vault && <div className="field"><span>Carpeta</span><VaultFolderBrowser key={`${vault.id}|${browser}`} vaultId={vault.id} vaultName={vault.name}
       client={client.trim() || null} value={folder} onChange={(from, next) => { if (from === vault.id) pickFolder(next); }}/></div>}
-    <label className="field">Título<input value={title} maxLength={200} required onChange={event => { setTitle(event.target.value); setTouched({ ...touched, title: true }); }}/></label>
+    <label className="field">Título<input value={title} maxLength={200} required disabled={Boolean(made || saved)} onChange={event => { setTitle(event.target.value); setTouched({ ...touched, title: true }); }}/></label>
     <label className="field">Texto de la nota<textarea value={content} rows={12} onChange={event => { setContent(event.target.value); setTouched({ ...touched, content: true }); }}/></label>
+    <NoteFiles itemId={item.id} chosen={chosen} locked={Boolean(made || saved)} onChange={setChosen} onSources={setSources}/>
+    {extra && <details><summary>Se añade al final de la nota</summary><pre className="note-extra">{extra.trim()}</pre></details>}
     {item.confidentiality !== 'normal' && <p className="muted">El correo es {item.confidentiality === 'private' ? 'privado' : 'solo de este Mac'}: la nota se guarda marcada igual
       («confidencialidad: {item.confidentiality === 'private' ? 'privado' : 'solo-local'}»), y ni {assistant} ni ningún modelo remoto la leerán.</p>}
     {made && <p className="muted">La nota ya está creada; falta marcar la tarjeta como hecha.</p>}
@@ -148,8 +166,9 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
     {error && <LoadError message={error}/>}
     <div className="inbox-actions">
       {where === 'repo'
-        ? <button type="submit" className="button primary" disabled={busy || repoFolder === null || !title.trim()}>{busy ? 'Guardando…' : saved ? 'Marcar como hecha' : 'Guardar en el repositorio'}</button>
-        : <button type="submit" className="button primary" disabled={busy || !vault || folder === null || !title.trim()}>{busy ? 'Creando…' : made ? 'Marcar como hecha' : 'Crear la nota'}</button>}
+        ? <button type="submit" className="button primary" disabled={busy || repoFolder === null || !title.trim()}>{busy ? 'Guardando…' : saved ? 'Reintentar' : 'Guardar en el repositorio'}</button>
+        : <button type="submit" className="button primary" disabled={busy || !vault || folder === null || !title.trim()}>{busy ? 'Creando…' : made ? 'Reintentar' : 'Crear la nota'}</button>}
+      {(made || saved) && error && <button type="button" className="button" disabled={busy} onClick={() => void finish()}>Terminar sin esos archivos</button>}
       <button type="button" className="button" disabled={busy} onClick={onCancel}>Cancelar</button>
     </div>
   </form>;
