@@ -59,6 +59,18 @@ def orca_router(settings: Settings) -> APIRouter:
     async def status():
         return {"installed": orca_launch.binary() is not None, "on": await run_in_threadpool(module_on), "agents": orca_launch.AGENTS}
 
+    @router.get("/orca/projects")
+    async def ready():
+        def run():
+            connection = connect(settings.data_dir / DB_NAME)
+            try:
+                if orca_launch.binary() is None or not modules.state(connection)["orca"]:
+                    return {"projects": [], "problem": None}
+                return orca_launch.ready_projects(connection)
+            finally:
+                connection.close()
+        return await run_in_threadpool(run)
+
     @router.post("/orca/preview")
     async def preview(body: LaunchRequest, request: Request):
         owner = owner_of(request)
@@ -97,6 +109,18 @@ def orca_router(settings: Settings) -> APIRouter:
         if not await run_in_threadpool(module_on):
             return refuse("El módulo Orca está apagado en Ajustes.")
         plan = found["plan"]
+
+        def still_allowed():
+            connection = connect(settings.data_dir / DB_NAME)
+            try:
+                orca_launch.recheck(connection, plan)
+            finally:
+                connection.close()
+
+        try:
+            await run_in_threadpool(still_allowed)
+        except orca_launch.OrcaError as error:
+            return refuse(f"{error} No se ha lanzado nada.")
 
         def record(outcome: str):
             connection = connect(settings.data_dir / DB_NAME)

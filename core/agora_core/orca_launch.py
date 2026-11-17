@@ -17,7 +17,7 @@ import subprocess
 import time
 import unicodedata
 
-from .github_issues import ISSUE_URL, project_repo
+from .github_issues import ISSUE_URL, project_repo, repos
 
 AGENTS = {"claude": "Claude Code", "codex": "Codex"}
 TASK_CHARS = 4000
@@ -99,6 +99,16 @@ def projects(runner=subprocess.run, fresh: bool = False) -> dict[str, dict]:
     return found
 
 
+def ready_projects(connection: sqlite3.Connection, runner=subprocess.run) -> dict:
+    """Central projects whose repository is already in Orca, for the buttons: {"projects": [...], "problem"}."""
+    try:
+        listed = projects(runner)
+    except OrcaError as error:
+        return {"projects": [], "problem": str(error)}
+    found = [{"client": client, "project": project, "repo": repo} for (client, project), repo in repos(connection).items() if repo.casefold() in listed]
+    return {"projects": sorted(found, key=lambda p: (p["client"].casefold(), p["project"].casefold())), "problem": None}
+
+
 def _mail(connection: sqlite3.Connection, message_id: int) -> dict:
     from .mail_inbox import _LEVEL
 
@@ -124,7 +134,10 @@ def _issue(url: str, repo: str) -> dict:
 
 def _slug(text: str) -> str:
     plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
-    return re.sub(r"[^a-z0-9]+", "-", plain).strip("-")[:40].strip("-") or "encargo"
+    slug = re.sub(r"[^a-z0-9]+", "-", plain).strip("-")
+    if len(slug) > 40:  # cut between words, not in the middle of one
+        slug = slug[:41].rsplit("-", 1)[0] if "-" in slug[:41] else slug[:40]
+    return slug.strip("-") or "encargo"
 
 
 def prompt(task: str, client: str, project: str, source: dict | None, nonce: str | None = None) -> str:
@@ -158,7 +171,7 @@ def preview(connection: sqlite3.Connection, args: dict, runner=subprocess.run) -
         raise OrcaError(f"{repo} no está en Orca: añádelo desde Orca y vuelve a intentarlo.")
     source, kind = None, args.get("source") or {}
     if kind.get("kind") == "mail":
-        source = _mail(connection, int(kind.get("id") or 0))
+        source = {**_mail(connection, int(kind.get("id") or 0)), "id": int(kind.get("id") or 0)}
     elif kind.get("kind") == "issue":
         source = _issue(kind.get("url"), repo)
     elif kind.get("kind") not in (None, "project"):
@@ -167,6 +180,12 @@ def preview(connection: sqlite3.Connection, args: dict, runner=subprocess.run) -
     return {"client": client, "project": project, "repo": repo, "orcaProject": target["id"], "orcaName": target["name"],
             "agent": agent, "agentName": AGENTS[agent], "name": name, "source": {k: v for k, v in (source or {}).items() if k != "text"} or None,
             "sourceText": (source or {}).get("text"), "prompt": prompt(task, client, project, source)}
+
+
+def recheck(connection: sqlite3.Connection, plan: dict) -> None:
+    """Right before launching: a mail that became «solo en este Mac», private or moved since the preview stays here."""
+    if (plan.get("source") or {}).get("kind") == "mail":
+        _mail(connection, int(plan["source"]["id"]))
 
 
 def launch(plan: dict, runner=subprocess.run) -> dict:

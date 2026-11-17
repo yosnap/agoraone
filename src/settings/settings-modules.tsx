@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ModuleName } from '../api/core';
 import { LoadError } from '../ui/load-state';
+import { refreshOrcaProjects } from '../orca/orca-projects';
 import { moduleLabels, moduleOn, setModule, useModules } from '../shell/modules';
 
 const order: ModuleName[] = ['correo', 'agenda', 'fiscal', 'trabajos', 'reuniones', 'voz', 'musica', 'oficina', 'conectores', 'orca'];
@@ -19,7 +20,7 @@ export function ModulesSettingsCard() {
   const labels = moduleLabels();
   const change = async (name: ModuleName, value: boolean) => {
     setError('');
-    try { await setModule(name, value); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
+    try { await setModule(name, value); if (name === 'orca') refreshOrcaProjects(value); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
   };
   return <article className="card" aria-labelledby="modules-title">
     <div className="card-head"><h2 id="modules-title">Módulos</h2></div>

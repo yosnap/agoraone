@@ -34,3 +34,7 @@ export function announcement(item: InboxItem) {
   const proposal = item.proposal ? proposalLabels[item.proposal] : null;
   return `Tienes ${phrases[item.kind]} de ${sender(item)}${amount}${proposal ? `: ${proposal.question}` : '.'}`;
 }
+
+/** What a mail taken to Orca asks the agent by default; the user changes it before the preview. The mail's own
+ * words never go here: they travel below, marked as data. */
+export const orcaTask = 'Lee el correo del cliente que va debajo y resuelve en este repositorio lo que pide. Antes de cambiar nada, explica tu plan.';

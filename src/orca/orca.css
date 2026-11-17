@@ -1,0 +1,11 @@
+.orca-launch { display:flex; flex-direction:column; gap:10px; margin:10px 0; padding:12px; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fbfaf3); text-align:left }
+.orca-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px }
+.orca-launch textarea { width:100%; font:inherit; font-size:12px; line-height:1.5; resize:vertical }
+.orca-fixed { display:block; padding:7px 0; font-weight:600 }
+.orca-facts { display:grid; grid-template-columns:max-content 1fr; gap:4px 12px; margin:0; font-size:13px }
+.orca-facts dt { color:var(--c-6f8379) }
+.orca-facts dd { margin:0; overflow-wrap:anywhere }
+.orca-prompt { margin:0; max-height:280px; overflow:auto; padding:10px; border:1px solid var(--c-dfe3d6); border-radius:8px; font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere }
+.orca-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px }
+.orca-fields { display:flex; flex-direction:column; gap:10px; margin:0; padding:0; border:0; min-width:0 }
+.orca-launch [tabindex='-1']:focus { outline:none }
