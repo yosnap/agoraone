@@ -11,6 +11,7 @@
 .inbox-cards.editing { grid-auto-rows:auto }
 .inbox-cards.per-3 { grid-template-columns:repeat(auto-fill, minmax(max(300px, calc((100% - 24px) / 3)), 1fr)) }
 .inbox-card { gap:8px; display:flex; flex-direction:column; min-height:250px; height:100% }
+.inbox-card.wide { grid-column:1 / -1 }  /* the note being written gets the whole row: its folder browser and text need room */
 .inbox-card > .inbox-actions { margin-top:auto; padding-top:4px }
 .inbox-card.chosen { border-color:var(--c-24563a); box-shadow:0 0 0 1px var(--c-24563a) inset }
 .inbox-card .inbox-subject { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden }

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { listVaultNotes } from '../api/client';
 import { clientFolder, projectsBase, vaultName } from '../inbox/project-note-text';
+import './vault-folder-browser.css';
 
 const parentOf = (folder: string) => folder.includes('/') ? folder.slice(0, folder.lastIndexOf('/')) : '';
 
@@ -77,7 +78,7 @@ export function VaultFolderBrowser({ vaultId, vaultName: label, client, value, o
     </div>
     {value && exists && (naming === null
       ? <button type="button" className="button" onClick={() => setNaming('')}>Nueva carpeta aquí</button>
-      : <span className="meeting-actions">
+      : <span className="folder-new">
           <input value={naming} maxLength={100} placeholder="Nombre de la carpeta" aria-label="Nombre de la carpeta nueva" autoFocus
             onChange={event => setNaming(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); create(); } else if (event.key === 'Escape') setNaming(null); }}/>
           <button type="button" className="button" disabled={!naming?.trim()} onClick={create}>Crear</button>

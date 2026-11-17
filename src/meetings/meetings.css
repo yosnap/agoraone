@@ -27,11 +27,4 @@
 .people-list { position:absolute; z-index:20; left:0; right:0; top:100%; margin-top:4px; display:flex; flex-direction:column; max-height:260px; overflow:auto; background:var(--c-fffdf4); border:1px solid var(--c-ccd5c6); border-radius:9px; box-shadow:0 14px 34px var(--c-26423e2e) }
 .people-list button { text-align:left; border:0; background:transparent; padding:8px 12px; cursor:pointer; font-size:13px }
 .people-list button.active, .people-list button:hover { background:var(--c-edf0e8) }
-.folder-browser { display:flex; flex-direction:column; gap:8px; padding:10px; border:1px solid var(--c-cbd6c9); border-radius:9px; background:var(--c-fffffa) }
-.folder-path { font-size:13px; display:flex; flex-wrap:wrap; align-items:center; gap:2px }
-.folder-crumb { border:0; background:transparent; padding:2px 4px; border-radius:6px; cursor:pointer; font:inherit; color:var(--c-173d3c); text-decoration:underline }
-.folder-children { display:flex; flex-direction:column; max-height:220px; overflow:auto; gap:2px }
-.folder-item { text-align:left; border:0; background:transparent; padding:6px 8px; border-radius:6px; cursor:pointer; font:inherit; font-size:13px }
-.folder-item:hover { background:var(--c-edf0e8) }
-.folder-browser input { border:1px solid var(--c-cbd6c9); border-radius:9px; padding:8px 10px; font:inherit; font-size:13px }
 .people-list .people-new { border-top:1px solid var(--c-ccd5c6); color:var(--c-355a50) }

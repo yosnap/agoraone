@@ -143,7 +143,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
       : items.length === 0 ? <p className="muted">{state === 'pending' ? 'No hay nada pendiente. Si acabas de conectar una cuenta, los resúmenes llegan en unos minutos.' : 'Nada por aquí.'}</p>
       : [...groups].filter(([scope]) => shownScope === ALL || scope === shownScope).map(([scope, cards]) => <div key={scope} className="inbox-group">
         <h2><span className="scope-dot" style={{ background: colorOf(scope) }} aria-hidden="true"/>{scope} <span className="muted">· {cards.length}</span></h2>
-        <ul className={`inbox-cards per-${view.perRow}${cards.some(c => [filing, noting, scheduling, replying, orca].includes(c.id)) ? ' editing' : ''}`}>{cards.map(item => <li key={item.id} className={`card inbox-card${selected.has(item.id) ? ' chosen' : ''}`}>
+        <ul className={`inbox-cards per-${view.perRow}${cards.some(c => [filing, noting, scheduling, replying, orca].includes(c.id)) ? ' editing' : ''}`}>{cards.map(item => <li key={item.id} className={`card inbox-card${selected.has(item.id) ? ' chosen' : ''}${noting === item.id && !discreet ? ' wide' : ''}`}>
           <div className="card-head">
             <div className="inbox-chips">{item.moved ? <span className="chip">{item.moved === 'trash' ? 'En la Papelera' : 'Archivado'}</span> : <label className="check inbox-pick" title="Seleccionar"><input type="checkbox" checked={selected.has(item.id)} onChange={() => pick(item.id)}
               aria-label={`Seleccionar ${discreet ? 'este correo' : item.subject || 'correo sin asunto'}`}/></label>}<span className={`chip kind-${item.kind}`}>{kindLabels[item.kind]}</span>
