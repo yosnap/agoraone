@@ -101,9 +101,17 @@ def projects(runner=subprocess.run, fresh: bool = False) -> dict[str, dict]:
             continue
         ident = str(project.get("id") or "")
         if ident.startswith("github:") and "/" in ident:
-            found[ident[7:].casefold()] = {"id": ident, "name": str(project.get("displayName") or ident[7:])[:80]}
+            repo_ids = [str(r) for r in project.get("sourceRepoIds") or [] if isinstance(r, str)]
+            found[ident[7:].casefold()] = {"id": ident, "name": str(project.get("displayName") or ident[7:])[:80], "repoIds": repo_ids}
     _listed.update(at=time.monotonic(), projects=found)
     return found
+
+
+def repo_paths(runner=subprocess.run) -> dict[str, str]:
+    """{Orca's repository id: the folder of its local copy} (only absolute paths of plain git repositories)."""
+    listed = _run(["repo", "list"], runner, 30).get("repos")
+    return {str(r["id"]): str(r["path"]) for r in listed if isinstance(r, dict) and r.get("kind") == "git"
+            and isinstance(r.get("id"), str) and isinstance(r.get("path"), str) and os.path.isabs(r["path"])} if isinstance(listed, list) else {}
 
 
 def ready_projects(connection: sqlite3.Connection, runner=subprocess.run) -> dict:

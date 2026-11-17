@@ -10,7 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import modules, orca_launch
+from . import github_issues, modules, orca_launch, repo_notes
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -38,6 +38,15 @@ class LaunchRequest(BaseModel):
 
 class LaunchConfirm(BaseModel):
     id: str
+
+
+class RepoNote(BaseModel):
+    client: str
+    project: str
+    folder: str
+    title: str
+    content: str
+    inboxId: int
 
 
 def orca_router(settings: Settings) -> APIRouter:
@@ -73,6 +82,46 @@ def orca_router(settings: Settings) -> APIRouter:
             finally:
                 connection.close()
         return await run_in_threadpool(run)
+
+    @router.get("/orca/repo-folders")
+    async def repo_folders(client: str, project: str):
+        """Where a note to act on can go: the folders of the project's local copy, the suggested one and whether
+        GitHub says the repository is public (the screen warns)."""
+        def run():
+            connection = connect(settings.data_dir / DB_NAME)
+            try:
+                if not modules.state(connection)["orca"]:
+                    raise repo_notes.RepoNoteError("El módulo Orca está apagado en Ajustes.")
+                repo, root = repo_notes.local_root(connection, client, project)
+            finally:
+                connection.close()
+            return {"repo": repo, "root": root, "folders": repo_notes.folders(root), "suggested": repo_notes.SUGGESTED,
+                    "visibility": github_issues.visibility(repo)}
+        try:
+            return await run_in_threadpool(run)
+        except repo_notes.RepoNoteError as error:
+            return refuse(str(error))
+
+    @router.post("/orca/repo-note", status_code=201)
+    async def repo_note(body: RepoNote):
+        """Creates the note, a new file, in the folder the user chose inside the local copy. No commit, no push."""
+        def run():
+            connection = connect(settings.data_dir / DB_NAME)
+            try:
+                if not modules.state(connection)["orca"]:
+                    raise repo_notes.RepoNoteError("El módulo Orca está apagado en Ajustes.")
+                if repo_notes.mail_level(connection, body.inboxId) != "normal":
+                    raise repo_notes.RepoNoteError("Ese correo es privado o «solo en este Mac»: su nota no va a un repositorio.")
+                repo, root = repo_notes.local_root(connection, body.client, body.project)
+            finally:
+                connection.close()
+            return {"repo": repo, "root": root, "path": repo_notes.save(root, body.folder, body.title, body.content)}
+        try:
+            return await run_in_threadpool(run)
+        except repo_notes.RepoNoteError as error:
+            return refuse(str(error))
+        except (OSError, UnicodeError):
+            return refuse("No se pudo escribir la nota en el repositorio.")
 
     @router.post("/orca/preview")
     async def preview(body: LaunchRequest, request: Request):
