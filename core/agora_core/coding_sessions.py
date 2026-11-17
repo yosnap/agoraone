@@ -21,16 +21,62 @@ MAX_SESSIONS = 40
 MAX_LINE = 4 * 1024 * 1024  # a longer line (a huge tool result) is skipped without parsing
 
 
-def roots(home: Path | None = None) -> list[tuple[str, Path]]:
+def roots(home: Path | None = None) -> list[tuple[str, Path, str | None]]:
+    """(tool, folder of its records, where it runs when the folder says so): Orca keeps its own homes for the
+    Claude Code and Codex it launches; the others say it in each record."""
     home = home or Path.home()
-    found = [("claude", home / ".claude" / "projects"), ("codex", home / ".codex" / "sessions")]
-    orca = home / "Library" / "Application Support" / "orca" / "claude-profiles"
-    if orca.is_dir() and not orca.is_symlink():
+    found: list[tuple[str, Path, str | None]] = [("claude", home / ".claude" / "projects", None), ("codex", home / ".codex" / "sessions", None)]
+    orca = home / "Library" / "Application Support" / "orca"
+    profiles = orca / "claude-profiles"
+    if profiles.is_dir() and not profiles.is_symlink():
         try:
-            found += [("claude", profile / "home" / "projects") for profile in sorted(orca.iterdir()) if profile.is_dir() and not profile.is_symlink()]
+            found += [("claude", profile / "home" / "projects", "orca") for profile in sorted(profiles.iterdir()) if profile.is_dir() and not profile.is_symlink()]
         except OSError:
             pass
+    found.append(("codex", orca / "codex-runtime-home" / "home" / "sessions", "orca"))
     return found
+
+
+_orca: dict = {"at": 0.0, "paths": []}
+
+
+def orca_folders(runner=None) -> list[str]:
+    """The folders where Orca has a terminal open (its workspaces): only their paths, never what the terminals show.
+    Read at most once a minute; empty without Orca."""
+    if time.monotonic() - _orca["at"] < 60 and _orca["at"]:
+        return _orca["paths"]
+    from . import orca_launch
+
+    try:
+        listed = orca_launch._run(["terminal", "list"], runner or __import__("subprocess").run, 10).get("terminals")
+    except orca_launch.OrcaError:
+        listed = None
+    paths = sorted({str(t["worktreePath"]).rstrip("/") for t in listed or [] if isinstance(t, dict) and t.get("connected")
+                    and isinstance(t.get("worktreePath"), str) and t["worktreePath"].startswith("/")}, key=len, reverse=True)
+    _orca.update(at=time.monotonic(), paths=paths)
+    return paths
+
+
+def _in(folder: str | None, places: list[str]) -> bool:
+    return bool(folder) and any(folder == place or folder.startswith(place + "/") for place in places)
+
+
+def host(tool: str, origin: str | None) -> str | None:
+    """Where a session runs, from what its record says: «vscode», «codex-app», «claude-desktop», «terminal» or «sdk»."""
+    said = (origin or "").lower()
+    if not said:
+        return None
+    if tool == "codex" and "desktop" in said:
+        return "codex-app"  # the Codex app (it says «Codex Desktop», over a VS Code-like source)
+    if "vscode" in said or "cursor" in said:
+        return "vscode"
+    if "desktop" in said:
+        return "claude-desktop"
+    if said.startswith("sdk"):
+        return "sdk"
+    if said in ("cli", "codex_cli_rs", "codex_exec", "exec") or said.startswith("codex_cli"):
+        return "terminal"
+    return None
 
 
 def _recent_files(tool: str, root: Path, since: float) -> list[Path]:
@@ -101,7 +147,7 @@ class _Record:
 
     def __init__(self, tool: str):
         self.tool, self.offset, self.size = tool, 0, 0
-        self.cwd = self.branch = self.model = None
+        self.cwd = self.branch = self.model = self.origin = None
         self.started: float | None = None
         self.last: float | None = None
         self.turn_open = False  # a turn under way: the user asked, or a tool is running or waiting for permission
@@ -118,6 +164,7 @@ class _Record:
 
     def _claude(self, line: dict, at):
         self.cwd = self.cwd or _text(line.get("cwd"))  # where it started: later «cd» into subfolders do not rename it
+        self.origin = self.origin or _text(line.get("entrypoint"))
         self.branch = _text(line.get("gitBranch")) or self.branch
         message = line.get("message")
         if line.get("type") == "assistant" and isinstance(message, dict):
@@ -144,6 +191,8 @@ class _Record:
         kind = line.get("type")
         if kind in ("session_meta", "turn_context"):
             self.cwd = self.cwd or _text(payload.get("cwd"))
+            if kind == "session_meta":
+                self.origin = self.origin or _text(payload.get("originator")) or _text(payload.get("source"))
             self.model = _text(payload.get("model")) or self.model
         elif kind == "event_msg":
             event = str(payload.get("type") or "")
@@ -207,12 +256,15 @@ def _update(tool: str, file: Path) -> _Record | None:
     return record
 
 
-def sessions(now: float | None = None, home: Path | None = None) -> list[dict]:
+def sessions(now: float | None = None, home: Path | None = None, orca: list[str] | None = None) -> list[dict]:
+    """`orca`: the folders of Orca's open terminals (read from Orca when not given): Claude Code launched by Orca
+    writes where the terminal one does, so its folder is what tells them apart."""
     now = now or time.time()
+    places = orca_folders() if orca is None else orca
     since = now - WINDOW.total_seconds()
     out, seen = [], set()
     with _lock:
-        for tool, root in roots(home):
+        for tool, root, fixed in roots(home):
             for file in _recent_files(tool, root, since):
                 seen.add(str(file))
                 record = _update(tool, file)
@@ -230,7 +282,7 @@ def sessions(now: float | None = None, home: Path | None = None) -> list[dict]:
                 record.usage = {k: u for k, u in record.usage.items() if u[0] >= since}  # only the last 24 h is kept
                 day = list(record.usage.values())
                 out.append({
-                    "id": hashlib.sha256(str(file).encode()).hexdigest()[:12], "tool": tool,
+                    "id": hashlib.sha256(str(file).encode()).hexdigest()[:12], "tool": tool, "host": fixed or ("orca" if _in(record.cwd, places) else host(tool, record.origin)),
                     "project": Path(record.cwd).name[:80] if record.cwd else None, "branch": record.branch[:80] if record.branch else None,
                     "model": record.model[:60] if record.model else None, "state": state,
                     "startedAt": _iso(record.started), "lastAt": _iso(max(moved, record.last)),
