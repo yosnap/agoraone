@@ -46,5 +46,15 @@ creación de caché y salida; sin lecturas de caché) y cuántas respuestas dio.
 - No se guardan ni se devuelven mensajes, entradas o resultados de herramientas, adjuntos ni rutas completas: solo
   el último tramo de la carpeta. En modo discreto se ocultan el proyecto, la rama y los tokens.
 
-## Pendiente (fase 4 del plan)
-La Oficina 3D enlazada con estas tarjetas.
+## En la Oficina 3D (alpha.32, petición del usuario: «ver a los agentes trabajando»)
+Delante de cada edificio de un perfil de Hermes hay un escritorio con silla y monitor (`src/world/walker.tsx`).
+- **Trabaja de verdad** (actividad registrada en los últimos 2 minutos, una herramienta, una tarea programada o
+  respondiéndote en AgoraOne): su persona deja de pasear, va a la mesa, se sienta y teclea, y el monitor se enciende
+  con el color del perfil.
+- **Espera tu permiso:** de pie junto a la mesa, con los brazos cruzados.
+- **Si no:** pasea como siempre y la mesa queda apagada. Con «reducir movimiento» se coloca sin animación.
+- En «Agentes», cada perfil tiene «Verlo en la ciudad» (abre la Oficina con su ficha) y «Conversar» abre ya su
+  chat (`src/office/office-focus.ts`).
+
+## Pendiente
+Watson no tiene persona en la ciudad, y las sesiones de Claude Code y Codex aún no se ven en 3D.
