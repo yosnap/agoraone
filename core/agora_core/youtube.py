@@ -18,14 +18,41 @@ class YouTubeError(RuntimeError):
 
 
 def _videos(node):
+    """Every video of the page, in order, as {id, title, channel, length}: YouTube serves its results either as
+    `videoRenderer` or, now and then, as `lockupViewModel` (the newer layout); both are read."""
     if isinstance(node, dict):
-        if "videoRenderer" in node:
-            yield node["videoRenderer"]
+        if isinstance(node.get("videoRenderer"), dict):
+            video = node["videoRenderer"]
+            yield {"id": video.get("videoId"), "title": _text(video.get("title")), "channel": _text(video.get("ownerText")),
+                   "length": _text(video.get("lengthText"))}
+        elif isinstance(node.get("lockupViewModel"), dict) and node["lockupViewModel"].get("contentType") == "LOCKUP_CONTENT_TYPE_VIDEO":
+            yield _lockup(node["lockupViewModel"])
         for value in node.values():
             yield from _videos(value)
     elif isinstance(node, list):
         for value in node:
             yield from _videos(value)
+
+
+def _get(node, *path):
+    for key in path:
+        if isinstance(key, int):
+            node = node[key] if isinstance(node, list) and len(node) > key else None
+        else:
+            node = node.get(key) if isinstance(node, dict) else None
+    return node
+
+
+def _lockup(lockup: dict) -> dict:
+    meta = _get(lockup, "metadata", "lockupMetadataViewModel") or {}
+    rows = _get(meta, "metadata", "contentMetadataViewModel", "metadataRows") or []
+    channel = next((str(_get(part, "avatarStack", "avatarStackViewModel", "text", "content") or _get(part, "text", "content") or "")
+                    for row in rows[:1] for part in (_get(row, "metadataParts") or [])[:1]), "")
+    badges = [badge for overlay in (_get(lockup, "contentImage", "thumbnailViewModel", "overlays") or [])
+              for badge in (_get(overlay, "thumbnailBottomOverlayViewModel", "badges") or [])]
+    length = next((str(_get(badge, "thumbnailBadgeViewModel", "text") or "") for badge in badges
+                   if re.fullmatch(r"\d{1,2}(:\d{2}){1,2}", str(_get(badge, "thumbnailBadgeViewModel", "text") or ""))), "")
+    return {"id": lockup.get("contentId"), "title": str(_get(meta, "title", "content") or ""), "channel": channel, "length": length}
 
 
 def _text(field) -> str:
@@ -71,13 +98,11 @@ def parse(page: str) -> list[dict] | None:
         return None
     found, seen = [], set()
     for video in _videos(data):
-        ident = str(video.get("videoId") or "")
-        length = _text(video.get("lengthText"))
+        ident, length = str(video["id"] or ""), video["length"]
         if not VIDEO_ID.fullmatch(ident) or ident in seen or not length:
             continue
         seen.add(ident)
-        found.append({"id": ident, "title": _text(video.get("title"))[:200] or "Vídeo sin título",
-                      "channel": _text(video.get("ownerText"))[:120] or None, "length": length[:12]})
+        found.append({"id": ident, "title": video["title"][:200] or "Vídeo sin título", "channel": video["channel"][:120] or None, "length": length[:12]})
         if len(found) >= MAX_RESULTS:
             break
     return found

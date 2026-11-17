@@ -4,9 +4,12 @@ Plan: `plans/261115-1600-voz-musica/plan.md`. Todo funciona en este equipo, con 
 
 ## Música
 
-La tarjeta de música del pie del Cerebro enseña lo que suena en Apple Music o Spotify (título, artista,
-progreso) y tiene sus controles: anterior, reproducir o pausar, siguiente y volumen. Su campo «Pon…» sirve
-para pedir algo.
+La tarjeta de música del pie del Cerebro enseña lo que suena (tu biblioteca, YouTube, Apple Music o Spotify):
+título, artista, la carátula y sus controles: anterior, reproducir o pausar, siguiente, una barra para ir a
+otro punto de la canción y otra de volumen (1.7.0-alpha.36). Las barras solo mandan la orden al soltarlas. La
+carátula es la miniatura del vídeo de YouTube, la imagen dentro del archivo de tu biblioteca (MP3, FLAC o M4A) o
+la del álbum a su lado (`cover.jpg`, `folder.jpg`…), o la que dan Apple Music o Spotify (`core/agora_core/music_cover.py`).
+Su campo «Pon…» sirve para pedir algo; el desplegable se abre hacia arriba cuando no cabe debajo.
 
 - macOS: funciona por AppleScript. La primera vez macOS pide el permiso de Automatización («AgoraOne quiere
   controlar Música»). La app lo declara (`NSAppleEventsUsageDescription` y `automation.apple-events`), y
@@ -52,8 +55,11 @@ para pedir algo.
 - En la tarjeta de música, el desplegable elige la fuente: tu biblioteca si tienes carpetas de música, YouTube si
   no. Con «Tu biblioteca», lo que no está en ella se busca en YouTube y se dice. Cuando nada suena, la tarjeta dice qué reproductor está abierto. Un reproductor que no está instalado (Spotify)
   se avisa sin preguntarle a macOS, que abriría «¿Dónde está…?».
-- La búsqueda de YouTube lee sus resultados en las dos formas en que YouTube los sirve y, si una página llega sin
-  ellos, repite una vez.
+- La búsqueda de YouTube lee sus resultados en las dos formas en que YouTube los sirve (`videoRenderer` y, a ratos,
+  `lockupViewModel`; antes de 1.7.0-alpha.36 la segunda daba «No encuentro…») y, si una página llega sin ellos,
+  repite una vez.
+- Si el reproductor incrustado de YouTube falla sin decir nada (el error 153 de la ventana de la app), AgoraOne lo
+  recuerda en este Mac y los siguientes vídeos van directos a la ventana oculta, sin esperar esos segundos cada vez.
 
 ## Órdenes rápidas, sin modelo
 
@@ -61,7 +67,7 @@ Si todo el mensaje a Watson, escrito o dicho, es una de estas órdenes, la hace 
 como «Orden rápida, sin modelo»:
 
 - pausa, sigue, siguiente, anterior, sube o baja el volumen;
-- «pon …» (como mucho 10 palabras), también dicho con naturalidad: con «Watson» u «Oye Watson» delante, «¿me puedes poner…?» o «por favor» al final (1.7.0-alpha.23). «Pon música» o «ponme algo», sin decir qué, reanuda lo que estaba sonando (tu biblioteca, YouTube, Música o Spotify) y, si no hay nada abierto, pone música tranquila en YouTube;
+- «pon …» (como mucho 10 palabras), también dicho con naturalidad: con «Watson» u «Oye Watson» delante, «¿me puedes poner…?» o «por favor» al final (1.7.0-alpha.23). Si el dictado oye mal la llamada («Wilson, pon música»), se ignora esa palabra antes de la coma, y «Música, por favor» vale como «pon música»; mientras Watson responde, estas órdenes también pasan (1.7.0-alpha.36). «Pon música» o «ponme algo», sin decir qué, reanuda lo que estaba sonando (tu biblioteca, YouTube, Música o Spotify) y, si no hay nada abierto, pone música tranquila en YouTube;
 - «abre …».
 
 No cuentan como órdenes rápidas, y van a Watson:
@@ -140,7 +146,8 @@ de macOS y Ajustes dice «Abriendo VoiceStudio».
 
 | Ruta | Para qué |
 |---|---|
-| `GET /music/status`, `POST /music/control`, `POST /music/play` | lo que suena, los controles y «pon…» |
+| `GET /music/status`, `POST /music/control`, `POST /music/play` | lo que suena, los controles (también `volume` y `seek` con `value`) y «pon…» |
+| `GET /music/cover?player=&key=`, `GET /music/library/{id}/cover` | carátula de lo que suena en Apple Music o Spotify, o de una canción de tu biblioteca (204 si no hay) |
 | `GET /apps`, `PUT /apps/allowed`, `POST /apps/open` | apps instaladas, las permitidas y abrir una (409 si hace falta confirmar) |
 | `GET/PUT /voice/tts` | Voz de Watson: lo elegido, lo que habla ahora y las voces de VoiceStudio |
 | `POST /voice/speak` | Un trozo de respuesta dicho por VoiceStudio (audio WAV), con los pasos de la rapidez elegida |

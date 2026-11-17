@@ -1,13 +1,15 @@
 """HTTP routes of the music: what plays, the controls and «pon …». Only from the owner's screen."""
 
+import struct
+
 from contextlib import contextmanager
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
-from . import hidden_player, music, music_library, youtube
+from . import hidden_player, music, music_cover, music_library, youtube
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -15,6 +17,7 @@ from .settings import Settings
 class Control(BaseModel):
     player: str
     action: str
+    value: float | None = None
 
 
 class Play(BaseModel):
@@ -35,6 +38,14 @@ class HiddenCommand(BaseModel):
     id: str | None = None
     volume: float | None = None
     seconds: float | None = None
+
+
+def _quiet(work):
+    """A cover is a nicety: any failure just means no picture."""
+    try:
+        return work()
+    except (music.MusicError, music_library.LibraryError, OSError, ValueError, struct.error):
+        return None
 
 
 def music_router(settings: Settings, relay: hidden_player.Relay | None = None) -> APIRouter:
@@ -81,6 +92,14 @@ def music_router(settings: Settings, relay: hidden_player.Relay | None = None) -
             return found
         return FileResponse(found[0], media_type=found[1], headers={"Cache-Control": "no-store"})
 
+    @router.get("/music/library/{ident}/cover")
+    async def library_cover(ident: str):
+        def read():
+            with database() as connection:
+                return music_cover.of_track(music_library.file_of(connection, ident)[0])
+        found = await run_in_threadpool(lambda: _quiet(read))
+        return Response(found[0], media_type=found[1], headers={"Cache-Control": "no-store"}) if found else Response(status_code=204)
+
     @router.get("/music/youtube/search")
     async def youtube_search(q: str = ""):
         try:
@@ -115,7 +134,14 @@ def music_router(settings: Settings, relay: hidden_player.Relay | None = None) -
 
     @router.post("/music/control")
     async def control(body: Control):
+        if body.action in ("volume", "seek"):
+            return await run(lambda: music.set_level(body.player, body.action, body.value if body.value is not None else -1) or music.status())
         return await run(lambda: music.control(body.player, body.action) or music.status())
+
+    @router.get("/music/cover")
+    async def now_cover(player: str, key: str = ""):
+        found = await run_in_threadpool(lambda: _quiet(lambda: music.cover(player, key[:300])))
+        return Response(found[0], media_type=found[1], headers={"Cache-Control": "no-store"}) if found else Response(status_code=204)
 
     @router.post("/music/play")
     async def play(body: Play):

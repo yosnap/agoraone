@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import music_cover
+
 PLAYERS = {"music": {"name": "Apple Music", "process": "Music", "app": "Music", "bundle": "com.apple.Music"},
            "spotify": {"name": "Spotify", "process": "Spotify", "app": "Spotify", "bundle": "com.spotify.client"}}
 ACTIONS = {"toggle", "play", "pause", "next", "previous", "louder", "quieter"}
@@ -163,6 +165,81 @@ def status() -> dict:
         return {"players": [], "note": str(error)}
     players.sort(key=lambda p: (p["state"] != "playing", p["state"] != "paused"))
     return {"players": players, "note": None if players else "No hay ningún reproductor abierto (Música o Spotify)."}
+
+
+def _player_open(player: str) -> str:
+    where = available()["adapter"]
+    if where == "macos" and (player not in PLAYERS or not _running(PLAYERS[player]["process"])):
+        raise MusicError("Ese reproductor no está abierto.")
+    if where == "linux" and player not in _playerctl("-l").splitlines():
+        raise MusicError("Ese reproductor no está abierto.")
+    if not where:
+        raise MusicError(available()["note"] or "No disponible.")
+    return where
+
+
+def set_level(player: str, what: str, value: float) -> None:
+    """The volume (0-100) or the point of the song (seconds) the user drags to, in Apple Music, Spotify or MPRIS."""
+    if what not in ("volume", "seek") or not isinstance(value, (int, float)) or value != value or value < 0:
+        raise MusicError("Valor no admitido.")
+    where = _player_open(player)
+    if where == "macos":
+        command = f"set sound volume to {round(min(value, 100))}" if what == "volume" else f"set player position to {min(value, 86400):.1f}"
+        _osascript(f'tell application "{PLAYERS[player]["app"]}" to {command}')
+    elif what == "volume":
+        _playerctl("-p", player, "volume", f"{min(value, 100) / 100:.2f}")
+    else:
+        _playerctl("-p", player, "position", f"{min(value, 86400):.1f}")
+
+
+ARTWORK_MUSIC = '''on run argv
+  tell application "Music"
+    if player state is stopped then return "none"
+    if (count of artworks of current track) is 0 then return "none"
+    set a to artwork 1 of current track
+    set d to raw data of a
+    set f to format of a as text
+  end tell
+  set fh to open for access (POSIX file (item 1 of argv)) with write permission
+  set eof fh to 0
+  write d to fh
+  close access fh
+  return f
+end run'''
+ARTWORK_SPOTIFY = 'tell application "Spotify" to if player state is not stopped then return artwork url of current track'
+_covers: dict[str, tuple[bytes, str] | None] = {}
+
+
+def cover(player: str, key: str) -> tuple[bytes, str] | None:
+    """The cover of what Apple Music or Spotify plays now (`key` names the track, so each one is read once):
+    Apple Music's own artwork, or the image Spotify gives for the track (only from its image server)."""
+    if available()["adapter"] != "macos" or player not in PLAYERS or not _running(PLAYERS[player]["process"]):
+        return None
+    cached = f"{player}|{key}"
+    if cached in _covers:
+        return _covers[cached]
+    found = None
+    if player == "music":
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "cover"
+            kind = _osascript(ARTWORK_MUSIC, str(target))
+            if kind != "none" and target.is_file() and target.stat().st_size < 8_000_000:
+                found = music_cover._image(target.read_bytes())
+    else:
+        import httpx
+        url = _osascript(ARTWORK_SPOTIFY)
+        if url.startswith("https://i.scdn.co/image/"):
+            try:
+                answer = httpx.get(url, timeout=8, follow_redirects=False)
+            except httpx.HTTPError:
+                return None  # a passing failure: not remembered, the next look tries again
+            if answer.status_code == 200:
+                found = music_cover._image(answer.content)  # only a real JPEG or PNG, whatever the server says
+    if len(_covers) > 40:
+        _covers.clear()
+    _covers[cached] = found
+    return found
 
 
 def control(player: str, action: str) -> None:

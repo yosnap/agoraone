@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { musicQuery, quickCommand } from './quick-commands.ts';
+import { MISHEARD, musicQuery, quickCommand } from './quick-commands.ts';
 
 test('las órdenes rápidas se reconocen', () => {
   for (const said of ['Pausa', 'siguiente canción', '¡Sube el volumen!', 'pon jazz tranquilo', 'Ponme Kind of Blue en Spotify', 'reproduce Rosalía', 'abre Notas', 'Ábreme Spotify'])
@@ -33,4 +33,13 @@ test('lo que se le pide a Watson no se toma por música', () => {
     assert.equal(quickCommand(said), null, said);
   for (const said of ['¿Me puedes poner un poco de jazz?', 'Watson: pon algo de Rosalía', '¿Me puedes poner una canción de Rosalía?'])
     assert.ok(quickCommand(said), said);
+});
+
+test('la voz entiende la orden aunque oiga mal «Watson»', () => {
+  for (const said of ['Wilson, pon música.', 'Guatson: pon a Rosalía', 'Música, por favor.', 'Watson. Pon música.'])
+    assert.ok(quickCommand(said), said);
+  for (const said of ['Marta, ¿qué tengo mañana?', 'Hola. Resume la reunión de ayer.', 'Vale, sigue.', 'Perfecto. Continúa.', 'Bien, siguiente.',
+    'Venga, baja', 'Bueno. Sube.', 'No, silencio', 'Luis, pon la mesa', 'Ok, anterior'])
+    assert.equal(quickCommand(said), null, said);
+  assert.equal(musicQuery('Guatson: pon a Rosalía'.replace(MISHEARD, '')), 'a Rosalía');
 });
