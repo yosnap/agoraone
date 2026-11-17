@@ -4,7 +4,7 @@ import { createReminder, getJobsSettings, getMeeting, markMeetingSaved, type Mee
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { MeetingClassCard, MeetingExport } from './meeting-kind';
-import { VaultFolderBrowser } from './vault-folder-browser';
+import { VaultFolderBrowser } from '../ui/vault-folder-browser';
 
 type Target = { vaults: { id: string; name: string }[]; central: { id: string; label: string } | null };
 const failed = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
