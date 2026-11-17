@@ -40,7 +40,9 @@ para pedir algo.
     vídeo es el de YouTube sin cookies, manejado por mensajes (`src/brain/youtube-player.tsx`): el script de
     YouTube nunca corre dentro de AgoraOne. Los vídeos que su dueño no deja incrustar (lo habitual en los de las
     discográficas) suenan, en la app de escritorio, en una ventana oculta con la página de YouTube
-    (`desktop/app/src/youtube_window.rs`). Esa ventana no tiene órdenes nativas, no guarda nada entre arranques,
+    (`desktop/app/src/youtube_window.rs`). También los que fallan sin avisar: con el error 153 («Error de
+    configuración del reproductor») YouTube enseña su pantalla y no manda ningún error, así que si en 12 s el
+    reproductor no da ninguna señal (duración, estado o tiempo) se pasa igual a la ventana oculta (alpha.30). Esa ventana no tiene órdenes nativas, no guarda nada entre arranques,
     solo carga páginas de YouTube, rechaza las cookies, salta los anuncios que dejan saltarse y no pasa sola al
     siguiente vídeo. La pantalla deja sus órdenes en el núcleo y la app las recoge; el estado del vídeo vuelve a la
     pantalla ya revisado. En el navegador, sin esa ventana, se saltan; si no queda ninguno, se ofrece «Abrir en
