@@ -3,6 +3,8 @@ Exchange…). Reading needs the user's permission, asked by the signed app; crea
 only happens after the user confirms it, and nothing is ever deleted. `FakeStore` stands in for EventKit in
 tests and wherever it is missing."""
 
+import hashlib
+import json
 import threading
 from datetime import date, datetime, timedelta, timezone
 
@@ -12,6 +14,10 @@ WAIT = 25  # seconds per macOS prompt: two prompts stay within the backend's 60 
 
 class CalendarError(RuntimeError):
     pass
+
+
+class StaleEvent(CalendarError):
+    """The event changed (here or elsewhere) since the user saw it."""
 
 
 def _iso(moment: datetime) -> str:
@@ -33,6 +39,27 @@ def overlaps(events: list[dict]) -> list[tuple[str, str]]:
 def clashes(start: str, end: str, events: list[dict]) -> list[dict]:
     """The timed events a new one from `start` to `end` would overlap."""
     return [e for e in events if not e.get("allDay") and e["start"] < end and start < e["end"]]
+
+
+FIELDS = ("title", "start", "end", "allDay", "location", "notes")
+
+
+def revision(detail: dict) -> str:
+    """What the event looked like when the user saw it: any change since (here or elsewhere) gives another value."""
+    seen = [detail.get(k) for k in (*FIELDS, "modified")]
+    return hashlib.sha256(json.dumps(seen, ensure_ascii=False).encode()).hexdigest()[:32]
+
+
+def split_id(event_id: str) -> tuple[str, str]:
+    """(the calendar item's identifier, the start of this occurrence) from an agenda id «<identifier>@<start>»."""
+    ident, at, begins = event_id.rpartition("@")
+    try:
+        datetime.fromisoformat(begins.replace("Z", "+00:00"))
+    except ValueError:
+        begins = ""
+    if not at or not ident or not begins.endswith("Z"):
+        raise CalendarError("Ese evento ya no está en el calendario.")
+    return ident, begins
 
 
 class EventKitStore:
@@ -99,6 +126,58 @@ class EventKitStore:
                           "end": _iso(datetime.fromtimestamp(event.endDate().timeIntervalSince1970(), timezone.utc)),
                           "allDay": bool(event.isAllDay()), "location": str(event.location() or "") or None})
         return found
+
+    def _occurrence(self, event_id: str):
+        from Foundation import NSDate
+
+        ident, begins = split_id(event_id)
+        moment = datetime.fromisoformat(begins.replace("Z", "+00:00")).timestamp()
+        store = self._fresh()
+        predicate = store.predicateForEventsWithStartDate_endDate_calendars_(
+            NSDate.dateWithTimeIntervalSince1970_(moment - 1), NSDate.dateWithTimeIntervalSince1970_(moment + 1), None)
+        for event in store.eventsMatchingPredicate_(predicate) or []:
+            started = _iso(datetime.fromtimestamp(event.startDate().timeIntervalSince1970(), timezone.utc))
+            if str(event.eventIdentifier() or event.calendarItemIdentifier()) == ident and started == begins:
+                return event
+        raise CalendarError("Ese evento ya no está en el calendario.")
+
+    def detail(self, event_id: str) -> dict:
+        """One occurrence whole: notes, address, people and whether the user may change it (their calendar allows it,
+        and nobody else organises it)."""
+        event = self._occurrence(event_id)
+        stamp = lambda d: _iso(datetime.fromtimestamp(d.timeIntervalSince1970(), timezone.utc)) if d else None  # noqa: E731
+
+        def person(p) -> dict:
+            address = str(p.URL().resourceSpecifier() or "") if p.URL() else ""
+            return {"name": str(p.name() or "") or None, "email": address if "@" in address else None,
+                    "status": {2: "accepted", 3: "declined", 4: "tentative"}.get(int(p.participantStatus()), "pending"), "me": bool(p.isCurrentUser())}
+        people = [person(p) for p in (event.attendees() or [])]
+        organizer = person(event.organizer()) if event.organizer() else None
+        found = {"id": event_id, "calendarId": str(event.calendar().calendarIdentifier()), "title": str(event.title() or ""),
+                 "start": stamp(event.startDate()), "end": stamp(event.endDate()), "allDay": bool(event.isAllDay()),
+                 "location": str(event.location() or "") or None, "notes": str(event.notes() or "") or None,
+                 "url": str(event.URL().absoluteString()) if event.URL() else None, "attendees": people, "organizer": organizer,
+                 "recurring": bool(event.hasRecurrenceRules()), "modified": stamp(event.lastModifiedDate()),
+                 "writable": bool(event.calendar().allowsContentModifications())}
+        return found
+
+    def update(self, event_id: str, changes: dict, expected: str) -> None:
+        """Changes this occurrence only (never the rest of a repeating event), and only if it is still exactly as the
+        user saw it (`expected`, its revision): a sync that came in meanwhile is not overwritten."""
+        from Foundation import NSDate
+
+        if revision(self.detail(event_id)) != expected:
+            raise StaleEvent("El evento ha cambiado desde que lo abriste (aquí o en otro sitio): vuelve a abrirlo para ver cómo está.")
+        event = self._occurrence(event_id)
+        event.setTitle_(changes["title"])
+        event.setStartDate_(NSDate.dateWithTimeIntervalSince1970_(changes["startAt"].timestamp()))
+        event.setEndDate_(NSDate.dateWithTimeIntervalSince1970_(changes["endAt"].timestamp()))
+        event.setAllDay_(changes["allDay"])
+        event.setLocation_(changes["location"])
+        event.setNotes_(changes["notes"])
+        ok, error = self._fresh().saveEvent_span_commit_error_(event, self.kit.EKSpanThisEvent, True, None)
+        if not ok:
+            raise CalendarError("macOS no dejó guardar el cambio.")
 
     def reminders(self, until: datetime) -> list[dict]:
         """Reminders not done yet that are due before `until` or have no due date."""
@@ -208,6 +287,21 @@ class FakeStore:
         self.created.append(item)
         self.events_list.append(item)
         return item["id"]
+
+    def detail(self, event_id: str) -> dict:
+        found = next((e for e in self.events_list if e["id"] == event_id), None)
+        if found is None:
+            raise CalendarError("Ese evento ya no está en el calendario.")
+        return {"notes": None, "url": None, "attendees": [], "organizer": None, "recurring": False, "modified": None, "writable": True, **found}
+
+    def update(self, event_id: str, changes: dict, expected: str) -> None:
+        if revision(self.detail(event_id)) != expected:
+            raise StaleEvent("El evento ha cambiado desde que lo abriste.")
+        if getattr(self, "fail_update", False):
+            raise CalendarError("macOS no dejó guardar el cambio.")
+        found = next(e for e in self.events_list if e["id"] == event_id)
+        found.update({"title": changes["title"], "start": _iso(changes["startAt"]), "end": _iso(changes["endAt"]), "allDay": changes["allDay"],
+                      "location": changes["location"], "notes": changes["notes"], "modified": _iso(datetime.now(timezone.utc))})
 
     def create_reminder(self, calendar_id, title, due, notes) -> str:
         item = {"id": f"re{len(self.created) + 1}", "calendarId": calendar_id or "rem", "title": title, "due": _iso(due) if due else None}

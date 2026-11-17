@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import calendar_store, mail_inbox
+from . import calendar_edit, calendar_store, mail_inbox
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -34,6 +34,18 @@ class EventIn(BaseModel):
     notes: Annotated[str, Field(max_length=4000)] | None = None
     overlapOk: StrictBool = False  # the user saw the clashes and still wants it
     inboxId: StrictInt | None = None  # the Bandeja card it comes from, marked done once created
+
+
+class EventChange(BaseModel):
+    id: Annotated[str, Field(min_length=1, max_length=400)]
+    revision: Annotated[str, Field(min_length=1, max_length=64)]
+    title: Annotated[str, Field(min_length=1, max_length=1000)]
+    start: datetime
+    end: datetime
+    allDay: StrictBool = False
+    location: Annotated[str, Field(max_length=2000)] | None = None
+    notes: Annotated[str, Field(max_length=100_000)] | None = None  # meeting invitations bring long notes
+    overlapOk: StrictBool = False
 
 
 class ReminderIn(BaseModel):
@@ -145,7 +157,8 @@ def calendar_router(settings: Settings) -> APIRouter:
         start, end = body.start.astimezone(), (body.end if body.end > body.start else body.start + timedelta(days=1)).astimezone()
 
         def check_and_create():
-            existing = store.events(start - timedelta(days=1), end + timedelta(days=1))
+            with database() as connection:  # a clash never names an event of a hidden calendar
+                existing = calendar_edit.visible_events(connection, store, start - timedelta(days=1), end + timedelta(days=1))
             clash = [] if body.allDay else calendar_store.clashes(calendar_store._iso(start), calendar_store._iso(end), existing)
             if clash and not body.overlapOk:
                 return None, clash
@@ -162,6 +175,51 @@ def calendar_router(settings: Settings) -> APIRouter:
             return refuse("Se solapa con otros eventos: confírmalo si aun así lo quieres.", 409,
                           clashes=[{"title": e["title"], "start": e["start"], "end": e["end"]} for e in clash])
         return {"id": made, "clashes": len(clash)}
+
+    @router.get("/calendar/event")
+    async def event_detail(event_id: str = Query(alias="id", min_length=1, max_length=400)):
+        """One event whole (notes, video-call links, people) and whether the user may change it here."""
+        store = calendar_store.shared()
+        if problem := ready(store):
+            return refuse(problem, 409)
+        try:
+            return await db(lambda c: calendar_edit.shown(c, store, event_id))
+        except calendar_store.CalendarError as error:
+            return refuse(str(error), 404)
+        except Exception:  # noqa: BLE001 - EventKit failing says so
+            return refuse("No se pudo leer el evento.")
+
+    @router.put("/calendar/event")
+    async def event_change(body: EventChange):
+        """Changes one of the user's own events (that occurrence only), as they confirmed it; warns of clashes first."""
+        store = calendar_store.shared()
+        if problem := ready(store):
+            return refuse(problem, 409)
+        if body.end <= body.start and not body.allDay:
+            return refuse("El evento tiene que terminar después de empezar.")
+        start, end = body.start.astimezone(), (body.end if body.end > body.start else body.start + timedelta(days=1)).astimezone()
+        changes = {"title": body.title.strip(), "startAt": start, "endAt": end, "allDay": body.allDay,
+                   "location": (body.location or "").strip() or None, "notes": body.notes or None}
+
+        def work(connection):
+            calendar_edit.allowed(connection, store, body.id, body.revision)  # refused before any clash is named
+            existing = [e for e in calendar_edit.visible_events(connection, store, start - timedelta(days=1), end + timedelta(days=1)) if e["id"] != body.id]
+            clash = [] if body.allDay else calendar_store.clashes(calendar_store._iso(start), calendar_store._iso(end), existing)
+            if clash and not body.overlapOk:
+                return None, clash
+            return calendar_edit.change(connection, store, body.id, body.revision, changes), clash
+        try:
+            made, clash = await db(work)
+        except calendar_store.StaleEvent as error:
+            return refuse(str(error), 409)
+        except calendar_store.CalendarError as error:
+            return refuse(str(error))
+        except Exception:  # noqa: BLE001
+            return refuse("macOS no dejó guardar el cambio.")
+        if made is None:
+            return refuse("Se solapa con otros eventos: confírmalo si aun así lo quieres.", 409,
+                          clashes=[{"title": e["title"], "start": e["start"], "end": e["end"]} for e in clash])
+        return {**made, "clashes": len(clash)}
 
     @router.post("/calendar/reminders", status_code=201)
     async def create_reminder(body: ReminderIn):

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { askCalendarAccess, getAgenda, getAgendaRange, getAlerts, getCalendarStatus, type Agenda, type AlertsView, type CalendarStatus } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { CalendarViews, move, origin, period, title, ymd, type Scale } from './calendar-views';
+import { EventDetailCard } from './event-detail';
 import { EventForm, hourMinute } from './event-form';
 import './calendar.css';
 
@@ -24,6 +25,7 @@ export function AgendaView({ discreet }: { discreet: boolean }) {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [adding, setAdding] = useState(false);
+  const [opened, setOpened] = useState<string | null>(null);  // the event whose detail is shown
   const [reminders, setReminders] = useState<AlertsView | null>(null);
   const asked = useRef(false);
   const request = useRef(0);
@@ -87,17 +89,19 @@ export function AgendaView({ discreet }: { discreet: boolean }) {
             <button type="button" className="button" aria-label="Siguiente" onClick={() => change({ focus: move(scale, focus, 1) })}>›</button>
             <h2>{title(scale, focus)}</h2>
           </div>}
-          {note && <p className="ok-note" role="status">{note}</p>}
+          {note && <p className="ok-note" role="status">{discreet ? 'Hecho.' : note}</p>}
           {adding && <EventForm discreet={discreet} onCancel={() => setAdding(false)} onDone={done => { setAdding(false); setNote(done); void load(); void getAlerts().then(setReminders).catch(() => undefined); }}/>}
+          {opened && <EventDetailCard key={opened} id={opened} discreet={discreet} onClose={() => setOpened(null)}
+            onChanged={done => { setOpened(null); setNote(done); void load(); }}/>}
           {agenda?.overlaps.length ? <p className="fiscal-warning">{agenda.overlaps.length === 1 ? 'Hay un solape' : `Hay ${agenda.overlaps.length} solapes`}: los eventos marcados coinciden en el tiempo.</p> : null}
           {agenda === null && !error ? <Loading label="Leyendo la agenda" lines={4}/> : agenda && <>
             {agenda.problem && <p className="fiscal-warning">{agenda.problem}</p>}
-            {mode === 'calendario' ? <CalendarViews scale={scale} focus={focus} agenda={agenda} discreet={discreet} onDay={day => change({ scale: 'dia', focus: day })} onMonth={month => change({ scale: 'mes', focus: month })}/>
+            {mode === 'calendario' ? <CalendarViews scale={scale} focus={focus} agenda={agenda} discreet={discreet} onDay={day => change({ scale: 'dia', focus: day })} onMonth={month => change({ scale: 'mes', focus: month })} onOpen={setOpened}/>
               : agenda.events.length === 0 && !agenda.problem ? <p className="muted">Nada en el calendario {when === 'semana' ? 'esta semana' : when}.</p>
               : [...days.entries()].map(([day, events]) => <div key={day} className="agenda-day"><h2>{day}</h2>
                 <ul className="agenda-list">{events.map(event => <li key={event.id} className={clashing.has(event.id) ? 'agenda-clash' : undefined}>
                   <span className="agenda-time">{event.allDay ? 'Todo el día' : `${hourMinute(event.start)}–${hourMinute(event.end)}`}</span>
-                  <span className="agenda-what"><span>{discreet ? '•••' : event.title}{!discreet && event.location && <small className="muted"> · {event.location}</small>}</span>
+                  <span className="agenda-what"><button type="button" className="agenda-open" onClick={() => setOpened(event.id)}><span>{discreet ? '•••' : event.title}</span>{!discreet && event.location && <small className="muted"> · {event.location}</small>}</button>
                     {!discreet && origin(event) && <small className="agenda-origin"><i style={{ background: event.scope?.color ?? undefined }}/>{origin(event)}</small>}</span>
                   {clashing.has(event.id) && <span className="chip warn">Solape</span>}</li>)}</ul></div>)}
             <h2>{mode === 'lista' ? 'Recordatorios pendientes' : 'Recordatorios de este periodo'}</h2>

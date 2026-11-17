@@ -45,3 +45,11 @@
 .cal-mini-grid button:disabled { cursor:default }
 .cal-mini-grid button.busy { background:var(--c-edf0e8); font-weight:700 }
 .cal-mini-grid button.today { outline:2px solid var(--c-173d3c) }
+.event-detail { display:flex; flex-direction:column; gap:8px }
+.event-detail p { margin:0 }
+.event-people { margin:4px 0 0; padding-left:18px; font-size:13px; overflow-wrap:anywhere }
+.event-notes { white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; background:var(--c-edf0e8); padding:10px; border-radius:8px }
+.agenda-open { border:0; background:transparent; padding:0; font:inherit; color:inherit; text-align:left; cursor:pointer }
+.agenda-open { display:block }
+.agenda-open:hover span:first-child, button.cal-chip:hover { text-decoration:underline }
+button.cal-chip { width:100%; text-align:left; font-family:inherit; color:inherit; cursor:pointer }
