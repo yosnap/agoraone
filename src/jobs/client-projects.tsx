@@ -62,7 +62,7 @@ export function ClientProjectsSection({ period, discreet }: { period: Period; di
             {orcaProjects.length > 0 && <td>{ready ? <button type="button" className="button" disabled={orca === key} onClick={() => setOrca(key)}>Abrir en Orca…</button>
               : <span className="muted" title="Sin repositorio de GitHub en Central, o ese repositorio no está en Orca">—</span>}</td>}
           </tr>
-          {orca === key && orcaProjects.length > 0 && <tr><td colSpan={5}><OrcaLaunch choices={orcaProjects.filter(p => p.client === client.name && p.project === project.name)} project={project.name} source={{ kind: 'project' }}
+          {orca === key && orcaProjects.length > 0 && <tr><td colSpan={5}><OrcaLaunch choices={orcaProjects.filter(p => p.client === client.name && p.project === project.name)} client={client.name} project={project.name} source={{ kind: 'project' }}
             task="" onClose={() => setOrca(null)}/></td></tr>}</Fragment>;
         }))}</tbody>
       </table>}

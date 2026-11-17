@@ -7,9 +7,16 @@ import { VaultNoteEditor } from './vault-note-editor';
 import { VaultNoteMove } from './vault-note-move';
 import { headingsOf, Markdown } from './markdown';
 import { noteFinder } from './vault-links';
+import { OrcaLaunch } from '../orca/orca-launch';
+import { useOrcaProjects } from '../orca/orca-projects';
 import './vault-book.css';
 
 type Note = VaultNote & { content: string; revision: string; hidden: number; revealed: boolean };
+/** A note that declares any level but normal in its properties does not offer Orca, as the core reads it (an
+ * unknown value counts as private); folder rules and the rest are checked by the core. */
+const DECLARED = /^\s*["']?(?:confidencialidad|confidentiality)["']?\s*:\s*["']?([^"'\n#]*)/gim;
+const keptHere = (content: string) => [...(/^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(content)?.[1] ?? '').matchAll(DECLARED)]
+  .some(found => !['normal', 'publico', 'público'].includes(found[1].trim().toLowerCase()));
 
 // An opened note shown as a book: index and actions on the left page, the formatted note on the
 // right, or the editor when editing; the note only reaches a model through «Consultar con…» and a sent message.
@@ -24,6 +31,9 @@ export function VaultBook({ vaultId, vaultName, noteId, notes, onOpen, onClose, 
   const [saved, setSaved] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
+  // The note the Orca card was opened for: editing, moving or going to another note closes it.
+  const [orcaFor, setOrcaFor] = useState<string | null>(null);
+  const orcaProjects = useOrcaProjects();
   // The id a note got after being moved or renamed: its book then says so.
   const [movedTo, setMovedTo] = useState<string | null>(null);
   const latest = useRef(0);
@@ -39,7 +49,7 @@ export function VaultBook({ vaultId, vaultName, noteId, notes, onOpen, onClose, 
   // A new note starts at the top and takes the focus; revealing hidden lines keeps the reading position.
   const first = useRef(true);
   useEffect(() => {
-    setNote(null); void load(noteId, false); setSaved(false);
+    setNote(null); void load(noteId, false); setSaved(false); setOrcaFor(null);
     page.current?.scrollTo(0, 0);
     if (!first.current) page.current?.focus();
     first.current = false;
@@ -85,8 +95,10 @@ export function VaultBook({ vaultId, vaultName, noteId, notes, onOpen, onClose, 
         </nav>}
         {note && <HiddenLines count={note.hidden} revealed={note.revealed} disabled={editing} onToggle={() => load(note.id, !note.revealed)}/>}
         {note && meta?.readable && !editing && !moving && <div className="book-actions">
-          <button type="button" className="book-edit" onClick={() => { setEditing(true); setSaved(false); setMovedTo(null); }}>Editar nota</button>
-          <button type="button" className="book-edit" onClick={() => { setMoving(true); setSaved(false); setMovedTo(null); }}>Mover o renombrar</button>
+          <button type="button" className="book-edit" onClick={() => { setEditing(true); setSaved(false); setMovedTo(null); setOrcaFor(null); }}>Editar nota</button>
+          <button type="button" className="book-edit" onClick={() => { setMoving(true); setSaved(false); setMovedTo(null); setOrcaFor(null); }}>Mover o renombrar</button>
+          {orcaProjects.length > 0 && !keptHere(note.content) && <button type="button" className="book-edit" disabled={orcaFor === noteId}
+            onClick={() => setOrcaFor(noteId)}>Llevar a Orca…</button>}
         </div>}
         {saved && !editing && <p role="status" className="book-saved">Guardada en tu vault. La versión anterior quedó en la copia de seguridad de AgoraOne.</p>}
         {movedTo === noteId && !moving && <p role="status" className="book-saved">Movida o renombrada en tu vault. Antes se guardó una copia en AgoraOne.</p>}
@@ -108,7 +120,9 @@ export function VaultBook({ vaultId, vaultName, noteId, notes, onOpen, onClose, 
           : editing && note ? <VaultNoteEditor key={`${note.id}:${note.revision}:${note.revealed}:${draft !== null}`} vaultId={vaultId} note={{ ...note, title: meta?.title ?? 'nota' }} draft={draft} notes={titles}
           onCancel={() => { setEditing(false); setDraft(null); }}
           onReload={keep => { setDraft(keep); if (keep === null) setEditing(false); void load(note.id, note.revealed); }}
-          onSaved={() => { setEditing(false); setDraft(null); setSaved(true); void load(note.id, note.revealed); onChanged(); }}/> : body}
+          onSaved={() => { setEditing(false); setDraft(null); setSaved(true); void load(note.id, note.revealed); onChanged(); }}/>
+          : orcaFor === noteId && note ? <OrcaLaunch choices={orcaProjects} source={{ kind: 'note', source: vaultId, ref: note.id, revision: `${note.modifiedAt}|${note.bytes}` }}
+            task="Lee la nota que va debajo y haz en este repositorio lo que plantea. Antes de cambiar nada, explica tu plan." onClose={() => setOrcaFor(null)}/> : body}
       </div>
     </section>
   </dialog>;

@@ -252,3 +252,81 @@ def test_un_correo_que_cambia_tras_la_vista_previa_ya_no_se_lanza(client):
     connection.close()
     refused = test_client.post("/orca/launch", json={"id": shown.json()["id"]}, headers=headers)
     assert refused.status_code == 422 and "No se ha lanzado nada" in refused.json()["error"] and orca.launched == []
+
+
+def add_note(connection, level="normal", text="Hay que rehacer el menú.\npassword: supersecreta123\nY revisar la caché."):
+    item = connection.execute("""INSERT INTO item (class, source, ref, title, folder, confidentiality, created_at, updated_at)
+                                 VALUES ('note', 'vault1', 'n1', 'Menú', 'Clientes/Acme', ?, 'x', 'x')""", (level,)).lastrowid
+    connection.execute("UPDATE item SET revision = 'r1' WHERE id = ?", (item,))
+    connection.execute("INSERT INTO chunk (item_id, ord, text) VALUES (?, 0, ?)", (item, f"Menú\n\n{text}"))
+    connection.commit()
+    return item
+
+
+def test_la_nota_va_como_datos_sin_lineas_de_claves(database):
+    add_note(database)
+    plan = orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "Haz lo de la nota",
+                                          "source": {"kind": "note", "source": "vault1", "ref": "n1", "revision": "r1"}}, runner=FakeOrca())
+    assert plan["source"]["label"] == "Nota «Clientes/Acme/Menú»" and "rehacer el menú" in plan["prompt"] and "Y revisar la caché" in plan["prompt"]
+    assert "supersecreta" not in plan["prompt"] and "texto de un documento" in plan["prompt"]
+
+
+@pytest.mark.parametrize("level", ["local_only", "private"])
+def test_una_nota_que_no_sale_de_este_mac_no_se_lanza(database, level):
+    add_note(database, level)
+    with pytest.raises(orca_launch.OrcaError, match="solo en este Mac"):
+        orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "x", "source": {"kind": "note", "source": "vault1", "ref": "n1", "revision": "r1"}}, runner=FakeOrca())
+    with pytest.raises(orca_launch.OrcaError, match="índice"):
+        orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "x", "source": {"kind": "note", "source": "vault1", "ref": "otra", "revision": "r1"}}, runner=FakeOrca())
+
+
+def test_una_nota_que_pasa_a_privada_tras_la_vista_previa_no_se_lanza(database):
+    add_note(database)
+    plan = orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "x", "source": {"kind": "note", "source": "vault1", "ref": "n1", "revision": "r1"}}, runner=FakeOrca())
+    database.execute("UPDATE item SET confidentiality = 'private' WHERE ref = 'n1'")
+    with pytest.raises(orca_launch.OrcaError, match="solo en este Mac"):
+        orca_launch.recheck(database, plan)
+
+
+def test_watson_solo_propone_un_proyecto_que_ya_esta_en_orca(database):
+    found = orca_launch.propose(database, {"proyecto": "web", "encargo": "Arregla el menú", "agente": "codex"}, runner=FakeOrca())
+    assert found == {"client": "Acme", "project": "Web", "repo": "Acme/Web", "task": "Arregla el menú", "agent": "codex", "issue": None}
+    with pytest.raises(orca_launch.OrcaError, match="no está en Central"):
+        orca_launch.propose(database, {"proyecto": "Tienda", "encargo": "x"}, runner=FakeOrca())
+    with pytest.raises(orca_launch.OrcaError, match="no es del repositorio"):
+        orca_launch.propose(database, {"proyecto": "Web", "encargo": "x", "issue": "https://github.com/otro/repo/issues/3"}, runner=FakeOrca())
+    assert orca_launch.propose(database, {"proyecto": "Web", "encargo": "x", "issue": "https://github.com/acme/web/issues/3"}, runner=FakeOrca())["issue"].endswith("/3")
+
+
+def test_la_herramienta_de_watson_solo_abre_la_tarjeta(database, monkeypatch):
+    import asyncio
+    from contextlib import contextmanager
+
+    from agora_core.brain_tools import Toolbox
+
+    monkeypatch.setattr(orca_launch, "ready_projects", lambda connection, runner=None: {"projects": [{"client": "Acme", "project": "Web", "repo": "Acme/Web"}], "problem": None})
+    monkeypatch.setattr(orca_launch.subprocess, "run", lambda *a, **k: pytest.fail("Watson no lanza nada"))
+
+    @contextmanager
+    def same():
+        yield database
+    box = Toolbox(same, None, None)
+    answer = json.loads(asyncio.run(box.call("proponer_encargo_orca", {"proyecto": "Web", "encargo": "Arregla el menú"})))
+    assert "No se ha lanzado nada" in answer["estado"] and box.events[-1]["proposal"]["repo"] == "Acme/Web"
+
+
+def test_una_nota_con_el_indice_desfasado_no_se_lanza(database):
+    add_note(database)
+    with pytest.raises(orca_launch.OrcaError, match="ha cambiado"):
+        orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "x", "source": {"kind": "note", "source": "vault1", "ref": "n1", "revision": "r2"}}, runner=FakeOrca())
+    plan = orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "x", "source": {"kind": "note", "source": "vault1", "ref": "n1", "revision": "r1"}}, runner=FakeOrca())
+    database.execute("UPDATE item SET revision = 'r2' WHERE ref = 'n1'")
+    with pytest.raises(orca_launch.OrcaError, match="ha cambiado"):
+        orca_launch.recheck(database, plan)
+
+
+def test_el_encargo_no_lleva_lineas_de_claves(database):
+    plan = orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "Despliega\ntoken: abcdef123456\ny avisa"}, runner=FakeOrca())
+    assert "abcdef123456" not in plan["prompt"] and "Despliega\ny avisa" in plan["prompt"]
+    found = orca_launch.propose(database, {"proyecto": "Web", "encargo": "Usa password: hunter22secreto\npara entrar"}, runner=FakeOrca())
+    assert found["task"] == "para entrar"

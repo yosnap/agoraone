@@ -90,6 +90,7 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'note_proposal'; id: string; note: { title: string; folder: string; content: string } }
   | { kind: 'tool'; tool: 'meetings'; query: string; count: number }
   | { kind: 'tool'; tool: 'issue_proposal'; id: string; issue: ProposedIssue }
+  | { kind: 'tool'; tool: 'orca_proposal'; proposal: OrcaProposal }
   | { kind: 'tool'; tool: 'meeting'; title: string; part: number }
   | { kind: 'tool'; tool: 'agenda' | 'day' | 'projects'; [key: string]: unknown }
   | { kind: 'done'; engine: string; model: string };
@@ -496,7 +497,9 @@ export type ReorgMove = { n: number; source: string; ref: string; title: string;
 /** Orca module (1.7): Central projects already in Orca, the exact preview of a launch and the launch itself. */
 export type OrcaAgent = 'claude' | 'codex';
 export type OrcaProject = { client: string; project: string; repo: string };
-export type OrcaSource = { kind: 'mail'; id: number } | { kind: 'issue'; url: string } | { kind: 'project' };
+export type OrcaSource = { kind: 'mail'; id: number } | { kind: 'issue'; url: string } | { kind: 'note'; source: string; ref: string; revision: string } | { kind: 'project' };
+/** What Watson proposes to take to Orca: it only opens the card, which still needs the preview and «Lanzar en Orca». */
+export type OrcaProposal = OrcaProject & { task: string; agent: OrcaAgent; issue: string | null };
 export type OrcaPreview = { id: string; client: string; project: string; repo: string; orcaName: string; agent: OrcaAgent; agentName: string; name: string;
   source: { kind: string; label: string; number?: number; url?: string } | null; sourceText: string | null; prompt: string };
 export const getOrcaProjects = () => core<{ projects: OrcaProject[]; problem: string | null }>('/orca/projects');

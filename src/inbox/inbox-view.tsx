@@ -177,7 +177,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
                 onClick={() => setScheduling(item.id)}>{proposalLabels.create_event.label}…</button></p>)}
           {replying === item.id && !discreet && <ReplyComposer item={item} onCancel={() => setReplying(null)}
             onDone={done => { setReplying(null); setNote(done); void load(); }}/>}
-          {orca === item.id && !discreet && <OrcaLaunch choices={clientProjects(orcaProjects, item.client?.name)} project={item.client?.projects[0]}
+          {orca === item.id && !discreet && <OrcaLaunch choices={clientProjects(orcaProjects, item.client?.name)} client={item.client?.name} project={item.client?.projects[0]}
             source={{ kind: 'mail', id: item.id }} task={orcaTask} onClose={() => setOrca(null)}/>}
           <div className="inbox-actions">
             {item.state === 'pending' ? <>

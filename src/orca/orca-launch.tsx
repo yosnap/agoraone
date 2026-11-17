@@ -10,17 +10,19 @@ const message = (failure: unknown, fallback: string) => failure instanceof Error
 /** Shared launch card of the Orca module: the user picks the project and the agent and writes the task, then sees
  * exactly which repository, agent and instructions will run; only «Lanzar en Orca» creates a new workspace there
  * with the agent started. Changing anything means a new preview. */
-export function OrcaLaunch({ choices, project: first, source, task: initialTask, onClose }: {
-  choices: OrcaProject[]; project?: string; source: OrcaSource; task: string; onClose: () => void;
+const keyOf = (c: OrcaProject) => JSON.stringify([c.client, c.project]);
+
+export function OrcaLaunch({ choices, client, project: first, source, task: initialTask, agent: firstAgent = 'claude', onClose }: {
+  choices: OrcaProject[]; client?: string; project?: string; source: OrcaSource; task: string; agent?: OrcaAgent; onClose: () => void;
 }) {
-  const [project, setProject] = useState(first && choices.some(c => c.project === first) ? first : choices[0]?.project ?? '');
-  const [agent, setAgent] = useState<OrcaAgent>('claude');
+  const [project, setProject] = useState(keyOf(choices.find(c => c.project === first && (!client || c.client === client)) ?? choices[0] ?? { client: '', project: '', repo: '' }));
+  const [agent, setAgent] = useState<OrcaAgent>(firstAgent);
   const [task, setTask] = useState(initialTask);
   const [preview, setPreview] = useState<OrcaPreview | null>(null);
   const [done, setDone] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const chosen = choices.find(c => c.project === project);
+  const chosen = choices.find(c => keyOf(c) === project);
   // Each step replaces the buttons that had the focus: it goes to the new step's heading (no effect needed).
   const focus = (node: HTMLElement | null) => node?.focus();
 
@@ -72,7 +74,7 @@ export function OrcaLaunch({ choices, project: first, source, task: initialTask,
     <fieldset className="orca-fields" disabled={busy}>
     <div className="orca-grid">
       {choices.length > 1 ? <label className="field">Proyecto<ModernSelect value={project} onChange={setProject} disabled={busy}
-        options={choices.map(c => ({ value: c.project, label: `${c.project} · ${c.repo}` }))}/></label>
+        options={choices.map(c => ({ value: keyOf(c), label: `${c.client} › ${c.project} · ${c.repo}` }))}/></label>
         : <div className="field">Proyecto<span className="orca-fixed">{chosen ? `${chosen.project} · ${chosen.repo}` : '—'}</span></div>}
       <div className="field">Agente<div className="segmented" role="group" aria-label="Agente">{agents.map(a =>
         <button type="button" key={a.value} aria-pressed={agent === a.value} onClick={() => setAgent(a.value)}>{a.label}</button>)}</div></div>
@@ -80,7 +82,8 @@ export function OrcaLaunch({ choices, project: first, source, task: initialTask,
     <label className="field">Encargo para el agente<textarea value={task} rows={5} maxLength={4000} required placeholder="Qué quieres que haga en el repositorio"
       onChange={event => setTask(event.target.value)}/></label>
     </fieldset>
-    {source.kind === 'mail' && <p className="muted">El correo irá debajo del encargo, marcado como datos: el agente no seguirá instrucciones que vengan dentro.</p>}
+    {(source.kind === 'mail' || source.kind === 'note') && <p className="muted">{source.kind === 'mail' ? 'El correo' : 'La nota (sin las líneas que parecen claves)'} irá debajo del encargo, marcado como datos: el agente no seguirá instrucciones que vengan dentro.</p>}
+    {source.kind === 'issue' && <p className="muted">El agente leerá la issue con tu GitHub CLI y el espacio quedará enlazado a ella.</p>}
     {error && <LoadError message={error}/>}
     <div className="orca-actions">
       <button type="submit" className="button primary" disabled={busy || !chosen || !task.trim()}>{busy ? 'Preparando…' : 'Ver la vista previa'}</button>

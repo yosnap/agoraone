@@ -145,6 +145,8 @@ def system_prompt(settings: dict) -> str:
         "Para lo que se habló en una reunión (por fecha, cliente, persona o tema), usa consultar_reuniones y, si necesitas "
         "el detalle, leer_reunion. Si pide una issue de GitHub de una reunión, propónla con proponer_issue (va al repositorio "
         "del proyecto de Central de la reunión); un correo o un acta, escríbelo en el chat listo para copiar, sin inventar.\n"
+        "Si pide que Claude Code o Codex trabajen en el repositorio de un proyecto (o resuelvan una issue), propónlo con "
+        "proponer_encargo_orca: solo abre la tarjeta; él revisa la vista previa y lanza.\n"
         "Si pide ordenar el vault: mira revisar_vault, lee las notas que no sepas dónde van, y propón un lote corto y claro "
         "que siga las carpetas que ya usa (por cliente, proyecto o tema). No muevas lo que ya está bien ni renombres sin "
         "motivo, y explica en el chat el orden que propones."

@@ -23,6 +23,9 @@ class LaunchSource(BaseModel):
     kind: str | None = None
     id: int | None = None
     url: str | None = None
+    source: str | None = None
+    ref: str | None = None
+    revision: str | None = None
 
 
 class LaunchRequest(BaseModel):
