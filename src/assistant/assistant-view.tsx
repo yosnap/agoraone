@@ -161,7 +161,8 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const submit = (event?: FormEvent, spoken?: string) => {
     event?.preventDefault();
     const text = (spoken === undefined ? draft : (draft.trim() ? `${draft.trimEnd()} ${spoken}` : spoken)).trim();
-    if (!text || live) return; setDraft('');
+    // While Watson answers, only the quick commands (music, apps) go through: they need no model.
+    if (!text || (live && !quickCommand(text))) return; setDraft('');
     spokenTurn.current = spoken !== undefined;
     stopSpeaking();
     if (proposals.answer(text, discreet)) return;  // a plain «sí» / «no» answers the rule Watson just proposed, without a model

@@ -427,6 +427,15 @@ export type MusicState = { players: MusicPlayer[]; note: string | null };
 export type MusicAction = 'toggle' | 'play' | 'pause' | 'next' | 'previous' | 'louder' | 'quieter';
 export const getMusic = () => core<MusicState>('/music/status');
 export const controlMusic = (player: string, action: MusicAction) => core<MusicState>('/music/control', { player, action });
+/** The volume (0-100) or the point of the song (seconds) dragged to in Apple Music or Spotify. */
+export const setMusicLevel = (player: string, action: 'volume' | 'seek', value: number) => core<MusicState>('/music/control', { player, action, value });
+/** A cover as a local picture (the API needs its header, so an <img> cannot ask for it): null when there is none. */
+async function picture(path: string): Promise<string | null> {
+  const response = await fetch(`/api/core${path}`, { headers: csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {} });
+  return response.status === 200 ? URL.createObjectURL(await response.blob()) : null;
+}
+export const libraryCover = (id: string) => picture(`/music/library/${encodeURIComponent(id)}/cover`);
+export const playerCover = (player: string, key: string) => picture(`/music/cover?player=${encodeURIComponent(player)}&key=${encodeURIComponent(key)}`);
 export const playMusic = (player: string, query: string) => core<MusicState & { done: string }>('/music/play', { player, query });
 
 /** Opening apps (1.5): the installed ones, those Watson may open without asking, and opening one. */

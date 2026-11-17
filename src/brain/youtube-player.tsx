@@ -41,6 +41,16 @@ let embedAlive = false;  // the embed said it loaded the video (length, state or
 // While it plays the window reports every second; silence for this long means it stopped without saying so.
 let alive = 0;
 const SILENT = 12000;
+// When the embed failed without a word (error 153: this window cannot embed YouTube), every video would wait the
+// same seconds before the hidden window: once it happened, the next ones go straight there (remembered on this Mac).
+// It is kept for a week, and forgotten as soon as the hidden window fails to start a video.
+const BROKEN = 'agora.youtube.embed-roto';
+const WEEK = 7 * 86400_000;
+let embedBroken = (() => { try { return Date.now() - Number(localStorage.getItem(BROKEN) ?? 0) < WEEK; } catch { return false; } })();
+const rememberBroken = (broken: boolean) => {
+  embedBroken = broken;
+  try { if (broken) localStorage.setItem(BROKEN, String(Date.now())); else localStorage.removeItem(BROKEN); } catch { /* private window */ }
+};
 
 function go(index: number) {
   const video = queue[index];
@@ -49,6 +59,7 @@ function go(index: number) {
   heard = false;
   embedAlive = false;
   frame = null;  // a late message of the previous video's player must not count for this one
+  if (!state.hidden && embedBroken && desktop()) state = { ...state, hidden: true };
   set({ video, playing: false, position: 0, duration: 0, error: '', ad: false, starting: !state.hidden });
   if (state.hidden) { playHidden(video); return; }
   // The embed can fail without saying so (error 153, «configuración del reproductor»: its page shows the error and
@@ -65,7 +76,7 @@ const embedStill = (mine: number, video: Video | null) => mine === ticket && !st
 function pageLoaded() {
   const mine = ticket, video = state.video;
   window.clearTimeout(silence);
-  silence = window.setTimeout(() => { if (!heard && embedStill(mine, video)) void refused(); }, EMBED_SILENT);
+  silence = window.setTimeout(() => { if (!heard && embedStill(mine, video)) void refused(true); }, EMBED_SILENT);
 }
 
 function playHidden(video: Video) {
@@ -74,7 +85,10 @@ function playHidden(video: Video) {
   window.clearTimeout(watchdog);
   const mine = ticket;
   watchdog = window.setTimeout(() => {
-    if (mine === ticket && state.hidden && state.video?.id === video.id && started !== video.id) fail('YouTube no ha empezado a reproducir el vídeo.');
+    if (mine === ticket && state.hidden && state.video?.id === video.id && started !== video.id) {
+      if (embedBroken) rememberBroken(false);  // the shortcut did not help: the next video tries the embed again
+      fail('YouTube no ha empezado a reproducir el vídeo.');
+    }
   }, 30000);
 }
 
@@ -87,13 +101,13 @@ function fail(error: string) {
 
 /** The embed refused this video: the hidden window plays this same one if there is one (the desktop app); if not,
  * the next video of the queue is tried. */
-async function refused() {
+async function refused(silent = false) {
   const mine = ticket;
   const video = state.video;
   if (state.hidden || !video) return;  // already handed over (the embed can say it twice)
   const there = desktop() && await hiddenYouTubeAvailable().then(answer => answer.available, () => false);
   if (mine !== ticket || state.video !== video || state.hidden) return;
-  if (there) { frame = null; set({ hidden: true, starting: false }); playHidden(video); return; }
+  if (there) { if (silent) rememberBroken(true); frame = null; set({ hidden: true, starting: false }); playHidden(video); return; }
   if (at + 1 < queue.length) go(at + 1);
   else fail(BLOCKED);
 }
@@ -102,7 +116,7 @@ async function refused() {
 /** Plays these videos from the first, if this request (its ticket) is still the last one; false when it is not. */
 export function playYouTube(videos: Video[], query = '', mine = ticket): boolean {
   if (mine !== ticket) return false;
-  if (state.hidden) { order({ action: 'stop' }); set({ hidden: false }); }
+  if (state.hidden && !(embedBroken && desktop())) { order({ action: 'stop' }); set({ hidden: false }); }
   queue = videos.filter(video => VIDEO_ID.test(video.id)).slice(0, 20);
   asked = query; at = -1;
   go(0);
@@ -122,6 +136,18 @@ export function youtubeControl(action: 'toggle' | 'play' | 'pause' | 'next' | 'p
   else if (action === 'next') go(Math.min(at + 1, queue.length - 1));
   else if (action === 'previous') { if (state.position > 4) send('seekTo', [0, true]); else go(Math.max(at - 1, 0)); }
   else { const volume = Math.max(0, Math.min(100, state.volume + (action === 'louder' ? 10 : -10))); send('setVolume', [volume]); set({ volume }); }
+}
+
+/** The point of the video (seconds) and the volume (0-100) the user drags to. */
+export function youtubeSeek(seconds: number) {
+  const to = Math.max(0, Math.min(seconds, state.duration || seconds));
+  if (state.hidden) order({ action: 'seek', seconds: to }); else send('seekTo', [to, true]);
+  set({ position: to });
+}
+export function youtubeVolume(volume: number) {
+  const level = Math.max(0, Math.min(100, Math.round(volume)));
+  if (state.hidden) order({ action: 'volume', volume: level }); else send('setVolume', [level]);
+  set({ volume: level });
 }
 
 function hiddenControl(action: Parameters<typeof youtubeControl>[0]) {

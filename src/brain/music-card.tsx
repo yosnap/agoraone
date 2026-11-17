@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
-import { controlMusic, getLibrary, getMusic, playMusic, searchYouTube, type MusicAction, type MusicState } from '../api/core';
+import { controlMusic, getLibrary, getMusic, libraryCover, playMusic, playerCover, searchYouTube, setMusicLevel, type MusicAction, type MusicState } from '../api/core';
 import { ModernSelect } from '../ui/modern-select';
-import { localControl, playLocal, useLocalPlayer } from './local-player';
-import { askTicket, playYouTube, stopYouTube, useYouTube, youtubeControl } from './youtube-player';
+import { localControl, localSeek, localVolume, playLocal, useLocalPlayer } from './local-player';
+import { MusicSlider } from './music-slider';
+import { askTicket, playYouTube, stopYouTube, useYouTube, youtubeControl, youtubeSeek, youtubeVolume } from './youtube-player';
 
 const REFRESH = 3000;
 const clock = (seconds: number | null | undefined) => seconds == null ? '–:––' : `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
@@ -23,6 +24,15 @@ export function MusicCard() {
   const local = useLocalPlayer();
   const tube = useYouTube();
   const timer = useRef(0);
+  const covered = useRef('');
+  const [cover, setCover] = useState<{ key: string; url: string | null } | null>(null);
+  // Every change of cover goes through here, so a local picture is always freed when it stops being shown.
+  const shownCover = useRef<string | null>(null);  // the picture on screen, to free it also when the card leaves
+  const replaceCover = (next: { key: string; url: string | null } | null) => {
+    if (shownCover.current?.startsWith('blob:') && shownCover.current !== next?.url) URL.revokeObjectURL(shownCover.current);
+    shownCover.current = next?.url ?? null;
+    setCover(next);
+  };
   const alive = useRef(false);
   const read = useCallback(() => {
     window.clearTimeout(timer.current);
@@ -37,7 +47,7 @@ export function MusicCard() {
     alive.current = true; read();
     // Without a library of their own, YouTube: Apple Music only searches the user's Apple Music library.
     void getLibrary('').then(found => setTarget(current => current ?? (found.folders.length ? 'local' : 'youtube'))).catch(() => setTarget(current => current ?? 'youtube'));
-    return () => { alive.current = false; window.clearTimeout(timer.current); };
+    return () => { alive.current = false; window.clearTimeout(timer.current); covered.current = ''; if (shownCover.current?.startsWith('blob:')) URL.revokeObjectURL(shownCover.current); shownCover.current = null; };
   }, [read]);
   const outside = state?.players[0];
   // What the card says when nothing plays: reading only until the first answer arrives.
@@ -93,24 +103,50 @@ export function MusicCard() {
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo.'); }
   };
   const showing = tube.video
-    ? { title: tube.video.title, artist: tube.video.channel, source: 'YouTube', playing: tube.playing, position: tube.position, duration: tube.duration }
+    ? { title: tube.video.title, artist: tube.video.channel, source: 'YouTube', playing: tube.playing, position: tube.position, duration: tube.duration, volume: tube.volume,
+      cover: `youtube:${tube.video.id}` }
     : local.track
-    ? { title: local.track.title, artist: local.track.artist, source: 'Tu biblioteca', playing: local.playing, position: local.position, duration: local.duration }
-    : outside?.title ? { title: outside.title, artist: outside.artist ?? null, source: outside.name, playing: outside.state === 'playing', position: outside.position ?? null, duration: outside.duration ?? null }
+    ? { title: local.track.title, artist: local.track.artist, source: 'Tu biblioteca', playing: local.playing, position: local.position, duration: local.duration, volume: local.volume,
+      cover: `local:${local.track.id}` }
+    : outside?.title ? { title: outside.title, artist: outside.artist ?? null, source: outside.name, playing: outside.state === 'playing', position: outside.position ?? null,
+      duration: outside.duration ?? null, volume: outside.volume ?? null, cover: `${outside.player}:${outside.title}|${outside.artist ?? ''}|${outside.album ?? ''}` }
     : null;
-  const progress = showing?.duration && showing.position != null ? Math.min(100, (showing.position / showing.duration) * 100) : 0;
+  // The cover: YouTube's own picture of the video, the one inside the song of the library, or the player's artwork.
+  // Asked once per song while rendering (no effect); a song without one keeps the note.
+  if (showing && covered.current !== showing.cover) {
+    covered.current = showing.cover;
+    const key = showing.cover, [kind, ...rest] = key.split(':'), id = rest.join(':');
+    if (kind === 'youtube') replaceCover({ key, url: `https://i.ytimg.com/vi/${id}/mqdefault.jpg` });
+    else void (kind === 'local' ? libraryCover(id) : playerCover(kind, id)).then(url => {
+      if (covered.current === key) replaceCover({ key, url }); else if (url) URL.revokeObjectURL(url);  // the song changed meanwhile
+      // No picture (or a player that was slow to answer): asked again a little later, on a following reading.
+      if (!url) window.setTimeout(() => { if (covered.current === key) covered.current = ''; }, 15_000);
+    }, () => window.setTimeout(() => { if (covered.current === key) covered.current = ''; }, 15_000));
+  }
+  const picture = showing && cover?.key === showing.cover ? cover.url : null;
+  const seek = (seconds: number) => {
+    if (tube.video) youtubeSeek(seconds);
+    else if (local.track) localSeek(seconds);
+    else if (outside) void setMusicLevel(outside.player, 'seek', seconds).then(setState, failure => setError(failure instanceof Error ? failure.message : 'No se pudo.'));
+  };
+  const loud = (volume: number) => {
+    if (tube.video) youtubeVolume(volume);
+    else if (local.track) localVolume(volume);
+    else if (outside) void setMusicLevel(outside.player, 'volume', volume).then(setState, failure => setError(failure instanceof Error ? failure.message : 'No se pudo.'));
+  };
   return <section className="dock-card dock-music" aria-label="Música" ref={attach}>
-    <div className="dock-cover" aria-hidden="true">♫</div>
+    <div className="dock-cover" aria-hidden="true">{picture
+      ? <img src={picture} alt="" referrerPolicy="no-referrer" onError={() => replaceCover(null)}/> : '♫'}</div>
     <div className="music-body">
       {showing ? <>
         <div className="music-head"><strong title={`${showing.title} · ${showing.artist ?? ''}`}>{showing.title}{showing.artist ? ` · ${showing.artist}` : ''}</strong><span className="lately-tag">{showing.source}</span></div>
-        <div className="music-bar" aria-hidden="true"><span style={{ width: `${progress}%` }}/></div>
+        <MusicSlider label="Punto de la canción" value={showing.position ?? 0} max={showing.duration ?? 0} onCommit={seek} format={value => `${clock(value)} de ${clock(showing.duration)}`}/>
         <div className="music-controls">
           <button type="button" className="music-button" aria-label="Anterior" onClick={() => void act('previous')}>⏮</button>
           <button type="button" className="music-button main" aria-label={showing.playing ? 'Pausar' : 'Reproducir'} onClick={() => void act('toggle')}>{showing.playing ? '❚❚' : '▶'}</button>
           <button type="button" className="music-button" aria-label="Siguiente" onClick={() => void act('next')}>⏭</button>
-          <button type="button" className="music-button" aria-label="Bajar el volumen" onClick={() => void act('quieter')}>−</button>
-          <button type="button" className="music-button" aria-label="Subir el volumen" onClick={() => void act('louder')}>+</button>
+          {showing.volume != null && <span className="music-volume"><span aria-hidden="true">{showing.volume === 0 ? '🔇' : '🔊'}</span>
+            <MusicSlider label="Volumen" value={showing.volume} max={100} onCommit={loud} format={value => `${Math.round(value)} %`}/></span>}
           <small className="music-time">{clock(showing.position)} / {clock(showing.duration)}</small>
         </div>
       </> : <div className="music-head"><strong>Música</strong><small>{idle}</small></div>}

@@ -73,3 +73,13 @@ def test_ruta_de_busqueda(tmp_path, monkeypatch):
         monkeypatch.setattr(youtube.httpx, "get", lambda url, **k: httpx.Response(302, headers={"location": "https://consent.youtube.com/"}))
         refused = client.get("/music/youtube/search?q=x", headers=h)
         assert refused.status_code == 422 and "condiciones" in refused.json()["error"]
+
+
+def test_tambien_lee_los_resultados_con_el_formato_nuevo_de_youtube():
+    lockup = {"lockupViewModel": {"contentId": "fJ9rUzIMcZQ", "contentType": "LOCKUP_CONTENT_TYPE_VIDEO",
+              "contentImage": {"thumbnailViewModel": {"overlays": [{"thumbnailBottomOverlayViewModel": {"badges": [{"thumbnailBadgeViewModel": {"text": "6:00"}}]}}]}},
+              "metadata": {"lockupMetadataViewModel": {"title": {"content": "Queen – Bohemian Rhapsody"}, "metadata": {"contentMetadataViewModel": {"metadataRows": [
+                  {"metadataParts": [{"avatarStack": {"avatarStackViewModel": {"text": {"content": "Queen Official"}}}}, {"text": {"content": "2117 M"}}]}]}}}}}}
+    playlist = {"lockupViewModel": {"contentId": "PL123", "contentType": "LOCKUP_CONTENT_TYPE_PLAYLIST"}}
+    page = "<script>var ytInitialData = " + json.dumps({"contents": [playlist, lockup]}) + ";</script>"
+    assert youtube.parse(page) == [{"id": "fJ9rUzIMcZQ", "title": "Queen – Bohemian Rhapsody", "channel": "Queen Official", "length": "6:00"}]

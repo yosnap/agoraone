@@ -44,8 +44,21 @@ export function musicQuery(text: string): string {
     .replace(/\s+en\s+(spotify|m[uú]sica|apple music|youtube|mi biblioteca|la biblioteca)\s*[.!?]*$/i, '').trim();
 }
 
+// Dictation often mishears the call («Wilson, pon música», «Guatson: pon jazz»): a word that sounds like «Watson»
+// before a comma, colon or full stop is dropped. Only that: «Vale, sigue» or «Bien, siguiente» still go to Watson.
+export const MISHEARD = /^\s*[¿¡]?(?:(?:oye|hey|ok|hola)[\s,]+)?(?:w|gu|u|b)\p{L}{1,6}[oa]n\s*[,.:;]\s+/iu;
+// «Música, por favor»: the same as «pon música».
+const JUST_MUSIC = /^(?:musica|un poco de musica|algo de musica)$/;
+
 /** Whether this message is a quick command; if so, does it and says what happened. */
 export function quickCommand(text: string): (() => Promise<QuickResult>) | null {
+  const found = command(text);
+  if (found || !MISHEARD.test(text)) return found;
+  return command(text.replace(MISHEARD, ''));
+}
+
+function command(text: string): (() => Promise<QuickResult>) | null {
+  if (JUST_MUSIC.test(asked(plain(text)))) text = 'pon música';
   const said = asked(plain(text));
   const control = controls.find(([pattern]) => pattern.test(said));
   // «Abre una nota…», «abre el correo de…» are requests for Watson; «abre Notas» is an app.
