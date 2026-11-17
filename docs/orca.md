@@ -27,7 +27,18 @@ Claude Code o Codex con un encargo. Plan: `plans/261117-0940-modulo-orca`.
 | Ruta | Qué hace |
 |---|---|
 | `GET /orca` | si está instalado, si el módulo está encendido y los agentes |
+| `GET /orca/projects` | proyectos de Central cuyo repositorio ya está en Orca (vacío sin Orca o con el módulo apagado) |
 | `POST /orca/preview` | `{client, project, task, agent, source?: {kind: mail, id} \| {kind: issue, url}}` |
 | `POST /orca/launch` | `{id}` de la vista previa |
 
-Pendiente: botones en Central y Bandeja (alpha.34); notas del vault, issue de Watson y propuesta de Watson (alpha.35).
+## En la interfaz
+- **Tarjeta compartida** (`src/orca/orca-launch.tsx`): proyecto (con `ModernSelect` si el cliente tiene varios en
+  Orca), agente (Claude Code por defecto o Codex) y encargo editable; «Ver la vista previa» enseña repositorio,
+  agente, nombre del espacio y las indicaciones exactas, y solo «Lanzar en Orca» lanza. Cambiar algo pide otra
+  vista previa. Los botones solo salen para los proyectos de `GET /orca/projects` (`src/orca/orca-projects.ts`).
+- **Trabajos › Proyectos de clientes:** columna «Orca» con «Abrir en Orca…» en cada proyecto listo.
+- **Bandeja:** «Llevar a Orca…» en las tarjetas pendientes de un cliente con proyectos en Orca, solo si el correo
+  es normal y sigue en la bandeja de entrada; el encargo por defecto no copia palabras del correo, que va debajo
+  como datos.
+
+Pendiente: notas del vault, issue de Watson y propuesta de Watson (alpha.35).

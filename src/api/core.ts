@@ -492,3 +492,13 @@ export type CleanupMessage = { id: number; from: string; address: string; subjec
 export const cleanMailFromProposal = (id: string, ids: number[]) => core<{ moved: number; problems: string[] }>(`/assistant/proposals/${encodeURIComponent(id)}/mail`, { ids });
 /** Reordering the vault (1.7): one move or rename Watson proposed; `toTitle` null keeps the note's own title. */
 export type ReorgMove = { n: number; source: string; ref: string; title: string; folder: string; toFolder: string; toTitle: string | null; newFolder: boolean; links: number; reason: string };
+
+/** Orca module (1.7): Central projects already in Orca, the exact preview of a launch and the launch itself. */
+export type OrcaAgent = 'claude' | 'codex';
+export type OrcaProject = { client: string; project: string; repo: string };
+export type OrcaSource = { kind: 'mail'; id: number } | { kind: 'issue'; url: string } | { kind: 'project' };
+export type OrcaPreview = { id: string; client: string; project: string; repo: string; orcaName: string; agent: OrcaAgent; agentName: string; name: string;
+  source: { kind: string; label: string; number?: number; url?: string } | null; sourceText: string | null; prompt: string };
+export const getOrcaProjects = () => core<{ projects: OrcaProject[]; problem: string | null }>('/orca/projects');
+export const previewOrca = (request: { client: string; project: string; task: string; agent: OrcaAgent; source?: OrcaSource }) => core<OrcaPreview>('/orca/preview', request);
+export const launchOrca = (id: string) => core<{ name: string; surface: 'chat' | 'terminal' | null; repo: string; agentName: string }>('/orca/launch', { id });

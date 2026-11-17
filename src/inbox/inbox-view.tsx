@@ -9,6 +9,9 @@ import { InboxChat } from './inbox-chat';
 import { InboxDelete, type Doomed } from './inbox-delete';
 import { arrange, InboxTools, readView, type View } from './inbox-tools';
 import { EventForm } from '../calendar/event-form';
+import { OrcaLaunch } from '../orca/orca-launch';
+import { clientProjects, useOrcaProjects } from '../orca/orca-projects';
+import { orcaTask } from './inbox-labels';
 import '../calendar/calendar.css';
 
 /** The first date the mail mentions, when it reads as one (the form shows it to be checked). */
@@ -41,6 +44,8 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const [noting, setNoting] = useState<number | null>(null);
   const [scheduling, setScheduling] = useState<number | null>(null);
   const [replying, setReplying] = useState<number | null>(null);
+  const [orca, setOrca] = useState<number | null>(null);
+  const orcaProjects = useOrcaProjects();
   const [clearing, setClearing] = useState(false);
   const [view, setView] = useState<View>(readView);
   const [selected, setSelected] = useState<Set<number>>(() => new Set());
@@ -138,7 +143,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
       : items.length === 0 ? <p className="muted">{state === 'pending' ? 'No hay nada pendiente. Si acabas de conectar una cuenta, los resúmenes llegan en unos minutos.' : 'Nada por aquí.'}</p>
       : [...groups].filter(([scope]) => shownScope === ALL || scope === shownScope).map(([scope, cards]) => <div key={scope} className="inbox-group">
         <h2><span className="scope-dot" style={{ background: colorOf(scope) }} aria-hidden="true"/>{scope} <span className="muted">· {cards.length}</span></h2>
-        <ul className={`inbox-cards per-${view.perRow}${cards.some(c => [filing, noting, scheduling, replying].includes(c.id)) ? ' editing' : ''}`}>{cards.map(item => <li key={item.id} className={`card inbox-card${selected.has(item.id) ? ' chosen' : ''}`}>
+        <ul className={`inbox-cards per-${view.perRow}${cards.some(c => [filing, noting, scheduling, replying, orca].includes(c.id)) ? ' editing' : ''}`}>{cards.map(item => <li key={item.id} className={`card inbox-card${selected.has(item.id) ? ' chosen' : ''}`}>
           <div className="card-head">
             <div className="inbox-chips">{item.moved ? <span className="chip">{item.moved === 'trash' ? 'En la Papelera' : 'Archivado'}</span> : <label className="check inbox-pick" title="Seleccionar"><input type="checkbox" checked={selected.has(item.id)} onChange={() => pick(item.id)}
               aria-label={`Seleccionar ${discreet ? 'este correo' : item.subject || 'correo sin asunto'}`}/></label>}<span className={`chip kind-${item.kind}`}>{kindLabels[item.kind]}</span>
@@ -172,12 +177,17 @@ export function InboxView({ discreet }: { discreet: boolean }) {
                 onClick={() => setScheduling(item.id)}>{proposalLabels.create_event.label}…</button></p>)}
           {replying === item.id && !discreet && <ReplyComposer item={item} onCancel={() => setReplying(null)}
             onDone={done => { setReplying(null); setNote(done); void load(); }}/>}
+          {orca === item.id && !discreet && <OrcaLaunch choices={clientProjects(orcaProjects, item.client?.name)} project={item.client?.projects[0]}
+            source={{ kind: 'mail', id: item.id }} task={orcaTask} onClose={() => setOrca(null)}/>}
           <div className="inbox-actions">
             {item.state === 'pending' ? <>
               <button type="button" className="button primary" onClick={() => void decide(item, 'done')}>Hecho</button>
               <button type="button" className="button" onClick={() => void decide(item, 'dismissed')}>Descartar</button>
               {replying !== item.id && <button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para responder' : undefined}
                 onClick={() => setReplying(item.id)}>Responder…</button>}
+              {orca !== item.id && item.confidentiality === 'normal' && !item.moved && clientProjects(orcaProjects, item.client?.name).length > 0
+                && <button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para ver qué se enviará' : 'Crear un espacio de trabajo en Orca con un agente para este correo'}
+                  onClick={() => setOrca(item.id)}>Llevar a Orca…</button>}
             </> : <button type="button" className="button" onClick={() => void decide(item, 'pending')}>Volver a Pendientes</button>}
             {!item.moved && <button type="button" className="button act-delete" onClick={() => confirm('Eliminar este correo', [doomed(item)])}>Eliminar…</button>}
             {item.suggestion && <button type="button" className="button" onClick={() => void makeRule(item)}
