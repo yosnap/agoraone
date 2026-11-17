@@ -27,6 +27,13 @@ cada agente (el Asistente para Watson, la Oficina 3D para conversar con un perfi
 - De Hermes, lo mismo que la Oficina 3D: `/api/hermes/activity`, `/api/hermes/catalog` y `/api/hermes/work`
   (docs/actividad-hermes.md). En modo discreto, los títulos de los encargos y los tokens se ocultan.
 
+## Taller de código en la ciudad (alpha.43)
+La Oficina 3D tiene un «Taller de código» con los agentes de código que no están en pausa (`src/world/coding-crew.tsx`,
+sondeo propio cada 15 s en `src/agents/coding-feed.ts`): hasta cuatro mesas, una por sesión, con la figura tecleando y la
+pantalla encendida mientras su registro dice que trabaja, o de pie con los brazos cruzados si ejecuta una herramienta,
+espera tu permiso o te espera. Cada uno lleva «Claude Code · proyecto» y dónde corre (Orca, VS Code…). Sin sesiones no hay
+figuras: nada es ambiental. Al pulsarlo se abre la lista completa; desde «Agentes», «Verlos en la ciudad» lleva al taller.
+
 ## Agentes de código en este Mac (alpha.29)
 Debajo de las tarjetas, las sesiones de Claude Code y Codex que se han movido en las últimas 24 horas
 (`GET /agents/coding`, `core/agora_core/coding_sessions.py`, `src/agents/coding-sessions.tsx`): la carpeta del

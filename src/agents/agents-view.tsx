@@ -87,7 +87,7 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
           </div>
         </article>)}
       </div>
-        <CodingSessions sessions={feed.coding} discreet={discreet} now={now}/>
+        <CodingSessions sessions={feed.coding} discreet={discreet} now={now} onCity={() => { requestOffice('code-workshop', 'select'); onOpen('office'); }}/>
       </div>
       <aside className="card agents-log" aria-label="Actividad de las últimas 24 horas">
         <strong>Actividad · últimas 24 h</strong>
