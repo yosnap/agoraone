@@ -20,6 +20,8 @@ import { DaylightProvider, daylightAt, type Daylight } from './daylight';
 import { SceneEffects } from './scene-effects';
 import type { HermesActivity } from '../../shared/hermes-activity';
 import type { ServiceGroup } from '../data/service-groups';
+import type { CodingSession } from '../api/core';
+import { CodingCrew } from './coding-crew';
 
 class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -27,8 +29,8 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
   render() { return this.state.failed ? <div className="canvas-fallback">No se pudo iniciar WebGL. Puedes usar el directorio de espacios y el chat.</div> : this.props.children; }
 }
 
-export function City({ places, paused = false, statuses = {}, selected, onSelect, firstPerson, blocked, inside = false, integrations = false, room, services = [], onBrowse, onExit, onStation, activity, vault, onShelf, onBook, daylight = daylightAt(new Date(), 'day') }: {
-  places: Place[]; paused?: boolean; statuses?: Record<string, AgentStatus>;
+export function City({ places, paused = false, statuses = {}, coding = [], selected, onSelect, firstPerson, blocked, inside = false, integrations = false, room, services = [], onBrowse, onExit, onStation, activity, vault, onShelf, onBook, daylight = daylightAt(new Date(), 'day') }: {
+  places: Place[]; paused?: boolean; statuses?: Record<string, AgentStatus>; coding?: CodingSession[];
   selected: string | null; onSelect: (id: string) => void; firstPerson: boolean; blocked: boolean;
   inside?: boolean; onBrowse: () => void; onExit: () => void;
   integrations?: boolean; services?: ServiceGroup[]; daylight?: Daylight;
@@ -49,6 +51,7 @@ export function City({ places, paused = false, statuses = {}, selected, onSelect
     <CityNature places={places} extent={extent}/>
     <CityPedestrians places={places} extent={extent}/>
     {places.map(place => <Building key={place.id} place={place} selected={selected === place.id} onSelect={() => onSelect(place.id)} activity={activity?.profiles[place.id]} status={statuses[place.id]}/>)}
+    {places.filter(place => place.kind === 'workshop').map(place => <CodingCrew key={place.id} place={place} sessions={coding} onSelect={() => onSelect(place.id)}/>)}
     <ResourceLinks places={places} selected={selected}/>
     </Suspense>}
     <SceneEffects/>

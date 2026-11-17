@@ -53,3 +53,10 @@ p.agent-facts { display:block }
 @media (max-width:640px) { .coding-row { grid-template-columns:auto minmax(0,1fr); } .coding-numbers { text-align:left } }
 .coding-state.tool { background:#f6d6d2; color:#8e2f24 }
 .coding-row.state-tool { border-color:#e3a59d }
+
+/* In the city's workshop panel, narrow: name and numbers stacked, nothing cut. */
+.coding-sessions.compact .coding-list { grid-template-columns:1fr }
+.coding-sessions.compact .coding-row { grid-template-columns:auto minmax(0,1fr); row-gap:4px }
+.coding-sessions.compact .coding-name strong { white-space:normal; overflow-wrap:anywhere }
+.coding-sessions.compact .coding-numbers { text-align:left; grid-column:2 }
+.coding-sessions.compact .coding-when { grid-column:2 }
