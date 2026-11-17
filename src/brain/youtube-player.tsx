@@ -34,7 +34,8 @@ const BLOCKED = 'Ninguno de estos vídeos deja reproducirse fuera de YouTube: la
 // The hidden window has this long to say the video plays before AgoraOne gives up on it.
 let started = '';
 let watchdog = 0;
-const EMBED_WAIT = 8000;  // ms for the embed to start before the hidden window takes over
+const EMBED_WAIT = 12_000;  // ms for the embed to show any sign of life before the hidden window takes over
+let embedAlive = false;  // the embed said it loaded the video (length, state or time): error 153 never does
 // While it plays the window reports every second; silence for this long means it stopped without saying so.
 let alive = 0;
 const SILENT = 12000;
@@ -44,14 +45,16 @@ function go(index: number) {
   if (!video || (index === at && state.video?.id === video.id)) return;  // already there: nothing changes
   at = index;
   heard = false;
+  embedAlive = false;
+  frame = null;  // a late message of the previous video's player must not count for this one
   set({ video, playing: false, position: 0, duration: 0, error: '', ad: false });
   if (state.hidden) { playHidden(video); return; }
   // The embed can fail without saying so (error 153, «configuración del reproductor»: its page shows the error and
-  // never sends onError). If the video has not told its length in a few seconds, it goes to the hidden window.
+  // never sends onError). If the video shows no sign of life in a few seconds, it goes to the hidden window.
   window.clearTimeout(watchdog);
   const mine = ticket;
   watchdog = window.setTimeout(() => {
-    if (mine === ticket && !state.hidden && state.video === video && !(state.duration > 0)) void refused();
+    if (mine === ticket && !state.hidden && state.video === video && !embedAlive) void refused();
   }, EMBED_WAIT);
 }
 
@@ -143,8 +146,10 @@ if (typeof window !== 'undefined') window.addEventListener('message', event => {
   let data: { event?: string; info?: unknown };
   try { data = JSON.parse(event.data); } catch { return; }
   heard = true;
-  if (data.event === 'infoDelivery' && data.info && typeof data.info === 'object') {
+  // The first message (initialDelivery) carries the whole state; the later ones (infoDelivery), what changed.
+  if ((data.event === 'infoDelivery' || data.event === 'initialDelivery') && data.info && typeof data.info === 'object') {
     const info = data.info as { currentTime?: number; duration?: number; playerState?: number; volume?: number };
+    if ((info.duration ?? 0) > 0 || (info.currentTime ?? 0) > 0 || [1, 2, 3, 5].includes(info.playerState ?? -1)) embedAlive = true;
     set({ ...(typeof info.currentTime === 'number' ? { position: info.currentTime } : {}), ...(typeof info.duration === 'number' && info.duration > 0 ? { duration: info.duration } : {}),
       ...(typeof info.playerState === 'number' ? { playing: info.playerState === 1 } : {}), ...(typeof info.volume === 'number' ? { volume: info.volume } : {}) });
     if (info.playerState === 0) { if (at + 1 < queue.length) go(at + 1); else stopYouTube(); }  // the last one ended: the player goes
