@@ -513,4 +513,8 @@ export type OrcaPreview = { id: string; client: string; project: string; repo: s
   source: { kind: string; label: string; number?: number; url?: string } | null; sourceText: string | null; prompt: string };
 export const getOrcaProjects = () => core<{ projects: OrcaProject[]; problem: string | null }>('/orca/projects');
 export const previewOrca = (request: { client: string; project: string; task: string; agent: OrcaAgent; source?: OrcaSource }) => core<OrcaPreview>('/orca/preview', request);
+export type RepoFolders = { repo: string; root: string; folders: string[]; suggested: string; visibility: 'public' | 'private' | 'internal' | null };
+export const getRepoFolders = (client: string, project: string) => core<RepoFolders>(`/orca/repo-folders?client=${encodeURIComponent(client)}&project=${encodeURIComponent(project)}`);
+export const createRepoNote = (note: { client: string; project: string; folder: string; title: string; content: string; inboxId: number }) =>
+  core<{ repo: string; root: string; path: string }>('/orca/repo-note', note);
 export const launchOrca = (id: string) => core<{ name: string; surface: 'chat' | 'terminal' | null; repo: string; agentName: string }>('/orca/launch', { id });
