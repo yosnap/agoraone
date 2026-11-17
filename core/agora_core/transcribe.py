@@ -100,7 +100,7 @@ def _model_dirs() -> list[tuple[Path, Path]]:
     cache = home / ".cache"
     try:
         if cache.is_dir():
-            dirs += [p / "whisper" for p in itertools.islice(cache.iterdir(), 200) if p.is_dir() and not p.is_symlink()]
+            dirs += [p / "whisper" for p in itertools.islice(cache.iterdir(), 200) if p.is_dir() and not p.is_symlink() and not p.is_junction()]
     except OSError:
         pass
     if sys.platform == "darwin":
@@ -125,7 +125,7 @@ def _search_models() -> list[dict]:
                 continue
             for path in itertools.islice(folder.glob("ggml-*.bin"), 50):
                 real = path.resolve()
-                if path.is_file() and (not path.is_symlink() or real.is_relative_to(tree.resolve())):
+                if path.is_file() and (not (path.is_symlink() or path.is_junction()) or real.is_relative_to(tree.resolve())):
                     found[str(real)] = {"name": path.stem.removeprefix("ggml-"), "path": str(path), "bytes": real.stat().st_size}
         except (OSError, ValueError):
             continue

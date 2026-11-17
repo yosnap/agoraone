@@ -53,10 +53,11 @@ def test_solo_lectura_y_sin_crear_nada(tmp_path):
 def test_solo_lectura_con_rutas_con_almohadilla_o_interrogacion(tmp_path):
     """SQLite cut the URI at '#' and dropped mode=ro: the folder must be percent-encoded."""
     import sqlite3
+    import sys
 
     from agora_core.db import connect_readonly
 
-    folder = tmp_path / "a#b?c%20d"
+    folder = tmp_path / ("a#b%20d" if sys.platform == "win32" else "a#b?c%20d")
     connection = connect(folder / DB_NAME)
     migrate(connection)
     connection.close()
