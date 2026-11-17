@@ -152,6 +152,15 @@ def find(connection: sqlite3.Connection, owner: str, query: str = "", since: str
     return [item for _, item in found[:FOUND_LIMIT]]
 
 
+def latest(connection: sqlite3.Connection, owner: str, count: int = 3) -> list[dict]:
+    """The last meetings Watson may see, in brief: what it offers when none fell on the days asked («hoy, ninguna;
+    la última fue ayer…»), so a question just after midnight still finds yesterday's."""
+    rows = connection.execute("SELECT id, started_at, title, client FROM meeting WHERE owner = ? AND confidentiality = 'normal' "
+                              "AND transcript IS NOT NULL ORDER BY started_at DESC, id DESC LIMIT ?", (owner, count)).fetchall()
+    return [{"id": row["id"], "fecha": f"{WEEKDAYS[(held := _local(row['started_at'])).weekday()]} {held.strftime('%Y-%m-%d %H:%M')}",
+             "titulo": row["title"], "cliente": row["client"]} for row in rows]
+
+
 def read(connection: sqlite3.Connection, owner: str, meeting_id: int, part: int = 1) -> dict | None:
     row = connection.execute("SELECT * FROM meeting WHERE id = ? AND owner = ? AND confidentiality = 'normal' AND transcript IS NOT NULL",
                              (meeting_id, owner)).fetchone()

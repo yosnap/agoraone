@@ -110,6 +110,8 @@ def test_watson_encuentra_solo_las_reuniones_normales_del_usuario(database):
     assert [m["titulo"] for m in meeting_tools.find(database, OWNER, since="2026-11-14", until="2026-11-14")] == ["Formación panel"]
     assert [m["titulo"] for m in meeting_tools.find(database, OWNER, kind="formación")] == ["Formación panel"]
     assert [m["titulo"] for m in meeting_tools.find(database, OWNER, "acme")] == ["Kickoff web"]
+    assert meeting_tools.find(database, OWNER, since="2026-12-01", until="2026-12-01") == []
+    assert [m["titulo"] for m in meeting_tools.latest(database, OWNER)] == ["Formación panel", "Kickoff web"], "las últimas, sin la privada ni la de otro"
     with pytest.raises(ValueError):
         meeting_tools.find(database, OWNER, since="la semana pasada")
     private = database.execute("SELECT id FROM meeting WHERE title = 'Privada'").fetchone()["id"]
@@ -134,6 +136,12 @@ def test_watson_lee_una_reunion_solo_tras_encontrarla(database, tmp_path):
     read = json.loads(asyncio.run(box.call("leer_reunion", {"id": kickoff})))
     assert "[00:01] Los demás: Hablamos del presupuesto" in read["texto"] and read["partes"] == 1
     assert [e["tool"] for e in box.history] == ["meetings", "meeting"]
+    empty = json.loads(asyncio.run(box.call("consultar_reuniones", {"desde": "2026-12-01", "hasta": "2026-12-01"})))
+    assert empty["reuniones"] == [] and [m["titulo"] for m in empty["ultimas"]] == ["Formación panel", "Kickoff web"], "hoy ninguna: las últimas"
+    assert "ultimas" not in json.loads(asyncio.run(box.call("consultar_reuniones", {"consulta": "nada-parecido"}))), "solo cuando se pidió por fechas"
+    assert "ultimas" not in json.loads(asyncio.run(box.call("consultar_reuniones", {"consulta": "nada-parecido", "desde": "2026-11-14", "hasta": "2026-11-14"}))), \
+        "si no coincide una palabra, ese día sí hay reuniones"
+    assert "ultimas" not in json.loads(asyncio.run(box.call("consultar_reuniones", {"tipo": "entrevista", "desde": "2026-12-01"})))
 
 
 def test_watson_busca_con_cuidado(database):

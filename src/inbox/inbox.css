@@ -14,6 +14,8 @@
 .inbox-card.wide { grid-column:1 / -1 }  /* the note being written gets the whole row: its folder browser and text need room */
 .inbox-card > .inbox-actions { margin-top:auto; padding-top:4px }
 .inbox-card.chosen { border-color:var(--c-24563a); box-shadow:0 0 0 1px var(--c-24563a) inset }
+.inbox-card.pickable { cursor:pointer }
+.inbox-card.pickable:hover:not(.chosen) { border-color:var(--c-cbd6c9) }
 .inbox-card .inbox-subject { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden }
 .inbox-card .inbox-summary { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:4; overflow:hidden }
 .inbox-card .inbox-from { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }

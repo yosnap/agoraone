@@ -4,7 +4,7 @@ requires-python = "==3.13.*"
 
 [[package]]
 name = "agora-core"
-version = "1.7.0a46"
+version = "1.7.0a47"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },

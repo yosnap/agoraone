@@ -367,13 +367,22 @@ class Toolbox:
         if name == "consultar_reuniones":
             query = str(args.get("consulta") or "")[:300]
 
+            # Only for a search by dates alone: with words or a kind, «none on those days» would not be true.
+            dated = bool(args.get("desde") or args.get("hasta")) and not query.strip() and not args.get("tipo")
+
             def run():
                 with self.database() as connection:
-                    return meeting_tools.find(connection, owner, query, args.get("desde"), args.get("hasta"), args.get("tipo"))
-            found = await run_in_threadpool(run)
-            self.meetings_seen.update(m["id"] for m in found)
+                    found = meeting_tools.find(connection, owner, query, args.get("desde"), args.get("hasta"), args.get("tipo"))
+                    return found, (meeting_tools.latest(connection, owner) if dated and not found else [])
+            found, recent = await run_in_threadpool(run)
+            self.meetings_seen.update(m["id"] for m in [*found, *recent])
             self._record({"tool": "meetings", "query": query, "count": len(found)})
-            return json.dumps({"reuniones": found, "aviso": meeting_tools.NOTICE}, ensure_ascii=False)
+            answer = {"reuniones": found, "aviso": meeting_tools.NOTICE}
+            if recent:
+                answer["ninguna_en_esas_fechas"] = ("No hay reuniones en esas fechas. Estas son las últimas que hay; dilo así "
+                                                    "(por ejemplo, «hoy ninguna; la última fue ayer…») y búscalas por su fecha si interesan.")
+                answer["ultimas"] = recent
+            return json.dumps(answer, ensure_ascii=False)
         if name == "proponer_issue":
             return await self._propose_issue(args)
         meeting_id = int(args.get("id"))

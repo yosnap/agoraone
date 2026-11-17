@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type MouseEvent } from 'react';
 import { archiveAllInbox, createMailRule, decideInbox, getInbox, getInboxAdvertising, type InboxCounts, type InboxItem, type InboxState } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { actionLabels, kindLabels, proposalLabels, sender, when } from './inbox-labels';
@@ -57,6 +57,18 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const [chat, setChat] = useState(true);
   const doomed = (item: InboxItem): Doomed => ({ id: item.id, from: sender(item), subject: item.subject ?? '', date: item.sentAt, hidden: discreet });
   const pick = (id: number) => setSelected(current => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  // A click anywhere on a card selects it, except on what has its own action (and the gaps between the
+  // buttons), while text is being selected to copy it, or while the card holds an open form. A double
+  // click that selects a word undoes the first click's change.
+  const freeSpot = (event: MouseEvent, editing: boolean) => !editing && !(event.target as HTMLElement).closest('button, a, input, textarea, select, label, summary, form, '
+    + '.inbox-actions, .inbox-proposal, [role="button"], [role="option"], [role="listbox"], [contenteditable="true"]');
+  const pickCard = (event: MouseEvent, id: number, editing: boolean) => {
+    if (event.detail > 1 || !freeSpot(event, editing) || window.getSelection()?.toString()) return;
+    pick(id);
+  };
+  const wordPicked = (event: MouseEvent, id: number, editing: boolean) => {
+    if (freeSpot(event, editing) && window.getSelection()?.toString()) pick(id);
+  };
   const deleted = (done: string) => { setDeleting(null); setSelected(new Set()); setNote(done); void load(); };
   const askAdvertising = async () => {
     setNote(''); setError('');
@@ -145,7 +157,10 @@ export function InboxView({ discreet }: { discreet: boolean }) {
       : items.length === 0 ? <p className="muted">{state === 'pending' ? 'No hay nada pendiente. Si acabas de conectar una cuenta, los resúmenes llegan en unos minutos.' : 'Nada por aquí.'}</p>
       : [...groups].filter(([scope]) => shownScope === ALL || scope === shownScope).map(([scope, cards]) => <div key={scope} className="inbox-group">
         <h2><span className="scope-dot" style={{ background: colorOf(scope) }} aria-hidden="true"/>{scope} <span className="muted">· {cards.length}</span></h2>
-        <ul className={`inbox-cards per-${view.perRow}${cards.some(c => [filing, noting, scheduling, replying, orca, issueFor].includes(c.id)) ? ' editing' : ''}`}>{cards.map(item => <li key={item.id} className={`card inbox-card${selected.has(item.id) ? ' chosen' : ''}${(noting === item.id || issueFor === item.id) && !discreet ? ' wide' : ''}`}>
+        <ul className={`inbox-cards per-${view.perRow}${cards.some(c => [filing, noting, scheduling, replying, orca, issueFor].includes(c.id)) ? ' editing' : ''}`}>{cards.map(item => { const editing = [filing, noting, scheduling, replying, orca, issueFor].includes(item.id); return <li key={item.id}
+          className={`card inbox-card${selected.has(item.id) ? ' chosen' : ''}${!item.moved && !editing ? ' pickable' : ''}${(noting === item.id || issueFor === item.id) && !discreet ? ' wide' : ''}`}
+          onClick={item.moved ? undefined : event => pickCard(event, item.id, editing)}
+          onDoubleClick={item.moved ? undefined : event => wordPicked(event, item.id, editing)}>
           <div className="card-head">
             <div className="inbox-chips">{item.moved ? <span className="chip">{item.moved === 'trash' ? 'En la Papelera' : 'Archivado'}</span> : <label className="check inbox-pick" title="Seleccionar"><input type="checkbox" checked={selected.has(item.id)} onChange={() => pick(item.id)}
               aria-label={`Seleccionar ${discreet ? 'este correo' : item.subject || 'correo sin asunto'}`}/></label>}<span className={`chip kind-${item.kind}`}>{kindLabels[item.kind]}</span>
@@ -203,7 +218,7 @@ export function InboxView({ discreet }: { discreet: boolean }) {
             {item.suggestion && <button type="button" className="button" onClick={() => void makeRule(item)}
               title={`${actionLabels[item.suggestion.action]} para todo lo que venga de ${item.suggestion.sender}`}>Crear regla «{item.suggestion.name}»</button>}
           </div>
-        </li>)}</ul>
+        </li>; })}</ul>
       </div>)}
     </div>
     {chat && <InboxChat discreet={discreet} onChanged={() => void load()}/>}
