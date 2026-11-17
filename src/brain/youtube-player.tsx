@@ -36,6 +36,7 @@ let started = '';
 let watchdog = 0;
 const EMBED_WAIT = 12_000;  // ms for the embed to show any sign of life before the hidden window takes over
 const EMBED_SILENT = 5000;  // a player that works answers in a second or two; error 153 never says a word
+let silence = 0;
 let embedAlive = false;  // the embed said it loaded the video (length, state or time): error 153 never does
 // While it plays the window reports every second; silence for this long means it stopped without saying so.
 let alive = 0;
@@ -54,13 +55,17 @@ function go(index: number) {
   // never sends onError). If the video shows no sign of life in a few seconds, it goes to the hidden window.
   window.clearTimeout(watchdog);
   const mine = ticket;
-  const still = () => mine === ticket && !state.hidden && state.video === video && !embedAlive;
-  // Not a word in 5 s: the player page itself failed (error 153). It talks but has not started: up to 12 s.
-  watchdog = window.setTimeout(() => {
-    if (!still()) return;
-    if (!heard) { void refused(); return; }
-    watchdog = window.setTimeout(() => { if (still()) void refused(); }, EMBED_WAIT - EMBED_SILENT);
-  }, EMBED_SILENT);
+  // Up to 12 s for any sign that the video started; the 5 s of silence count from when the player page loaded
+  // (see `pageLoaded`), so a slow network does not skip a video that works.
+  watchdog = window.setTimeout(() => { if (embedStill(mine, video)) void refused(); }, EMBED_WAIT);
+}
+
+const embedStill = (mine: number, video: Video | null) => mine === ticket && !state.hidden && state.video === video && !embedAlive;
+/** The player page loaded: if it says nothing at all in 5 s, its page is an error (153) and the hidden window plays it. */
+function pageLoaded() {
+  const mine = ticket, video = state.video;
+  window.clearTimeout(silence);
+  silence = window.setTimeout(() => { if (!heard && embedStill(mine, video)) void refused(); }, EMBED_SILENT);
 }
 
 function playHidden(video: Video) {
@@ -180,13 +185,14 @@ export function YouTubeMini() {
     <div className="yt-head"><strong title={now.video.title}>{now.video.title}</strong>
       <button type="button" className="icon-button" aria-label="Parar YouTube" onClick={stopYouTube}>×</button></div>
     <small className="dock-note" role="status">{now.ad ? 'Anuncio de YouTube: se salta en cuanto deja.'
-      : now.duration ? `${now.playing ? 'Suena' : 'En pausa'} · ${clock(now.position)} / ${clock(now.duration)}` : 'Este vídeo no deja verse en AgoraOne: lo abro desde YouTube en segundo plano, unos segundos…'}</small>
+      : now.duration ? `${now.playing ? 'Suena' : 'En pausa'} · ${clock(now.position)} / ${clock(now.duration)}` : 'Abriendo el vídeo desde YouTube en segundo plano, unos segundos…'}</small>
     <small className="dock-note">Desde YouTube, en una ventana oculta de AgoraOne (el vídeo no deja verse fuera de su web).</small>
   </aside>;
   const src = `${EMBED}/embed/${now.video.id}?enablejsapi=1&autoplay=1&playsinline=1&rel=0&modestbranding=1&origin=${encodeURIComponent(window.location.origin)}`;
   const attach = (node: HTMLIFrameElement | null) => { if (node) frame = node; };
   // «Listening» until the player answers (the first message can be lost while it starts), a few seconds at most.
   const listen = () => {
+    pageLoaded();
     const mine = frame;
     const knock = (left: number) => { if (heard || left === 0 || frame !== mine) return;
       mine?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'agoraone', channel: 'widget' }), EMBED);
