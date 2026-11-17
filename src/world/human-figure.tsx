@@ -40,7 +40,9 @@ function headOnly(mesh: SkinnedMesh) {
 const files = [...new Set(looks.flatMap(look => [look.body, ...look.parts]))];
 const height = 1.74;
 
-export type HumanRig = { root: Group; mixer: AnimationMixer; idle: AnimationAction; walk: AnimationAction };
+/** `sit` (seated at the desk, gesturing as it works) and `fold` (standing, arms folded: waiting for you) only play
+ * while the agent's real state says so; see walker.tsx. */
+export type HumanRig = { root: Group; mixer: AnimationMixer; idle: AnimationAction; walk: AnimationAction; sit: AnimationAction; fold: AnimationAction };
 
 /** Deterministic look per seed: the same profile always gets the same person. */
 export function useHuman(seed: number, tint: string): HumanRig {
@@ -48,6 +50,7 @@ export function useHuman(seed: number, tint: string): HumanRig {
   const body = useGLTF(`${base}${look.body}.glb`, false, true);
   const parts = useGLTF(look.parts.map(part => `${base}${part}.glb`), false, true);
   const { animations } = useGLTF(`${base}humans-animations.glb`, false, true);
+  const work = useGLTF(`${base}humans-work.glb`, false, true).animations;
   const rig = useMemo(() => {
     const root = cloneSkinned(body.scene) as Group;
     const bones = new Map<string, Bone>();
@@ -87,13 +90,16 @@ export function useHuman(seed: number, tint: string): HumanRig {
     const clip = (name: string) => animations.find(item => item.name === name) ?? animations[0];
     const idle = mixer.clipAction(clip('Idle_Loop'));
     const walk = mixer.clipAction(clip(seed % 2 ? 'Walk_Formal_Loop' : 'Walk_Loop'));
-    [idle, walk].forEach(action => { action.setLoop(LoopRepeat, Infinity); action.play(); });
-    walk.setEffectiveWeight(0);
-    return { root, mixer, idle, walk };
-  }, [body, parts, animations, seed, tint, look]);
+    const worked = (name: string) => mixer.clipAction(work.find(item => item.name === name) ?? clip('Idle_Loop'));
+    const sit = worked('Sitting_Talking_Loop'), fold = worked('Idle_FoldArms_Loop');
+    [idle, walk, sit, fold].forEach(action => { action.setLoop(LoopRepeat, Infinity); action.play(); });
+    [walk, sit, fold].forEach(action => action.setEffectiveWeight(0));
+    return { root, mixer, idle, walk, sit, fold };
+  }, [body, parts, animations, work, seed, tint, look]);
   useEffect(() => () => { rig.mixer.stopAllAction(); }, [rig]);
   return rig;
 }
 
 files.forEach(file => useGLTF.preload(`${base}${file}.glb`, false, true));
 useGLTF.preload(`${base}humans-animations.glb`, false, true);
+useGLTF.preload(`${base}humans-work.glb`, false, true);

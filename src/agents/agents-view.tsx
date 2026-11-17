@@ -5,6 +5,7 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ago, BLOCKED, describe, describeWatson, outcomeLabel, RUNNING, sourceLabel, uniqueKeys, until, type Line } from './agent-lines';
 import { refreshAgents, useAgentsFeed } from './agents-feed';
+import { requestOffice } from '../office/office-focus';
 import { CodingSessions } from './coding-sessions';
 import './agents.css';
 
@@ -80,7 +81,8 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
             {day.runs > 0 && <li>{day.runs} {day.runs === 1 ? 'ejecución' : 'ejecuciones'} en 24 h{day.tokens && !discreet ? ` · ${tokens(day.tokens)} tokens` : ''}</li>}
           </ul>
           <div className="agent-actions">
-            <button type="button" className="button" onClick={() => onOpen('office')}>Conversar</button>
+            <button type="button" className="button" onClick={() => { requestOffice(profile.id, 'chat'); onOpen('office'); }}>Conversar</button>
+            <button type="button" className="button" onClick={() => { requestOffice(profile.id, 'select'); onOpen('office'); }}>Verlo en la ciudad</button>
             <button type="button" className="button" onClick={() => onOpen('jobs')}>Tareas</button>
           </div>
         </article>)}
