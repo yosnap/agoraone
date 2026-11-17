@@ -37,6 +37,7 @@ from .routes_alerts import alerts_router
 from .routes_jobs import jobs_router
 from .routes_orca import orca_router
 from .routes_note_sources import note_sources_router
+from .routes_issues import issues_router
 from .routes_voice import voice_router
 from .routes_agents import agents_router
 from .routes_meetings import meetings_router
@@ -212,4 +213,5 @@ def create_app(
     app.include_router(agents_router(settings))
     app.include_router(orca_router(settings))
     app.include_router(note_sources_router(settings, secrets))
+    app.include_router(issues_router(settings))
     return app

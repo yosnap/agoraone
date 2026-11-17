@@ -96,3 +96,7 @@
 .note-files legend { font-size:13px; padding:0 4px }
 .note-files small { overflow-wrap:anywhere }
 .note-extra { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; max-height:220px; overflow:auto; background:var(--c-edf0e8); padding:10px; border-radius:8px }
+.issue-handoff { display:flex; flex-direction:column; gap:8px }
+.issue-sessions { display:flex; flex-direction:column; gap:4px; border:1px solid var(--c-dfe3d6); border-radius:9px; padding:8px 12px; margin:0 }
+.issue-sessions legend { font-size:13px; padding:0 4px }
+.issue-sessions .check { font-size:13px }
