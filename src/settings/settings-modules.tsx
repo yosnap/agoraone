@@ -3,11 +3,12 @@ import type { ModuleName } from '../api/core';
 import { LoadError } from '../ui/load-state';
 import { moduleLabels, moduleOn, setModule, useModules } from '../shell/modules';
 
-const order: ModuleName[] = ['correo', 'agenda', 'fiscal', 'trabajos', 'reuniones', 'voz', 'musica', 'oficina', 'conectores'];
+const order: ModuleName[] = ['correo', 'agenda', 'fiscal', 'trabajos', 'reuniones', 'voz', 'musica', 'oficina', 'conectores', 'orca'];
 const meaning: Record<ModuleName, string> = {
   correo: 'deja de leer el correo y de resumirlo; Watson no ve la Bandeja', agenda: 'sin agenda en Hoy; Watson no consulta el calendario',
   fiscal: 'oculta Fiscal', trabajos: 'oculta Trabajos y deja de leer Central', reuniones: 'oculta Reuniones y la tarjeta de grabar',
   voz: 'sin micrófonos para dictar ni hablar con Watson', musica: 'sin tarjeta de música', oficina: 'oculta la Oficina 3D', conectores: 'oculta Conectores',
+  orca: 'sin botones para llevar encargos a un agente en Orca',
 };
 
 /** Turning modules off (1.6, C-02): one that is off disappears, stops its background work and Watson loses its

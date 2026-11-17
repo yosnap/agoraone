@@ -37,11 +37,11 @@ const watsonLabels: Record<string, string> = {
   agenda: 'miró la agenda', day: 'repasó tu día', consultar_reuniones: 'buscó reuniones', meetings: 'buscó reuniones', leer_reunion: 'leyó una reunión', meeting: 'leyó una reunión', revisar_vault: 'revisó el vault',
   consultar_trabajos: 'consultó los trabajos', proponer_nota: 'propuso una nota', proponer_evento: 'propuso un evento', proponer_presupuesto: 'propuso un presupuesto',
   proponer_limpieza: 'propuso limpiar correo', proponer_reorganizacion: 'propuso ordenar el vault', proponer_regla: 'propuso una regla de correo',
-  proponer_issue: 'propuso una issue', crear_regla: 'creaste una regla de correo', 'mail.send': 'enviaste un correo',
+  proponer_issue: 'propuso una issue', crear_regla: 'creaste una regla de correo', 'mail.send': 'enviaste un correo', 'orca.launch': 'lanzaste un agente en Orca',
 };
 const outcomes: Record<WatsonEvent['outcome'], Outcome> = { done: 'hecho', denied: 'rechazado', failed: 'falló', undone: 'deshecho' };
 // Looking things up is not a decision: only what changes something or proposes it says how it ended.
-const decided = (action: string) => action.startsWith('proponer_') || action === 'crear_regla' || action === 'mail.send';
+const decided = (action: string) => action.startsWith('proponer_') || action === 'crear_regla' || action === 'mail.send' || action === 'orca.launch';
 
 export function describeWatson(event: WatsonEvent, assistant: string): Line {
   const who = event.actor === 'user' ? 'Tú' : assistant;
