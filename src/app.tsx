@@ -1,4 +1,4 @@
-import { useOfficeFocus } from './office/office-focus';
+import { FOCUS_FOR, useOfficeFocus } from './office/office-focus';
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { catalogPlaces, servicePlaces } from './data/city';
 import { getHermesCatalog, type Status, type DocumentSource } from './api/client';
@@ -129,9 +129,13 @@ export function Office({ status, active, onWaiting, onWatson }: { status: Status
   // (no effect needed: the request number tells whether it was already handled).
   const focus = useOfficeFocus();
   const handledFocus = useRef(0);
-  if (focus && focus.n !== handledFocus.current && places.some(place => place.id === focus.id)) {
+  if (focus && focus.n !== handledFocus.current && (Date.now() - focus.at > FOCUS_FOR || places.some(place => place.id === focus.id))) {
     handledFocus.current = focus.n;
-    if (focus.mode === 'chat') openChat(focus.id); else select(focus.id);
+    if (Date.now() - focus.at <= FOCUS_FOR) {
+      // «Verlo en la ciudad»: out of any room or first person first, so the city is what you see.
+      if (focus.mode === 'select') { setVaultRoom(null); setInside(false); setIntegrationsInside(false); setProfileRoom(null); setFirstPerson(false); }
+      if (focus.mode === 'chat') openChat(focus.id); else select(focus.id);
+    }
   }
   const exit = () => { setBook(null); setVaultRoom(null); setVaultFolder(null); setInside(false); setIntegrationsInside(false); setProfileRoom(null); setFirstPerson(false); setSelected(null); };
   // The profile's own space: same look, theme and real declarations as in the city.

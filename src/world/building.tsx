@@ -14,8 +14,9 @@ export function Building({ place, selected, onSelect, activity, status }: { plac
   const style = place.buildingStyle || (place.id === 'library' ? 'library' : 'archive');
   // Real record, not ambient motion: lit only while Hermes logged activity in the last two minutes.
   const active = recentlyActive(activity);
-  // At the desk only for real: typing while it works, standing arms folded while it waits for your permission.
-  const pose: AgentPose = status?.state === 'approval' ? 'wait' : active || ['answering', 'tool', 'job', 'live'].includes(status?.state ?? '') ? 'desk' : 'stroll';
+  // At the desk only for real: working now (activity in the last two minutes, a tool, answering you), or standing
+  // arms folded while it waits for your permission. A scheduled task that ran a few minutes ago does not count.
+  const pose: AgentPose = status?.state === 'approval' ? 'wait' : active || ['answering', 'tool', 'live'].includes(status?.state ?? '') ? 'desk' : 'stroll';
   return <group position={place.position}>
     <mesh position={[0, 0.06, 0]} receiveShadow><boxGeometry args={[5.8, 0.12, 4.8]}/><SurfaceMaterial kind="concrete" color="#cfcbc0"/></mesh>
     <mesh position={[0, 0.16, 0]} receiveShadow castShadow><boxGeometry args={[5.4, 0.1, 4.4]}/><SurfaceMaterial kind="paving" color="#efe9dc"/></mesh>
@@ -33,6 +34,6 @@ export function Building({ place, selected, onSelect, activity, status }: { plac
       </div>
     </WorldLabel>
     {place.character && <><Walker color={place.color} phase={place.position[0] + place.position[2]} selected={selected} pose={pose} onSelect={onSelect}/>
-      <WorldLabel position={[0, 2.15, 3]} distanceFactor={25}><button className="character-label" title={pose === 'desk' ? 'Trabajando de verdad: Hermes registró actividad hace menos de dos minutos o está usando una herramienta' : pose === 'wait' ? 'Espera tu permiso en AgoraOne' : 'Paseo ambiental: no representa tareas reales'} onClick={onSelect}>{place.character}{active && ' · actividad registrada'}{status && shownInWorld(status) && <span className="world-status">{status.label}{status.detail ? ` · ${status.detail}` : ''}</span>}</button></WorldLabel></>}
+      <WorldLabel position={[0, 2.15, 3]} distanceFactor={25}><button className="character-label" title={pose === 'desk' ? 'Trabajando de verdad: actividad registrada hace menos de dos minutos, una herramienta en uso o respondiéndote' : pose === 'wait' ? 'Espera tu permiso en AgoraOne' : 'Paseo ambiental: no representa tareas reales'} onClick={onSelect}>{place.character}{active && ' · actividad registrada'}{status && shownInWorld(status) && <span className="world-status">{status.label}{status.detail ? ` · ${status.detail}` : ''}</span>}</button></WorldLabel></>}
   </group>;
 }

@@ -40,7 +40,7 @@ function headOnly(mesh: SkinnedMesh) {
 const files = [...new Set(looks.flatMap(look => [look.body, ...look.parts]))];
 const height = 1.74;
 
-/** `sit` (seated at the desk, hands moving: typing) and `fold` (standing, arms folded: waiting for you) only play
+/** `sit` (seated at the desk, gesturing as it works) and `fold` (standing, arms folded: waiting for you) only play
  * while the agent's real state says so; see walker.tsx. */
 export type HumanRig = { root: Group; mixer: AnimationMixer; idle: AnimationAction; walk: AnimationAction; sit: AnimationAction; fold: AnimationAction };
 

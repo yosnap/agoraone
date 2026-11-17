@@ -52,6 +52,8 @@ function blendPose(rig: HumanRig, target: { idle: number; walk: number; sit: num
 
 const DESK_Z = -0.62;  // the desk, between the person and the building
 const SEAT_Z = 0.16;   // the chair, behind the person; tuned to Quaternius' seated clip
+const LANE_Z = 0.95;   // the stroll goes in front of the desk and chair, never through them
+const WAIT_X = 0.85;   // waiting for permission: standing beside the desk
 
 // Ambient stroll along the sidewalk: walk, pause, turn, walk back. When the agent works for real, it walks to its
 // desk in front of the building and sits down to type; waiting for your permission, it stands there arms folded.
@@ -66,15 +68,15 @@ function Person({ color, phase, selected, pose, onSelect }: { color: string; pha
     const reduced = reducedMotion.current;
     const atDesk = pose !== 'stroll';
     const step = patrol(clock.elapsedTime + phase * 3.7, range * 2, speed, pause);
-    const target = atDesk ? 0 : selected ? group.position.x : step.offset - range;
+    const target = pose === 'desk' ? 0 : pose === 'wait' ? WAIT_X : selected ? group.position.x : step.offset - range;
     // Follow the target at walking pace so switching between ambient and real activity never teleports.
     const gap = target - group.position.x;
     const travel = reduced ? gap : Math.sign(gap) * Math.min(Math.abs(gap), speed * 1.4 * delta);
     group.position.x += travel;
     const walking = !reduced && Math.abs(gap) > 0.03;
     const seated = pose === 'desk' && !walking;
-    // Into the chair and out of it smoothly, never jumping.
-    const seatGoal = seated ? SEAT_Z : 0;
+    // Into the chair and out of it smoothly, never jumping; strolling, along the lane in front of the desk.
+    const seatGoal = seated ? SEAT_Z : atDesk ? 0 : LANE_Z;
     group.position.z += reduced ? seatGoal - group.position.z : (seatGoal - group.position.z) * Math.min(1, delta * 3);
     const facing = walking ? (gap > 0 ? Math.PI / 2 : -Math.PI / 2) : atDesk ? Math.PI : selected || reduced ? 0 : step.forward ? Math.PI / 2 : -Math.PI / 2;
     const turn = ((facing - group.rotation.y + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; // shortest way round
@@ -113,7 +115,7 @@ function Desk({ working, color }: { working: boolean; color: string }) {
 export function Walker({ color, phase, selected, pose = 'stroll', onSelect }: { color: string; phase: number; selected: boolean; pose?: AgentPose; onSelect: () => void }) {
   return <group position={[0, curb, 3]}>
     <Desk working={pose === 'desk'} color={color}/>
-    <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.65, 0.82, 32]}/><meshBasicMaterial color={selected ? '#fff5bd' : pose !== 'stroll' ? '#ffd27a' : color} transparent opacity={0.85}/></mesh>
+    <mesh position={[0, 0.01, LANE_Z]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[0.65, 0.82, 32]}/><meshBasicMaterial color={selected ? '#fff5bd' : pose !== 'stroll' ? '#ffd27a' : color} transparent opacity={0.85}/></mesh>
     <Suspense fallback={null}><Person color={color} phase={phase} selected={selected} pose={pose} onSelect={onSelect}/></Suspense>
   </group>;
 }
