@@ -1,7 +1,11 @@
 import { useRef, useState } from 'react';
 import { askCalendarAccess, getAgenda, getAgendaRange, getAlerts, getCalendarStatus, type Agenda, type AlertsView, type CalendarStatus } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
-import { CalendarViews, move, origin, period, title, ymd, type Scale } from './calendar-views';
+import { addDays, CalendarViews, move, origin, period, title, ymd, type Scale } from './calendar-views';
+import { requestMeeting } from '../meetings/meeting-intent';
+import type { Section } from '../shell/shell-state';
+import { moduleOn, useModules } from '../shell/modules';
+import { AgendaMeetings } from './agenda-meetings';
 import { EventDetailCard } from './event-detail';
 import { EventForm, hourMinute } from './event-form';
 import './calendar.css';
@@ -15,7 +19,8 @@ const scales: { value: Scale; label: string }[] = [{ value: 'dia', label: 'Día'
  * (day, week, month, year), each event with its calendar, account and scope; the notices of now (missed calls,
  * meetings about to start, deadlines) in a narrower column at the right. New events and reminders are created
  * only from the form, after pressing its button. */
-export function AgendaView({ discreet }: { discreet: boolean }) {
+export function AgendaView({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
+  const recording = moduleOn(useModules(), 'reuniones');
   const [mode, setMode] = useState<Mode>('lista');
   const [when, setWhen] = useState<When>('hoy');
   const [scale, setScale] = useState<Scale>('semana');
@@ -62,6 +67,9 @@ export function AgendaView({ discreet }: { discreet: boolean }) {
   for (const event of agenda?.events ?? []) days.set(dayName(event.start), [...(days.get(dayName(event.start)) ?? []), event]);
   // In the calendar, the reminders due within the period shown; in the list, every pending one up to its end.
   const { first, last } = period(scale, focus);
+  // The days on screen: the calendar's period, or today, tomorrow or the next seven days in the list.
+  const today = addDays(new Date(), 0);
+  const [shownFirst, shownLast] = mode === 'calendario' ? [first, last] : when === 'mañana' ? [addDays(today, 1), addDays(today, 1)] : [today, when === 'semana' ? addDays(today, 6) : today];
   const dueReminders = (agenda?.reminders ?? []).filter(r => mode === 'lista' || (r.due && ymd(new Date(r.due)) >= ymd(first) && ymd(new Date(r.due)) <= ymd(last)));
   const notices = reminders && (reminders.morning || reminders.alerts.length > 0);
   return <section className="page agenda" aria-labelledby="agenda-title">
@@ -92,7 +100,8 @@ export function AgendaView({ discreet }: { discreet: boolean }) {
           {note && <p className="ok-note" role="status">{discreet ? 'Hecho.' : note}</p>}
           {adding && <EventForm discreet={discreet} onCancel={() => setAdding(false)} onDone={done => { setAdding(false); setNote(done); void load(); void getAlerts().then(setReminders).catch(() => undefined); }}/>}
           {opened && <EventDetailCard key={opened} id={opened} discreet={discreet} onClose={() => setOpened(null)}
-            onChanged={done => { setOpened(null); setNote(done); void load(); }}/>}
+            onChanged={done => { setOpened(null); setNote(done); void load(); }}
+            onRecord={recording ? title => { requestMeeting({ title }); onOpen('meetings'); } : undefined}/>}
           {agenda?.overlaps.length ? <p className="fiscal-warning">{agenda.overlaps.length === 1 ? 'Hay un solape' : `Hay ${agenda.overlaps.length} solapes`}: los eventos marcados coinciden en el tiempo.</p> : null}
           {agenda === null && !error ? <Loading label="Leyendo la agenda" lines={4}/> : agenda && <>
             {agenda.problem && <p className="fiscal-warning">{agenda.problem}</p>}
@@ -104,6 +113,7 @@ export function AgendaView({ discreet }: { discreet: boolean }) {
                   <span className="agenda-what"><button type="button" className="agenda-open" onClick={() => setOpened(event.id)}><span>{discreet ? '•••' : event.title}</span>{!discreet && event.location && <small className="muted"> · {event.location}</small>}</button>
                     {!discreet && origin(event) && <small className="agenda-origin"><i style={{ background: event.scope?.color ?? undefined }}/>{origin(event)}</small>}</span>
                   {clashing.has(event.id) && <span className="chip warn">Solape</span>}</li>)}</ul></div>)}
+            {recording && <AgendaMeetings first={shownFirst} last={shownLast} discreet={discreet} onOpen={() => onOpen('meetings')}/>}
             <h2>{mode === 'lista' ? 'Recordatorios pendientes' : 'Recordatorios de este periodo'}</h2>
             {dueReminders.length === 0 ? <p className="muted">Ninguno.</p> : <ul className="agenda-list">{dueReminders.map(reminder => <li key={reminder.id}>
               <span className="agenda-time">{reminder.due ? `${new Date(reminder.due).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} ${hourMinute(reminder.due)}` : 'Sin fecha'}</span>

@@ -67,7 +67,7 @@ export function Shell() {
           : section === 'settings' ? <SettingsView/>
           : section === 'inbox' ? <InboxView discreet={discreet}/>
           : section === 'fiscal' ? <FiscalView discreet={discreet}/>
-          : section === 'agenda' ? <AgendaView discreet={discreet}/>
+          : section === 'agenda' ? <AgendaView discreet={discreet} onOpen={go}/>
           : section === 'jobs' ? <JobsView discreet={discreet}/>
           : section === 'meetings' ? <MeetingsView discreet={discreet}/>
           : section === 'agents' ? <AgentsView discreet={discreet} onOpen={go}/>

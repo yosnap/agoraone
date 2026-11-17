@@ -3,6 +3,7 @@ import { deleteMeeting, getMeetings, getSummarizers, kindLabels, levelLabels, pr
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { MeetingDetailPanel } from './meeting-detail';
+import { forgetMeetingIntent, peekMeetingIntent } from './meeting-intent';
 import { asClass, emptyFields, KindFields, type Fields } from './meeting-kind';
 import { lastChoice, rememberChoice, startRecording, stopRecording, useMeetingRecorder } from './meeting-recorder';
 import './meetings.css';
@@ -20,9 +21,11 @@ export const working = (m: Meeting) => m.work === 'transcribing' || m.work === '
 
 const madeBy: Record<string, string> = { claude: 'Resumida por Claude', local: 'Resumida en este Mac con el modelo local', none: 'Sin resumen: solo la transcripción' };
 
-function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned }: { meeting: Meeting; discreet: boolean; onDeleted: () => void; onChanged: () => void; ours: boolean; planned?: Summarizer }) {
+function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned, asked = false }: { meeting: Meeting; discreet: boolean; onDeleted: () => void; onChanged: () => void; ours: boolean; planned?: Summarizer; asked?: boolean }) {
   const [confirming, setConfirming] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(asked);  // opened from the Agenda
+  const shown = useRef(false);
+  const reveal = (row: HTMLLIElement | null) => { if (row && asked && !shown.current) { shown.current = true; row.scrollIntoView({ block: 'center' }); } };
   const [error, setError] = useState('');
   const process = async (summaryOnly: boolean) => {
     setError('');
@@ -34,7 +37,7 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned }: 
     setError('');
     try { await deleteMeeting(meeting.id); onDeleted(); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo borrar.'); }
   };
-  return <li className="meeting-row">
+  return <li className="meeting-row" ref={reveal}>
     <div className="meeting-main">
       <strong>{hidden ? 'Reunión' : meeting.title}</strong>
       <small>{when(meeting.started_at)} · {clock(meeting.seconds)} · {levelLabels[meeting.confidentiality]}</small>
@@ -71,9 +74,10 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned }: 
  * in AgoraOne's data. Recording only starts with the button, and the rail shows it while it lasts. */
 export function MeetingsView({ discreet }: { discreet: boolean }) {
   const recorder = useMeetingRecorder();
+  const [intent] = useState(peekMeetingIntent);  // what the Agenda asked for, if anything
   const [list, setList] = useState<MeetingList | null>(null);
   const [error, setError] = useState('');
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(intent?.title ?? '');
   const [level, setLevel] = useState<Level>(() => lastChoice().confidentiality);
   const [system, setSystem] = useState(() => lastChoice().system);
   const [about, setAbout] = useState<Fields>(emptyFields);
@@ -92,7 +96,7 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
   const mark = `${recorder.finished}:${recorder.meetingId ?? ''}`;
   if (loaded.current !== mark) { loaded.current = mark; void load(); }
   const busy = recorder.phase !== 'idle';
-  return <section className="page meetings-page" aria-labelledby="meetings-title">
+  return <section className="page meetings-page" aria-labelledby="meetings-title" ref={forgetMeetingIntent}>
     <div className="eyebrow">REUNIONES{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="meetings-title">Reuniones</h1>
     <p className="page-lead">Graba una reunión de Meet, Zoom o Teams: tu micrófono y lo que suena en el ordenador, en dos pistas. El audio se queda en los datos de AgoraOne (nunca en el vault) hasta que lo borres, y se transcribe en este equipo.</p>
@@ -118,7 +122,7 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
     <article className="card" aria-labelledby="recorded-title">
       <div className="card-head"><h2 id="recorded-title">Grabadas</h2></div>
       {!list && !error ? <Loading label="Leyendo las reuniones" lines={2}/>
-        : list && (list.meetings.length ? <ul className="meeting-list">{list.meetings.map(m => <MeetingRow key={m.id} meeting={m} discreet={discreet} onDeleted={() => void load()} onChanged={() => void load()} ours={recorder.meetingId === m.id} planned={who?.[m.confidentiality]}/>)}</ul>
+        : list && (list.meetings.length ? <ul className="meeting-list">{list.meetings.map(m => <MeetingRow key={m.id} meeting={m} discreet={discreet} onDeleted={() => void load()} onChanged={() => void load()} ours={recorder.meetingId === m.id} planned={who?.[m.confidentiality]} asked={intent?.open === m.id}/>)}</ul>
           : <p className="muted">Todavía no hay reuniones grabadas.</p>)}
       {error && <LoadError message={error}/>}
     </article>

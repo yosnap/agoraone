@@ -14,7 +14,9 @@ const when = (detail: EventDetail) => detail.allDay
  * user's own events (their calendar allows it, nobody else organises them) can be changed here: that occurrence
  * only, warning of clashes, refused if the event changed meanwhile; AgoraOne keeps the previous version and never
  * deletes an event. */
-export function EventDetailCard({ id, discreet, onClose, onChanged }: { id: string; discreet: boolean; onClose: () => void; onChanged: (note: string) => void }) {
+export function EventDetailCard({ id, discreet, onClose, onChanged, onRecord }: {
+  id: string; discreet: boolean; onClose: () => void; onChanged: (note: string) => void; onRecord?: (title: string) => void;
+}) {
   const [detail, setDetail] = useState<EventDetail | null>(null);
   const [error, setError] = useState('');
   const [form, setForm] = useState<{ title: string; start: string; end: string; allDay: boolean; location: string; notes: string } | null>(null);
@@ -57,9 +59,11 @@ export function EventDetailCard({ id, discreet, onClose, onChanged }: { id: stri
       {detail.links.some(l => !l.meeting) && <div><strong>Enlaces</strong><ul className="event-people">{detail.links.filter(l => !l.meeting).map(l =>
         <li key={l.url}><a href={l.url} target="_blank" rel="noopener noreferrer">{l.url}</a></li>)}</ul></div>}
       {detail.notes && <div><strong>Notas</strong><p className="event-notes">{detail.notes}</p></div>}
-      {detail.editable
-        ? <div className="field-row"><button type="button" className="button" onClick={() => edit(detail)}>Cambiar…</button></div>
-        : <p className="muted">{detail.why}</p>}
+      <div className="field-row">
+        {onRecord && <button type="button" className="button" onClick={() => onRecord(detail.title)}>Grabar esta reunión…</button>}
+        {detail.editable && <button type="button" className="button" onClick={() => edit(detail)}>Cambiar…</button>}
+      </div>
+      {!detail.editable && <p className="muted">{detail.why}</p>}
     </>}
     {detail && !discreet && form && <form className="event-form" aria-label="Cambiar el evento" onSubmit={event => { event.preventDefault(); void save(false); }}>
       {detail.recurring && <p className="muted">Es un evento que se repite: solo se cambia esta vez.</p>}
