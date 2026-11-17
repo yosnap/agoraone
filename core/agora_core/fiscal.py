@@ -166,9 +166,13 @@ def choose_with_finder(runner=None) -> str | None:
     return path.rstrip("/") or None if done.returncode == 0 else None
 
 
+def is_link(path: Path) -> bool:
+    return path.is_symlink() or path.is_junction()
+
+
 def inside(root: Path, relative: str) -> Path:
     """The absolute path of `relative` within the root, refusing anything that would leave it (.., links)."""
-    if not relative or relative.startswith(("/", "~")) or "\x00" in relative:
+    if not relative or relative.startswith(("/", "\\", "~")) or "\x00" in relative or Path(relative).is_absolute():
         raise FiscalError("Ruta no válida.")
     target = (root / relative).resolve()
     if root != target and root not in target.parents:
@@ -217,7 +221,7 @@ def destination(supplier: str, issued_on: str, total: str, kind: str = "autonomo
 def _free(path: Path, taken: set[str] | None = None, root: Path | None = None) -> Path:
     """The first name not used on disk (nor by an invoice already filed, when `taken` is given)."""
     def used(candidate: Path) -> bool:
-        return candidate.exists() or (taken is not None and root is not None and str(candidate.relative_to(root)) in taken)
+        return candidate.exists() or (taken is not None and root is not None and candidate.relative_to(root).as_posix() in taken)
     if not used(path):
         return path
     for n in range(2, 100):
@@ -281,7 +285,7 @@ def file_invoice(connection: sqlite3.Connection, folder: dict, root: Path, data:
         raise Duplicate(f"Esta factura ya está archivada en {clash['path']}.")
     taken = {row["path"] for row in connection.execute("SELECT path FROM invoice WHERE folder_id = ?", (folder["id"],))}
     target = _free(inside(root, destination(supplier, issued_on, total, folder["kind"], category, SUFFIXES[kind])), taken, root)
-    relative = str(target.relative_to(root))
+    relative = target.relative_to(root).as_posix()
     created = False
     try:
         target.parent.mkdir(parents=True, exist_ok=True)

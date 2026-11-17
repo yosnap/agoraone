@@ -281,7 +281,7 @@ def _candidates(inbox: Path) -> list[tuple[Path, os.stat_result]]:
         return []
     for path in entries:
         try:
-            if path.name.startswith(".") or path.is_symlink() or not path.is_file():
+            if path.name.startswith(".") or path.is_symlink() or path.is_junction() or not path.is_file():
                 continue
             info = path.stat()
         except OSError:
@@ -296,7 +296,7 @@ def _candidates(inbox: Path) -> list[tuple[Path, os.stat_result]]:
 def _inbox_of(root: Path) -> Path | None:
     inbox = root / INBOX
     try:
-        if inbox.is_symlink() or not inbox.is_dir() or inbox.resolve().parent != root.resolve():
+        if inbox.is_symlink() or inbox.is_junction() or not inbox.is_dir() or inbox.resolve().parent != root.resolve():
             return None
     except OSError:
         return None
@@ -359,11 +359,11 @@ def import_inbox(connect_db, folder: Path, folders: list[tuple[int, Path]]) -> i
 
 def _same_file(root: Path, name: str, digest: str) -> Path | None:
     inbox = _inbox_of(root)
-    if inbox is None or not name or "/" in name or name.startswith("."):
+    if inbox is None or not name or "/" in name or "\\" in name or name.startswith("."):
         return None
     path = inbox / name
     try:
-        if path.is_symlink() or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+        if path.is_symlink() or path.is_junction() or not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             return None
     except OSError:
         return None
@@ -392,7 +392,7 @@ def set_aside(root: Path, name: str, digest: str) -> bool:
         return False
     target_dir = path.parent / DISCARDED
     try:
-        if target_dir.is_symlink():
+        if target_dir.is_symlink() or target_dir.is_junction():
             return False
         target_dir.mkdir(exist_ok=True)
         target = target_dir / path.name
