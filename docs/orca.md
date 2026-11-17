@@ -50,3 +50,20 @@ Claude Code o Codex con un encargo. Plan: `plans/261117-0940-modulo-orca`.
 - **Watson:** la herramienta `proponer_encargo_orca` (solo con Claude, módulo Orca) comprueba que el proyecto está
   en Orca y abre la tarjeta rellenada en el chat; no lanza nada. El registro guarda repositorio y agente, nunca el
   encargo.
+
+## Issues de correos y notas, y envío a una sesión abierta (1.7.0-alpha.45)
+Decisión del usuario (17/11/2026), en AGENTS.md.
+- **Crear issue…** en la tarjeta de un correo de cliente (normal) y en una nota del vault (normal, sin líneas ocultas
+  reveladas): proyecto de Central con repositorio (el del correo, preseleccionado), título y texto editables, aviso si el
+  repositorio es público, y «Crear la issue» con el `gh` del usuario (`POST /issues`, `core/agora_core/issue_handoff.py`).
+  El núcleo vuelve a comprobar el nivel del correo, o el índice y la revisión de la nota.
+- **Después**, como también tras la issue de una reunión: «En un espacio nuevo de Orca…» (el lanzamiento de siempre) o
+  «En una sesión abierta de Orca…»: las sesiones de Claude Code o Codex en espacios de ese repositorio que te esperan
+  (`GET /orca/waiting`; las que trabajan no salen). Se ve la línea exacta y, con «Escribir en la sesión», se escribe en su
+  prompt con `orca terminal send` **sin Enter** (lo envías tú en Orca), y Orca muestra ese espacio y su terminal
+  (`POST /orca/handoff`). La línea solo remite a la issue (`gh issue view N --repo …`) y avisa de que su texto es dato del
+  cliente; nunca lleva el texto del correo ni de la nota. Justo antes de escribir se comprueba otra vez, y solo se escribe si no hay duda: la
+  sesión sigue esperando, su espacio es de ese repositorio, ninguna otra sesión trabaja en él y tiene una única terminal
+  con un agente (Orca no enlaza una terminal con su sesión: una shell se reconoce porque su pestaña muestra la carpeta).
+  Si no, no se escribe nada y se ofrece «Copiar la línea» para pegarla a mano. El núcleo rechaza también un cuerpo de issue
+  con líneas con pinta de clave y quita los caracteres de control, y solo acepta repositorios de proyectos de Central.

@@ -52,6 +52,9 @@ def orca_terminals(runner=None, fresh: bool = False) -> list[dict]:
     except orca_launch.OrcaError:
         listed = None
     found = [{"path": t["worktreePath"].rstrip("/"), "handle": t.get("handle") if isinstance(t.get("handle"), str) else None,
+              "repoId": str(t.get("worktreeId") or "").split("::", 1)[0],
+              # A shell's tab shows its folder («..ject/web»); an agent's TUI shows its conversation's title instead.
+              "agent": not str(t.get("title") or "").startswith(("..", "/", "~")) and bool(t.get("title")),
               "last": t.get("lastOutputAt") if isinstance(t.get("lastOutputAt"), (int, float)) else 0}
              for t in listed or [] if isinstance(t, dict) and t.get("connected") and isinstance(t.get("worktreePath"), str) and t["worktreePath"].startswith("/")]
     _orca.update(at=time.monotonic(), terminals=found)
@@ -61,6 +64,12 @@ def orca_terminals(runner=None, fresh: bool = False) -> list[dict]:
 def orca_folders(runner=None) -> list[str]:
     """The folders where Orca has a terminal open (its workspaces), the longest first."""
     return sorted({t["path"] for t in orca_terminals(runner)}, key=len, reverse=True)
+
+
+def session_cwd(session_id: str) -> str | None:
+    """The folder a listed session works in, by its id (kept here: never returned to the screen)."""
+    with _lock:
+        return next((r.cwd for key, r in _cache.items() if hashlib.sha256(key.encode()).hexdigest()[:12] == session_id), None)
 
 
 def orca_target(session_id: str, runner=None) -> tuple[str, str | None] | None:

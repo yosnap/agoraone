@@ -536,6 +536,14 @@ export async function fetchMailFile(id: number, source: MailFile): Promise<{ nam
 }
 export const saveRepoFile = (body: MailFile & { client: string; project: string; folder: string; name: string; prefix: string; inboxId: number }) =>
   core<{ path: string }>('/orca/repo-file', body);
+export const getIssueTarget = (client: string, project: string) =>
+  core<{ repo: string | null; visibility: 'public' | 'private' | 'internal' | null }>(`/issues/target?client=${encodeURIComponent(client)}&project=${encodeURIComponent(project)}`);
+export type IssueSource = { kind: 'mail'; id: number } | { kind: 'note'; source: string; ref: string; revision: string };
+export const createIssue = (issue: { client: string; project: string; title: string; body: string; source: IssueSource }) => core<{ repo: string; url: string }>('/issues', issue);
+export type WaitingSession = { id: string; tool: 'claude' | 'codex'; project: string | null; branch: string | null; model: string | null; lastAt: string | null };
+export const getWaitingSessions = (repo: string, url: string) =>
+  core<{ sessions: WaitingSession[]; line: string | null }>(`/orca/waiting?repo=${encodeURIComponent(repo)}&url=${encodeURIComponent(url)}`);
+export const handoffIssue = (repo: string, url: string, session: string) => core<{ line: string }>('/orca/handoff', { repo, url, session });
 export type RepoFolders = { repo: string; root: string; folders: string[]; suggested: string; visibility: 'public' | 'private' | 'internal' | null };
 export const getRepoFolders = (client: string, project: string) => core<RepoFolders>(`/orca/repo-folders?client=${encodeURIComponent(client)}&project=${encodeURIComponent(project)}`);
 export const createRepoNote = (note: { client: string; project: string; folder: string; title: string; content: string; inboxId: number }) =>
