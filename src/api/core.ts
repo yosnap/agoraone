@@ -300,6 +300,13 @@ export const changeCalendar = (id: string, change: { scopeId: number | null; con
   core<{ ok: true }>(`/calendar/calendars/${encodeURIComponent(id)}`, change, 'PUT');
 export const getAgenda = (when: 'hoy' | 'mañana' | 'semana') => core<Agenda>(`/calendar/agenda?when=${encodeURIComponent(when)}`);
 /** Any period, local days from `from` to `to` (both included, YYYY-MM-DD), for the calendar views. */
+export type EventPerson = { name: string | null; email: string | null; status: 'accepted' | 'declined' | 'tentative' | 'pending'; me: boolean };
+export type EventDetail = { id: string; calendarId: string; title: string; start: string; end: string; allDay: boolean; location: string | null; notes: string | null;
+  url: string | null; attendees: EventPerson[]; organizer: EventPerson | null; recurring: boolean; links: { url: string; meeting: string | null }[];
+  editable: boolean; why: string | null; revision: string };
+export const getCalendarEvent = (id: string) => core<EventDetail>(`/calendar/event?id=${encodeURIComponent(id)}`);
+export const changeCalendarEvent = (change: { id: string; revision: string; title: string; start: string; end: string; allDay: boolean;
+  location: string | null; notes: string | null; overlapOk: boolean }) => core<{ id: string; clashes: number }>('/calendar/event', change, 'PUT');
 export const getAgendaRange = (from: string, to: string) => core<Agenda>(`/calendar/agenda?from=${from}&to=${to}`);
 export const createEvent = (event: NewEvent) => core<{ id: string; clashes: number }>('/calendar/events', event);
 export const createReminder = (reminder: { calendarId?: string | null; title: string; due?: string | null; notes?: string | null; inboxId?: number | null }) =>

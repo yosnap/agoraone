@@ -7,11 +7,13 @@ AgoraOne lee tus calendarios, tus recordatorios y el historial de llamadas del M
 - Cada evento y recordatorio dice de qué calendario, cuenta y ámbito es (el ámbito se pone en Ajustes › Calendarios), con su color. El núcleo da cualquier periodo de hasta 400 días (`GET /calendar/agenda?from=…&to=…`).
 - A la derecha, en una columna más estrecha, el resumen de la mañana y los avisos de ahora (llamadas perdidas, reuniones a punto de empezar, plazos).
 - «Nuevo evento o recordatorio», y «Crear el evento» en una tarjeta de la Bandeja, crean solo al pulsar el botón. Si el evento choca con otros, los enseña y pide un segundo sí («Crear de todos modos»). Un recordatorio con fecha lleva su alarma.
+- **Detalle del evento** (1.7.0-alpha.40): al pulsar un evento, en la lista o en el calendario, se ve entero: «Unirse a Google Meet / Zoom / Teams…» con el enlace de la videollamada (sacado de su dirección, lugar o notas), lugar, quién organiza, asistentes y su respuesta, otros enlaces y notas.
+- **Cambiar un evento propio** (decisión del usuario del 14/11/2026: cambiar eventos solo tras confirmar y con copia previa): título, inicio, fin, todo el día, lugar y notas, con «Guardar los cambios». Solo si su calendario admite cambios y nadie más lo organiza (una invitación es de quien la organiza y solo se ve); solo esa repetición de un evento que se repite; se rechaza si el evento cambió desde que se abrió; avisa de solapes con un segundo sí; antes de cambiarlo guarda cómo era en la tabla `calendar_change`, marcada como aplicada solo cuando macOS guardó el cambio, y vuelve a comprobar la revisión justo antes de guardar (`core/agora_core/calendar_edit.py`); si tiene invitados, avisa de que su calendario les notificará el cambio. Nunca se borra un evento.
 - En modo discreto los títulos se ocultan.
 
 **Ajustes › Calendarios:** el permiso, y por cada calendario su ámbito, su confidencialidad (normal por defecto) y si se oculta.
 
-**Watson:** `consultar_agenda` responde «¿qué tengo hoy, mañana o esta semana?» en tu hora, solo con los calendarios de nivel normal y nunca por el proveedor compatible. Todavía no crea ni cambia eventos desde el chat.
+**Watson:** `consultar_agenda` responde «¿qué tengo hoy, mañana o esta semana?» en tu hora, solo con los calendarios de nivel normal y nunca por el proveedor compatible. Desde el chat, `proponer_evento` enseña un evento propuesto que solo se crea al pulsar «Crear el evento»; los cambios de eventos existentes se hacen desde la Agenda.
 
 ## Llamadas
 - Se leen del historial de llamadas del Mac (el que comparte el iPhone con la misma cuenta), en solo lectura y sobre una copia: AgoraOne nunca lo cambia.
