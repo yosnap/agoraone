@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 
-from . import coding_sessions
+from . import coding_sessions, modules
 from .db import DB_NAME, connect
 from .routes_assistant import ANSWERING
 from .settings import Settings
@@ -44,6 +44,14 @@ def agents_router(settings: Settings) -> APIRouter:
     @router.get("/agents/coding")
     async def coding():
         """Claude Code and Codex sessions of this Mac moved in 24 h (metadata only)."""
-        return {"sessions": await run_in_threadpool(coding_sessions.sessions)}
+        def read():
+            connection = connect(settings.data_dir / DB_NAME)
+            try:
+                orca_on = modules.state(connection)["orca"]
+            finally:
+                connection.close()
+            # With the Orca module off, Orca is not asked which folders its terminals are in.
+            return coding_sessions.sessions(orca=None if orca_on else [])
+        return {"sessions": await run_in_threadpool(read)}
 
     return router

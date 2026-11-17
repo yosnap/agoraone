@@ -33,7 +33,7 @@ def test_claude_code_estado_tokens_sin_contenido(tmp_path, monkeypatch):
     write(file, [{"type": "user", "timestamp": iso(60), "cwd": "/Users/x/Proyectos/agoraone", "message": {"content": "CANARIO-pregunta"}},
                  claude_answer(50, "m1", "tool_use"), claude_answer(50, "m1", "tool_use"),  # the same message, written twice as it streamed
                  {"type": "user", "timestamp": iso(40), "cwd": "/Users/x/Proyectos/agoraone/core", "message": {"content": [{"type": "tool_result", "content": "CANARIO-herramienta"}]}}])
-    found = c.sessions(NOW, tmp_path)
+    found = c.sessions(NOW, tmp_path, orca=[])
     assert len(found) == 1
     session = found[0]
     assert session["tool"] == "claude" and session["project"] == "agoraone", "la carpeta donde empezó, no la de un cd posterior"
@@ -42,7 +42,7 @@ def test_claude_code_estado_tokens_sin_contenido(tmp_path, monkeypatch):
     assert "CANARIO" not in json.dumps(found) and "/Users" not in json.dumps(found)
     # Appended later: only the new part is read, and a finished answer means it waits for the user.
     write(file, [claude_answer(5, "m2", "end_turn", out=7)])
-    session = c.sessions(NOW, tmp_path)[0]
+    session = c.sessions(NOW, tmp_path, orca=[])[0]
     assert session["state"] == "waiting" and session["tokens"]["output"] == 17 and session["turns"] == 2
 
 
@@ -54,12 +54,12 @@ def test_codex_turnos_y_tokens(tmp_path, monkeypatch):
                  {"type": "turn_context", "timestamp": iso(80), "payload": {"model": "gpt-6", "cwd": "/Users/x/web"}},
                  {"type": "event_msg", "timestamp": iso(80), "payload": {"type": "task_started"}},
                  {"type": "event_msg", "timestamp": iso(30), "payload": {"type": "token_count", "info": {"last_token_usage": {"input_tokens": 1000, "cached_input_tokens": 400, "output_tokens": 50}}}}])
-    session = c.sessions(NOW, tmp_path)[0]
+    session = c.sessions(NOW, tmp_path, orca=[])[0]
     assert (session["tool"], session["project"], session["model"], session["state"]) == ("codex", "web", "gpt-6", "working")
     assert session["tokens"] == {"input": 600, "output": 50}
     write(file, [{"type": "event_msg", "timestamp": iso(10), "payload": {"type": "task_complete", "last_agent_message": "CANARIO"}}])
-    assert c.sessions(NOW, tmp_path)[0]["state"] == "waiting"
-    assert "CANARIO" not in json.dumps(c.sessions(NOW, tmp_path))
+    assert c.sessions(NOW, tmp_path, orca=[])[0]["state"] == "waiting"
+    assert "CANARIO" not in json.dumps(c.sessions(NOW, tmp_path, orca=[]))
 
 
 def test_lo_viejo_los_enlaces_y_lo_a_medias_no_cuentan(tmp_path, monkeypatch):
@@ -71,10 +71,10 @@ def test_lo_viejo_los_enlaces_y_lo_a_medias_no_cuentan(tmp_path, monkeypatch):
     (folder / "enlace.jsonl").symlink_to(outside)
     half = folder / "medias.jsonl"
     half.write_text(json.dumps(claude_answer(5, "c", "end_turn"))[:-5])  # a line still being written
-    assert c.sessions(NOW, tmp_path) == []
+    assert c.sessions(NOW, tmp_path, orca=[]) == []
     with half.open("a") as handle:
         handle.write(json.dumps(claude_answer(5, "c", "end_turn"))[-5:] + "\n")
-    found = c.sessions(NOW, tmp_path)
+    found = c.sessions(NOW, tmp_path, orca=[])
     assert len(found) == 1 and found[0]["turns"] == 1, "la línea a medias se lee entera en cuanto se termina"
 
 
@@ -82,26 +82,26 @@ def test_permiso_interrupcion_y_comandos_locales(tmp_path, monkeypatch):
     monkeypatch.setattr(c, "_cache", {})
     file = tmp_path / ".claude" / "projects" / "p" / "s.jsonl"
     write(file, [claude_answer(600, "m1", "tool_use")], mtime=NOW - 600)  # asked for a tool ten minutes ago, nothing since
-    assert c.sessions(NOW, tmp_path)[0]["state"] == "tool", "herramienta larga o esperando tu permiso"
+    assert c.sessions(NOW, tmp_path, orca=[])[0]["state"] == "tool", "herramienta larga o esperando tu permiso"
     write(file, [{"type": "user", "timestamp": iso(500), "message": {"content": [{"type": "text", "text": "[Request interrupted by user]"}]}}])
-    assert c.sessions(NOW, tmp_path)[0]["state"] == "waiting", "interrumpida con Esc: te espera"
+    assert c.sessions(NOW, tmp_path, orca=[])[0]["state"] == "waiting", "interrumpida con Esc: te espera"
     write(file, [{"type": "user", "isMeta": True, "timestamp": iso(400), "message": {"content": "CANARIO"}},
                  {"type": "user", "timestamp": iso(30), "message": {"content": "<local-command-stdout>CANARIO</local-command-stdout>"}}])
-    assert c.sessions(NOW, tmp_path)[0]["state"] == "waiting", "un comando local no la pone a trabajar"
+    assert c.sessions(NOW, tmp_path, orca=[])[0]["state"] == "waiting", "un comando local no la pone a trabajar"
     write(file, [{"type": "assistant", "timestamp": iso(20), "message": {"model": "<synthetic>", "stop_reason": "end_turn"}}])
-    assert c.sessions(NOW, tmp_path)[0]["model"] == "claude-opus-5-5"
+    assert c.sessions(NOW, tmp_path, orca=[])[0]["model"] == "claude-opus-5-5"
 
 
 def test_no_relee_un_archivo_con_contenido_antiguo_y_fecha_reciente(tmp_path, monkeypatch):
     monkeypatch.setattr(c, "_cache", {})
     file = tmp_path / ".claude" / "projects" / "p" / "s.jsonl"
     write(file, [claude_answer(30 * 3600, "m1", "end_turn"), {"type": "ai-title", "title": "x"}])  # old content, file touched now
-    c.sessions(NOW, tmp_path)
+    c.sessions(NOW, tmp_path, orca=[])
     assert str(file) in c._cache
     reads = []
     original = c._Record.read
     monkeypatch.setattr(c._Record, "read", lambda self, line: reads.append(1) or original(self, line))
-    c.sessions(NOW, tmp_path)
+    c.sessions(NOW, tmp_path, orca=[])
     assert reads == [], "en caché: nada que volver a leer"
 
 
@@ -115,7 +115,7 @@ def test_codex_sin_eventos_repetidos_ni_valores_raros(tmp_path, monkeypatch):
         {"type": "event_msg", "timestamp": iso(80), "payload": {"type": "task_started"}}, count, count,
         {"type": "event_msg", "timestamp": iso(20), "payload": {"type": "token_count", "info": {"last_token_usage": {"input_tokens": "mucho"}}}},
         {"type": "event_msg", "timestamp": iso(10), "payload": {"type": "turn_aborted"}}])
-    session = c.sessions(NOW, tmp_path)[0]
+    session = c.sessions(NOW, tmp_path, orca=[])[0]
     assert session["tokens"] == {"input": 600, "output": 100} and session["project"] is None and session["state"] == "waiting"
 
 
@@ -125,4 +125,21 @@ def test_un_archivo_que_desaparece_no_tumba_la_lista(tmp_path, monkeypatch):
     write(tmp_path / ".claude" / "projects" / "p" / "roto.jsonl", [claude_answer(5, "b", "end_turn")])
     real_open = c.Path.open
     monkeypatch.setattr(c.Path, "open", lambda self, *a, **k: (_ for _ in ()).throw(FileNotFoundError()) if self.name == "roto.jsonl" else real_open(self, *a, **k))
-    assert len(c.sessions(NOW, tmp_path)) == 1
+    assert len(c.sessions(NOW, tmp_path, orca=[])) == 1
+
+
+def test_dice_desde_donde_se_lanzo(tmp_path, monkeypatch):
+    monkeypatch.setattr(c, "_cache", {})
+    day = time.strftime("%Y/%m/%d", time.gmtime(NOW))
+    write(tmp_path / ".claude" / "projects" / "p" / "a.jsonl", [{**claude_answer(5, "m1", "end_turn"), "entrypoint": "cli"}])
+    write(tmp_path / ".codex" / "sessions" / day / "b.jsonl", [{"type": "session_meta", "timestamp": iso(5), "payload": {"cwd": "/x/app", "originator": "Codex Desktop", "source": "vscode"}}])
+    write(tmp_path / "Library" / "Application Support" / "orca" / "claude-profiles" / "uno" / "home" / "projects" / "p" / "c.jsonl",
+          [{**claude_answer(5, "m2", "end_turn"), "entrypoint": "cli"}])
+    write(tmp_path / "Library" / "Application Support" / "orca" / "codex-runtime-home" / "home" / "sessions" / day / "d.jsonl",
+          [{"type": "session_meta", "timestamp": iso(5), "payload": {"cwd": "/x/orca-web", "originator": "codex_cli_rs"}}])
+    hosts = sorted((s["tool"], s["host"]) for s in c.sessions(NOW, tmp_path, orca=[]))
+    assert hosts == [("claude", "orca"), ("claude", "terminal"), ("codex", "codex-app"), ("codex", "orca")]
+    in_orca = c.sessions(NOW, tmp_path, orca=["/Users/x/Proyectos"])
+    assert sum(s["host"] == "orca" for s in in_orca) == 3, "Claude Code en una carpeta con terminal de Orca es de Orca"
+    assert not c._in("/Users/x/Proyectos2", ["/Users/x/Proyectos"])
+    assert c.host("claude", "claude-vscode") == "vscode" and c.host("claude", None) is None

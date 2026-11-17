@@ -36,8 +36,13 @@ no distinguen una orden larga de una aprobación pendiente), «Te espera» (term
 menos de 30 minutos; los comandos locales no cuentan) o «En pausa», los tokens de 24 h (entrada,
 creación de caché y salida; sin lecturas de caché) y cuántas respuestas dio.
 
-- Carpetas fijas: `~/.claude/projects`, los perfiles de Orca (`~/Library/Application Support/orca/claude-profiles/*/home/projects`)
-  y `~/.codex/sessions` (solo los días de hoy y ayer). Sin enlaces simbólicos.
+- Carpetas fijas: `~/.claude/projects`, los perfiles de Orca (`~/Library/Application Support/orca/claude-profiles/*/home/projects`),
+  `~/.codex/sessions` y el Codex de Orca (`orca/codex-runtime-home/home/sessions`), estos dos solo los días de hoy y ayer. Sin enlaces simbólicos.
+- Cada sesión dice dónde corre (1.7.0-alpha.42): «Orca» si está en las carpetas de Orca o si trabaja dentro de un espacio de
+  trabajo donde Orca tiene una terminal abierta (`orca terminal list`: solo las rutas, nunca lo que muestran; no se pregunta
+  con el módulo Orca apagado), porque Orca guarda las sesiones de Claude Code en `~/.claude/projects`; si no, lo que dice su registro
+  (`entrypoint` de Claude Code, `originator`/`source` de Codex): VS Code, app de Codex, app de Claude, Terminal o SDK.
+  Lanzar encargos sigue siendo solo con Orca; los demás entornos están en el backlog (C-08).
 - Cada archivo se lee una vez y después solo lo añadido (hay sesiones de casi 50 MB); una línea a medias se lee
   cuando termina y una de más de 4 MB se salta. Un mensaje que Claude Code escribe varias veces mientras lo genera
   cuenta una sola, y un recuento de Codex repetido también. La caché guarda solo los archivos dentro de la ventana

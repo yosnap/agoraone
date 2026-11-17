@@ -52,7 +52,8 @@ export const putAssistantSettings = (changes: Partial<AssistantSettings>) => cor
 export type WatsonEvent = { id: number; at: string; actor: 'watson' | 'user'; action: string; outcome: 'done' | 'denied' | 'failed' | 'undone' };
 export type WatsonActivity = { answering: number; since: string | null; lastAt: string | null; count: number; events: WatsonEvent[] };
 /** Claude Code and Codex sessions of this Mac moved in 24 h: metadata only, never the conversation. */
-export type CodingSession = { id: string; tool: 'claude' | 'codex'; project: string | null; branch: string | null; model: string | null;
+export type CodingHost = 'orca' | 'vscode' | 'codex-app' | 'claude-desktop' | 'terminal' | 'sdk';
+export type CodingSession = { id: string; tool: 'claude' | 'codex'; host: CodingHost | null; project: string | null; branch: string | null; model: string | null;
   state: 'working' | 'tool' | 'waiting' | 'paused'; startedAt: string | null; lastAt: string; tokens: { input: number; output: number }; turns: number };
 export const getCodingSessions = () => core<{ sessions: CodingSession[] }>('/agents/coding');
 export const getWatsonActivity = () => core<WatsonActivity>('/agents/watson');
