@@ -1,7 +1,7 @@
 # Estado de continuidad — 17/11/2026
 
 ## Resultado
-Para retomar (17/11/2026) · 1.7.0-alpha.45 «Watson que actúa» en `integracion/v1.7` (sale de `integracion/v1.6`, que sale de develop tras publicar la 1.5.0). 1.6.x y 1.7 sin publicar. App empaquetada y notarizada: 1.7.0-alpha.43.
+Para retomar (17/11/2026) · 1.7.0-alpha.45 «Watson que actúa» en `integracion/v1.7` (sale de `integracion/v1.6`, que sale de develop tras publicar la 1.5.0). 1.6.x y 1.7 sin publicar. App empaquetada y notarizada: 1.7.0-alpha.45.
 - Hecho en 1.6: «Qué tengo instalado» e instalar con permiso (Homebrew y modelo de Whisper), módulos que se pueden apagar, guía de primer arranque (docs/instalacion-modulos.md); 1.6.1–1.6.2: casillas propias, Ajustes y Bandeja a todo el ancho (pestañas de ámbito y colores por clase), scroll al borde, avisos arriba a la derecha, botones de Trabajos de colores.
 - Hecho en 1.7 (docs/watson-actua.md; decisión del usuario en AGENTS.md): Watson propone notas, fichas de cliente, eventos, presupuestos en borrador en Central (`create_quote`) y limpiar el correo (archivar o Papelera de una lista aprobada; migración 0023); «Revisar el vault» en el Cerebro.
 - Hecho en 1.7.0-alpha.5 (fase 4): Watson revisa el vault (`revisar_vault`, solo notas normales) y propone lotes de hasta 40 movimientos o renombrados (`proponer_reorganizacion`, `core/agora_core/vault_reorg.py`); la tarjeta aplica solo los marcados por la ruta de mover, con la revisión vista al aparecer, copia previa, aviso de enlaces rotos y sin borrar; mover admite una carpeta nueva dentro de una existente. Botón «Pedir a Watson que lo ordene» en «Revisar el vault». 262 pruebas del núcleo, 20 de la interfaz, Rust y build.
