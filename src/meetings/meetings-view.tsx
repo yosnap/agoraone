@@ -1,10 +1,11 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import { deleteMeeting, getMeetings, getSummarizers, kindLabels, levelLabels, processMeeting, stopMeeting, type Summarizer, type Level, type Meeting, type MeetingList } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { ClientChip, clientHue } from './client-chip';
 import { MeetingDetailPanel } from './meeting-detail';
 import { forgetMeetingIntent, peekMeetingIntent } from './meeting-intent';
-import { asClass, emptyFields, KindFields, type Fields } from './meeting-kind';
+import { asClass, emptyFields, KindFields, useCentralClients, type Fields } from './meeting-kind';
 import { lastChoice, rememberChoice, startRecording, stopRecording, useMeetingRecorder } from './meeting-recorder';
 import './meetings.css';
 
@@ -37,11 +38,15 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned, as
     setError('');
     try { await deleteMeeting(meeting.id); onDeleted(); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo borrar.'); }
   };
-  return <li className="meeting-row" ref={reveal}>
+  const { clients } = useCentralClients();
+  const client = !hidden && meeting.client ? meeting.client : null;
+  // No colour while Central is being read, so the rows do not change hue when the list arrives.
+  const hue = client && clients ? clientHue(client, clients.map(c => c.name)) : null;
+  return <li className={`meeting-row${hue !== null ? ' has-client' : ''}`} ref={reveal} style={hue !== null ? { '--client-hue': hue } as CSSProperties : undefined}>
     <div className="meeting-main">
-      <strong>{hidden ? 'Reunión' : meeting.title}</strong>
+      <span className="meeting-head">{client && <ClientChip client={client} project={meeting.project} hue={hue}/>}<strong>{hidden ? 'Reunión' : meeting.title}</strong></span>
       <small>{when(meeting.started_at)} · {clock(meeting.seconds)} · {levelLabels[meeting.confidentiality]}</small>
-      {!hidden && <small className="muted">{[kindLabels[meeting.kind], meeting.client, meeting.project, meeting.people.length ? `con ${meeting.people.map(p => p.name).join(', ')}` : ''].filter(Boolean).join(' · ')}</small>}
+      {!hidden && <small className="muted">{[kindLabels[meeting.kind], meeting.people.length ? `con ${meeting.people.map(p => p.name).join(', ')}` : ''].filter(Boolean).join(' · ')}</small>}
       <small className="muted">Tu micrófono: {meeting.mic_bytes ? size(meeting.mic_bytes) : 'vacío'} · Audio del sistema: {meeting.system_source ? (meeting.system_bytes ? size(meeting.system_bytes) : meeting.status === 'recording' ? 'grabando' : 'vacío') : 'no grabado'}</small>
       {meeting.note && !hidden && <small className="muted">{meeting.note}</small>}
       {meeting.work_error && !hidden && <small className={meeting.work === 'failed' ? 'dictation-error' : 'muted'} role={meeting.work === 'failed' ? 'alert' : undefined}>
