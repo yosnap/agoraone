@@ -37,24 +37,59 @@ def roots(home: Path | None = None) -> list[tuple[str, Path, str | None]]:
     return found
 
 
-_orca: dict = {"at": 0.0, "paths": []}
+_orca: dict = {"at": 0.0, "terminals": []}
 
 
-def orca_folders(runner=None) -> list[str]:
-    """The folders where Orca has a terminal open (its workspaces): only their paths, never what the terminals show.
-    Read at most once a minute; empty without Orca."""
-    if time.monotonic() - _orca["at"] < 60 and _orca["at"]:
-        return _orca["paths"]
+def orca_terminals(runner=None, fresh: bool = False) -> list[dict]:
+    """Orca's open terminals: their workspace folder, their handle and when they last showed output; never what they
+    show. Read at most once a minute (or now, `fresh`); empty without Orca."""
+    if not fresh and _orca["at"] and time.monotonic() - _orca["at"] < 60:
+        return _orca["terminals"]
     from . import orca_launch
 
     try:
         listed = orca_launch._run(["terminal", "list"], runner or __import__("subprocess").run, 10).get("terminals")
     except orca_launch.OrcaError:
         listed = None
-    paths = sorted({str(t["worktreePath"]).rstrip("/") for t in listed or [] if isinstance(t, dict) and t.get("connected")
-                    and isinstance(t.get("worktreePath"), str) and t["worktreePath"].startswith("/")}, key=len, reverse=True)
-    _orca.update(at=time.monotonic(), paths=paths)
-    return paths
+    found = [{"path": t["worktreePath"].rstrip("/"), "handle": t.get("handle") if isinstance(t.get("handle"), str) else None,
+              "last": t.get("lastOutputAt") if isinstance(t.get("lastOutputAt"), (int, float)) else 0}
+             for t in listed or [] if isinstance(t, dict) and t.get("connected") and isinstance(t.get("worktreePath"), str) and t["worktreePath"].startswith("/")]
+    _orca.update(at=time.monotonic(), terminals=found)
+    return found
+
+
+def orca_folders(runner=None) -> list[str]:
+    """The folders where Orca has a terminal open (its workspaces), the longest first."""
+    return sorted({t["path"] for t in orca_terminals(runner)}, key=len, reverse=True)
+
+
+def orca_target(session_id: str, runner=None) -> tuple[str, str | None] | None:
+    """(the Orca workspace folder, the handle of its most recently active terminal) of a listed session, or None.
+    Found by the session's own id: the screen never sends a path."""
+    with _lock:
+        cwd = next((r.cwd for key, r in _cache.items() if hashlib.sha256(key.encode()).hexdigest()[:12] == session_id), None)
+    if not cwd:
+        return None
+    terminals = [t for t in orca_terminals(runner, fresh=True) if _in(cwd, [t["path"]])]
+    if not terminals:
+        return None
+    longest = max(len(t["path"]) for t in terminals)
+    best = max((t for t in terminals if len(t["path"]) == longest), key=lambda t: t["last"] or 0)
+    return best["path"], best["handle"]
+
+
+def open_in_orca(session_id: str, runner=None) -> None:
+    """Shows that session's workspace in Orca and switches to its terminal, as the user asked with a click."""
+    from . import orca_launch
+
+    run = runner or __import__("subprocess").run
+    target = orca_target(session_id, run)
+    if target is None:
+        raise orca_launch.OrcaError("Esa sesión ya no está en un espacio de trabajo abierto en Orca.")
+    path, handle = target
+    orca_launch._run(["worktree", "activate", f"--worktree=path:{path}"], run, 20)
+    if handle:
+        orca_launch._run(["terminal", "switch", f"--terminal={handle}"], run, 10)
 
 
 def _in(folder: str | None, places: list[str]) -> bool:
@@ -282,7 +317,7 @@ def sessions(now: float | None = None, home: Path | None = None, orca: list[str]
                 record.usage = {k: u for k, u in record.usage.items() if u[0] >= since}  # only the last 24 h is kept
                 day = list(record.usage.values())
                 out.append({
-                    "id": hashlib.sha256(str(file).encode()).hexdigest()[:12], "tool": tool, "host": fixed or ("orca" if _in(record.cwd, places) else host(tool, record.origin)),
+                    "id": hashlib.sha256(str(file).encode()).hexdigest()[:12], "tool": tool, "host": fixed or ("orca" if _in(record.cwd, places) else host(tool, record.origin)), "inOrca": _in(record.cwd, places),
                     "project": Path(record.cwd).name[:80] if record.cwd else None, "branch": record.branch[:80] if record.branch else None,
                     "model": record.model[:60] if record.model else None, "state": state,
                     "startedAt": _iso(record.started), "lastAt": _iso(max(moved, record.last)),

@@ -1,4 +1,6 @@
-import type { CodingHost, CodingSession } from '../api/core';
+import { useState } from 'react';
+import { openCodingInOrca, type CodingHost, type CodingSession } from '../api/core';
+import { moduleOn, useModules } from '../shell/modules';
 import { ago } from './agent-lines';
 
 const tools: Record<CodingSession['tool'], string> = { claude: 'Claude Code', codex: 'Codex' };
@@ -11,6 +13,13 @@ const count = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toLocaleString(
  * project, branch, model, whether it works or waits for you, and tokens of the day (without cache reads).
  * Never what was said: the core does not even keep it. */
 export function CodingSessions({ sessions, discreet, now, onCity, compact = false }: { sessions: CodingSession[] | null; discreet: boolean; now: number; onCity?: () => void; compact?: boolean }) {
+  const orca = moduleOn(useModules(), 'orca');
+  const [opening, setOpening] = useState<{ id: string; text: string } | null>(null);
+  const open = async (id: string) => {
+    setOpening({ id, text: 'Abriendo en Orca…' });
+    try { await openCodingInOrca(id); setOpening(null); }
+    catch (failure) { setOpening({ id, text: failure instanceof Error ? failure.message : 'No se pudo abrir en Orca.' }); }
+  };
   if (sessions === null) return null;
   const working = sessions.filter(s => s.state === 'working').length;
   return <section className={`coding-sessions${compact ? ' compact' : ''}`} aria-labelledby="coding-title">
@@ -24,6 +33,8 @@ export function CodingSessions({ sessions, discreet, now, onCity, compact = fals
         <small>{tools[session.tool]}{session.host ? ` en ${hosts[session.host]}` : ''}{session.model ? ` · ${session.model.replace(/^claude-/, '')}` : ''}{!discreet && session.branch ? ` · ${session.branch}` : ''}</small></span>
       <span className="coding-numbers">{discreet ? '•••' : `${count(session.tokens.input + session.tokens.output)} tokens`}<small>{session.turns} {session.turns === 1 ? 'respuesta' : 'respuestas'} en 24 h</small></span>
       <small className="coding-when">{session.state === 'working' ? 'ahora' : ago(session.lastAt, now)}</small>
+      {orca && session.inOrca && <span className="coding-open"><button type="button" className="button" onClick={() => void open(session.id)}>Abrir en Orca</button>
+        {opening?.id === session.id && <small role="status">{opening.text}</small>}</span>}
     </li>)}</ul>}
   </section>;
 }

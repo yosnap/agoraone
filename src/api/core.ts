@@ -53,9 +53,11 @@ export type WatsonEvent = { id: number; at: string; actor: 'watson' | 'user'; ac
 export type WatsonActivity = { answering: number; since: string | null; lastAt: string | null; count: number; events: WatsonEvent[] };
 /** Claude Code and Codex sessions of this Mac moved in 24 h: metadata only, never the conversation. */
 export type CodingHost = 'orca' | 'vscode' | 'codex-app' | 'claude-desktop' | 'terminal' | 'sdk';
-export type CodingSession = { id: string; tool: 'claude' | 'codex'; host: CodingHost | null; project: string | null; branch: string | null; model: string | null;
+export type CodingSession = { id: string; tool: 'claude' | 'codex'; host: CodingHost | null; inOrca: boolean; project: string | null; branch: string | null; model: string | null;
   state: 'working' | 'tool' | 'waiting' | 'paused'; startedAt: string | null; lastAt: string; tokens: { input: number; output: number }; turns: number };
 export const getCodingSessions = () => core<{ sessions: CodingSession[] }>('/agents/coding');
+/** «Abrir en Orca»: that session's workspace and terminal on screen in Orca (only the session's id is sent). */
+export const openCodingInOrca = (id: string) => core<{ ok: true }>(`/agents/coding/${id}/orca`, {});
 export const getWatsonActivity = () => core<WatsonActivity>('/agents/watson');
 export const getEngines = () => core<{ engines: { name: string; available: boolean }[]; active: string | null; model: string }>('/assistant/engines');
 /** Saves (or with null forgets) a key in the Keychain; keys are never read back. */

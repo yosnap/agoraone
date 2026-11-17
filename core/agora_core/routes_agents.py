@@ -54,4 +54,28 @@ def agents_router(settings: Settings) -> APIRouter:
             return coding_sessions.sessions(orca=None if orca_on else [])
         return {"sessions": await run_in_threadpool(read)}
 
+    @router.post("/agents/coding/{session_id}/orca")
+    async def open_orca(session_id: str):
+        """«Abrir en Orca»: that session's workspace and terminal on screen in Orca. Only a listed session, by its id."""
+        from fastapi.responses import JSONResponse
+
+        from . import orca_launch
+
+        if not re.fullmatch(r"[a-f0-9]{12}", session_id):
+            return JSONResponse({"error": "Esa sesión no existe."}, status_code=404)
+
+        def run():
+            connection = connect(settings.data_dir / DB_NAME)
+            try:
+                if not modules.state(connection)["orca"]:
+                    raise orca_launch.OrcaError("El módulo Orca está apagado en Ajustes.")
+            finally:
+                connection.close()
+            coding_sessions.open_in_orca(session_id)
+        try:
+            await run_in_threadpool(run)
+        except orca_launch.OrcaError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
+        return {"ok": True}
+
     return router

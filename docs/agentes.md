@@ -27,6 +27,12 @@ cada agente (el Asistente para Watson, la Oficina 3D para conversar con un perfi
 - De Hermes, lo mismo que la Oficina 3D: `/api/hermes/activity`, `/api/hermes/catalog` y `/api/hermes/work`
   (docs/actividad-hermes.md). En modo discreto, los títulos de los encargos y los tokens se ocultan.
 
+## Abrir en Orca (alpha.44)
+Cada sesión que trabaja dentro de un espacio de trabajo con terminal abierta en Orca tiene «Abrir en Orca», en «Agentes» y en
+el panel del taller de la ciudad (`POST /agents/coding/<id>/orca`). La pantalla solo manda el identificador de la sesión; el
+núcleo busca su carpeta, el espacio de Orca que la contiene y su terminal con salida más reciente, y ejecuta
+`orca worktree activate` y `orca terminal switch` (sin shell). Con el módulo Orca apagado no aparece.
+
 ## Taller de código en la ciudad (alpha.43)
 La Oficina 3D tiene un «Taller de código» con los agentes de código que no están en pausa (`src/world/coding-crew.tsx`,
 sondeo propio cada 15 s en `src/agents/coding-feed.ts`): hasta cuatro mesas, una por sesión, con la figura tecleando y la

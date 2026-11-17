@@ -60,3 +60,9 @@ p.agent-facts { display:block }
 .coding-sessions.compact .coding-name strong { white-space:normal; overflow-wrap:anywhere }
 .coding-sessions.compact .coding-numbers { text-align:left; grid-column:2 }
 .coding-sessions.compact .coding-when { grid-column:2 }
+.coding-row { grid-template-columns:auto minmax(0,1fr) auto auto auto }
+.coding-open { display:flex; flex-direction:column; align-items:flex-end; gap:2px }
+.coding-open small { font-size:11px; color:var(--c-6f8379); max-width:220px; text-align:right }
+.coding-sessions.compact .coding-open { grid-column:2; align-items:flex-start }
+.coding-sessions.compact .coding-open small { text-align:left }
+@media (max-width:640px) { .coding-row { grid-template-columns:auto minmax(0,1fr) } .coding-open { grid-column:2; align-items:flex-start } }

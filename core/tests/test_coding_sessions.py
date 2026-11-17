@@ -143,3 +143,30 @@ def test_dice_desde_donde_se_lanzo(tmp_path, monkeypatch):
     assert sum(s["host"] == "orca" for s in in_orca) == 3, "Claude Code en una carpeta con terminal de Orca es de Orca"
     assert not c._in("/Users/x/Proyectos2", ["/Users/x/Proyectos"])
     assert c.host("claude", "claude-vscode") == "vscode" and c.host("claude", None) is None
+
+
+def test_abrir_en_orca_por_el_id_de_la_sesion(tmp_path, monkeypatch):
+    import subprocess
+
+    from agora_core import orca_launch
+
+    monkeypatch.setattr(c, "_cache", {})
+    monkeypatch.setattr(c, "_orca", {"at": 0.0, "terminals": []})
+    monkeypatch.setattr(orca_launch, "binary", lambda: "/Applications/Orca.app/Contents/Resources/bin/orca")
+    calls = []
+
+    def orca(args, **kwargs):
+        calls.append(args[1:])
+        result = {"terminals": [{"worktreePath": "/Users/x/Proyectos", "handle": "term_viejo", "lastOutputAt": 1, "connected": True},
+                                {"worktreePath": "/Users/x/Proyectos", "handle": "term_nuevo", "lastOutputAt": 9, "connected": True},
+                                {"worktreePath": "/Users/x/Otro", "handle": "term_otro", "lastOutputAt": 99, "connected": True}]} if args[1:3] == ["terminal", "list"] else {}
+        return subprocess.CompletedProcess(args, 0, json.dumps({"ok": True, "result": result}), "")
+    write(tmp_path / ".claude" / "projects" / "p" / "a.jsonl", [claude_answer(5, "m1", "end_turn")])
+    session = c.sessions(NOW, tmp_path, orca=["/Users/x/Proyectos"])[0]
+    assert session["inOrca"] and "/Users" not in json.dumps(session)
+    c.open_in_orca(session["id"], orca)
+    assert ["worktree", "activate", "--worktree=path:/Users/x/Proyectos", "--json"] in calls
+    assert ["terminal", "switch", "--terminal=term_nuevo", "--json"] in calls, "la terminal con salida más reciente"
+    import pytest
+    with pytest.raises(orca_launch.OrcaError):
+        c.open_in_orca("000000000000", orca)
