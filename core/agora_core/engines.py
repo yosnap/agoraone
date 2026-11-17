@@ -232,7 +232,7 @@ class CompatibleEngine:
 
 
 PRIVATE_TOOLS = {"consultar_bandeja", "consultar_clientes", "consultar_agenda", "resumen_del_dia", "consultar_trabajos", "proponer_regla", "proponer_evento", "proponer_presupuesto", "proponer_limpieza",
-                 "consultar_reuniones", "leer_reunion", "proponer_issue"}  # mail, clients, calendar and meetings: Claude only
+                 "consultar_reuniones", "leer_reunion", "proponer_issue", "proponer_encargo_orca"}  # mail, clients, calendar, meetings and Orca: Claude only
 
 
 HIDDEN_TOOLS: set[str] = set()  # tools of the modules turned off in Settings (modules.apply keeps it)

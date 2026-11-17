@@ -16,6 +16,7 @@ Claude Code o Codex con un encargo. Plan: `plans/261117-0940-modulo-orca`.
    repositorio, agente y origen, nunca el encargo; sale en «Agentes».
 
 ## Garantías
+- **Claves:** del encargo y de las notas se quitan las líneas con pinta de contraseña o clave.
 - **Texto ajeno:** el correo va tras el encargo, dentro de un bloque `<<<DATOS-…` con una marca aleatoria que el
   propio texto no puede cerrar, y con el aviso de tratarlo solo como datos.
 - **Privacidad:** un correo «solo en este Mac» o privado se rechaza: los dos agentes usan modelos remotos.
@@ -28,7 +29,7 @@ Claude Code o Codex con un encargo. Plan: `plans/261117-0940-modulo-orca`.
 |---|---|
 | `GET /orca` | si está instalado, si el módulo está encendido y los agentes |
 | `GET /orca/projects` | proyectos de Central cuyo repositorio ya está en Orca (vacío sin Orca o con el módulo apagado) |
-| `POST /orca/preview` | `{client, project, task, agent, source?: {kind: mail, id} \| {kind: issue, url}}` |
+| `POST /orca/preview` | `{client, project, task, agent, source?: {kind: mail, id} \| {kind: note, source, ref, revision} \| {kind: issue, url}}` |
 | `POST /orca/launch` | `{id}` de la vista previa |
 
 ## En la interfaz
@@ -41,4 +42,11 @@ Claude Code o Codex con un encargo. Plan: `plans/261117-0940-modulo-orca`.
   es normal y sigue en la bandeja de entrada; el encargo por defecto no copia palabras del correo, que va debajo
   como datos.
 
-Pendiente: notas del vault, issue de Watson y propuesta de Watson (alpha.35).
+- **Libro del vault:** «Llevar a Orca…» en las notas que no están marcadas privadas ni «solo en este Mac». La nota
+  se lee del índice de AgoraOne (solo si es normal, también por su carpeta), sin las líneas con pinta de clave, y
+  va debajo del encargo como datos; se vuelve a comprobar al lanzar. Solo vale si el índice tiene la misma versión
+  que la nota abierta (fecha y tamaño): una nota recién cambiada espera a la siguiente lectura del índice (5 min).
+- **Issue de Watson:** una vez creada, «Resolver en Orca…» lanza con `--issue <n>` y el agente la lee con `gh`.
+- **Watson:** la herramienta `proponer_encargo_orca` (solo con Claude, módulo Orca) comprueba que el proyecto está
+  en Orca y abre la tarjeta rellenada en el chat; no lanza nada. El registro guarda repositorio y agente, nunca el
+  encargo.

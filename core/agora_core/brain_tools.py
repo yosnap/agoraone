@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager
 
 from fastapi.concurrency import run_in_threadpool
 
-from . import meeting_tools
+from . import meeting_tools, orca_launch
 from .embed import Embedder, VectorCache
 from .search import search
 
@@ -203,6 +203,7 @@ SPECS.append({
             "motivo": {"type": "string", "description": "Por qué, en pocas palabras."}}}}}},
 })
 SPECS.extend(meeting_tools.SPECS)
+SPECS.append(orca_launch.SPEC)
 NOTE_TEXT = 20000
 SECRET_LINE = re.compile(r"(?i)(contrase(n|ñ)a|password|passwd|api[_ -]?key|token|secret|clave)\s*[:=]\s*\S{6,}")
 _ACTION_OF_ACCION = {"factura": "invoice", "cliente": "client", "personal": "personal", "importante": "important", "ignorar": "ignore"}
@@ -318,6 +319,8 @@ class Toolbox:
                 return await self._projects(str(args.get("periodo") or "7d"), str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
                 return await self._inbox(str(args.get("tipo") or "todos"), str(args.get("de") or ""), str(args.get("texto") or ""))
+            if name == orca_launch.SPEC["name"]:
+                return await self._propose_orca(args)
             if name in meeting_tools.NAMES:
                 return await self._meetings(name, args)
         except (TypeError, ValueError):
@@ -411,6 +414,20 @@ class Toolbox:
         self._record({"tool": "issue_proposal", "id": proposal_id, "issue": issue})
         return json.dumps({"propuesta": {"repositorio": issue["repo"], "titulo": issue["title"]},
                            "estado": "En la pantalla del usuario, esperando «Crear la issue». No está creada."}, ensure_ascii=False)
+
+    async def _propose_orca(self, args: dict) -> str:
+        """Opens the Orca card on the user's screen, filled in; launching still needs its preview and «Lanzar en Orca»."""
+        def check():
+            with self.database() as connection:
+                return orca_launch.propose(connection, args)
+        try:
+            proposal = await run_in_threadpool(check)
+        except orca_launch.OrcaError as error:
+            return json.dumps({"error": str(error)}, ensure_ascii=False)
+        self._record({"tool": "orca_proposal", "proposal": proposal})
+        return json.dumps({"propuesta": {"repositorio": proposal["repo"], "agente": orca_launch.AGENTS[proposal["agent"]]},
+                           "estado": "Tarjeta abierta en la pantalla del usuario: tiene que ver la vista previa y pulsar «Lanzar en Orca». No se ha lanzado nada."},
+                          ensure_ascii=False)
 
     async def _inbox(self, tipo: str, sender: str = "", text: str = "") -> str:
         from . import mail_inbox

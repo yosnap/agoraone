@@ -91,6 +91,8 @@ def _logged(event: dict) -> tuple[str, str]:
         return "proponer_nota", json.dumps({"carpeta": event["note"].get("folder") or ""}, ensure_ascii=False)
     if event["tool"] == "rule_proposal":  # what kind of rule, not its sender or words
         return "proponer_regla", json.dumps({"action": event["rule"].get("action")}, ensure_ascii=False)
+    if event["tool"] == "orca_proposal":  # which repository and agent, not the task
+        return "proponer_encargo_orca", json.dumps({"repositorio": event["proposal"].get("repo"), "agente": event["proposal"].get("agent")}, ensure_ascii=False)
     if event["tool"] == "issue_proposal":  # which repository, not what it says
         return "proponer_issue", json.dumps({"repositorio": event["issue"].get("repo")}, ensure_ascii=False)
     if event["tool"] == "meetings":  # how many, not the words searched

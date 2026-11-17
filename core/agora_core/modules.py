@@ -16,7 +16,7 @@ MODULES = {
 }
 # Watson's tools that belong to a module.
 TOOLS = {"correo": {"consultar_bandeja", "proponer_regla", "proponer_limpieza"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos", "consultar_clientes", "proponer_presupuesto"},
-         "reuniones": {"consultar_reuniones", "leer_reunion", "proponer_issue"}}
+         "reuniones": {"consultar_reuniones", "leer_reunion", "proponer_issue"}, "orca": {"proponer_encargo_orca"}}
 CHECK_EVERY = 20.0
 
 

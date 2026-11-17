@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { createIssueFromProposal, dismissProposal, type ProposedIssue } from '../api/core';
+import { OrcaLaunch } from '../orca/orca-launch';
+import { useOrcaProjects } from '../orca/orca-projects';
 
-type IssueProposal = { id: string; issue: ProposedIssue; state: 'open' | 'busy' | 'made' | 'dismissed'; result?: string; url?: string };
+type IssueProposal = { id: string; issue: ProposedIssue; state: 'open' | 'busy' | 'made' | 'dismissed'; result?: string; url?: string; orca?: boolean };
 
 /** GitHub issues Watson prepared from a meeting: shown whole (repository, title and body) and created with the
  * user's own GitHub CLI only with «Crear la issue». */
@@ -16,13 +18,18 @@ export function useIssueProposals() {
     } catch (failure) { settle(proposal.id, { state: 'dismissed', result: failure instanceof Error ? failure.message : 'GitHub no la creó.' }); }
   };
   const dismiss = (proposal: IssueProposal) => { settle(proposal.id, { state: 'dismissed', result: 'Issue descartada: no se ha creado nada.' }); void dismissProposal(proposal.id).catch(() => undefined); };
-  return { list, create, dismiss, add: (id: string, issue: ProposedIssue) => setList(all => all.some(p => p.id === id) ? all : [...all, { id, issue, state: 'open' }]), clear: () => setList([]) };
+  const toOrca = (proposal: IssueProposal, open: boolean) => settle(proposal.id, { orca: open });
+  return { list, create, dismiss, toOrca, add: (id: string, issue: ProposedIssue) => setList(all => all.some(p => p.id === id) ? all : [...all, { id, issue, state: 'open' }]), clear: () => setList([]) };
 }
 
 export function IssueProposals({ state }: { state: ReturnType<typeof useIssueProposals> }) {
+  const orcaProjects = useOrcaProjects();
   if (!state.list.length) return null;
   return <>{state.list.map(proposal => {
     const { issue } = proposal;
+    // Once created, the issue can be solved in Orca when its repository is that project's one in Orca.
+    const same = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
+    const ready = orcaProjects.filter(p => same(p.project, issue.project) && (!issue.client || same(p.client, issue.client)) && same(p.repo, issue.repo));
     return <article key={proposal.id} className="card note-proposal" aria-label="Issue propuesta">
       <strong>Issue propuesta: {issue.title}</strong>
       <small>En {issue.repo} · {issue.client ? `${issue.client} › ` : ''}{issue.project}{issue.meeting ? ` · de la reunión «${issue.meeting}»` : ''}</small>
@@ -35,6 +42,10 @@ export function IssueProposals({ state }: { state: ReturnType<typeof useIssuePro
         <button type="button" className="button" disabled={proposal.state === 'busy'} onClick={() => state.dismiss(proposal)}>Descartar</button>
       </div> : null}
       {proposal.result && <small className={proposal.state === 'made' ? 'ok-note' : 'muted'} role="status">{proposal.result}{proposal.url && <> <a href={proposal.url} target="_blank" rel="noopener noreferrer">Abrir en GitHub</a></>}</small>}
+      {proposal.state === 'made' && proposal.url && ready.length === 1 && (proposal.orca
+        ? <OrcaLaunch choices={ready} source={{ kind: 'issue', url: proposal.url }}
+          task="Resuelve la issue enlazada. Antes de cambiar nada, explica tu plan." onClose={() => state.toOrca(proposal, false)}/>
+        : <div className="inbox-actions"><button type="button" className="button" onClick={() => state.toOrca(proposal, true)}>Resolver en Orca…</button></div>)}
     </article>;
   })}</>;
 }
