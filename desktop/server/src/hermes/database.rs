@@ -2,8 +2,6 @@
 //! code is involved: its own constructors run migrations even for listing.
 
 use std::collections::HashSet;
-use std::fs;
-use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::time::Duration;
 
@@ -12,6 +10,7 @@ use rusqlite::{Connection, OpenFlags, Params};
 use serde_json::{Map, Value};
 
 use super::safe_read::within;
+use crate::platform::{inspect_path_nofollow, is_same_real_path};
 
 pub struct HermesDb<'a> {
     pub conn: &'a Connection,
@@ -54,11 +53,11 @@ impl HermesDb<'_> {
 /// Runs `read` on a Hermes database; None if the file does not exist, an error if it is a link, a hard link,
 /// outside the root or not readable.
 pub fn with_hermes_database<T>(root: &Path, file: &Path, read: impl FnOnce(&HermesDb) -> rusqlite::Result<T>) -> anyhow::Result<Option<T>> {
-    if !file.exists() {
+    if !file.exists() && std::fs::symlink_metadata(file).is_err() {
         return Ok(None);
     }
-    let meta = fs::metadata(file)?;
-    if !within(root, file) || fs::canonicalize(file)? != file || !meta.is_file() || meta.nlink() != 1 {
+    let meta = inspect_path_nofollow(file)?;
+    if !within(root, file) || !is_same_real_path(file)? || !meta.is_file || meta.nlink != 1 {
         anyhow::bail!("Unavailable");
     }
     let conn = Connection::open_with_flags(file, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)?;

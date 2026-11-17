@@ -15,7 +15,10 @@ pub struct HermesLocation {
 
 pub fn hermes_location(env: impl Fn(&str) -> Option<String>, home: &Path) -> HermesLocation {
     let var = |name: &str| env(name).filter(|value| !value.is_empty());
-    let expand = |value: &str| normalize(&value.strip_prefix("~/").map(|rest| home.join(rest)).unwrap_or_else(|| PathBuf::from(value)));
+    let expand = |value: &str| {
+        let trimmed = value.strip_prefix("~/").or_else(|| value.strip_prefix(r"~\"));
+        normalize(&trimmed.map(|rest| home.join(rest)).unwrap_or_else(|| PathBuf::from(value)))
+    };
     let agora_home = var("AGORA_HERMES_HOME");
     let hermes_home = var("HERMES_HOME");
     let mut root = expand(agora_home.as_deref().or(hermes_home.as_deref()).unwrap_or(&home.join(".hermes").to_string_lossy()));
@@ -25,7 +28,13 @@ pub fn hermes_location(env: impl Fn(&str) -> Option<String>, home: &Path) -> Her
     let candidates: Vec<PathBuf> =
         [var("AGORA_HERMES_PATH").map(|p| expand(&p)), Some(root.join("hermes-agent")), Some(home.join(".hermes/hermes-agent"))].into_iter().flatten().collect();
     let installation = candidates.iter().find(|path| path.join("run_agent.py").exists()).unwrap_or(&candidates[0]).clone();
-    let python = var("AGORA_HERMES_PYTHON").map(PathBuf::from).or_else(|| store_python(&root, &installation)).unwrap_or_else(|| installation.join("venv/bin/python"));
+    let python = var("AGORA_HERMES_PYTHON")
+        .map(PathBuf::from)
+        .or_else(|| store_python(&root, &installation))
+        .unwrap_or_else(|| {
+            let win_venv = installation.join("venv/Scripts/python.exe");
+            if cfg!(windows) && win_venv.exists() { win_venv } else { installation.join("venv/bin/python") }
+        });
     let source = if agora_home.is_some() {
         "AGORA_HERMES_HOME"
     } else if hermes_home.is_some() {
@@ -48,17 +57,25 @@ fn store_python(root: &Path, installation: &Path) -> Option<PathBuf> {
     let tools = owner.unwrap_or(root).join("tools");
     let facts: serde_json::Value = serde_json::from_slice(&std::fs::read(tools.join("facts.json")).ok()?).ok()?;
     let entry = facts.get("packages")?.get("python")?.get("entry")?.as_str()?;
-    if entry.is_empty() || entry.contains('/') || entry.starts_with('.') {
+    if entry.is_empty() || entry.contains('/') || entry.contains('\\') || entry.starts_with('.') {
         return None;
     }
-    let python = tools.join(entry).join("bin/python3");
-    // A link must not lead out of Hermes' tools.
-    let real = std::fs::canonicalize(&python).ok()?;
-    (real.is_file() && real.starts_with(std::fs::canonicalize(&tools).ok()?)).then_some(python)
+    let tools_real = crate::platform::canonicalize(&tools).ok()?;
+    for rel in ["bin/python3", "python.exe", "Scripts/python.exe"] {
+        let python = tools.join(entry).join(rel);
+        // A link must not lead out of Hermes' tools.
+        if let Ok(real) = crate::platform::canonicalize(&python)
+            && real.is_file()
+            && real.starts_with(&tools_real)
+        {
+            return Some(python);
+        }
+    }
+    None
 }
 
 /// The location from this process' environment and the user's home.
 pub fn from_env() -> HermesLocation {
-    let home = std::env::var("HOME").map(PathBuf::from).unwrap_or_default();
+    let home = crate::platform::home_dir().unwrap_or_default();
     hermes_location(|name| std::env::var(name).ok(), &home)
 }

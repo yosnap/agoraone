@@ -2,9 +2,8 @@
 //! edits the masked text; hidden credential-like lines are put back from disk, the edit is rejected if the
 //! file changed meanwhile, and the previous version is backed up before replacing it.
 
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::Path;
 use std::time::Duration;
 
@@ -119,7 +118,7 @@ fn backup_one(discovery: &HermesDiscovery, backups: &Path, id: &str, name: &str)
     }
     let content = read_hermes_file(&target.root, &target.path, MAX_BYTES as u64)?;
     let folder = backups.join(id);
-    fs::DirBuilder::new().recursive(true).mode(0o700).create(&folder)?;
+    crate::platform::create_dir_mode(&folder, true, 0o700)?;
     let mut copies: Vec<String> = fs::read_dir(&folder)?
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -133,7 +132,7 @@ fn backup_one(discovery: &HermesDiscovery, backups: &Path, id: &str, name: &str)
     }
     let stamp = now_iso().replace(['-', ':'], "");
     let file = format!("{name}.{stamp}-turno.bak");
-    OpenOptions::new().write(true).create_new(true).mode(0o600).open(folder.join(&file))?.write_all(&content)?;
+    crate::platform::create_mode_file(&folder.join(&file), true, false, 0o600)?.write_all(&content)?;
     copies.push(file);
     copies.sort();
     let excess = copies.len().saturating_sub(20);
