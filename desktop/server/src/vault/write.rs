@@ -24,6 +24,13 @@ static INVISIBLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[\p{Cf}\u{2028
 const LINKED_FOLDER: &str = "La carpeta de la nota es un enlace y no se escribe en ella.";
 const LINKED: &str = "La carpeta es un enlace y no se escribe en ella.";
 
+/// What a mail's file may be in the vault: documents, images, audio and video (never a note or a program).
+/// The same list as core/agora_core/note_sources.py FILE_TYPES (a test keeps them equal).
+const FILE_TYPES: &[&str] = &[
+    "pdf", "png", "jpg", "jpeg", "gif", "webp", "heic", "tif", "tiff", "txt", "csv", "rtf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp",
+    "pages", "numbers", "key", "zip", "rar", "7z", "mp3", "m4a", "wav", "mp4", "mov", "eml", "msg", "ics", "xml", "xsig",
+];
+
 fn conflict() -> Failure {
     Failure::new(409, "La nota cambió (en Obsidian o en otro sitio) mientras la editabas. Vuelve a cargarla para ver la versión actual.")
 }
@@ -229,6 +236,38 @@ impl VaultNotes {
         handle.sync_all().map_err(internal)?;
         self.forget(vault_id);
         Ok(created(&index, vault_id, &file, folder, name))
+    }
+
+    /// A file a mail brought (an attachment or a shared document the user ticked), saved next to the note made
+    /// from it (user's decision, 17/11/2026): only in a folder that exists, only document, image, audio and video
+    /// types, never over a file that exists, never through a link. Not a note: it is never read as one.
+    pub fn create_file(&self, vault_id: &str, folder: &str, name: &str, data: &[u8]) -> Result<Created, Failure> {
+        let _writing = self.writing.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let index = self.index(vault_id, true)?;
+        let (stem, extension) = name.rsplit_once('.').ok_or_else(|| refused("El archivo necesita una extensión."))?;
+        let extension = extension.to_lowercase();
+        if !FILE_TYPES.contains(&extension.as_str()) {
+            return Err(refused("Ese tipo de archivo no se guarda en el vault."));
+        }
+        let file_name = format!("{}.{extension}", note_name(stem)?);
+        let directory = folder_of(&index, folder)?;
+        let file = directory.join(&file_name);
+        let mut handle = OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW).mode(0o644).open(&file).map_err(|error| {
+            if error.kind() == ErrorKind::AlreadyExists {
+                Failure::new(409, "Ya existe un archivo con ese nombre en esta carpeta.")
+            } else {
+                refused("No se pudo crear el archivo en esa carpeta.")
+            }
+        })?;
+        if fs::canonicalize(&directory).map(|real| real != directory).unwrap_or(true) {
+            let _ = fs::remove_file(&file);
+            return Err(refused(LINKED));
+        }
+        if let Err(failure) = handle.write_all(data).and_then(|()| handle.sync_all()) {
+            let _ = fs::remove_file(&file);  // never a half file left behind
+            return Err(internal(failure));
+        }
+        Ok(created(&index, vault_id, &file, folder, file_name))
     }
 
     /// Moves a note to another folder of the vault and/or gives it a new title (user's decision, 13/11/2026).

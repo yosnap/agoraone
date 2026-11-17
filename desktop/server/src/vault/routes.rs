@@ -101,6 +101,19 @@ pub async fn create(State(state): State<Arc<AppState>>, Path(id): Path<String>, 
     write(move || state.vault.create(&id, &folder, &title, &content), StatusCode::CREATED).await
 }
 
+const FILE_LIMIT: usize = 25 * 1024 * 1024;
+
+/// A mail's attachment or shared document next to its note: the bytes as the body, the folder and name in the query.
+pub async fn create_file(State(state): State<Arc<AppState>>, Path(id): Path<String>, Query(query): Query<HashMap<String, String>>, body: Bytes) -> Response {
+    let (Some(folder), Some(name)) = (query.get("folder").cloned(), query.get("name").cloned()) else {
+        return error(StatusCode::BAD_REQUEST, "Datos del archivo no válidos.");
+    };
+    if body.is_empty() || body.len() > FILE_LIMIT || folder.len() > 1000 || name.len() > 255 {
+        return error(StatusCode::BAD_REQUEST, "El archivo está vacío o es demasiado grande (hasta 25 MB).");
+    }
+    write(move || state.vault.create_file(&id, &folder, &name, &body), StatusCode::CREATED).await
+}
+
 // Moving and renaming notes (user's decision, 13/11/2026): same guarantees, never overwriting another note.
 pub async fn move_note(State(state): State<Arc<AppState>>, Path((id, note)): Path<(String, String)>, body: Bytes) -> Response {
     let map = match object(&body, 16 * 1024) {

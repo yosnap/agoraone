@@ -229,6 +229,23 @@ fn conserva_archivo_finales_de_linea_bom_y_permisos() {
 }
 
 #[test]
+fn los_adjuntos_van_junto_a_la_nota_sin_pisar_ni_salir() {
+    let f = fixture();
+    let made = f.notes.create_file(&f.id, "Proyectos/Activos", "Plano.pdf", b"%PDF-1").unwrap();
+    assert_eq!(made.title, "Plano.pdf");
+    assert_eq!(fs::read(f.vault.join("Proyectos/Activos/Plano.pdf")).unwrap(), b"%PDF-1");
+    assert_eq!(status(f.notes.create_file(&f.id, "Proyectos/Activos", "Plano.pdf", b"otro")), 409);
+    assert_eq!(fs::read(f.vault.join("Proyectos/Activos/Plano.pdf")).unwrap(), b"%PDF-1");
+    for name in ["nota.md", "programa.app", "sin extension", ".oculto.pdf", "../fuera.pdf", "a/b.pdf"] {
+        assert_eq!(status(f.notes.create_file(&f.id, "Proyectos/Activos", name, b"x")), 400, "{name}");
+    }
+    for folder in ["Carpeta enlazada", "No existe", "../fuera"] {
+        assert_eq!(status(f.notes.create_file(&f.id, folder, "Plano.pdf", b"x")), 404, "{folder}");
+    }
+    assert!(!f.base.join("fuera/Plano.pdf").exists());
+}
+
+#[test]
 fn dos_guardados_a_la_vez_no_se_pisan() {
     let f = std::sync::Arc::new(fixture());
     let backups = f.base.join("copias");

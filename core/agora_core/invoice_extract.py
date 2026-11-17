@@ -76,7 +76,7 @@ def links(body: str | None) -> list[str]:
 def _public(host: str) -> bool:
     try:
         addresses = {info[4][0] for info in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)}
-    except OSError:
+    except (OSError, UnicodeError):  # a label over 63 characters raises UnicodeError
         return False
     return bool(addresses) and all(ipaddress.ip_address(a.split("%")[0]).is_global for a in addresses)
 

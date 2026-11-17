@@ -513,6 +513,19 @@ export type OrcaPreview = { id: string; client: string; project: string; repo: s
   source: { kind: string; label: string; number?: number; url?: string } | null; sourceText: string | null; prompt: string };
 export const getOrcaProjects = () => core<{ projects: OrcaProject[]; problem: string | null }>('/orca/projects');
 export const previewOrca = (request: { client: string; project: string; task: string; agent: OrcaAgent; source?: OrcaSource }) => core<OrcaPreview>('/orca/preview', request);
+export type MailSources = { attachments: { part: number; name: string; type: string; bytes: number; savable: boolean }[]; links: { url: string; service: string; downloadable: boolean }[] };
+export const getMailSources = (id: number) => core<MailSources>(`/mail/inbox/${id}/sources`);
+export type MailFile = { kind: 'attachment'; part: number } | { kind: 'link'; url: string };
+/** One attachment or ticked shared document of a mail, as bytes for the vault's own writer. */
+export async function fetchMailFile(id: number, source: MailFile): Promise<{ name: string; data: Blob }> {
+  const response = await fetch(`/api/core/mail/inbox/${id}/file`, { method: 'POST', body: JSON.stringify(source),
+    headers: { 'Content-Type': 'application/json', ...(csrfToken() ? { 'X-Agora-CSRF': csrfToken() } : {}) } });
+  if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? 'No se pudo traer el archivo.');
+  const disposition = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get('content-disposition') ?? '')?.[1];
+  return { name: disposition ? decodeURIComponent(disposition) : 'documento', data: await response.blob() };
+}
+export const saveRepoFile = (body: MailFile & { client: string; project: string; folder: string; name: string; prefix: string; inboxId: number }) =>
+  core<{ path: string }>('/orca/repo-file', body);
 export type RepoFolders = { repo: string; root: string; folders: string[]; suggested: string; visibility: 'public' | 'private' | 'internal' | null };
 export const getRepoFolders = (client: string, project: string) => core<RepoFolders>(`/orca/repo-folders?client=${encodeURIComponent(client)}&project=${encodeURIComponent(project)}`);
 export const createRepoNote = (note: { client: string; project: string; folder: string; title: string; content: string; inboxId: number }) =>

@@ -93,17 +93,30 @@ def mail_level(connection: sqlite3.Connection, message_id: int) -> str:
 
 
 def save(root: str, folder: str, title: str, content: str) -> str:
-    """Creates «<folder>/<title>.md» inside `root` (the folders that are missing too) and returns its relative path.
-    Walks with directory descriptors that never follow a link, so nothing swapped in meanwhile leads outside; refuses a
-    name that already exists, and leaves nothing behind (no empty file, no new empty folder) when it fails."""
+    """Creates «<folder>/<title>.md» inside `root` (the folders that are missing too) and returns its relative path."""
     if len(content) > MAX_CONTENT:
         raise RepoNoteError("La nota es demasiado larga.")
     try:
         data = (content if content.endswith("\n") else content + "\n").encode("utf-8")
     except UnicodeError as error:
         raise RepoNoteError("El texto de la nota tiene caracteres que no se pueden guardar.") from error
+    return _write(root, folder, file_name(title), data)
+
+
+def save_file(root: str, folder: str, name: str, data: bytes) -> str:
+    """A mail's attachment or shared document next to its note, under the name the screen showed."""
+    from .note_sources import safe_name, savable
+
+    if safe_name(name) != name or not savable(name):
+        raise RepoNoteError(f"«{name[:80]}» no vale como nombre de archivo, o es de un tipo que no se guarda junto a la nota.")
+    return _write(root, folder, name, data)
+
+
+def _write(root: str, folder: str, name: str, data: bytes) -> str:
+    """Creates `name` in `folder` inside `root` (the folders that are missing too) and returns its relative path.
+    Walks with directory descriptors that never follow a link, so nothing swapped in meanwhile leads outside; refuses a
+    name that already exists, and leaves nothing behind (no empty file, no new empty folder) when it fails."""
     parts = [_part(p) for p in folder.replace("\\", "/").split("/") if p.strip()]
-    name = file_name(title)
     nofollow = getattr(os, "O_NOFOLLOW", 0)
     opened = [os.open(os.path.realpath(root), os.O_RDONLY | os.O_DIRECTORY)]
     made: list[tuple[int, str]] = []  # (descriptor of the parent, name) of each folder created here
