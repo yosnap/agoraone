@@ -34,6 +34,7 @@ const BLOCKED = 'Ninguno de estos vídeos deja reproducirse fuera de YouTube: la
 // The hidden window has this long to say the video plays before AgoraOne gives up on it.
 let started = '';
 let watchdog = 0;
+const EMBED_WAIT = 8000;  // ms for the embed to start before the hidden window takes over
 // While it plays the window reports every second; silence for this long means it stopped without saying so.
 let alive = 0;
 const SILENT = 12000;
@@ -44,7 +45,14 @@ function go(index: number) {
   at = index;
   heard = false;
   set({ video, playing: false, position: 0, duration: 0, error: '', ad: false });
-  if (state.hidden) playHidden(video);
+  if (state.hidden) { playHidden(video); return; }
+  // The embed can fail without saying so (error 153, «configuración del reproductor»: its page shows the error and
+  // never sends onError). If the video has not told its length in a few seconds, it goes to the hidden window.
+  window.clearTimeout(watchdog);
+  const mine = ticket;
+  watchdog = window.setTimeout(() => {
+    if (mine === ticket && !state.hidden && state.video === video && !(state.duration > 0)) void refused();
+  }, EMBED_WAIT);
 }
 
 function playHidden(video: Video) {
