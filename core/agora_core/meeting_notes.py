@@ -203,7 +203,10 @@ def note(row: sqlite3.Row, addresses: bool = True) -> dict:
     people = people_of(row["people"])
     day = _parse(row["started_at"])
     minutes = max(1, round(((_parse(row["ended_at"]) - day).total_seconds() if row["ended_at"] else 0) / 60))
-    title = note_title(f"{day.astimezone().strftime('%Y-%m-%d')} {row['title']}")
+    # Who it was with and what it was about: «Acme · Revisión del panel» (the client only once if the title names it).
+    named = row["client"] and re.search(rf"(?<!\w){re.escape(row['client'].casefold())}(?!\w)", row["title"].casefold())
+    name = row["title"] if not row["client"] or named else f"{row['client']} · {row['title']}"
+    title = note_title(f"{day.astimezone().strftime('%Y-%m-%d')} {name}")
     out = ["---", f"tipo: {KINDS[row['kind']].lower()}", f"fecha: {day.astimezone().strftime('%Y-%m-%d %H:%M')}", f"duración: {minutes} min"]
     if row["client"]:
         out.append(f"cliente: {_quoted(row['client'])}")
@@ -211,7 +214,7 @@ def note(row: sqlite3.Row, addresses: bool = True) -> dict:
         out.append(f"proyecto: {_quoted(row['project'])}")
     if people:
         out += ["participantes:", *(f"  - {_quoted(_person(p) if addresses else p['name'])}" for p in people)]
-    out += [f"confidencialidad: {row['confidentiality']}", "fuente: AgoraOne", "---", "", f"# {row['title']}", ""]
+    out += [f"confidencialidad: {row['confidentiality']}", "fuente: AgoraOne", "---", "", f"# {name}", ""]
     if summary:
         out += ["## Resumen", "", summary["summary"] or "—", ""]
         if summary.get("topics"):

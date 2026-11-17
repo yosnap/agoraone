@@ -67,7 +67,8 @@ def test_clasificada_resumida_y_exportada(client, monkeypatch, tmp_path):  # noq
     detail = _done(client, started["id"])
     assert "Tipo: Formación" in heard["title"] and "Cliente: Acme" in heard["title"] and "Participantes: Ana, Luis Pérez, Mal" in heard["title"]
     content, title = detail["draft"]["content"], detail["draft"]["title"]
-    assert ":" not in title and title.endswith("Formación. el panel")
+    assert ":" not in title and title.endswith("Acme · Formación. el panel"), "el cliente y el título de la reunión"
+    assert "# Acme · Formación: el panel" in content
     assert "tipo: formación" in content and 'cliente: "Acme"' in content and '  - "Luis Pérez <luis@beta.com>"' in content
     assert "## Resumen extendido" in content and "### Panel" in content and "Cómo se crean usuarios." in content
     folder = tmp_path / "Descargas"
@@ -174,3 +175,15 @@ def test_contactos_para_con_quien(client, monkeypatch):  # noqa: F811
 def test_un_correo_pegado_no_se_queda_en_el_nombre():
     people = meetings.classify("meeting", None, ["Ana López <Ana@Acme.com>", "l@beta.com", {"name": "Rus", "email": "x@correo.xn--p1ai"}])[2]
     assert people == [{"name": "Ana López", "email": "ana@acme.com"}, {"name": "l", "email": "l@beta.com"}, {"name": "Rus", "email": "x@correo.xn--p1ai"}]
+
+
+def test_note_title_names_the_client_once_as_a_whole_word():
+    from agora_core import meeting_notes
+    base = {"transcript": "[]", "summary": None, "people": "[]", "started_at": "2026-11-17T10:00:00Z", "ended_at": "2026-11-17T10:30:00Z",
+            "kind": "meeting", "project": None, "confidentiality": "normal"}
+    inside = meeting_notes.note({**base, "client": "Ana", "title": "Planificación de mañana"})
+    assert inside["title"].endswith("Ana · Planificación de mañana"), "«Ana» dentro de «mañana» no cuenta"
+    named = meeting_notes.note({**base, "client": "Acme", "title": "Revisión con ACME"})
+    assert named["title"].endswith("Revisión con ACME") and "# Revisión con ACME" in named["content"]
+    alone = meeting_notes.note({**base, "client": None, "title": "Equipo semanal"})
+    assert alone["title"].endswith("Equipo semanal")
