@@ -4,14 +4,15 @@
 
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agora_server::access::proof;
+use agora_server::core::CoreLaunch;
 use agora_server::hermes::location::HermesLocation;
 use agora_server::library::extract::{Extractor, extract_upload, sandboxed};
 use agora_server::library::{PrivateLibrary, read_example};
+use agora_server::platform::{canonicalize, create_test_link as symlink, remove_test_link};
 use agora_server::{AppState, Config, router};
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
@@ -26,7 +27,7 @@ const OTHER: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 
 fn temp() -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
-    let base = fs::canonicalize(dir.path()).unwrap();
+    let base = canonicalize(dir.path()).unwrap();
     (dir, base)
 }
 
@@ -34,15 +35,17 @@ fn b64(bytes: &[u8]) -> String {
     STANDARD.encode(bytes)
 }
 
+#[cfg(unix)]
 fn mode(path: impl AsRef<Path>) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
     fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
 /// The core's own Python and folder, as in development.
 fn extractor() -> Option<Extractor> {
-    let folder = fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../core")).ok()?;
-    let python = folder.join(".venv/bin/python");
-    python.exists().then_some(Extractor { python, folder })
+    let folder = canonicalize(&Path::new(env!("CARGO_MANIFEST_DIR")).join("../../core")).ok()?;
+    let ext = Extractor::from_launch(&CoreLaunch::Uv { folder });
+    ext.python.exists().then_some(ext)
 }
 
 fn pdf_fixture(text: &str, pages: usize) -> Vec<u8> {
@@ -104,7 +107,7 @@ fn ejemplos_rechazan_enlaces_raiz_redirigida_tamano_y_binarios() {
     fs::write(&outside, "No autorizado").unwrap();
     symlink(&outside, &file).unwrap();
     assert!(read_example(&root, "welcome").is_err());
-    fs::remove_file(&file).unwrap();
+    remove_test_link(&file).unwrap();
     fs::hard_link(&outside, &file).unwrap();
     assert!(read_example(&root, "welcome").is_err());
     fs::remove_file(&file).unwrap();
@@ -133,6 +136,7 @@ fn copias_privadas_persisten_con_permisos_propietario_y_nombres_sin_rutas() {
     assert!(library.list(OTHER).is_empty());
     assert!(library.read(&document.id, OTHER).is_err());
     let file = root.join(OWNER).join(format!("{}.json", document.id));
+    #[cfg(unix)]
     assert_eq!((mode(&file), mode(root.join(OWNER))), (0o600, 0o700));
     for name in ["../notas.txt", "/tmp/notas.txt", "a\\b.md", ".env", "foto.exe", "x\0.txt"] {
         assert!(library.import(name, &base64, OWNER).is_err(), "{name}");
@@ -142,7 +146,7 @@ fn copias_privadas_persisten_con_permisos_propietario_y_nombres_sin_rutas() {
     assert!(library.read(&document.id, OWNER).is_err());
     fs::remove_file(&link).unwrap();
     fs::remove_file(&file).unwrap();
-    symlink("/etc/hosts", &file).unwrap();
+    symlink(Path::new("/etc/hosts"), &file).unwrap();
     assert!(library.read(&document.id, OWNER).is_err());
 }
 
@@ -173,6 +177,7 @@ fn renombrar_conserva_bytes_id_y_revision_y_borrar_rechaza_enlaces() {
     assert_eq!((&after["base64"], &after["name"]), (&before["base64"], &before["name"]));
     let persisted = PrivateLibrary::new(root.clone()).read(&imported.id, OWNER).unwrap();
     assert_eq!((persisted.title.as_str(), persisted.revision.as_str()), ("Notas renombradas", imported.revision.as_str()));
+    #[cfg(unix)]
     assert_eq!(mode(&file), 0o600);
     let link = root.join(OWNER).join("enlace-duro");
     fs::hard_link(&file, &link).unwrap();

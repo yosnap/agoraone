@@ -2,9 +2,8 @@
 //! back only by its owner and only with a valid binding (Luma in the library lobby, or a detected profile).
 //! Files written by the former Node server read the same.
 
-use std::fs::{self, DirBuilder, OpenOptions};
+use std::fs;
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -104,10 +103,10 @@ impl Conversations {
     }
 
     pub fn save(&self, data: &Conversation) -> std::io::Result<()> {
-        DirBuilder::new().recursive(true).mode(0o700).create(&self.directory)?;
+        crate::platform::create_dir_mode(&self.directory, true, 0o700)?;
         let file = self.directory.join(format!("{}.json", data.id));
         let temporary = self.directory.join(format!("{}.json.{}.tmp", data.id, uuid_v4()));
-        let mut handle = OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&temporary)?;
+        let mut handle = crate::platform::create_mode_file(&temporary, false, true, 0o600)?;
         handle.write_all(serde_json::to_string(data)?.as_bytes())?;
         drop(handle);
         fs::rename(temporary, file)

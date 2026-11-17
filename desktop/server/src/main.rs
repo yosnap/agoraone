@@ -12,20 +12,6 @@ fn web_port() -> u16 {
     std::env::var("AGORA_WEB_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(5173)
 }
 
-async fn shutdown() {
-    use tokio::signal::unix::{SignalKind, signal};
-    let (mut interrupt, mut terminate, mut hangup) = (
-        signal(SignalKind::interrupt()).expect("señal"),
-        signal(SignalKind::terminate()).expect("señal"),
-        signal(SignalKind::hangup()).expect("señal"),
-    );
-    tokio::select! {
-        _ = interrupt.recv() => {}
-        _ = terminate.recv() => {}
-        _ = hangup.recv() => {}
-    }
-}
-
 #[tokio::main]
 async fn main() {
     let root = std::env::var_os("AGORA_ROOT").map(PathBuf::from).unwrap_or_else(|| std::env::current_dir().expect("carpeta actual"));
@@ -35,7 +21,7 @@ async fn main() {
             Ok(token) => token,
             Err(_) => return eprintln!("AgoraOne: no se pudo leer el enlace de acceso."),
         };
-        let opened = std::process::Command::new("/usr/bin/open").arg(access_url(web_port(), &token)).status();
+        let opened = agora_server::platform::open_url(&access_url(web_port(), &token));
         return match opened {
             Ok(status) if status.success() => println!("AgoraOne abierto en el navegador con el enlace de acceso."),
             _ => eprintln!("AgoraOne: no se pudo abrir el navegador."),
@@ -63,7 +49,7 @@ async fn main() {
     println!("AgoraOne: http://127.0.0.1:{}", agora_server::PORT);
     // Printed only to the user's own terminal: the link that lets this browser in (once; then a cookie remembers it).
     println!("Abre AgoraOne con este enlace: {}", access_url(web_port(), &server.token));
-    if let Err(error) = server.serve(shutdown()).await {
+    if let Err(error) = server.serve(agora_server::platform::shutdown_signal()).await {
         eprintln!("AgoraOne: {error}.");
         std::process::exit(1);
     }

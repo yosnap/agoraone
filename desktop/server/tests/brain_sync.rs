@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use agora_server::brain_sync::{BrainSync, SyncReport};
 use agora_server::core::CoreLink;
+use agora_server::platform::{canonicalize, create_test_link as symlink};
 use agora_server::vault::VaultNotes;
 use axum::extract::{Request, State};
 use axum::http::StatusCode;
@@ -72,7 +72,7 @@ fn sync(registry: PathBuf, url: &str) -> Arc<BrainSync> {
 
 fn base() -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
-    let base = fs::canonicalize(dir.path()).unwrap();
+    let base = canonicalize(dir.path()).unwrap();
     (dir, base)
 }
 
@@ -92,7 +92,7 @@ async fn el_indice_recibe_texto_enmascarado_incremental_y_retira_lo_borrado() {
     fs::write(vault.join("Enorme.md"), "x".repeat(300 * 1024)).unwrap();
     fs::write(vault.join(".obsidian/config.md"), "oculto").unwrap();
     fs::write(base.join("fuera.md"), "fuera del vault").unwrap();
-    symlink(base.join("fuera.md"), vault.join("Enlace.md")).unwrap();
+    symlink(&base.join("fuera.md"), &vault.join("Enlace.md")).unwrap();
     fs::write(base.join("obsidian.json"), json!({ "vaults": { "a": { "path": vault } } }).to_string()).unwrap();
     let (fake, url) = fake_core().await;
     let sync = sync(base.join("obsidian.json"), &url);
@@ -143,7 +143,8 @@ async fn un_vault_que_falla_no_deja_sin_indexar_a_los_demas() {
         fs::create_dir(base.join(name)).unwrap();
         fs::write(base.join(name).join("Nota.md"), format!("nota de {name}")).unwrap();
     }
-    fs::write(base.join("dos/password: hunter2.md"), "título con pinta de clave").unwrap();
+    let secret_note = if cfg!(windows) { "dos/password = hunter2.md" } else { "dos/password: hunter2.md" };
+    fs::write(base.join(secret_note), "título con pinta de clave").unwrap();
     let vaults = json!({ "vaults": { "a": { "path": base.join("uno") }, "b": { "path": base.join("dos") } } });
     fs::write(base.join("obsidian.json"), vaults.to_string()).unwrap();
     let (fake, url) = fake_core().await;

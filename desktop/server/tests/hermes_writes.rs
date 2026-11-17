@@ -2,13 +2,13 @@
 //! Python writer on fictitious profiles.
 
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
 use agora_server::hermes::catalog::{HermesDiscovery, file_revision};
 use agora_server::hermes::location::HermesLocation;
 use agora_server::hermes::profile_editor::{ProfileEdit, backup_memories, save_profile_file};
 use agora_server::hermes::skills::{NewSkill, SkillEdit, create_profile_skill, list_profile_skills, read_profile_skill, save_profile_skill};
+use agora_server::platform::{canonicalize, create_test_link as symlink, remove_test_link};
 use agora_server::secret_lines::mask_secrets;
 use agora_server::security::Failure;
 use serde_json::Value;
@@ -24,7 +24,7 @@ struct Fixture {
 
 fn fixture(setup: impl FnOnce(&Path)) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let base = fs::canonicalize(dir.path()).unwrap();
+    let base = canonicalize(dir.path()).unwrap();
     let home = base.join("hermes/profiles/alpha");
     fs::create_dir_all(&home).unwrap();
     setup(&home);
@@ -133,15 +133,15 @@ async fn bom_linked_lock_or_folder_and_editing_with_lines_shown() {
     let memory = f.home.join("memories/MEMORY.md");
     let outside = f.base.join("fuera.lock");
     fs::write(&outside, "").unwrap();
-    symlink(&outside, f.home.join("memories/MEMORY.md.lock")).unwrap();
+    symlink(&outside, &f.home.join("memories/MEMORY.md.lock")).unwrap();
     assert!(save_profile_file(&f.discovery, &f.backups, &f.id, "MEMORY.md", entries(&["x"], revision_of(&memory))).await.is_err());
     assert_eq!(read(&memory), "Primer recuerdo\n§\nSegundo recuerdo");
-    fs::remove_file(f.home.join("memories/MEMORY.md.lock")).unwrap();
+    remove_test_link(&f.home.join("memories/MEMORY.md.lock")).unwrap();
     let elsewhere = f.base.join("otra-memoria");
     fs::create_dir(&elsewhere).unwrap();
     fs::write(elsewhere.join("MEMORY.md"), "Ajena").unwrap();
     fs::remove_dir_all(f.home.join("memories")).unwrap();
-    symlink(&elsewhere, f.home.join("memories")).unwrap();
+    symlink(&elsewhere, &f.home.join("memories")).unwrap();
     assert!(save_profile_file(&f.discovery, &f.backups, &f.id, "MEMORY.md", entries(&["x"], Some(file_revision("Ajena")))).await.is_err());
     assert_eq!(read(elsewhere.join("MEMORY.md")), "Ajena");
 }
@@ -193,7 +193,7 @@ fn skills(home: &Path) {
     let outside = home.join("../../../fuera");
     fs::create_dir_all(&outside).unwrap();
     fs::write(outside.join("SKILL.md"), "---\nname: fuera\ndescription: \"Enlazada.\"\n---\n").unwrap();
-    symlink(fs::canonicalize(&outside).unwrap(), home.join("skills/enlazada")).unwrap();
+    symlink(&canonicalize(&outside).unwrap(), &home.join("skills/enlazada")).unwrap();
 }
 
 fn skill_id(f: &Fixture, name: &str) -> String {
@@ -256,7 +256,7 @@ async fn skills_creation_writes_hermes_frontmatter_never_overwrites_and_rejects_
     let result = create_profile_skill(&f.discovery, &f.backups, &f.id, new_skill("nuevo", "tono-telegram", "Respuestas breves \"con comillas\".")).await.unwrap();
     let created = f.home.join("skills/nuevo/tono-telegram/SKILL.md");
     assert_eq!(read(&created), "---\nname: tono-telegram\ndescription: \"Respuestas breves \\\"con comillas\\\".\"\n---\n\nMantén el tono cercano.");
-    let root = fs::canonicalize(f.base.join("hermes")).unwrap();
+    let root = canonicalize(&f.base.join("hermes")).unwrap();
     assert_eq!(result["id"], Value::String(format!("skill-{}", file_revision(&format!("{}:skills/nuevo/tono-telegram/SKILL.md", root.display())))));
     assert_eq!(status(create_profile_skill(&f.discovery, &f.backups, &f.id, new_skill("nuevo", "tono-telegram", "")).await), 409);
     assert_eq!(status(create_profile_skill(&f.discovery, &f.backups, &f.id, new_skill("a/b", "x", "")).await), 400);
@@ -267,7 +267,7 @@ async fn skills_creation_writes_hermes_frontmatter_never_overwrites_and_rejects_
 async fn skills_in_linked_folders_are_neither_listed_nor_written() {
     let f = fixture(skills);
     assert!(!list_profile_skills(&f.discovery, &f.id).unwrap().skills.iter().any(|s| s.name == "fuera"), "la carpeta enlazada no se lista");
-    let root = fs::canonicalize(f.base.join("hermes")).unwrap();
+    let root = canonicalize(&f.base.join("hermes")).unwrap();
     let id = format!("skill-{}", file_revision(&format!("{}:skills/enlazada/SKILL.md", root.display())));
     let edit = SkillEdit { content: "x".into(), revision: "0".repeat(24), revealed: false };
     assert_eq!(status(save_profile_skill(&f.discovery, &f.backups, &f.id, &id, edit).await), 404);

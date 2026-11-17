@@ -176,8 +176,10 @@ def card(request, profile):
 
 def main(request):
     installation = Path(os.environ["AGORA_HERMES_PATH"]).resolve()
-    revision = subprocess.check_output(["/usr/bin/git", "-C", str(installation), "rev-parse", "HEAD"], text=True).strip()
-    if not (revision == EXPECTED_COMMIT and not subprocess.check_output(["/usr/bin/git", "-C", str(installation), "status", "--porcelain", "--untracked-files=no"], text=True).strip()):
+    import shutil
+    git = shutil.which("git") or "/usr/bin/git"
+    revision = subprocess.check_output([git, "-C", str(installation), "rev-parse", "HEAD"], text=True).strip()
+    if not (revision == EXPECTED_COMMIT and not subprocess.check_output([git, "-C", str(installation), "status", "--porcelain", "--untracked-files=no"], text=True).strip()):
         raise UserError("La versión de Hermes instalada no está verificada para AgoraOne.")
     sys.path.insert(0, str(installation))
     if (installation / "hermes_bootstrap.py").is_file():
