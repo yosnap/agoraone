@@ -68,7 +68,10 @@ como «Orden rápida, sin modelo»:
 
 - pausa, sigue, siguiente, anterior, sube o baja el volumen;
 - «pon …» (como mucho 10 palabras), también dicho con naturalidad: con «Watson» u «Oye Watson» delante, «¿me puedes poner…?» o «por favor» al final (1.7.0-alpha.23). Si el dictado oye mal la llamada («Wilson, pon música»), se ignora esa palabra antes de la coma, y «Música, por favor» vale como «pon música»; mientras Watson responde, estas órdenes también pasan (1.7.0-alpha.36). «Pon música» o «ponme algo», sin decir qué, reanuda lo que estaba sonando (tu biblioteca, YouTube, Música o Spotify) y, si no hay nada abierto, pone música tranquila en YouTube;
-- «abre …».
+- «abre …»;
+- grabar una reunión: «graba la reunión», «empieza a grabar», y pararla: «para la grabación», «deja de grabar»,
+  «hemos terminado» (`src/assistant/meeting-commands.ts`). Graba como el botón del raíl, con las últimas opciones
+  del formulario, y se ve en el raíl como siempre.
 
 No cuentan como órdenes rápidas, y van a Watson:
 
@@ -126,8 +129,9 @@ de macOS y Ajustes dice «Abriendo VoiceStudio».
 ## Llamar a Watson
 
 - ⌃⌥W desde cualquier app (lo registra la app de escritorio con el plugin de atajos globales de Tauri): AgoraOne
-  pasa delante, abre el Cerebro y el micrófono de Watson empieza a escuchar. Otra pulsación, o el botón, para
-  y envía. Si otra app ya usa ese atajo, AgoraOne arranca igual, sin él.
+  pasa delante, abre el Cerebro y el micrófono de Watson empieza a escuchar. Para solo cuando terminas de hablar
+  (1,3 s de silencio tras la voz; si no dices nada en 8 s, lo deja sin enviar: `src/ui/silence.ts`), y otra
+  pulsación, o el botón, también para y envía. Si otra app ya usa ese atajo, AgoraOne arranca igual, sin él.
 - «Oye Watson», que se enciende en Ajustes › Voz y está apagado por defecto:
   - Lo escucha `agora-wake` (`core/helpers/wake-macos.swift`), con el reconocimiento de voz de Apple en este
     Mac. Si el Mac no puede reconocer sin red, el auxiliar no arranca.

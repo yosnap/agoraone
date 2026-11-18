@@ -21,6 +21,8 @@ const listeners = new Set<() => void>();
 const set = (changes: Partial<RecorderState>) => { state = { ...state, ...changes }; listeners.forEach(listener => listener()); };
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export const useMeetingRecorder = () => useSyncExternalStore(subscribe, () => state);
+/** The recorder now, outside React (Watson's voice orders). */
+export const meetingRecorder = () => state;
 
 let media: MediaRecorder | null = null;
 let stream: MediaStream | null = null;
