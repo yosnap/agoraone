@@ -38,13 +38,16 @@ export type CentralNote = { id: string | null; body: string | null; pinned: bool
 export type CentralClientProject = { id: string | null; name: string | null; kind: string | null; status: string | null; phase: string | null;
   version: string | null; repo: string | null; lastActivity: string | null };
 export type CentralClientRecord = CentralFallback & { id: string | null; name: string | null; company: string | null; email: string | null; phone: string | null;
-  taxId: string | null; address: string | null; projects: CentralClientProject[]; websites: CentralWebsite[]; notes: CentralNote[] };
+  taxId: string | null; address: string | null; projects: CentralClientProject[]; websites: CentralWebsite[]; notes: CentralNote[];
+  /** The version Central gave this record to change it; null: it cannot be changed from here (old Central or a snapshot). */
+  revision: string | null };
 export type CentralProjectRow = { id: string | null; name: string | null; type: string | null; kind: string | null; status: string | null; phase: string | null;
   client: string | null; version: string | null; framework: string | null; lastActivity: string | null };
 export type CentralService = { id: string | null; name: string | null; environment: string | null; url: string | null; hosting: string | null;
   liveVersion: string | null; liveVersionAt: string | null };
 export type CentralProjectRecord = { id: string | null; name: string | null; kind: string | null; status: string | null; phase: string | null; description: string | null;
   client: { id: string | null; name: string | null } | null; version: string | null; framework: string | null; stack: string[]; repo: string | null;
+  statusLocked: boolean; revision: string | null;
   defaultBranch: string | null; lastCommitAt: string | null; lastActivity: string | null;
   deploy: { status: string | null; hosting: string | null; version: string | null; environments: string[] };
   services: CentralService[]; websites: CentralWebsite[]; notes: CentralNote[]; auditedAt: string | null };
@@ -95,7 +98,8 @@ export const levelLabels: Record<CentralLevel, string> = { green: 'Bien', amber:
 
 // Central's own web, in a window of the desktop app (/api/core/central/window*): only pages of a closed list of the
 // saved Central address. The user signs in there with Central's login; AgoraOne's key never goes to that window.
-export type CentralPage = '' | 'ajustes' | 'webs' | 'servidores' | 'correo' | `clientes/${string}` | `proyectos/${string}` | `presupuestos/${string}`;
+export type CentralPage = '' | 'ajustes' | 'webs' | 'servidores' | 'alertas' | 'correo' | `clientes/${string}` | `proyectos/${string}`
+  | `servidores/${string}` | `presupuestos/${string}`;
 /** Opens the page in Central's window; 409 `no_window` when AgoraOne runs in a browser tab (no desktop app). */
 export const openCentralWindow = (ruta: CentralPage) => core<{ seq: number }>('/central/window', { ruta });
 /** The same page in the system's browser. */

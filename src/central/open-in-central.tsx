@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import { ApiError } from '../api/client';
 import { centralExternalLink, openCentralInBrowser, openCentralLink, openCentralWindow, type CentralLink, type CentralPage } from '../api/central';
 import './central.css';
@@ -11,8 +11,10 @@ type Said = { ok: boolean; text: string; browser?: boolean };
 
 const message = (error: unknown, fallback: string) => error instanceof ApiError || error instanceof Error ? error.message : fallback;
 
-export function OpenInCentral({ page, label = 'Abrir en Central', discreet = false, browserToo = false }: {
+export function OpenInCentral({ page, label = 'Abrir en Central', discreet = false, browserToo = false, content, buttonClass = 'button' }: {
   page: CentralPage; label?: string; discreet?: boolean; browserToo?: boolean;
+  /** What the button shows instead of `label` (a level badge that leads to the record), with `label` as its name. */
+  content?: ReactNode; buttonClass?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<Said | null>(null);
@@ -34,7 +36,8 @@ export function OpenInCentral({ page, label = 'Abrir en Central', discreet = fal
   };
   return <div className="central-open">
     <div className="actions central-actions">
-      <button type="button" className="button" disabled={busy} onClick={() => void open(false)}>{busy ? 'Abriendo…' : label}</button>
+      <button type="button" className={buttonClass} disabled={busy} aria-label={content ? label : undefined} title={content ? label : undefined}
+        onClick={() => void open(false)}>{busy ? 'Abriendo…' : content ?? label}</button>
       {(browserToo || said?.browser) && <button type="button" className="button" disabled={busy} onClick={() => void open(true)}>Abrir en el navegador</button>}
     </div>
     {said && <p className={said.ok ? 'ok-note' : 'error'} role="status">{said.text}</p>}
