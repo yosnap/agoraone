@@ -311,3 +311,128 @@ def test_un_fallo_de_central_es_502_sin_clave_ni_direccion(client, fake, monkeyp
 
 def test_sin_cabecera_de_acceso_no_hay_presupuestos(client):
     assert client.get("/quotes").status_code in (401, 403)
+
+
+
+def test_dos_envios_a_la_vez_con_el_mismo_token_crean_un_solo_borrador(client, fake, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from agora_core import central
+
+    def slow(connection):  # a wait between the check of the token and Central: both sends are inside it at once
+        time.sleep(0.3)
+        return {"clients": [{"name": "Cliente Uno"}]}
+    monkeypatch.setattr(central, "snapshot", slow)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        answers = list(pool.map(lambda _: client.post("/quotes", json=draft(), headers=HEADERS), range(2)))
+    assert sorted(a.status_code for a in answers) == [201, 409] and len(fake.created) == 1
+
+
+def test_el_mismo_token_con_otro_contenido_es_otro_borrador(client, fake):
+    assert client.post("/quotes", json=draft(), headers=HEADERS).status_code == 201
+    changed = client.post("/quotes", json=draft(title="Web nueva y tienda"), headers=HEADERS)
+    assert changed.status_code == 201 and "repeated" not in changed.json() and len(fake.created) == 2
+    assert client.post("/quotes", json=draft(title="Web nueva y tienda"), headers=HEADERS).json()["repeated"] is True and len(fake.created) == 2
+
+
+def test_solo_van_los_campos_que_vinieron(client, fake):
+    sparse = {"client": "Cliente Uno", "title": "Mínimo", "items": [{"description": "Diseño", "unitPrice": 900}]}
+    assert client.post("/quotes", json={"token": "m" * 20, "quote": sparse}, headers=HEADERS).status_code == 201
+    assert fake.created[-1] == sparse, "sin quantity ni validDays añadidos: Central pone los suyos"
+
+
+def test_esquema_completo_de_central_y_longitudes_como_zod(client, fake):
+    full = draft(thirdPartyCosts="Dominio aparte", schedule=[{"when": "Semana 1", "what": "Diseño"}])
+    assert client.post("/quotes", json=full, headers=HEADERS).status_code == 201
+    assert fake.created[-1]["schedule"] == [{"when": "Semana 1", "what": "Diseño"}]
+    assert client.post("/quotes", json=draft(token="e" * 20, title="😀" * 101), headers=HEADERS).status_code == 422, "202 unidades UTF-16"
+    assert client.post("/quotes", json=draft(token="e" * 20, title="😀" * 100), headers=HEADERS).status_code == 201
+
+
+def test_un_cuerpo_demasiado_grande_no_se_lee(client, fake):
+    huge = json.dumps(draft(notes="x" * 300_000))
+    answer = client.post("/quotes", content=huge, headers={**HEADERS, "content-type": "application/json"})
+    assert answer.status_code == 422 and fake.created == []
+
+
+def test_si_falla_el_registro_el_borrador_creado_es_un_exito(client, fake, monkeypatch):
+    import sqlite3
+
+    from agora_core import routes_quotes
+
+    def broken(connection):
+        raise sqlite3.OperationalError("disco lleno")
+    monkeypatch.setattr(routes_quotes, "transaction", broken)
+    answer = client.post("/quotes", json=draft(), headers=HEADERS)
+    assert answer.status_code == 201 and answer.json()["created"]["number"] == "P-2026-007" and "registro" in answer.json()["warning"]
+
+
+def test_nan_o_infinito_de_central_nunca_da_500(setup, fake, monkeypatch):
+    client = setup[0]
+    from agora_core import central_views
+
+    assert central_views._number(float("nan")) is None and central_views._number(float("inf")) is None and central_views._number(2.5) == 2.5
+    texts = {"/api/v1/tarifas": '{"rates": [{"id": "r%s", "name": "x", "unit": "h", "price": NaN}]}' % ("1" * 24),
+             "/api/v1/presupuestos": '{"quotes": [{"id": "%s", "total": Infinity}]}' % Q1,
+             f"/api/v1/presupuestos/{Q1}": '{"id": "%s", "total": -Infinity}' % Q1,
+             "/api/v1/clientes": '{"clients": [{"id": "c%s", "name": "x", "projects": NaN}]}' % ("1" * 24)}
+
+    def odd(request):
+        return httpx.Response(200, content=texts[request.url.path].encode(), headers={"content-type": "application/json"})
+    monkeypatch.setattr(central_api, "TRANSPORT", httpx.MockTransport(odd))
+    for path in ("/quotes/rates", "/quotes", f"/quotes/{Q1}"):
+        assert client.get(path, headers=HEADERS).status_code == 502, path
+    client.put("/modules", json={"modules": {"central": True}}, headers=HEADERS)
+    assert client.get("/central/views/clientes", headers=HEADERS).status_code == 502
+
+
+def test_dos_confirmaciones_a_la_vez_de_watson_crean_un_solo_borrador(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from agora_core import modules
+    from test_central_api import FakeCentral as WatsonCentral, QuoteEngine, propose
+
+    found = WatsonCentral()
+    monkeypatch.setattr(central_api, "TRANSPORT", httpx.MockTransport(found))
+    settings, app = app_with(tmp_path, MemorySecrets(), QuoteEngine())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS)
+        proposal = propose(client)
+        state = modules.state
+
+        def slow(connection):
+            time.sleep(0.3)
+            return state(connection)
+        monkeypatch.setattr(modules, "state", slow)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            answers = list(pool.map(lambda _: client.post(f"/assistant/proposals/{proposal['id']}/quote", headers=HEADERS), range(2)))
+        assert sorted(a.status_code for a in answers) == [201, 404] and len(found.created) == 1
+
+
+def test_word_abierto_en_otro_programa_y_nombres_reservados(tmp_path, monkeypatch):
+    assert central_quotes.file_name("CON", Q1) == f"presupuesto-{Q1[:12]}" and central_quotes.file_name("com1", Q1) == f"presupuesto-{Q1[:12]}"
+    folder = tmp_path / "docs"
+    assert central_quotes._keep(folder, "P-2026-007", "docx", DOCX) == "P-2026-007.docx"
+    assert central_quotes._keep(folder, "P-2026-007", "docx", DOCX) == "P-2026-007.docx", "mismo contenido: se reutiliza"
+    real = os.replace
+
+    def locked(source, dest):
+        if str(dest).endswith("P-2026-007.docx"):
+            raise PermissionError("abierto en Word")
+        return real(source, dest)
+    monkeypatch.setattr(os, "replace", locked)
+    assert central_quotes._keep(folder, "P-2026-007", "docx", DOCX + b"nuevo") == "P-2026-007-2.docx"
+    assert not [p for p in folder.iterdir() if p.name.startswith(".descarga-")]
+
+
+def test_apertura_compartida_con_fiscal():
+    from pathlib import Path
+
+    from agora_core import system_open
+
+    path = Path("/datos/central-documentos/P-2026-007.pdf")
+    assert system_open.command_for(path, platform="darwin") == ["/usr/bin/open", "--", str(path)]
+    assert system_open.command_for(path, platform="win32") == ["explorer", str(path)]
+    assert system_open.command_for(path, platform="linux") == ["xdg-open", str(path)]
+    assert system_open.command_for(path, reveal=True, platform="linux") == ["xdg-open", str(path.parent)]
+    assert central_quotes.OPEN is system_open.open_path

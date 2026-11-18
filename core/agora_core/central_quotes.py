@@ -12,16 +12,16 @@ with the system's program; those files are removed at start when older than a da
 import os
 import re
 import subprocess
-import sys
 import tempfile
 import time
 from datetime import date
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from . import central_api
+from .system_open import open_path
 from .central_views import ID, ViewError, _SECRET_PATH, _number, _plain, _rows, _text
 
 QUOTE_STATUSES = ("DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED")
@@ -141,32 +141,55 @@ class DocumentError(RuntimeError):
     """The document came but could not be kept or opened on this computer."""
 
 
+# Names Windows keeps for its devices, with or without an extension: never a file of ours.
+_RESERVED = re.compile(r"(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])", re.I)
+SUFFIXES = 20  # copies tried when the file is open in another program (Windows does not let it be replaced)
+
+
 def file_name(number, item: str) -> str:
-    """The name of the saved file: only letters, digits and dashes of Central's number (P-2026-001), never a «/» nor
-    «..»; the start of the id when the number has nothing usable."""
+    """The name of the saved file: only letters, digits and dashes of Central's number (P-2026-001), never a «/»,
+    «..» nor a name Windows reserves; the start of the id when the number has nothing usable."""
     clean = re.sub(r"[^A-Za-z0-9-]", "", number if isinstance(number, str) else "")[:40].strip("-")
-    return clean or f"presupuesto-{item[:12]}"
+    if not clean or _RESERVED.fullmatch(clean):
+        return f"presupuesto-{item[:12]}"
+    return clean
 
 
 def documents_dir(data_dir: Path) -> Path:
     return data_dir / FOLDER
 
 
-def _system_open(path: Path) -> None:
-    """Opens a file with the program the system has for it (Preview, Word, Acrobat…), as an argument, never through
-    a shell (same commands as Fiscal)."""
-    if sys.platform == "darwin":
-        command = ["/usr/bin/open", "--", str(path)]
-    elif sys.platform == "win32":
-        command = ["explorer", str(path)]
-    else:
-        command = ["xdg-open", str(path)]
-    done = subprocess.run(command, timeout=10, capture_output=True)
-    if sys.platform != "win32" and done.returncode not in (0, None):  # explorer returns 1 even when it works
-        raise subprocess.CalledProcessError(done.returncode, command)
+OPEN = open_path  # tests replace it
 
 
-OPEN = _system_open  # tests replace it
+def _same(path: Path, content: bytes) -> bool:
+    try:
+        return path.is_file() and path.stat().st_size == len(content) and path.read_bytes() == content
+    except OSError:
+        return False
+
+
+def _keep(folder: Path, stem: str, kind: str, content: bytes) -> str:
+    """Writes the document under its name, or reuses it when it is already there with the same bytes. When the name
+    is taken by a copy open in another program (Word on Windows), the next free «-2», «-3»… is used."""
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    for n in range(1, SUFFIXES + 1):
+        name = f"{stem}.{kind}" if n == 1 else f"{stem}-{n}.{kind}"
+        if _same(folder / name, content):
+            return name
+        handle, temporary = tempfile.mkstemp(dir=folder, prefix=".descarga-")
+        try:
+            with os.fdopen(handle, "wb") as out:
+                out.write(content)
+            os.replace(temporary, folder / name)
+            return name
+        except PermissionError:
+            Path(temporary).unlink(missing_ok=True)
+            continue
+        except BaseException:
+            Path(temporary).unlink(missing_ok=True)
+            raise
+    raise DocumentError("El documento está abierto en otro programa: ciérralo y vuelve a intentarlo.")
 
 
 def open_document(target: central_api.Connection, item: str, kind: str, data_dir: Path) -> str:
@@ -176,18 +199,9 @@ def open_document(target: central_api.Connection, item: str, kind: str, data_dir
         content = central_api.download(target, f"/api/v1/presupuestos/{item}/{kind}", DOCUMENTS[kind], MAX_DOCUMENT, client, deadline)
     if not content.startswith(SIGNATURES[kind]):
         raise central_api.CentralApiError("error", "Central devolvió un documento que no es un " + ("PDF." if kind == "pdf" else "Word."))
-    name = f"{file_name(record.get('number'), item)}.{kind}"
     folder = documents_dir(data_dir)
     try:
-        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
-        handle, temporary = tempfile.mkstemp(dir=folder, prefix=".descarga-")
-        try:
-            with os.fdopen(handle, "wb") as out:
-                out.write(content)
-            os.replace(temporary, folder / name)
-        except BaseException:
-            Path(temporary).unlink(missing_ok=True)
-            raise
+        name = _keep(folder, file_name(record.get("number"), item), kind, content)
     except OSError as error:
         raise DocumentError("No se pudo guardar el documento en este equipo.") from error
     try:
@@ -214,7 +228,19 @@ def clean_documents(data_dir: Path, now: float | None = None) -> None:
 # ---- A new draft, checked against Central's own schema ---------------------------------------------------------
 
 Amount = Annotated[float, Field(ge=0, le=MAX_AMOUNT, allow_inf_nan=False)]
-Text = Annotated[str, StringConstraints(max_length=1000)]
+
+
+def _units(value: str) -> int:
+    """Length as zod measures it (JavaScript's UTF-16 units): an emoji counts two."""
+    return len(value.encode("utf-16-le")) // 2
+
+
+def Chars(most: int, least: int = 0):  # noqa: N802 - a type, used as `Chars(200)`
+    def check(value: str) -> str:
+        if not least <= _units(value) <= most:
+            raise ValueError(f"Un texto tiene que tener entre {least} y {most} caracteres." if least else f"Un texto tiene como mucho {most} caracteres.")
+        return value
+    return Annotated[str, AfterValidator(check)]
 
 
 def _day_ok(value: str) -> bool:
@@ -229,12 +255,12 @@ class _Strict(BaseModel):
 
 
 class DraftItem(_Strict):
-    description: Annotated[str, StringConstraints(min_length=1, max_length=500)]
-    details: Annotated[str, StringConstraints(max_length=3000)] | None = None
+    description: Chars(500, 1)
+    details: Chars(3000) | None = None
     unitPrice: Amount
     priceMax: Amount | None = None
     quantity: Amount = 1
-    unit: Annotated[str, StringConstraints(max_length=30)] | None = None
+    unit: Chars(30) | None = None
 
     @model_validator(mode="after")
     def _range(self):
@@ -244,7 +270,7 @@ class DraftItem(_Strict):
 
 
 class DraftPhase(_Strict):
-    name: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+    name: Chars(200, 1)
     percent: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)] | None = None
     dueDate: str | None = None
 
@@ -255,18 +281,29 @@ class DraftPhase(_Strict):
         return self
 
 
+class DraftScheduleEntry(_Strict):
+    when: Chars(200)
+    what: Chars(1000)
+
+
+Lines = Annotated[list[Chars(1000)], Field(max_length=50)]
+
+
 class Draft(_Strict):
-    """Central's `createQuoteSchema` (src/lib/api/quotes.ts) with the same limits; the client by its exact name or id."""
-    client: Annotated[str, StringConstraints(min_length=1, max_length=200)]
-    title: Annotated[str, StringConstraints(min_length=1, max_length=200)]
+    """Central's `createQuoteSchema` (src/lib/api/quotes.ts) with the same limits, lengths counted as zod does; the
+    client by its exact name or id."""
+    client: Chars(200, 1)
+    title: Chars(200, 1)
     items: Annotated[list[DraftItem], Field(min_length=1, max_length=100)]
     phases: Annotated[list[DraftPhase], Field(max_length=50)] | None = None
-    scope: Annotated[str, StringConstraints(max_length=10000)] | None = None
-    includes: Annotated[list[Text], Field(max_length=50)] | None = None
-    excludes: Annotated[list[Text], Field(max_length=50)] | None = None
-    assumptions: Annotated[list[Text], Field(max_length=50)] | None = None
+    scope: Chars(10000) | None = None
+    includes: Lines | None = None
+    excludes: Lines | None = None
+    assumptions: Lines | None = None
+    thirdPartyCosts: Chars(5000) | None = None
+    schedule: Annotated[list[DraftScheduleEntry], Field(max_length=50)] | None = None
     vat: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)] | None = None
-    notes: Annotated[str, StringConstraints(max_length=5000)] | None = None
+    notes: Chars(5000) | None = None
     validDays: Annotated[int, Field(ge=1, le=365)] = 30
 
     @model_validator(mode="after")
@@ -276,8 +313,8 @@ class Draft(_Strict):
         return self
 
     def body(self) -> dict:
-        """What goes to Central: exactly the fields given, nothing added."""
-        return self.model_dump(exclude_none=True)
+        """What goes to Central: only the fields that came, as they came (Central applies its own defaults)."""
+        return self.model_dump(exclude_unset=True)
 
 
 def draft_problem(errors: list[dict]) -> str:

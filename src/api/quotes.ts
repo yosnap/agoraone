@@ -38,8 +38,9 @@ export const getRates = () => core<{ rates: Rate[] }>('/quotes/rates');
 /** The core downloads the document from Central and opens it with the system's program. */
 export const openQuoteDocument = (id: string, format: DocumentFormat) =>
   core<{ opened: string; format: DocumentFormat }>(`/quotes/${encodeURIComponent(id)}/open?format=${format}`, {});
-/** Creates the draft in Central; `token` is the form's own, so a second send never creates another one. */
-export const createDraft = (token: string, quote: Draft) => core<{ created: CreatedQuote; repeated?: boolean }>('/quotes', { token, quote });
+/** Creates the draft in Central; `token` is the form's own, so the same content sent again never creates another one
+ * (`repeated`: it had been created already). */
+export const createDraft = (token: string, quote: Draft) => core<{ created: CreatedQuote; repeated?: boolean; warning?: string }>('/quotes', { token, quote });
 
 export const quoteStatusLabels: Record<QuoteStatus, string> = { DRAFT: 'Borrador', SENT: 'Enviado', ACCEPTED: 'Aceptado', REJECTED: 'Rechazado', EXPIRED: 'Caducado' };
 export const quoteStatusTone: Record<QuoteStatus, string> = { DRAFT: 'neutral', SENT: 'waiting', ACCEPTED: 'good', REJECTED: 'bad', EXPIRED: 'waiting' };
@@ -159,3 +160,15 @@ export function clientChoices(directory: { name: string; source: string }[], fro
   }
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'));
 }
+
+/** What the form says once Central answered: created now, or already created by an earlier send of the same form. */
+export function createdMessage(answer: { created: CreatedQuote; repeated?: boolean; warning?: string }) {
+  const { created } = answer;
+  const which = `Presupuesto${created.number ? ` ${created.number}` : ''}`;
+  const forWhom = created.client ? ` para ${created.client}` : '';
+  const text = answer.repeated
+    ? `${which}${forWhom} ya se había creado en Central con este mismo contenido: no se ha creado otro. Revísalo y envíalo desde Central.`
+    : `${which} creado en Central como borrador${forWhom}: revísalo y envíalo desde Central.`;
+  return answer.warning ? `${text} ${answer.warning}` : text;
+}
+

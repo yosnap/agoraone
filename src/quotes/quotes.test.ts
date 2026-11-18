@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { menu, sectionModule } from '../shell/shell-state';
-import { buildDraft, clientChoices, draftTotals, emptyDraft, emptyItem, itemFromRate, newDraftToken, parseAmount, quotesKey, type DraftFields } from '../api/quotes';
+import { buildDraft, clientChoices, createdMessage, draftTotals, emptyDraft, emptyItem, itemFromRate, newDraftToken, parseAmount, quotesKey, type DraftFields } from '../api/quotes';
 
 test('Presupuestos va justo antes de Central y depende de su módulo', () => {
   const ids = menu.map(item => item.id);
@@ -68,4 +68,12 @@ test('un token distinto por formulario, con la forma que acepta el núcleo', () 
 test('la clave de la lista cambia con los filtros', () => {
   assert.notEqual(quotesKey({ cliente: 'A' }), quotesKey());
   assert.equal(quotesKey({}), quotesKey());
+});
+
+test('un envío repetido dice que ya se había creado, sin anunciarlo como nuevo', () => {
+  assert.match(createdMessage({ created: { number: 'P-2026-007', client: 'Cliente Uno' } }), /^Presupuesto P-2026-007 creado en Central como borrador para Cliente Uno/);
+  const again = createdMessage({ created: { number: 'P-2026-007' }, repeated: true });
+  assert.match(again, /ya se había creado/);
+  assert.doesNotMatch(again, /creado en Central como borrador/);
+  assert.match(createdMessage({ created: {}, warning: 'No se anotó.' }), /No se anotó\.$/);
 });

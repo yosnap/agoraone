@@ -38,7 +38,7 @@ function Lines({ title, lines }: { title: string; lines: string[] }) {
 function Body({ q, discreet }: { q: QuoteRecord; discreet: boolean }) {
   const money = (from: number | null, to?: number | null) => (discreet ? HIDDEN : amountRange(from, to));
   const facts: [string, string][] = [
-    ['Cliente', discreet ? HIDDEN : q.client?.name ?? '—'], ['Proyecto', q.project?.name ?? '—'], ['Fecha', dateLabel(q.issuedAt)],
+    ['Cliente', discreet ? HIDDEN : q.client?.name ?? '—'], ['Proyecto', discreet ? HIDDEN : q.project?.name ?? '—'], ['Fecha', dateLabel(q.issuedAt)],
     ['Válido hasta', dateLabel(q.validUntil)], ['IVA', q.vat != null ? `${q.vat} %` : '—'],
   ];
   return <>
@@ -90,7 +90,7 @@ export function QuoteDetail({ id, discreet, onBack, onOpen }: { id: string; disc
   const q = read.data;
   return <article className="card central-record" aria-labelledby="quote-title">
     <div className="card-head">
-      <div><h2 id="quote-title">{q.number ?? 'Presupuesto'} · {q.title ?? '—'}</h2><small className="muted">De Central · solo lectura</small></div>
+      <div><h2 id="quote-title">{q.number ?? 'Presupuesto'} · {discreet ? HIDDEN : q.title ?? '—'}</h2><small className="muted">De Central · solo lectura</small></div>
       <StatusBadge status={q.status}/>
     </div>
     <Body q={q} discreet={discreet}/>

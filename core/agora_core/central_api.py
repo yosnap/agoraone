@@ -249,6 +249,11 @@ def _refuse(status: int, text: str, key: str) -> None:
         raise CentralApiError("error", f"Central respondió con un error ({status}).")
 
 
+def _no_constant(name: str):
+    """NaN and Infinity are not JSON: an answer with them is not understood (it could not be answered on either)."""
+    raise CentralApiError("error", "Central devolvió una respuesta que no se entiende.")
+
+
 def request(target: Connection, method: str, path: str, params: dict | None = None, body: dict | None = None,
             client: httpx.Client | None = None, deadline: float | None = None) -> dict:
     """One call to Central's API; the JSON object it answers or a CentralApiError without the key. With `client`
@@ -260,7 +265,7 @@ def request(target: Connection, method: str, path: str, params: dict | None = No
     text = raw.decode("utf-8", errors="replace")
     _refuse(status, text, target.key)
     try:
-        data = json.loads(text)
+        data = json.loads(text, parse_constant=_no_constant)
     except ValueError:
         raise CentralApiError("error", "Central devolvió una respuesta que no se entiende (¿es la dirección de Central?).") from None
     if not isinstance(data, dict):

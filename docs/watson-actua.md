@@ -36,9 +36,14 @@ y Watson no ve `proponer_presupuesto`.
 - «Nuevo borrador»: cliente de Central del directorio, título, partidas desde las tarifas o a mano, hitos, alcance.
   «Crear en Central» enseña exactamente lo que se creará y solo «Confirmar y crear el borrador» lo envía. El núcleo
   lo comprueba con el esquema de Central y lo manda tal cual; un cliente solo propio se rechaza («Ese cliente no
-  está en Central»). Un token por formulario impide crear dos con una doble pulsación; si no se sabe si Central lo
-  creó, no se repite hasta volver a leer la lista. Siempre en borrador: nunca se envía ni se cambian fases.
-- En modo discreto se ocultan importes, clientes y notas, y no se crean borradores ni se abren documentos.
+  está en Central»). Un token por formulario, ligado al contenido enviado, impide crear dos con una doble pulsación o
+  dos envíos a la vez (si cambia el contenido, es otro borrador); si no se sabe si Central lo creó, no se repite
+  hasta volver a leer la lista. Las confirmaciones de Watson también se retiran antes de esperar. Siempre en
+  borrador: nunca se envía ni se cambian fases.
+- En modo discreto se ocultan importes, clientes, títulos, proyectos y notas, y no se crean borradores ni se abren
+  documentos.
+- Si el documento ya está abierto (Word en Windows no deja sustituirlo), se reutiliza si es igual o se guarda con
+  «-2», «-3»…; nunca con un nombre reservado de Windows.
 
 ## Limpieza del correo
 

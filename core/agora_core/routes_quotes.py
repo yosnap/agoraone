@@ -7,11 +7,13 @@ With the «Presupuestos» module off every route answers 404 before looking at a
 422 without asking Central; without an HTTP connection, 409 `not_connected`; a key without the permission, 403 in
 plain words with where to fix it; Central failing, 502. Never the key nor Central's address in an answer.
 
-A draft is created only with the form's single-use token: a second send with the same token never creates another
-one (it gets the first answer back, or 409 while the first is under way or when it is unknown whether Central
-created it). Always a draft: nothing here sends a quote nor changes a state."""
+A draft is created only with the form's single-use token, tied to a hash of what is sent: a second send of the same
+content with the same token never creates another one (it gets the first answer back, or 409 while the first is under
+way or when it is unknown whether Central created it); other content is another draft. Always a draft: nothing here sends a quote nor changes a state."""
 
+import hashlib
 import json
+import logging
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -36,6 +38,7 @@ STATUS_CODES = {"forbidden": 403, "not_found": 404, "invalid": 422}
 TOKEN_SECONDS = 86400
 MAX_TOKENS = 500
 MAX_BODY = 256 * 1024  # Central's own limit for a draft
+LOG = logging.getLogger(__name__)
 
 
 def quotes_router(settings: Settings, secrets) -> APIRouter:
@@ -144,13 +147,26 @@ def quotes_router(settings: Settings, secrets) -> APIRouter:
         found = [e for e in clients.directory(connection) if wanted in {n.casefold() for n in (e["name"], *e.get("aliases", []))}]
         return bool(found) and all(e["source"] == "local" for e in found)
 
+    async def bounded_body(request: Request) -> bytes | None:
+        """The body, or None as soon as it is larger than Central accepts (never read whole first)."""
+        declared = request.headers.get("content-length")
+        if declared is not None and (not (declared.isascii() and declared.isdigit()) or int(declared) > MAX_BODY):
+            return None
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > MAX_BODY:
+                return None
+            chunks.append(chunk)
+        return b"".join(chunks)
+
     @router.post("/quotes", status_code=201)
     async def create_draft(request: Request):
         on, target = await run_in_threadpool(prepare)
         if not on:
             return problem(404, OFF, "off")
-        raw = await request.body()
-        if request.query_params or len(raw) > MAX_BODY:
+        raw = await bounded_body(request)
+        if request.query_params or raw is None:
             return problem(422, "El borrador no es válido.", "invalid")
         try:
             given = json.loads(raw)
@@ -165,8 +181,12 @@ def quotes_router(settings: Settings, secrets) -> APIRouter:
             draft = central_quotes.Draft.model_validate(given["quote"])
         except ValidationError as error:
             return problem(422, central_quotes.draft_problem(error.errors()), "invalid")
+        body = draft.body()
+        # The token goes with what is sent: the same form sent again with other content is another draft.
+        sent = token + ":" + hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        # From here to the reservation there is no wait: two sends at once can never both pass.
         forget_old()
-        seen = tokens.get(token)
+        seen = tokens.get(sent)
         if seen is not None:
             if isinstance(seen[1], dict):
                 return JSONResponse({"created": seen[1], "repeated": True}, status_code=200)
@@ -175,25 +195,30 @@ def quotes_router(settings: Settings, secrets) -> APIRouter:
             return problem(409, message, "repeated")
         if target is None:
             return problem(409, NOT_CONNECTED, "not_connected")
+        tokens[sent] = (time.time(), None)
         if await run_in_threadpool(lambda: _with(database, lambda c: own_only(c, draft.client))):
+            tokens.pop(sent, None)  # refused before asking Central: nothing was created
             return problem(422, NOT_IN_CENTRAL, "not_in_central")
-        tokens[token] = (time.time(), None)  # taken before any wait: a double click creates one draft
-        body = draft.body()
         try:
             made = await run_in_threadpool(central_api.create_quote, target, body)
         except central_api.CentralApiError as error:
             if error.status in ("unreachable", "error"):
-                tokens[token] = (time.time(), "unknown")  # Central may have created it: never twice
+                tokens[sent] = (time.time(), "unknown")  # Central may have created it: never twice
             else:
-                tokens.pop(token, None)  # refused: nothing was created, the user may fix it and send again
+                tokens.pop(sent, None)  # refused: nothing was created, the user may fix it and send again
             return failed(error)
-        tokens[token] = (time.time(), made)
+        tokens[sent] = (time.time(), made)
 
         def log(connection):
             with transaction(connection):
                 connection.execute("INSERT INTO action_log (occurred_at, actor, action, outcome, detail) VALUES (?, 'usuario', 'crear_presupuesto', 'done', ?)",
                                    (now(), json.dumps({"number": made.get("number"), "from": "formulario"}, ensure_ascii=False)))
-        await run_in_threadpool(_with, database, log)
+        try:
+            await run_in_threadpool(_with, database, log)
+        except (sqlite3.Error, OSError):
+            # The draft exists in Central: that is the answer, with a note that it was not written down here.
+            LOG.warning("No se pudo anotar en el registro de acciones el borrador creado en Central.")
+            return {"created": made, "warning": "Creado en Central, pero no se pudo anotar en el registro de acciones de AgoraOne."}
         return {"created": made}
 
     return router

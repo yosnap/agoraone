@@ -16,7 +16,7 @@ type Mode = { kind: 'list' } | { kind: 'record'; id: string } | { kind: 'new' };
 
 /** The «Presupuestos» section: Central's quotes with filters by client and state, each quote's record with its PDF
  * and Word, and a new draft created in Central only after seeing exactly what will be created. Never sends a quote
- * nor changes its state: that is done in Central. In discreet mode amounts and clients are hidden and nothing is
+ * nor changes its state: that is done in Central. In discreet mode amounts, clients, titles and projects are hidden and nothing is
  * created nor opened. */
 export function QuotesView({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   useState(startCentral);  // once per visit: nothing read before is shown as current
@@ -57,7 +57,7 @@ export function QuotesView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
             <tbody>{read.data.quotes.map((q, index) => <tr key={q.id ?? index}>
               <td><strong>{q.number ?? '—'}</strong></td>
               <td>{discreet ? HIDDEN : q.client ?? '—'}</td>
-              <td>{q.title ?? '—'}</td>
+              <td>{discreet ? HIDDEN : q.title ?? '—'}</td>
               <td><StatusBadge status={q.status}/></td>
               <td className="num">{discreet ? HIDDEN : amountRange(q.total, q.totalMax)}</td>
               <td>{dateLabel(q.issuedAt)}</td>

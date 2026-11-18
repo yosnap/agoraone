@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ApiError } from '../api/client';
 import { getClients } from '../api/clients';
-import { amountRange, buildDraft, clientChoices, createDraft, draftTotals, emptyDraft, euros, getRates, newDraftToken, type Draft, type DraftFields } from '../api/quotes';
+import { amountRange, buildDraft, clientChoices, createDraft, createdMessage, draftTotals, emptyDraft, euros, getRates, newDraftToken, type Draft, type DraftFields } from '../api/quotes';
 import type { Section } from '../shell/shell-state';
 import { ModernSelect } from '../ui/modern-select';
 import { useCentralRead } from '../central/use-central-view';
@@ -70,8 +70,7 @@ export function QuoteDraftForm({ clientNames, onCreated, onCancel, onOpen }: {
     if (!review) return;
     setBusy(true); setProblem(null);
     try {
-      const { created } = await createDraft(token, review);
-      onCreated(`Presupuesto${created.number ? ` ${created.number}` : ''} creado en Central como borrador${created.client ? ` para ${created.client}` : ''}: revísalo y envíalo desde Central.`);
+      onCreated(createdMessage(await createDraft(token, review)));
     } catch (error) {
       setProblem(error instanceof ApiError && error.data?.status === 'not_in_central' ? NOT_IN_CENTRAL : error instanceof Error ? error.message : 'Central no pudo crear el borrador.');
     } finally { setBusy(false); }
