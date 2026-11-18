@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react';
-import { deleteCentralConnection, getCentralConnection, putCentralConnection, scopeLabels, testCentralConnection,
+import { checkCentralWindow, deleteCentralConnection, getCentralConnection, putCentralConnection, scopeLabels, testCentralConnection,
   type CentralConnection, type CentralScope, type CentralStatus } from '../api/central';
 import { Loading, LoadError } from '../ui/load-state';
 
@@ -44,6 +44,7 @@ export function CentralSettingsCard() {
     void run('save', async () => {
       const next = await putCentralConnection(url.trim(), key.trim() || undefined);
       show(next); setKey('');
+      void checkCentralWindow().catch(() => undefined);  // another address closes Central's window
       return key.trim() ? 'Conexión guardada; la clave está en el almacén de secretos del sistema.' : 'Dirección guardada.';
     });
   };

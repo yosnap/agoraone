@@ -4,6 +4,7 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { CentralProblem } from './central-connect';
+import { OpenInCentral } from './open-in-central';
 import { NotesList, WebsitesTable } from './central-clients';
 import { dateLabel, useCentralRead, useCentralReadings, viewKey } from './use-central-view';
 
@@ -65,6 +66,7 @@ function ProjectRecord({ id, discreet, onBack, onOpen }: { id: string; discreet:
     </section>
     <section aria-label="Salud"><h3>Salud</h3><WebsitesTable websites={p.websites}/></section>
     <section aria-label="Notas"><h3>Notas</h3><NotesList notes={p.notes} discreet={discreet}/></section>
+    <OpenInCentral page={`proyectos/${id}`} label="Abrir en Central (secretos, entornos…)" discreet={discreet}/>
     {back}
   </article>;
 }

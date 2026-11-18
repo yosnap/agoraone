@@ -10,6 +10,7 @@ import { CentralProjects } from './central-projects';
 import { CentralServers } from './central-servers';
 import { CentralSummary } from './central-summary';
 import { CentralWebsites } from './central-websites';
+import { CentralPages, OpenInCentral } from './open-in-central';
 import { CONNECTION, centralTabs, forgetCentral, startCentral, useCentralRead } from './use-central-view';
 import './central.css';
 
@@ -45,7 +46,9 @@ export function CentralView({ discreet, onOpen }: { discreet: boolean; onOpen: (
             : tab === 'webs' ? <CentralWebsites onOpen={onOpen}/>
             : tab === 'servidores' ? <CentralServers onOpen={onOpen}/>
             : <CentralAgenda discreet={discreet} onOpen={onOpen}/>}
+          {(tab === 'webs' || tab === 'servidores') && <OpenInCentral page={tab} discreet={discreet}/>}
         </div>
+        <CentralPages discreet={discreet}/>
       </>}
   </section>;
 }

@@ -13,6 +13,8 @@ import { UploadNotice } from '../fiscal/upload-watch';
 import { FirstRun } from './first-run';
 import { requestListen } from '../assistant/listen';
 import { YouTubeMini } from '../brain/youtube-player';
+import { CentralLinkNotice } from '../central/open-in-central';
+import { closeCentralWindow } from '../api/central';
 import { readShell, sectionModule, writeShell, type Section } from './shell-state';
 import { moduleOn, useModules } from './modules';
 import './shell.css';
@@ -55,7 +57,8 @@ export function Shell() {
     window.addEventListener('agora:listen', () => { setShell(previous => ({ ...previous, section: 'brain' })); window.setTimeout(requestListen, 150); });
   }
   const go = useCallback((next: Section) => { if (next === 'office') setOfficeVisited(true); setShell(previous => ({ ...previous, section: next })); }, []);
-  const setDiscreet = (on: boolean) => setShell(previous => ({ ...previous, discreet: on }));
+  // Discreet mode closes Central's window too: it would keep showing what discreet mode hides.
+  const setDiscreet = (on: boolean) => { setShell(previous => ({ ...previous, discreet: on })); if (on) void closeCentralWindow().catch(() => undefined); };
   const showOnGraph = (ids: string[]) => { setFocus(ids); go('brain'); };
   const ready = status?.csrf;
   return <div className="shell">
@@ -63,6 +66,7 @@ export function Shell() {
     {ready && <AlertToasts discreet={discreet}/>}
     <UploadNotice onOpen={() => go('fiscal')}/>
     <YouTubeMini/>
+    <CentralLinkNotice discreet={discreet}/>
     {ready && <FirstRun/>}
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting} onWatson={() => go('brain')}/>}
