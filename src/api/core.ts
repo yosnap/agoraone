@@ -197,6 +197,18 @@ export const createChatRule = (rule: ChatRuleIn) => core<{ rules: ChatRule[] }>(
 export const changeChatRule = (id: number, changes: Partial<ChatRuleIn>) => core<{ rules: ChatRule[] }>(`/chat/rules/${id}`, changes, 'PATCH');
 export const deleteChatRule = (id: number) => core<{ rules: ChatRule[] }>(`/chat/rules/${id}`, undefined, 'DELETE');
 /** A classified conversation, without the text of its messages; a private one carries no participant. */
+export type JevPoint = 'mail' | 'chat' | 'deadlines' | 'tasks' | 'meetings' | 'fiscal' | 'watson';
+export type JevSettings = {
+  hasKey: boolean; model: string; monthlyUsd: number; threshold: number; aliases: string[];
+  points: Record<JevPoint, boolean>; pointLabels: Record<JevPoint, string>;
+  usage: { month: string; calls: number; inputTokens: number; outputTokens: number; spentUsd: number; capTokens: number };
+};
+export type JevSettingsIn = Partial<{ model: string; monthlyUsd: number; threshold: number; points: Partial<Record<JevPoint, boolean>> }>;
+export const getJevSettings = () => core<JevSettings>('/jev/settings');
+export const putJevSettings = (changes: JevSettingsIn) => core<JevSettings>('/jev/settings', changes, 'PUT');
+export const putJevKey = (key: string | null) => core<JevSettings>('/jev/key', { key }, 'PUT');
+export const testJev = () => core<{ models: string[] }>('/jev/test', {});
+
 export type ChatSummary = {
   id: number; kind: InboxKind; source: 'rule' | 'model' | 'local'; ruleId: number | null; ruleName: string | null; label: string | null;
   confidentiality: Level; state: InboxState; summary: string | null; details: { asks?: string[]; dates?: string[]; amounts?: string[]; language?: string | null };
@@ -520,7 +532,7 @@ export type InstallJob = { id: string; name: string; state: 'running' | 'done' |
 export const getInstallJob = () => core<{ job: InstallJob | null }>('/doctor/install');
 export const installPiece = (id: string) => core<{ job: InstallJob }>('/doctor/install', { id });
 /** Modules (1.6): which are on; one off disappears, stops its background work and Watson loses its tools. */
-export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'conectores' | 'orca' | 'whatsapp';
+export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'conectores' | 'orca' | 'whatsapp' | 'jev';
 export const getModules = () => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules');
 export const putModules = (modules: Partial<Record<ModuleName, boolean>>) => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules', { modules }, 'PUT');
 export const getFirstRun = () => core<{ done: boolean }>('/setup/first-run');
