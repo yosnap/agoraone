@@ -1,6 +1,6 @@
 """HTTP routes of the user's clients: the directory (Central's and the ones kept in AgoraOne, always reachable, also
 with Central off or not connected), the clients kept here (create, change, delete) and the links with Central's
-(«Enlazar», «Son distintos»). The directory's list never carries an address, phone, tax id nor notes: only a
+(«Enlazar», «Son distintos» and undoing it). The directory's list never carries an address, phone, tax id nor notes: only a
 client kept here, asked by its id for its form, comes whole."""
 
 from contextlib import contextmanager
@@ -66,25 +66,30 @@ def clients_router(settings: Settings) -> APIRouter:
         found = await db(lambda c: clients.get(c, client_id))
         return found if found else not_found()
 
+    def failed(error: clients.ClientError) -> JSONResponse:
+        return refuse(str(error), 409 if isinstance(error, clients.ClientConflict) else 422)
+
     @router.post("/clients", status_code=201)
     async def create_client(body: ClientIn):
         try:
             return await db(lambda c: clients.create(c, body.model_dump()))
         except clients.ClientError as error:
-            return refuse(str(error))
+            return failed(error)
 
     @router.patch("/clients/{client_id}")
     async def change_client(client_id: int, body: ClientIn):
         try:
             found = await db(lambda c: clients.update(c, client_id, body.model_dump(exclude_unset=True)))
         except clients.ClientError as error:
-            return refuse(str(error))
+            return failed(error)
         return found if found else not_found()
 
     @router.delete("/clients/{client_id}")
     async def delete_client(client_id: int):
-        """Only a client kept here (the screen asks first); Central's are never touched from AgoraOne."""
-        return {"deleted": True} if await db(lambda c: clients.delete(c, client_id)) else not_found()
+        """Only a client kept here (the screen asks first, saying how many meetings name it); a copy of it is kept
+        first. Central's are never touched from AgoraOne."""
+        found = await db(lambda c: clients.delete(c, client_id))
+        return {"deleted": True, "references": found["references"]} if found else not_found()
 
     async def link(client_id: int, body: LinkIn, state: str):
         try:
@@ -102,5 +107,10 @@ def clients_router(settings: Settings) -> APIRouter:
     async def distinct_client(client_id: int, body: LinkIn):
         """«Son distintos»: never linked nor suggested with that one of Central's again (also undoes a link)."""
         return await link(client_id, body, "distinct")
+
+    @router.post("/clients/{client_id}/undistinct")
+    async def undistinct_client(client_id: int, body: LinkIn):
+        """Undoes a «Son distintos» from the client's form: that pair may be linked or suggested again."""
+        return await link(client_id, body, "undistinct")
 
     return router

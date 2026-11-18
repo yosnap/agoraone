@@ -60,17 +60,17 @@ def watson(tmp_path, query: str = "") -> dict:
 
 
 def test_sin_central_un_cliente_propio_casa_por_correo_dominio_telefono_y_nif(db, tmp_path):
-    clients.create(db, {"name": "Café Web", "email": "Hola@CafeWeb.es", "phone": "600 111 222", "taxId": "b12345678", "domains": ["www.cafeweb.com"]})
+    clients.create(db, {"name": "Café Web", "email": "Hola@CafeWeb.es", "phone": "600 111 222", "taxId": "b12345678", "domains": ["www.cafeweb.com", "cafeweb.es"]})
     clients.create(db, {"name": "Gmail Persona", "email": "persona@gmail.com"})
     assert clients.match(db, address="hola@cafeweb.es")["name"] == "Café Web"
-    assert clients.match(db, address="ana@cafeweb.es")["name"] == "Café Web", "por el dominio del correo"
+    assert clients.match(db, address="ana@cafeweb.es")["name"] == "Café Web", "por un dominio que escribió el usuario"
     assert clients.match(db, address="ana@shop.cafeweb.com")["name"] == "Café Web", "por un subdominio de su dominio"
     assert clients.match(db, phone="+34 600-111-222")["name"] == "Café Web", "guardado sin prefijo: por los últimos nueve"
     assert clients.match(db, phone="0034600111222")["name"] == "Café Web"
     assert clients.match(db, tax_id="ES-B12345678")["name"] == "Café Web"
     assert clients.match(db, address="persona@gmail.com")["name"] == "Gmail Persona", "la dirección exacta sí"
     assert clients.match(db, address="otra@gmail.com") is None, "un dominio gratuito nunca casa"
-    with pytest.raises(clients.ClientError, match="gratuito"):
+    with pytest.raises(clients.ClientError, match="comparte mucha gente"):
         clients.create(db, {"name": "Otro", "domains": ["gmail.com"]})
     with pytest.raises(clients.ClientError, match="Ya tienes"):
         clients.create(db, {"name": "  café   WEB "})
@@ -85,6 +85,9 @@ def test_sin_central_un_cliente_propio_casa_por_correo_dominio_telefono_y_nif(db
     answer = watson(tmp_path, "café")
     assert answer["clientes"] == [{"nombre": "Café Web", "empresa": None, "origen": "local", "dominios": ["cafeweb.com", "cafeweb.es"], "webs": [],
                                    "proyectos_activos": []}]
+    # A private mail is matched to no client.
+    db.execute("UPDATE mail_summary SET confidentiality = 'private'")
+    assert mail_inbox.inbox(db)[0]["client"] is None
     assert fiscal.with_clients(db, [{"taxId": "B-12345678"}, {"taxId": "X"}]) == [{"taxId": "B-12345678", "knownClient": "Café Web"}, {"taxId": "X"}]
 
 
@@ -173,5 +176,84 @@ def test_rutas_sin_contacto_en_la_lista_y_sin_clave_rechazadas(tmp_path):
         assert client.patch(f"/clients/{local_id}", json={"email": "no-es-correo"}, headers=headers).status_code == 422
         assert client.patch(f"/clients/{local_id}", json={"company": "Café Web SL"}, headers=headers).json()["company"] == "Café Web SL"
         assert client.post(f"/clients/{local_id}/link", json={"centralId": "c1"}, headers=headers).status_code == 422
-        assert client.delete(f"/clients/{local_id}", headers=headers).json() == {"deleted": True}
+        assert client.delete(f"/clients/{local_id}", headers=headers).json() == {"deleted": True, "references": {"meetings": 0}}
         assert client.delete(f"/clients/{local_id}", headers=headers).status_code == 404
+
+
+def test_un_enlace_confirmado_gana_a_uno_automatico(db, tmp_path):
+    clients.create(db, {"name": "Aardvark", "taxId": "B11111111"})
+    zeta = clients.create(db, {"name": "Zeta"})
+    with_central(db, tmp_path, {**RAW, "details": {"Otra Cosa": {"taxId": "B11111111"}}})
+    clients.set_link(db, zeta["localId"], "c3", "linked")
+    clients.create(db, {"name": "otra cosa"})
+    entries = clients.directory(db)
+    merged = next(e for e in entries if e["centralId"] == "c3")
+    assert merged["source"] == "ambos" and merged["localId"] == zeta["localId"] and merged["aliases"] == ["Zeta"]
+    assert [e["name"] for e in entries if e["source"] == "local"] == ["Aardvark", "otra cosa"], "ni el mismo NIF ni el mismo nombre le roban el enlace"
+    assert meetings.central_client(db, "Zeta") == "Otra Cosa"
+
+
+def test_el_dominio_del_correo_de_un_propio_no_cuenta_y_los_compartidos_se_rechazan(db, tmp_path):
+    clients.create(db, {"name": "Pepe", "email": "pepe@hotmail.es"})
+    clients.create(db, {"name": "Juan", "email": "juan@juanperez.es"})
+    assert clients.match(db, address="otro@hotmail.es") is None
+    assert clients.match(db, address="ana@juanperez.es") is None, "el dominio solo cuenta si el usuario lo escribe"
+    assert clients.match(db, address="pepe@hotmail.es")["name"] == "Pepe"
+    for shared in ("hotmail.es", "yahoo.co.uk", "telefonica.net", "icloud.es", "gmx.es"):
+        assert clients.is_free_mail(shared), shared
+        with pytest.raises(clients.ClientError, match="comparte mucha gente"):
+            clients.create(db, {"name": f"X {shared}", "domains": [shared]})
+    for suffix in ("co.uk", "com.es", "gob.es", "github.io", "vercel.app"):
+        with pytest.raises(clients.ClientError, match="sufijo compartido"):
+            clients.create(db, {"name": f"Y {suffix}", "domains": [suffix]})
+    assert all(c["dominios"] == [] for c in watson(tmp_path)["clientes"]), "Watson no recibe el dominio de un correo personal"
+    central.refresh(db, tmp_path, fetch=lambda folder: {**RAW, "details": {"Acmé": {"email": "acme@outlook.es"}}})
+    assert next(c for c in clients.directory(db) if c["name"] == "Acmé")["domains"] == []
+
+
+def test_un_dominio_compartido_por_dos_clientes_no_casa(db):
+    clients.create(db, {"name": "Uno", "domains": ["acme.com"]})
+    clients.create(db, {"name": "Dos", "domains": ["acme.com"]})
+    clients.create(db, {"name": "Tres", "domains": ["eu.acme.com"]})
+    assert clients.match(db, address="a@acme.com") is None
+    assert clients.match(db, address="a@x.eu.acme.com")["name"] == "Tres", "el dominio más cercano"
+    clients.create(db, {"name": "Cuatro", "email": "comun@ejemplo.org"})
+    clients.create(db, {"name": "Cinco", "email": "comun@ejemplo.org"})
+    assert clients.match(db, address="comun@ejemplo.org") is None
+
+
+def test_son_distintos_con_el_mismo_nombre_se_rechaza_y_se_guardan_varios_pares(db, tmp_path):
+    beta = clients.create(db, {"name": "Cafe Web SL"})
+    other = clients.create(db, {"name": "Acme", "taxId": "B11111111"})
+    with_central(db, tmp_path, {**RAW, "details": {"Otra Cosa": {"taxId": "B11111111"}}})
+    with pytest.raises(clients.ClientError, match="si se llaman igual"):
+        clients.set_link(db, beta["localId"], "c1", "distinct")
+    clients.set_link(db, other["localId"], "c2", "distinct")
+    clients.set_link(db, other["localId"], "c3", "distinct")
+    entries, suggestions = clients.build(db)
+    assert suggestions == [] and next(e for e in entries if e["localId"] == other["localId"])["source"] == "local", "ni Acmé ni el mismo NIF"
+    found = clients.get(db, other["localId"])
+    assert found["distinct"] == [{"centralId": "c2", "centralName": "Acmé"}, {"centralId": "c3", "centralName": "Otra Cosa"}]
+    clients.set_link(db, other["localId"], "c3", "undistinct")
+    assert next(e for e in clients.directory(db) if e["centralId"] == "c3")["localId"] == other["localId"], "deshecho: vuelve a enlazarse por NIF"
+
+
+def test_renombrar_lleva_el_nombre_a_las_reuniones_y_borrar_guarda_copia(db):
+    own = clients.create(db, {"name": "P1", "notes": "Paga a 30 días"})
+    db.execute("INSERT INTO meeting (owner, title, status, started_at, mic_type, client) VALUES ('o', 'r', 'recorded', 'x', 'webm', 'P1')")
+    assert clients.get(db, own["localId"])["references"] == {"meetings": 1}
+    clients.update(db, own["localId"], {"name": "P1 renombrado"})
+    assert db.execute("SELECT client FROM meeting").fetchone()[0] == "P1 renombrado"
+    assert meetings.central_client(db, "P1 renombrado") == "P1 renombrado"
+    gone = clients.delete(db, own["localId"])
+    assert gone["references"] == {"meetings": 1} and clients.get(db, own["localId"]) is None
+    copy = json.loads(db.execute("SELECT data FROM client_backup").fetchone()[0])
+    assert copy["name"] == "P1 renombrado" and copy["notes"] == "Paga a 30 días"
+    assert db.execute("SELECT client FROM meeting").fetchone()[0] == "P1 renombrado", "la reunión conserva el nombre"
+
+
+def test_alta_concurrente_con_el_mismo_nombre_da_conflicto(db, monkeypatch):
+    clients.create(db, {"name": "Café Web"})
+    monkeypatch.setattr(clients, "_name_taken", lambda *args: False)  # the other request checked before this one wrote
+    with pytest.raises(clients.ClientConflict):
+        clients.create(db, {"name": "café web"})

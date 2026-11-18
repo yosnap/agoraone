@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { deleteClient, distinctClient, getClients, linkClient, sourceLabels, type ClientsDirectory, type DirectoryClient } from '../api/clients';
+import { deleteClient, distinctClient, getClient, getClients, linkClient, sourceLabels, type ClientsDirectory, type DirectoryClient } from '../api/clients';
+import { invalidateClients } from '../data/clients-store';
 import { LoadError, Loading } from '../ui/load-state';
 import { ClientForm } from './client-form';
 
@@ -13,7 +14,8 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
   const [data, setData] = useState<ClientsDirectory | null>(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<number | 'new' | null>(null);
-  const [deleting, setDeleting] = useState<number | null>(null);
+  // The client being deleted and how many meetings name it (asked before confirming).
+  const [deleting, setDeleting] = useState<{ id: number; meetings: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
   const asked = useRef(false);
@@ -26,24 +28,31 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
   if (!asked.current) { asked.current = true; load(); }
   const act = async (work: () => Promise<unknown>, done: string) => {
     setBusy(true); setError(''); setNote('');
-    try { await work(); setNote(done); load(); }
+    try { await work(); setNote(done); load(); invalidateClients(); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo hacer el cambio.'); }
     finally { setBusy(false); setDeleting(null); }
+  };
+  const askDelete = (id: number) => {
+    setDeleting({ id, meetings: null }); setNote('');
+    getClient(id).then(found => setDeleting(current => current?.id === id ? { id, meetings: found.references.meetings } : current)).catch(() => undefined);
   };
   if (!data) return error ? <LoadError message={error} onRetry={load}/> : <Loading label="Leyendo tus clientes" lines={3}/>;
   const actions = (client: DirectoryClient) => {
     if (discreet || client.localId === null) return <small className="muted">{client.localId === null ? 'Solo lectura (de Central)' : ''}</small>;
     const id = client.localId;
-    if (deleting === id) return <span className="field-row" role="group" aria-label={`Confirmar eliminar ${client.name}`}>
-      <small>Se borra de AgoraOne{client.source === 'ambos' ? '; en Central sigue igual' : ''}.</small>
+    if (deleting?.id === id) return <span className="field-row" role="group" aria-label={`Confirmar eliminar ${client.name}`}>
+      <small>Se borra de AgoraOne{client.source === 'ambos' ? '; en Central sigue igual' : ''}. Antes se guarda una copia con sus notas.
+        {deleting.meetings ? ` ${deleting.meetings === 1 ? 'Una reunión lo nombra y conservará' : `${deleting.meetings} reuniones lo nombran y conservarán`} el nombre «${client.aliases[0] ?? client.name}».` : ''}</small>
       <button type="button" className="button danger" disabled={busy} onClick={() => void act(() => deleteClient(id), `«${client.name}» eliminado de tus clientes.`)}>Eliminar de verdad</button>
       <button type="button" className="button" disabled={busy} onClick={() => setDeleting(null)}>Cancelar</button>
     </span>;
     return <span className="actions">
       <button type="button" className="button" disabled={busy} onClick={() => { setEditing(id); setNote(''); }}>Editar</button>
-      {client.source === 'ambos' && client.centralId && <button type="button" className="button" disabled={busy}
-        onClick={() => void act(() => distinctClient(id, client.centralId!), `«${client.name}» ya no se une con tu cliente propio.`)}>Son distintos</button>}
-      <button type="button" className="button danger" disabled={busy} onClick={() => setDeleting(id)}>Eliminar…</button>
+      {client.source === 'ambos' && client.centralId && (client.aliases.length
+        ? <button type="button" className="button" disabled={busy}
+          onClick={() => void act(() => distinctClient(id, client.centralId!), `«${client.aliases[0]}» y «${client.name}» de Central se quedan como clientes distintos.`)}>Son distintos</button>
+        : <small className="muted">Mismo nombre que en Central: para separarlos, cambia antes el nombre del tuyo.</small>)}
+      <button type="button" className="button danger" disabled={busy} onClick={() => askDelete(id)}>Eliminar…</button>
     </span>;
   };
   return <div className="clients-directory">
@@ -53,7 +62,7 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
       : !data.central.read ? 'Central no está conectado o aún no se ha leído (Ajustes › Central): ves solo los clientes que guardas en AgoraOne.'
       : 'Tus clientes de Central y los que guardas en AgoraOne, en una sola lista. Los de Central se cambian en Central.'}</p>
     {editing !== null && !discreet && <ClientForm key={editing} clientId={editing === 'new' ? null : editing} onCancel={() => setEditing(null)}
-      onDone={saved => { setEditing(null); setNote(`«${saved.name}» guardado.`); load(); }}/>}
+      onDone={saved => { setEditing(null); setNote(`«${saved.name}» guardado.`); load(); invalidateClients(); }}/>}
     {!discreet && data.suggestions.length > 0 && <ul className="install-list" aria-label="Posibles clientes repetidos">{data.suggestions.map(s =>
       <li key={`${s.localId}-${s.centralId}`} className="install-row">
         <span>¿Tu cliente «{s.localName}» es el mismo que «{s.centralName}» de Central?</span>

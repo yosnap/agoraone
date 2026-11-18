@@ -5,7 +5,8 @@ import { ModernSelect } from '../ui/modern-select';
 import { ClientChip, clientHue } from './client-chip';
 import { MeetingDetailPanel } from './meeting-detail';
 import { forgetMeetingIntent, peekMeetingIntent } from './meeting-intent';
-import { asClass, emptyFields, KindFields, useClients, type Fields } from './meeting-kind';
+import { asClass, emptyFields, KindFields, type Fields } from './meeting-kind';
+import { useClients } from '../data/clients-store';
 import { lastChoice, rememberChoice, startRecording, stopRecording, useMeetingRecorder } from './meeting-recorder';
 import './meetings.css';
 

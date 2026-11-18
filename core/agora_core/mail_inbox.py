@@ -208,7 +208,8 @@ def _client(clients: list[dict], address: str | None) -> dict | None:
 
 
 def _item(row: sqlite3.Row, clients: list[dict] | None = None) -> dict:
-    return {"client": _client(clients or [], row["from_address"]),
+    # A private mail is matched to no client, as a private WhatsApp conversation is not.
+    return {"client": None if row["level"] == "private" else _client(clients or [], row["from_address"]),
         "id": row["message_id"], "kind": row["kind"], "source": row["source"], "ruleId": row["rule_id"], "ruleName": row["rule_name"],
         "confidentiality": row["level"], "summary": row["summary"] if row["level"] == "normal" else None,
         "details": json.loads(row["details"] or "{}") if row["level"] == "normal" else {},

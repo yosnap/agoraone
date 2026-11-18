@@ -66,6 +66,8 @@ export function JobsView({ discreet }: { discreet: boolean }) {
   const [period, setPeriod] = useState<Period>('7d');
   const [profile, setProfile] = useState(ALL);
   const [tab, setTab] = useState<'work' | 'clients'>('work');
+  const onClients = useRef(false);  // the timer does not refresh the work while the «Clientes» tab is open
+  onClients.current = tab === 'clients';
   const started = useRef(false);
   const request = useRef(0);
   // The refresh lives while the section is on screen: leaving it stops the timer.
@@ -88,7 +90,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
     getJobsSettings().then(found => setCentral(found.central)).catch(() => setCentral('default'));
     const tick = () => {
       // Not while a comment, block reason or task is being written: a card moving column would lose it.
-      if (document.visibilityState === 'visible' && !document.querySelector('section.jobs .task-form')) void load();
+      if (document.visibilityState === 'visible' && !onClients.current && !document.querySelector('section.jobs .task-form')) void load();
       timer.current = window.setTimeout(tick, REFRESH);
     };
     timer.current = window.setTimeout(tick, REFRESH);

@@ -17,7 +17,7 @@ import sqlite3
 from pathlib import Path
 
 from . import central_api
-from .clients import FREE_MAIL as _FREE_MAIL, domain as _domain
+from .clients import client_domain as _client_domain, domain as _domain
 from .db import now, transaction
 
 TOTAL_SECONDS = 180
@@ -104,7 +104,7 @@ def shape(raw: dict) -> dict:
         detail = raw.get("details", {}).get(name, {})
         email = (detail.get("email") or "").strip().lower() or None
         domains = set()
-        if email and _domain(email) and _domain(email) not in _FREE_MAIL:
+        if email and _client_domain(_domain(email)):
             domains.add(_domain(email))
         by_client[name] = {"id": client.get("id"), "name": name, "company": detail.get("company"), "email": email, "phone": detail.get("phone"),
                            "taxId": detail.get("taxId"), "domains": domains, "projects": [], "websites": []}
@@ -112,7 +112,7 @@ def shape(raw: dict) -> dict:
         client = by_client.get(site.get("client") or "")
         if client and site.get("url"):
             client["websites"].append({"url": site["url"], "status": site.get("status")})
-            if _domain(site["url"]):
+            if _client_domain(_domain(site["url"])):
                 client["domains"].add(_domain(site["url"]))
     for project in raw.get("projects", []):
         client = by_client.get(project.get("client") or "")

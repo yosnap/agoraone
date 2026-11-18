@@ -1,49 +1,11 @@
-import { useRef, useState, useSyncExternalStore } from 'react';
+import { useRef, useState } from 'react';
 import { exportMeeting, kindLabels, updateMeeting, type MeetingClass, type MeetingDetail, type MeetingKind, type MeetingPerson } from '../api/core';
 import { PeopleField } from './people-field';
 import { ModernSelect } from '../ui/modern-select';
-import { moduleOn, useModules } from '../shell/modules';
-import { getClients } from '../api/clients';
+import { useClients } from '../data/clients-store';
 
 const kinds = (Object.keys(kindLabels) as MeetingKind[]).map(value => ({ value, label: kindLabels[value] }));
 const failed = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
-
-// The user's clients (Central's and the ones kept in AgoraOne), read once for every form of the section and again
-// when the Central module is turned on or off. A failed read (the core may still be starting) is tried again three
-// times, 5 s apart, and «Volver a leer» reads it at once. Without Central the list holds the user's own clients.
-type Client = { name: string; projects: { name: string; repo?: string | null }[] };
-type ClientsRead = { clients: Client[] | null; failed: boolean; retrying: boolean };  // clients null while reading
-let directory: ClientsRead = { clients: null, failed: false, retrying: false };
-let readWith: boolean | null = null, retries = 0, timer = 0, generation = 0;
-const listeners = new Set<() => void>();
-const notify = () => listeners.forEach(listener => listener());
-function fetchClients() {
-  const mine = ++generation;  // only the latest read counts: an older answer never replaces a newer one
-  void getClients().then(found => found.clients.map(c => ({ name: c.name, projects: c.projects.filter(p => p.name) }))
-    .sort((a, b) => a.name.localeCompare(b.name, 'es')))
-    .then(found => { if (mine === generation) directory = { clients: found, failed: false, retrying: false }; }, () => {
-      if (mine !== generation) return;
-      const again = retries++ < 3;
-      directory = { clients: [], failed: true, retrying: again };
-      if (again) timer = window.setTimeout(fetchClients, 5000);
-    })
-    .finally(() => { if (mine === generation) notify(); });
-}
-function readClients(centralOn: boolean, now = false) {
-  if (!now && readWith === centralOn) return;
-  window.clearTimeout(timer);
-  retries = 0;
-  readWith = centralOn;
-  directory = { clients: null, failed: false, retrying: false };
-  if (now) notify();
-  fetchClients();
-}
-export function useClients(): ClientsRead & { reread: () => void } {
-  const on = moduleOn(useModules(), 'central');
-  readClients(on);
-  const read = useSyncExternalStore(listener => { listeners.add(listener); return () => listeners.delete(listener); }, () => directory);
-  return { ...read, reread: () => readClients(on, true) };
-}
 
 /** What the meeting was, the client it was about (one of the user's) and who was in it: in the note's
  * properties, and what Watson finds it by later. */
