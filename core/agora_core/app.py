@@ -57,6 +57,7 @@ from .routes_central import CentralHealth, central_router, central_worker
 from .routes_central_views import central_views_router
 from .routes_central_write import central_write_router
 from .routes_central_window import central_window_router
+from .routes_fabrica_window import fabrica_window_router
 from .routes_quotes import quotes_router
 from .central_quotes import clean_documents
 from .routes_clients import clients_router
@@ -225,6 +226,7 @@ def create_app(
     app.include_router(central_views_router(settings, secrets))
     app.include_router(central_write_router(settings, secrets))
     app.include_router(central_window_router(settings))
+    app.include_router(fabrica_window_router(settings))
     app.include_router(quotes_router(settings, secrets))
     app.include_router(clients_router(settings))
     if calendar is not None:

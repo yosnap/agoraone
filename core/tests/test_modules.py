@@ -10,7 +10,7 @@ from agora_core.db import DB_NAME, connect, migrate
 def test_modulos(tmp_path, monkeypatch):
     c = connect(tmp_path / DB_NAME)
     migrate(c)
-    assert all(on for name, on in modules.state(c).items() if name not in modules.FOLLOW_CENTRAL)
+    assert all(on for name, on in modules.state(c).items() if name not in (*modules.FOLLOW_CENTRAL, modules.FOLLOW_FABRICA))
     modules.save(c, {"correo": False, "inventado": False})
     assert modules.state(c)["correo"] is False and "inventado" not in modules.state(c)
     names = [s["name"] for s in engines._specs()]
