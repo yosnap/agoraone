@@ -36,3 +36,10 @@
 .central-events li > div .chip { margin-left:0 }
 .central-event-time { display:flex; flex-direction:column; font-weight:600 }
 @media (max-width:640px) { .central-table th:nth-child(4), .central-table td:nth-child(4) { display:none } }
+/* «Abrir en Central»: buttons on the right, apart from the content; the parts of Central opened in its window. */
+.central-open { display:flex; flex-direction:column; align-items:flex-end; gap:4px }
+.central-open .error, .central-open .ok-note { text-align:right }
+.central-pages h2 { font:600 14px Manrope,sans-serif; margin:0 }
+.central-pages-list { list-style:none; padding:0; margin:8px 0 0; display:flex; flex-direction:column; gap:10px }
+.central-pages-list li { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap }
+.central-pages-list li > div:first-child { display:flex; flex-direction:column; gap:2px }

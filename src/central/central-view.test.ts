@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { menu, sectionModule } from '../shell/shell-state';
 import { openJobsTab, takeJobsTab } from '../jobs/jobs-tab';
+import { centralExternalLink } from '../api/central';
 import { CONNECTION, addDays, agendaDays, agendaRangeProblem, centralTabs, dayHeading, ensureCentral, forgetCentral, madridDay, readAtLabel, timeLabel, viewKey } from './use-central-view';
 
 test('Central es la última entrada del menú', () => {
@@ -97,4 +98,12 @@ test('la agenda de Central pone bajo «desde» lo que empezó antes y dice cuán
   const local = agendaDays([event('2026-11-19T23:00:00.000Z', '2026-11-21T23:00:00.000Z', true)], '2026-11-18');
   assert.match(local[0][1][0].until ?? '', /^hasta el 21 nov\.?$/, 'igual si Central corre en hora de Madrid');
   assert.equal(local[0][0], '2026-11-20');
+});
+
+test('la ventana de Central solo ofrece abrir en el navegador enlaces https', () => {
+  assert.equal(centralExternalLink({ url: 'https://mail.google.com/mail/u/0/' }), 'https://mail.google.com/mail/u/0/');
+  for (const wrong of [{ url: 'http://example.com/' }, { url: 'javascript:alert(1)' }, { url: 'file:///etc/passwd' }, { url: 'no es una dirección' },
+    { url: `https://example.com/${'a'.repeat(2001)}` }, { url: 3 }, {}, null, 'https://example.com/']) {
+    assert.equal(centralExternalLink(wrong), null, JSON.stringify(wrong));
+  }
 });

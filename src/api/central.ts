@@ -92,3 +92,19 @@ export const projectKindLabels: Record<string, string> = { CLIENT: 'Cliente', OW
 export const deployLabels: Record<string, string> = { UNKNOWN: 'Sin indicar', NOT_DEPLOYED: 'Sin desplegar', STAGING: 'En pruebas', PRODUCTION: 'En producción', RETIRED: 'Retirado' };
 export const webKindLabels: Record<string, string> = { CLIENT: 'Cliente', OWN: 'Propia', CENTRAL: 'Centralizada' };
 export const levelLabels: Record<CentralLevel, string> = { green: 'Bien', amber: 'Mirar', red: 'Actuar', grey: 'Sin dato' };
+
+// Central's own web, in a window of the desktop app (/api/core/central/window*): only pages of a closed list of the
+// saved Central address. The user signs in there with Central's login; AgoraOne's key never goes to that window.
+export type CentralPage = '' | 'ajustes' | 'webs' | 'servidores' | 'correo' | `clientes/${string}` | `proyectos/${string}` | `presupuestos/${string}`;
+/** Opens the page in Central's window; 409 `no_window` when AgoraOne runs in a browser tab (no desktop app). */
+export const openCentralWindow = (ruta: CentralPage) => core<{ seq: number }>('/central/window', { ruta });
+/** The same page in the system's browser. */
+export const openCentralInBrowser = (ruta: CentralPage) => core<{ done: true }>('/central/window/browser', { ruta });
+/** A link of Central to another site (https only), in the system's browser. */
+export const openCentralLink = (url: string) => core<{ done: true }>('/central/window/external', { url });
+/** The address of the event the desktop app sends for a link of Central to another site: only https, of bounded size. */
+export const centralExternalLink = (detail: unknown): string | null => {
+  const url = (detail as { url?: unknown } | null)?.url;
+  if (typeof url !== 'string' || url.length > 2000) return null;
+  try { return new URL(url).protocol === 'https:' ? url : null; } catch { return null; }
+};

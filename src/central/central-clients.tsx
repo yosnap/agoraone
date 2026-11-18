@@ -3,6 +3,7 @@ import { getCentralClient, getCentralView, projectKindLabels, projectStatusLabel
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { CentralProblem, FallbackNote } from './central-connect';
+import { OpenInCentral } from './open-in-central';
 import { dateLabel, useCentralRead, viewKey } from './use-central-view';
 
 const HIDDEN = 'Oculto en modo discreto';
@@ -59,6 +60,7 @@ function ClientRecord({ id, discreet, onBack, onOpen }: { id: string; discreet: 
     </section>
     <section aria-label="Webs"><h3>Webs</h3><WebsitesTable websites={c.websites}/></section>
     <section aria-label="Notas"><h3>Notas</h3><NotesList notes={c.notes} discreet={discreet}/></section>
+    <OpenInCentral page={`clientes/${id}`} discreet={discreet}/>
     {back}
   </article>;
 }

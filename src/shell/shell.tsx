@@ -13,6 +13,7 @@ import { UploadNotice } from '../fiscal/upload-watch';
 import { FirstRun } from './first-run';
 import { requestListen } from '../assistant/listen';
 import { YouTubeMini } from '../brain/youtube-player';
+import { CentralLinkNotice } from '../central/open-in-central';
 import { readShell, sectionModule, writeShell, type Section } from './shell-state';
 import { moduleOn, useModules } from './modules';
 import './shell.css';
@@ -63,6 +64,7 @@ export function Shell() {
     {ready && <AlertToasts discreet={discreet}/>}
     <UploadNotice onOpen={() => go('fiscal')}/>
     <YouTubeMini/>
+    <CentralLinkNotice/>
     {ready && <FirstRun/>}
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting} onWatson={() => go('brain')}/>}

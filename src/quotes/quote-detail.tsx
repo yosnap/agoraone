@@ -5,6 +5,7 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { dateLabel, useCentralRead } from '../central/use-central-view';
 import { HIDDEN, QuotesProblem, StatusBadge } from './quotes-common';
+import { OpenInCentral } from '../central/open-in-central';
 
 const documentLabels: Record<DocumentFormat, string> = { pdf: 'PDF', docx: 'Word' };
 
@@ -95,6 +96,7 @@ export function QuoteDetail({ id, discreet, onBack, onOpen }: { id: string; disc
     </div>
     <Body q={q} discreet={discreet}/>
     {discreet ? <p className="muted">En modo discreto no se abren documentos.</p> : <DocumentButtons id={id}/>}
+    <OpenInCentral page={`presupuestos/${id}`} discreet={discreet}/>
     {back}
   </article>;
 }
