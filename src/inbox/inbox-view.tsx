@@ -15,12 +15,13 @@ const asDate = (text: string) => {
 };
 const firstDate = (item: InboxItem) => item.details.dates?.map(asDate).find(d => !Number.isNaN(d.getTime()) && d.getTime() > Date.now() - 86400000);
 import './inbox.css';
+import { onlyHereLabel } from '../ui/platform';
 
 const tabs: { state: InboxState; label: string }[] = [
   { state: 'pending', label: 'Pendientes' }, { state: 'done', label: 'Hechos' }, { state: 'dismissed', label: 'Descartados' },
 ];
 const tone: Partial<Record<InboxItem['kind'], string>> = { invoice: 'warn', payment: 'warn', client: 'good', incident: 'bad', appointment: 'good', important: 'bad' };
-const levelNotes = { normal: null, local_only: 'Solo en este Mac: sin resumen de modelo', private: 'Privado: sin resumen de modelo' } as const;
+const levelNotes = { normal: null, local_only: `${onlyHereLabel}: sin resumen de modelo`, private: 'Privado: sin resumen de modelo' } as const;
 
 /** The Bandeja: summaries of incoming mail that need attention, grouped by scope. It only proposes; each
  * card is marked done or dismissed by the user, and no message triggers anything by itself. */

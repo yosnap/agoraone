@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { acceptProposal, dismissProposal, type ProposedRule } from '../api/core';
 import { actionLabels } from '../inbox/inbox-labels';
+import { hereLabel } from '../ui/platform';
 
 export type Proposal = { id: string; rule: ProposedRule; state: 'open' | 'busy' | 'made' | 'dismissed' | 'failed'; note?: string };
-const levels: Record<string, string> = { normal: 'normal', local_only: 'solo en este Mac', private: 'privado' };
+const levels: Record<string, string> = { normal: 'normal', local_only: `solo en ${hereLabel}`, private: 'privado' };
 
 /** The mail rules Watson proposed in this conversation, each exactly as it would be created: nothing is
  * written until «Crear regla» (or a plain «sí» while only one is open). */

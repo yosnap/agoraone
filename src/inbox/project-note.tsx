@@ -5,6 +5,7 @@ import { decideInbox, type InboxItem } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { clientFolder, noteContent, noteTitle, projectsBase, withLevel } from './project-note-text';
+import { hereLabel } from '../ui/platform';
 
 type Vault = { id: string; name: string; folders: string[] };
 const NO_PROJECT = '';
@@ -87,7 +88,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
     </div>
     <label className="field">Título<input value={title} maxLength={200} required onChange={event => { setTitle(event.target.value); setTouched({ ...touched, title: true }); }}/></label>
     <label className="field">Texto de la nota<textarea value={content} rows={12} onChange={event => { setContent(event.target.value); setTouched({ ...touched, content: true }); }}/></label>
-    {item.confidentiality !== 'normal' && <p className="muted">El correo es {item.confidentiality === 'private' ? 'privado' : 'solo de este Mac'}: la nota se guarda marcada igual
+    {item.confidentiality !== 'normal' && <p className="muted">El correo es {item.confidentiality === 'private' ? 'privado' : `solo de ${hereLabel}`}: la nota se guarda marcada igual
       («confidencialidad: {item.confidentiality === 'private' ? 'privado' : 'solo-local'}»), y ni {assistant} ni ningún modelo remoto la leerán.</p>}
     {made && <p className="muted">La nota ya está creada; falta marcar la tarjeta como hecha.</p>}
     <p className="muted">Se crea una nota nueva, «{title.trim() || '…'}.md», en «{folder || '…'}»{vault && folder && !vault.folders.some(f => f === folder || f.startsWith(`${folder}/`)) ? ', que se crea con ella' : ''}. No se cambia ninguna nota que ya exista.</p>

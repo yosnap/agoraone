@@ -1,10 +1,11 @@
 import { ApiError, csrfToken, request } from './client';
+import { onlyHereLabel } from '../ui/platform';
 
 // The Python core, reached through the backend at /api/core/* (cookie, CSRF and origin checked there).
 const core = <T>(path: string, body?: unknown, method?: string) => request<T>(`/core${path}`, body, method);
 
 export type Level = 'normal' | 'local_only' | 'private';
-export const levelLabels: Record<Level, string> = { normal: 'Normal', local_only: 'Solo en este Mac', private: 'Privada' };
+export const levelLabels: Record<Level, string> = { normal: 'Normal', local_only: onlyHereLabel, private: 'Privada' };
 
 export type NodeType = 'note' | 'person' | 'org' | 'project' | 'amount' | 'date' | 'tag' | 'folder';
 /** Notes carry where they live; entity, tag and folder nodes only a type, a title and a degree. */

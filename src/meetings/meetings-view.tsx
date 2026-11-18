@@ -5,6 +5,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { MeetingDetailPanel } from './meeting-detail';
 import { lastChoice, rememberChoice, startRecording, stopRecording, useMeetingRecorder } from './meeting-recorder';
 import './meetings.css';
+import { hereLabel, recordsSystemAudio } from '../ui/platform';
 
 const levels: { value: Level; label: string }[] = (Object.keys(levelLabels) as Level[]).map(value => ({ value, label: levelLabels[value] }));
 export const clock = (seconds: number) => {
@@ -17,7 +18,7 @@ const statusText: Record<Meeting['status'], string> = { recording: 'Grabando', r
 const workText: Partial<Record<Meeting['work'], string>> = { transcribing: 'Transcribiendo en este equipo…', summarizing: 'Resumiendo…', failed: 'No se pudo procesar' };
 export const working = (m: Meeting) => m.work === 'transcribing' || m.work === 'summarizing';
 
-const madeBy: Record<string, string> = { claude: 'Resumida por Claude', local: 'Resumida en este Mac con el modelo local', none: 'Sin resumen: solo la transcripción' };
+const madeBy: Record<string, string> = { claude: 'Resumida por Claude', local: `Resumida en ${hereLabel} con el modelo local`, none: 'Sin resumen: solo la transcripción' };
 
 function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned }: { meeting: Meeting; discreet: boolean; onDeleted: () => void; onChanged: () => void; ours: boolean; planned?: Summarizer }) {
   const [confirming, setConfirming] = useState(false);
@@ -92,7 +93,7 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
   return <section className="page meetings-page" aria-labelledby="meetings-title">
     <div className="eyebrow">REUNIONES{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="meetings-title">Reuniones</h1>
-    <p className="page-lead">Graba una reunión de Meet, Zoom o Teams: tu micrófono y lo que suena en el ordenador, en dos pistas. El audio se queda en los datos de AgoraOne (nunca en el vault) hasta que lo borres, y se transcribe en este equipo.</p>
+    <p className="page-lead">Graba una reunión de Meet, Zoom o Teams: {recordsSystemAudio ? 'tu micrófono y lo que suena en el ordenador, en dos pistas' : 'tu micrófono (en Windows no se graba lo que suena en el ordenador)'}. El audio se queda en los datos de AgoraOne (nunca en el vault) hasta que lo borres, y se transcribe en este equipo.</p>
     <article className="card meeting-record" aria-labelledby="record-title">
       <div className="card-head"><h2 id="record-title">{recorder.phase === 'recording' ? 'Grabando' : 'Nueva grabación'}</h2>
         {recorder.phase === 'recording' && <span className="meeting-live" role="status"><span aria-hidden="true">●</span> {clock(recorder.seconds)}</span>}</div>
@@ -104,7 +105,7 @@ export function MeetingsView({ discreet }: { discreet: boolean }) {
       </> : <form onSubmit={event => { event.preventDefault(); rememberChoice({ confidentiality: level, system }); void startRecording(title, level, system).then(() => setTitle('')); }}>
         <label className="field">Título<input value={title} onChange={event => setTitle(event.target.value)} maxLength={200} placeholder="Reunión del equipo (opcional)"/></label>
         <label className="field">Confidencialidad<ModernSelect value={level} options={levels} onChange={value => setLevel(value as Level)}/></label>
-        <p className="meeting-engine" role="note">La grabación y la transcripción se hacen en este Mac. Resumen: <strong>{who ? who[level].label : '…'}</strong>.</p>
+        <p className="meeting-engine" role="note">La grabación y la transcripción se hacen en {hereLabel}. Resumen: <strong>{who ? who[level].label : '…'}</strong>.</p>
         <label className="check"><input type="checkbox" checked={system} onChange={event => setSystem(event.target.checked)}/> Grabar también el audio del sistema (los demás)</label>
         {system && list?.system && <p className="fiscal-warning">{list.system}</p>}
         <button type="submit" className="button primary" disabled={busy}>{recorder.phase === 'starting' ? 'Empezando…' : 'Empezar a grabar'}</button>
