@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { ApiError } from '../api/client';
-import type { CentralLevel, CentralViewName } from '../api/central';
+import type { CentralEvent, CentralLevel, CentralViewName } from '../api/central';
 
 // What the «Central» section has read, shared by its tabs: each view (or record) is asked once, when it is first
 // shown, and kept while the section lives, so going back to a tab does not ask Central again. «Volver a leer»
@@ -117,13 +117,57 @@ export function addDays(day: string, days: number) {
 /** Central's agenda reads at most 62 days, both included. */
 export const AGENDA_DAYS = 62;
 
-/** Why a range of the agenda cannot be asked (the core checks it again, counting the hour of the autumn change). */
+const wall = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Madrid', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+/** How far Madrid's clock is ahead of UTC at an instant (one hour in winter, two in summer). */
+function madridOffset(at: number) {
+  const p = Object.fromEntries(wall.formatToParts(new Date(at)).map(x => [x.type, x.value]));
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(at / 1000) * 1000;
+}
+
+/** The instant of 00:00 of a day AAAA-MM-DD in Madrid (the changes of hour are after midnight: no ambiguity). */
+function madridMidnight(day: string) {
+  const utc = Date.parse(`${day}T00:00:00Z`);
+  return utc - madridOffset(utc - madridOffset(utc));
+}
+
+/** Why a range of the agenda cannot be asked, measured like Central: from 00:00 of «desde» to the end of «hasta» in
+ * Madrid, in real time, so 62 days that cross the autumn change of hour (a day of 25 hours) do not fit. */
 export function agendaRangeProblem(from: string, to: string): string | null {
-  const valid = (day: string) => /^\d{4}-\d{2}-\d{2}$/.test(day) && addDays(day, 0) === day;
-  if (!valid(from) || !valid(to)) return 'Elige dos días que existan.';
-  const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 864e5 + 1;
-  if (days < 1) return '«Hasta» es anterior a «desde».';
-  return days > AGENDA_DAYS ? `La agenda de Central abarca como mucho ${AGENDA_DAYS} días.` : null;
+  const valid = (day: string) => /^\d{4}-\d{2}-\d{2}$/.test(day) && addDays(day, 0) === day && +day.slice(0, 4) >= 2000 && +day.slice(0, 4) <= 2100;
+  if (!valid(from) || !valid(to)) return 'Elige dos días que existan, entre 2000 y 2100.';
+  if (to < from) return '«Hasta» es anterior a «desde».';
+  const span = madridMidnight(addDays(to, 1)) - 1 - madridMidnight(from);
+  return span > AGENDA_DAYS * 864e5
+    ? `La agenda de Central abarca como mucho ${AGENDA_DAYS} días (61 si el rango cruza el cambio de hora de octubre).` : null;
+}
+
+const shortDay = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', timeZone: 'Europe/Madrid' });
+
+/** An event in the agenda: under which day it goes and, when it ends another day, «hasta el 20 nov.» (with the
+ * time when it is not all day). */
+export type AgendaItem = { event: CentralEvent; until: string | null };
+
+/** The events grouped by their day in Madrid, in Central's order. One that began before «desde» goes under «desde». */
+export function agendaDays(events: CentralEvent[], from: string): [string, AgendaItem[]][] {
+  const days = new Map<string, AgendaItem[]>();
+  for (const event of events) {
+    const start = event.start ? new Date(event.start) : null;
+    if (!start || Number.isNaN(start.getTime())) continue;
+    const startDay = madridDay(start);
+    const day = startDay < from ? from : startDay;
+    const end = event.end ? new Date(event.end) : null;
+    let until: string | null = null;
+    if (end && !Number.isNaN(end.getTime())) {
+      // an all-day event ends at 00:00 of the day after its last one, in Central's zone (UTC on a server, Madrid on a
+      // Mac): twelve hours earlier is its last day in Madrid either way
+      const last = event.allDay ? new Date(end.getTime() - 12 * 3600e3) : end;
+      if (madridDay(last) !== startDay) until = event.allDay ? `hasta el ${shortDay.format(last)}` : `hasta el ${shortDay.format(last)}, ${clock.format(last)}`;
+    }
+    days.set(day, [...(days.get(day) ?? []), { event, until }]);
+  }
+  return [...days.entries()];
 }
 
 /** «miércoles, 18 de noviembre de 2026» for a day AAAA-MM-DD of Madrid. */
