@@ -11,7 +11,7 @@ export type PhaseStatus = 'PENDING' | 'IN_PROGRESS' | 'DONE' | 'INVOICED';
 export type QuoteRow = { id: string | null; number: string | null; title: string | null; client: string | null; status: QuoteStatus | null;
   issuedAt: string | null; validUntil: string | null; total: number | null; totalMax: number | null };
 export type QuoteItem = { description: string | null; details: string | null; quantity: number | null; unit: string | null; unitPrice: number | null; priceMax: number | null };
-export type QuotePhase = { name: string | null; percent: number | null; amount: number | null; dueDate: string | null; status: PhaseStatus | null; completedAt: string | null };
+export type QuotePhase = { id: string | null; revision: string | null; name: string | null; percent: number | null; amount: number | null; dueDate: string | null; status: PhaseStatus | null; completedAt: string | null };
 export type QuoteRecord = Omit<QuoteRow, 'client'> & {
   client: { id: string | null; name: string | null } | null; project: { id: string | null; name: string | null } | null;
   vat: number | null; notes: string | null; scope: string | null; includes: string[]; excludes: string[]; assumptions: string[];

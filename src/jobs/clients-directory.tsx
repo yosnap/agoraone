@@ -1,5 +1,8 @@
 import { useRef, useState } from 'react';
 import { deleteClient, distinctClient, getClient, getClients, linkClient, sourceLabels, type ClientsDirectory, type DirectoryClient } from '../api/clients';
+import { getWritePermissions } from '../api/central-write';
+import { refreshCentral } from '../api/core';
+import { ChangeReview, useCentralChange } from '../central/central-change';
 import { invalidateClients } from '../data/clients-store';
 import { LoadError, Loading } from '../ui/load-state';
 import { ClientForm } from './client-form';
@@ -8,8 +11,9 @@ const tone = { central: 'paused', local: 'good', ambos: 'good' } as const;
 
 /** One list of the user's clients: Central's (read-only here) and the ones kept in AgoraOne, which the user creates,
  * changes and deletes (after confirming). A client kept here and one of Central's with the same tax id or address
- * show once; names that are only alike come up as a suggestion, linked only on «Enlazar». Nothing of Central's is
- * changed from here. In discreet mode nothing can be opened, so no address, phone or tax id is shown. */
+ * show once; names that are only alike come up as a suggestion, linked only on «Enlazar». A client kept only here can
+ * be created in Central («Crear en Central», after seeing it) with a key that may write; Central's own are changed in
+ * its section. In discreet mode nothing can be opened, so no address, phone or tax id is shown. */
 export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
   const [data, setData] = useState<ClientsDirectory | null>(null);
   const [error, setError] = useState('');
@@ -18,11 +22,27 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
   const [deleting, setDeleting] = useState<{ id: number; meetings: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
+  const [creating, setCreating] = useState<number | null>(null);
+  // Whether the saved key may create clients in Central (asked only when Central is on and read).
+  const [canCreate, setCanCreate] = useState(false);
+  // «Crear en Central»: the exact client that will be created, and only «Guardar en Central» creates it; then it is
+  // linked with the one kept here (shown once) and Central is read again so it shows as «Propio y Central» now.
+  const creation = useCentralChange(said => {
+    void refreshCentral().catch(() => undefined).finally(() => { setCreating(null); setNote(said); load(); invalidateClients(); });
+  });
+  const create = (id: number) => { setCreating(id); setNote(''); void creation.ask({ kind: 'cliente-nuevo', localId: id }); };
+  const stopCreating = () => { creation.reset(); setCreating(null); };
   const asked = useRef(false);
   const request = useRef(0);
   const load = () => {
     const mine = ++request.current;
-    getClients().then(found => { if (mine === request.current) { setData(found); setError(''); } })
+    getClients().then(found => {
+      if (mine !== request.current) return;
+      setData(found); setError('');
+      if (found.central.on && found.central.read) {
+        getWritePermissions().then(can => { if (mine === request.current) setCanCreate(can.central); }).catch(() => setCanCreate(false));
+      } else setCanCreate(false);
+    })
       .catch(failure => { if (mine === request.current) setError(failure instanceof Error ? failure.message : 'No se pudieron leer los clientes.'); });
   };
   if (!asked.current) { asked.current = true; load(); }
@@ -48,6 +68,8 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
     </span>;
     return <span className="actions">
       <button type="button" className="button" disabled={busy} onClick={() => { setEditing(id); setNote(''); }}>Editar</button>
+      {client.source === 'local' && canCreate && creating !== id &&
+        <button type="button" className="button" disabled={busy || creating !== null} onClick={() => create(id)}>Crear en Central…</button>}
       {client.source === 'ambos' && client.centralId && (client.aliases.length
         ? <button type="button" className="button" disabled={busy}
           onClick={() => void act(() => distinctClient(id, client.centralId!), `«${client.aliases[0]}» y «${client.name}» de Central se quedan como clientes distintos.`)}>Son distintos</button>
@@ -71,6 +93,10 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
           <button type="button" className="button primary" disabled={busy} onClick={() => void act(() => linkClient(s.localId, s.centralId), `«${s.localName}» enlazado con «${s.centralName}» de Central.`)}>Enlazar</button>
         </span>
       </li>)}</ul>}
+    {creating !== null && !discreet && <div className="card">{creation.busy && !creation.preview ? <Loading label="Preparando el cliente para Central" lines={2}/>
+      : <ChangeReview change={creation} onCancel={stopCreating} onReview={stopCreating}
+        onLink={centralId => void act(async () => { stopCreating(); await refreshCentral(); await linkClient(creating, centralId); },
+          `Enlazado con «${creation.exists?.centralName ?? 'el cliente'}» de Central.`)}/>}</div>}
     {note && <p role="status" className="task-done">{note}</p>}
     {error && <LoadError message={error}/>}
     {data.clients.length === 0 ? <p className="muted">Todavía no tienes clientes. Crea uno con «Nuevo cliente» para que la Bandeja, WhatsApp, las reuniones, Fiscal y Watson lo reconozcan.</p>

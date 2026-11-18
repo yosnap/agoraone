@@ -38,8 +38,8 @@ from .db import DB_NAME, connect
 from .hidden_player import Relay
 from .settings import Settings
 
-PAGES = {"", "ajustes", "webs", "servidores", "correo"}
-ITEMS = {"clientes", "proyectos", "presupuestos"}
+PAGES = {"", "ajustes", "webs", "servidores", "alertas", "correo"}
+ITEMS = {"clientes", "proyectos", "servidores", "presupuestos"}
 MAX_URL = 2000
 OFF = "El módulo Central está apagado."
 OFF_QUOTES = "El módulo Presupuestos está apagado."

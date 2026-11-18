@@ -1,13 +1,19 @@
-import { useState } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { ApiError } from '../api/client';
 import { amountRange, euros, getQuote, openQuoteDocument, phaseStatusLabels, type DocumentFormat, type QuoteRecord } from '../api/quotes';
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
-import { dateLabel, useCentralRead } from '../central/use-central-view';
+import { dateLabel, forgetCentral, useCentralRead } from '../central/use-central-view';
+import { useWritePermissions } from '../central/central-change';
+import { Block, Facts, RecordLayout } from '../central/central-record';
+import { QuotePhaseEdit } from './quote-phase-edit';
 import { HIDDEN, QuotesProblem, StatusBadge } from './quotes-common';
 import { OpenInCentral } from '../central/open-in-central';
 
 const documentLabels: Record<DocumentFormat, string> = { pdf: 'PDF', docx: 'Word' };
+const day = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/Madrid' });
+/** A due date of Central (a day kept at noon UTC) as «1 dic 2026», whatever the zone of this computer. */
+const dayLabel = (iso: string) => { const at = new Date(iso); return Number.isNaN(at.getTime()) ? '—' : day.format(at); };
 
 /** «Abrir PDF» and «Abrir Word»: the core downloads the document from Central and opens it with this computer's program. */
 function DocumentButtons({ id }: { id: string }) {
@@ -33,19 +39,52 @@ function DocumentButtons({ id }: { id: string }) {
 
 function Lines({ title, lines }: { title: string; lines: string[] }) {
   if (!lines.length) return null;
-  return <section aria-label={title}><h3>{title}</h3><ul className="quotes-lines">{lines.map((line, index) => <li key={index}>{line}</li>)}</ul></section>;
+  return <Block title={title}><ul className="quotes-lines">{lines.map((line, index) => <li key={index}>{line}</li>)}</ul></Block>;
 }
 
-function Body({ q, discreet }: { q: QuoteRecord; discreet: boolean }) {
+/** The payment milestones; with a key that may write, each one's state and due date are changed here. */
+function Phases({ q, discreet, canWrite, onSaid }: { q: QuoteRecord; discreet: boolean; canWrite: boolean; onSaid: (said: string) => void }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const money = (from: number | null) => (discreet ? HIDDEN : amountRange(from, null));
+  if (!q.phases.length) return null;
+  return <Block title="Hitos de pago" wide>
+    <table className="data-table central-table">
+      <thead><tr><th>Hito</th><th className="num">Porcentaje</th><th className="num">Importe</th><th>Fecha prevista</th><th>Estado</th><th>Completado</th>
+        <th><span className="visually-hidden">Acciones</span></th></tr></thead>
+      <tbody>{q.phases.map((p, index) => {
+        const editable = canWrite && !discreet && q.id && p.id && p.revision ? { ...p, id: p.id, revision: p.revision } : null;
+        return <Fragment key={p.id ?? index}>
+          <tr>
+            <td>{p.name ?? '—'}</td><td className="num">{p.percent != null ? `${p.percent} %` : '—'}</td><td className="num">{money(p.amount)}</td>
+            <td className="central-date">{p.dueDate ? dayLabel(p.dueDate) : '—'}</td><td>{p.status ? phaseStatusLabels[p.status] : '—'}</td>
+            <td className="central-date">{p.completedAt ? dateLabel(p.completedAt) : '—'}</td>
+            <td className="central-row-actions">{editable && editing !== editable.id &&
+              <button type="button" className="button" onClick={() => { onSaid(''); setEditing(editable.id); }}>Cambiar</button>}</td>
+          </tr>
+          {editable && editing === editable.id && q.id && <tr><td colSpan={7}>
+            <QuotePhaseEdit key={editable.revision} quoteId={q.id} phase={editable} onCancel={() => setEditing(null)} onReview={forgetCentral}
+              onDone={said => { setEditing(null); onSaid(said); forgetCentral(); }}/>
+          </td></tr>}
+        </Fragment>;
+      })}</tbody>
+    </table>
+  </Block>;
+}
+
+function Body({ q, discreet, phases }: { q: QuoteRecord; discreet: boolean; phases: ReactNode }) {
   const money = (from: number | null, to?: number | null) => (discreet ? HIDDEN : amountRange(from, to));
   const facts: [string, string][] = [
     ['Cliente', discreet ? HIDDEN : q.client?.name ?? '—'], ['Proyecto', discreet ? HIDDEN : q.project?.name ?? '—'], ['Fecha', dateLabel(q.issuedAt)],
     ['Válido hasta', dateLabel(q.validUntil)], ['IVA', q.vat != null ? `${q.vat} %` : '—'],
   ];
   return <>
-    <dl className="central-facts">{facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
-    {q.scope && <section aria-label="Alcance"><h3>Objeto y alcance</h3><p className="quotes-text">{q.scope}</p></section>}
-    <section aria-label="Partidas"><h3>Partidas</h3>
+    <Block title="Datos"><Facts items={facts}/></Block>
+    <Block title="Importe">
+      <Facts items={[['Base', money(q.base, q.baseMax)], [`IVA${q.vat != null ? ` (${q.vat} %)` : ''}`, discreet ? HIDDEN : euros(q.tax)],
+        ['Total con IVA', <strong key="total">{money(q.total, q.totalMax)}</strong>]]}/>
+    </Block>
+    {q.scope && <Block title="Objeto y alcance" wide><p className="quotes-text">{q.scope}</p></Block>}
+    <Block title="Partidas" wide>
       {!q.items.length ? <p className="muted">Sin partidas.</p> : <table className="data-table central-table">
         <thead><tr><th>Concepto</th><th className="num">Cantidad</th><th className="num">Precio sin IVA</th><th className="num">Importe</th></tr></thead>
         <tbody>{q.items.map((item, index) => {
@@ -58,45 +97,34 @@ function Body({ q, discreet }: { q: QuoteRecord; discreet: boolean }) {
           </tr>;
         })}</tbody>
       </table>}
-      <dl className="central-facts quotes-totals">
-        <div><dt>Base</dt><dd>{money(q.base, q.baseMax)}</dd></div>
-        <div><dt>IVA{q.vat != null ? ` (${q.vat} %)` : ''}</dt><dd>{discreet ? HIDDEN : euros(q.tax)}</dd></div>
-        <div><dt>Total con IVA</dt><dd><strong>{money(q.total, q.totalMax)}</strong></dd></div>
-      </dl>
-    </section>
-    {q.phases.length > 0 && <section aria-label="Hitos de pago"><h3>Hitos de pago</h3>
-      <table className="data-table central-table">
-        <thead><tr><th>Hito</th><th className="num">Porcentaje</th><th className="num">Importe</th><th>Fecha</th><th>Estado</th></tr></thead>
-        <tbody>{q.phases.map((p, index) => <tr key={index}>
-          <td>{p.name ?? '—'}</td><td className="num">{p.percent != null ? `${p.percent} %` : '—'}</td><td className="num">{money(p.amount)}</td>
-          <td>{p.dueDate ? dateLabel(p.dueDate) : '—'}</td><td>{p.status ? phaseStatusLabels[p.status] : '—'}</td>
-        </tr>)}</tbody>
-      </table></section>}
+    </Block>
+    {phases}
     <Lines title="Incluye" lines={q.includes}/>
     <Lines title="No incluye" lines={q.excludes}/>
     <Lines title="Supuestos y condiciones" lines={q.assumptions}/>
-    {q.schedule.length > 0 && <section aria-label="Cronograma"><h3>Cronograma</h3>
-      <dl className="central-facts">{q.schedule.map((s, index) => <div key={index}><dt>{s.when ?? '—'}</dt><dd>{s.what ?? '—'}</dd></div>)}</dl></section>}
-    {q.thirdPartyCosts && <section aria-label="Costes de terceros"><h3>Costes de terceros</h3><p className="quotes-text">{discreet ? HIDDEN : q.thirdPartyCosts}</p></section>}
-    {q.notes && <section aria-label="Notas"><h3>Notas</h3><p className="quotes-text">{discreet ? 'Ocultas en modo discreto.' : q.notes}</p></section>}
+    {q.schedule.length > 0 && <Block title="Cronograma"><Facts items={q.schedule.map(s => [s.when ?? '—', s.what ?? '—'])}/></Block>}
+    {q.thirdPartyCosts && <Block title="Costes de terceros"><p className="quotes-text">{discreet ? HIDDEN : q.thirdPartyCosts}</p></Block>}
+    {q.notes && <Block title="Notas"><p className="quotes-text">{discreet ? 'Ocultas en modo discreto.' : q.notes}</p></Block>}
   </>;
 }
 
-/** A quote's record, read-only: lines, payment milestones, base, VAT and total, and its PDF and Word. */
+/** A quote's record: lines, payment milestones (their state and due date changed here with a key that may write),
+ * base, VAT and total, its PDF and Word, and the rest in Central. */
 export function QuoteDetail({ id, discreet, onBack, onOpen }: { id: string; discreet: boolean; onBack: () => void; onOpen: (section: Section) => void }) {
   const read = useCentralRead(`presupuesto:${id}`, () => getQuote(id));
-  const back = <div className="actions central-actions"><button type="button" className="button" onClick={onBack}>Volver a la lista</button></div>;
-  if (read.failure) return <>{back}<QuotesProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/></>;
-  if (!read.data) return <>{back}<Loading label="Leyendo el presupuesto" lines={5}/></>;
+  const can = useWritePermissions();
+  const [said, setSaid] = useState('');
+  const back = <button type="button" className="button" onClick={onBack}>Volver a la lista</button>;
+  if (read.failure) return <><div className="actions central-actions">{back}</div><QuotesProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/></>;
+  if (!read.data) return <><div className="actions central-actions">{back}</div><Loading label="Leyendo el presupuesto" lines={5}/></>;
   const q = read.data;
-  return <article className="card central-record" aria-labelledby="quote-title">
-    <div className="card-head">
-      <div><h2 id="quote-title">{q.number ?? 'Presupuesto'} · {discreet ? HIDDEN : q.title ?? '—'}</h2><small className="muted">De Central · solo lectura</small></div>
-      <StatusBadge status={q.status}/>
-    </div>
-    <Body q={q} discreet={discreet}/>
-    {discreet ? <p className="muted">En modo discreto no se abren documentos.</p> : <DocumentButtons id={id}/>}
-    <OpenInCentral page={`presupuestos/${id}`} discreet={discreet}/>
-    {back}
-  </article>;
+  return <RecordLayout titleId="quote-title" title={`${q.number ?? 'Presupuesto'} · ${discreet ? HIDDEN : q.title ?? '—'}`}
+    badges={<><StatusBadge status={q.status}/><span className="chip">De Central</span></>}
+    actions={<><OpenInCentral page={`presupuestos/${id}`} discreet={discreet}/>{back}</>}>
+    {said && <p className="ok-note" role="status">{said}</p>}
+    {discreet ? <p className="muted">En modo discreto no se abren documentos.</p> : <div className="central-wide"><DocumentButtons id={id}/></div>}
+    <Body q={q} discreet={discreet} phases={<Phases q={q} discreet={discreet} canWrite={can.quotes} onSaid={setSaid}/>}/>
+    {!discreet && !can.quotes && can.quotesProblem && q.phases.length > 0 && <p className="muted">{can.quotesProblem}</p>}
+    <p className="muted">Enviar el presupuesto, cambiar su estado o sus partidas se hace en Central.</p>
+  </RecordLayout>;
 }

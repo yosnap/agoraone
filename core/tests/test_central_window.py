@@ -51,8 +51,10 @@ def test_lista_cerrada_de_paginas():
     assert routes_central_window.route_of("") == ("", "central")
     assert routes_central_window.route_of(f"clientes/{C1}") == (f"clientes/{C1}", "central")
     assert routes_central_window.route_of(f"/presupuestos/{C1}/") == (f"presupuestos/{C1}", "presupuestos")
+    assert routes_central_window.route_of(f"servidores/{C1}") == (f"servidores/{C1}", "central")
+    assert routes_central_window.route_of("alertas") == ("alertas", "central")
     for wrong in ("login", "api/v1/clientes", "clientes", f"clientes/{C1}/editar", "clientes/../ajustes", "clientes/ABC", "//evil.example",
-                  "https://evil.example", "ajustes?x=1", "ajustes#x", f"servidores/{C1}", None, 3, "a" * 100):
+                  "https://evil.example", "ajustes?x=1", "ajustes#x", "servidores/../ajustes", "servidores/ABC", "alertas/x", None, 3, "a" * 100):
         assert routes_central_window.route_of(wrong) is None, wrong
 
 

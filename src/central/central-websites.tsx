@@ -4,12 +4,13 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { CentralProblem } from './central-connect';
+import { OpenInCentral } from './open-in-central';
 import { dateLabel, useCentralRead, viewKey } from './use-central-view';
 
 const ALL = '';
 
 /** Webs: the websites Central watches with their last check (up or down, code, time), all or only the ones down. */
-export function CentralWebsites({ onOpen }: { onOpen: (section: Section) => void }) {
+export function CentralWebsites({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   const [kind, setKind] = useState(ALL);
   const [onlyDown, setOnlyDown] = useState(false);
   const params = { tipo: kind || undefined, caidas: onlyDown ? '1' : undefined };
@@ -31,7 +32,7 @@ export function CentralWebsites({ onOpen }: { onOpen: (section: Section) => void
       : <>
         <p className="muted">{websites.length} webs{onlyDown ? '' : ` · ${down} caídas en la última comprobación`}</p>
         <table className="data-table central-table">
-          <thead><tr><th>Web</th><th>Tipo</th><th>Cliente</th><th>Estado</th><th className="num">Código</th><th className="num">Tiempo</th><th>Última</th></tr></thead>
+          <thead><tr><th>Web</th><th>Tipo</th><th>Cliente</th><th>Estado</th><th className="num">Código</th><th className="num">Tiempo</th><th>Última</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
           <tbody>{websites.map((w, index) => <tr key={w.id ?? index}>
             <td className="central-url"><strong>{w.url?.replace(/^https?:\/\//, '') ?? 'Dirección oculta'}</strong></td>
             <td>{webKindLabels[w.kind ?? ''] ?? '—'}</td>
@@ -40,7 +41,8 @@ export function CentralWebsites({ onOpen }: { onOpen: (section: Section) => void
               {w.status === 'up' ? 'En línea' : w.status === 'down' ? 'Caída' : 'Sin datos'}</span></td>
             <td className="num">{w.code ?? '—'}</td>
             <td className="num">{w.ms != null ? `${w.ms} ms` : '—'}</td>
-            <td>{dateLabel(w.checkedAt)}</td>
+            <td className="central-date">{dateLabel(w.checkedAt)}</td>
+            <td className="central-row-actions"><OpenInCentral page="webs" discreet={discreet}/></td>
           </tr>)}</tbody>
         </table>
       </>}

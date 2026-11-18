@@ -3,6 +3,8 @@ import { getCentralServer, getCentralView, levelLabels, type CentralLevel, type 
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { CentralProblem } from './central-connect';
+import { OpenInCentral } from './open-in-central';
+import { Block, RecordLayout } from './central-record';
 import { dateLabel, levelTone, useCentralRead, viewKey } from './use-central-view';
 
 const pct = (value: number | null | undefined) => (value == null ? '—' : `${Math.round(value)} %`);
@@ -52,27 +54,30 @@ const containerState = (state: string | null) => (state === 'ok' ? ['good', 'En 
 const checkOrder = (ok: boolean | null) => (ok === false ? 0 : ok === null ? 1 : 2);
 
 /** A server's record: health cards, protection checks, containers, the domains its proxy serves and the projects it hosts. */
-function ServerRecord({ id, onBack, onOpen }: { id: string; onBack: () => void; onOpen: (section: Section) => void }) {
+function ServerRecord({ id, discreet, onBack, onOpen }: { id: string; discreet: boolean; onBack: () => void; onOpen: (section: Section) => void }) {
   const read = useCentralRead(`servidor:${id}`, () => getCentralServer(id));
-  const back = <div className="actions central-actions"><button type="button" className="button" onClick={onBack}>Volver a la lista</button></div>;
-  if (read.failure) return <>{back}<CentralProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/></>;
-  if (!read.data) return <>{back}<Loading label="Leyendo la ficha del servidor" lines={4}/></>;
+  const back = <button type="button" className="button" onClick={onBack}>Volver a la lista</button>;
+  if (read.failure) return <><div className="actions central-actions">{back}</div><CentralProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/></>;
+  if (!read.data) return <><div className="actions central-actions">{back}</div><Loading label="Leyendo la ficha del servidor" lines={4}/></>;
   const s = read.data;
   const checks = [...s.checks].sort((a, b) => checkOrder(a.ok) - checkOrder(b.ok));
-  return <article className="card central-record" aria-labelledby="central-server-title">
-    <div className="card-head"><div><h2 id="central-server-title">{s.name}</h2>
-      <small className="muted">{[s.provider, s.panel].filter(Boolean).join(' · ') || '—'} · leído {dateLabel(s.readAt ?? s.lastOkAt)}{s.root ? '' : ' · sin root'}</small></div>
-      <span className="central-chips"><Level level={s.status}/><span className="chip">De Central · solo lectura</span></span></div>
-    {s.error && <p className="notice" role="status">{s.error}</p>}
-    <section aria-label="Salud"><h3>Salud</h3><ServerCards server={s}/></section>
-    <section aria-label="Protección"><h3>Protección</h3>
+  return <RecordLayout titleId="central-server-title" title={s.name}
+    subtitle={`${[s.provider, s.panel].filter(Boolean).join(' · ') || '—'} · leído ${dateLabel(s.readAt ?? s.lastOkAt)}${s.root ? '' : ' · sin root'}`}
+    badges={<><Level level={s.status}/><span className="chip">De Central</span></>}
+    actions={<><OpenInCentral page={`servidores/${id}`} discreet={discreet}/>{back}</>}>
+    {s.error && <p className="notice central-wide" role="status">{s.error}</p>}
+    <Block title="Salud" wide><ServerCards server={s}/></Block>
+    <Block title="Protección">
       {!checks.length ? <p className="muted">Aún sin lectura.</p> : <ul className="central-notes">{checks.map((c, index) => <li key={c.key ?? index}>
         <span className={`status-badge ${c.ok === true ? 'good' : c.ok === false ? 'bad' : 'neutral'}`}>{c.ok === true ? 'Bien' : c.ok === false ? 'Falta' : 'Sin dato'}</span>
         <p>{c.detail ?? c.key}{c.ok === null && ' · no se pudo mirar'}</p>
         {c.ok === false && c.fix && <code className="central-fix">{c.fix}</code>}
       </li>)}</ul>}
-    </section>
-    <section aria-label="Contenedores"><h3>Contenedores</h3>
+    </Block>
+    <Block title="Dominios que sirve el proxy">
+      {s.domains?.length ? <span className="central-chips">{s.domains.map(d => <span key={d} className="chip">{d}</span>)}</span> : <p className="muted">Sin datos.</p>}
+    </Block>
+    <Block title="Contenedores" wide>
       {!s.containers.length ? <p className="muted">Sin contenedores.</p> : <table className="data-table central-table">
         <thead><tr><th>Nombre</th><th>Tipo</th><th>Estado</th><th>Detalle</th></tr></thead>
         <tbody>{s.containers.map((c, index) => {
@@ -80,13 +85,10 @@ function ServerRecord({ id, onBack, onOpen }: { id: string; onBack: () => void; 
           return <tr key={`${c.name}-${index}`}><td><strong>{c.name ?? '—'}</strong></td><td>{c.kind ?? '—'}</td>
             <td><span className={`status-badge ${tone}`}>{text}</span></td><td>{c.detail ?? ''}</td></tr>;
         })}</tbody></table>}
-    </section>
-    <section aria-label="Proyectos que aloja"><h3>Proyectos que aloja</h3><ServerProjects server={s}/></section>
-    <section aria-label="Dominios"><h3>Dominios que sirve el proxy</h3>
-      {s.domains?.length ? <span className="central-chips">{s.domains.map(d => <span key={d} className="chip">{d}</span>)}</span> : <p className="muted">Sin datos.</p>}
-    </section>
-    {back}
-  </article>;
+    </Block>
+    <Block title="Proyectos que aloja" wide><ServerProjects server={s}/></Block>
+    <p className="muted central-wide">Los servidores se cambian en Central: la API de escrituras no los toca.</p>
+  </RecordLayout>;
 }
 
 function ServerProjects({ server }: { server: CentralServerRecord }) {
@@ -105,10 +107,10 @@ function ServerProjects({ server }: { server: CentralServerRecord }) {
 }
 
 /** Servidores: each server's state, load, protection and the projects it hosts; «Ver ficha» opens its record. */
-export function CentralServers({ onOpen }: { onOpen: (section: Section) => void }) {
+export function CentralServers({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   const [open, setOpen] = useState<string | null>(null);
   const read = useCentralRead(viewKey('servidores'), () => getCentralView('servidores'));
-  if (open) return <ServerRecord id={open} onBack={() => setOpen(null)} onOpen={onOpen}/>;
+  if (open) return <ServerRecord id={open} discreet={discreet} onBack={() => setOpen(null)} onOpen={onOpen}/>;
   if (read.failure) return <CentralProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/>;
   if (!read.data) return <Loading label="Leyendo los servidores de Central" lines={4}/>;
   const servers = read.data.servers;
@@ -122,12 +124,14 @@ export function CentralServers({ onOpen }: { onOpen: (section: Section) => void 
       <tbody>{servers.map((s, index) => <tr key={s.id ?? index}>
         <td><strong>{s.name ?? '—'}</strong>{(s.provider || s.panel) && <small className="muted"> · {[s.provider, s.panel].filter(Boolean).join(' · ')}</small>}
           {s.error && <small className="central-error">{s.error}</small>}</td>
-        <td><Level level={s.status}/></td>
+        <td>{s.id && !discreet ? <OpenInCentral page={`servidores/${s.id}`} label={`Abrir ${s.name ?? 'el servidor'} en Central`} buttonClass="central-level-link"
+          content={<Level level={s.status}/>}/> : <Level level={s.status}/>}</td>
         <td className="num">{pct(s.cpu)}</td><td className="num">{pct(s.memory)}</td><td className="num">{pct(s.disk)}</td>
         <td>{s.services ? `${s.services.ok ?? '—'}/${s.services.total ?? '—'}` : '—'}{s.services?.down.length ? <small className="muted"> · caídos: {s.services.down.join(', ')}</small> : null}</td>
         <td>{s.protection ? `${s.protection.done ?? '—'}/${s.protection.total ?? '—'}` : '—'}</td>
         <td>{[...new Set(s.projects.map(p => p.project).filter(Boolean))].join(', ') || '—'}</td>
-        <td className="central-row-actions">{s.id && <button type="button" className="button" onClick={() => setOpen(s.id)}>Ver ficha</button>}</td>
+        <td className="central-row-actions">{s.id && <span className="actions"><button type="button" className="button" onClick={() => setOpen(s.id)}>Ver ficha</button>
+          <OpenInCentral page={`servidores/${s.id}`} discreet={discreet}/></span>}</td>
       </tr>)}</tbody>
     </table>
   </>;

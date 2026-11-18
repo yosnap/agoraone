@@ -7,6 +7,7 @@ import { dateLabel, forgetCentral, startCentral, useCentralRead } from '../centr
 import { HIDDEN, QuotesProblem, StatusBadge } from './quotes-common';
 import { QuoteDetail } from './quote-detail';
 import { QuoteDraftForm } from './quote-draft-form';
+import { OpenInCentral } from '../central/open-in-central';
 import '../central/central.css';
 import './quotes.css';
 
@@ -37,7 +38,7 @@ export function QuotesView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
         {!discreet && <button type="button" className="button primary" onClick={() => { setMade(null); setMode({ kind: 'new' }); }}>Nuevo borrador</button>}
       </div>}
     </div>
-    <p className="page-lead">Tus presupuestos de Central, leídos ahora mismo. Desde aquí se consultan, se abren en PDF o Word y se crean borradores; enviarlos y cambiar su estado se hace en Central.</p>
+    <p className="page-lead">Tus presupuestos de Central, leídos ahora mismo. Desde aquí se consultan, se abren en PDF o Word, se crean borradores y, con una clave con permiso «escritura», se cambian el estado y la fecha de sus hitos de pago; enviarlos y cambiar su estado se hace en Central.</p>
     {failure ? <QuotesProblem failure={failure} onRetry={() => { all.reload(); read.reload(); }} onOpen={onOpen}/>
       : mode.kind === 'record' ? <QuoteDetail id={mode.id} discreet={discreet} onBack={() => setMode({ kind: 'list' })} onOpen={onOpen}/>
       : mode.kind === 'new' && !discreet ? <QuoteDraftForm clientNames={names} onOpen={onOpen} onCancel={() => setMode({ kind: 'list' })}
@@ -60,8 +61,10 @@ export function QuotesView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
               <td>{discreet ? HIDDEN : q.title ?? '—'}</td>
               <td><StatusBadge status={q.status}/></td>
               <td className="num">{discreet ? HIDDEN : amountRange(q.total, q.totalMax)}</td>
-              <td>{dateLabel(q.issuedAt)}</td>
-              <td className="central-row-actions">{q.id && <button type="button" className="button" onClick={() => setMode({ kind: 'record', id: q.id! })}>Ver</button>}</td>
+              <td className="central-date">{dateLabel(q.issuedAt)}</td>
+              <td className="central-row-actions">{q.id && <span className="actions">
+                <button type="button" className="button" onClick={() => setMode({ kind: 'record', id: q.id! })}>Ver</button>
+                <OpenInCentral page={`presupuestos/${q.id}`} discreet={discreet}/></span>}</td>
             </tr>)}</tbody>
           </table>}
       </div>}

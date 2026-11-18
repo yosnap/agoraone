@@ -264,6 +264,10 @@ def request(target: Connection, method: str, path: str, params: dict | None = No
     status, _, raw = _exchange(target, method, path, params, body, client, deadline, MAX_BYTES, "application/json")
     text = raw.decode("utf-8", errors="replace")
     _refuse(status, text, target.key)
+    return _object(text)
+
+
+def _object(text: str) -> dict:
     try:
         data = json.loads(text, parse_constant=_no_constant)
     except ValueError:
@@ -271,6 +275,52 @@ def request(target: Connection, method: str, path: str, params: dict | None = No
     if not isinstance(data, dict):
         raise CentralApiError("error", "Central devolvió una respuesta que no se entiende.")
     return data
+
+
+CONFLICTS = ("conflict", "duplicate", "status_locked")
+BUSY = "Central está ocupada con otro cambio: no se ha cambiado nada. Vuelve a pulsar «Guardar en Central» en unos segundos."
+
+
+class CentralConflict(CentralApiError):
+    """A 409 of a write: `kind` is `conflict` (someone changed it since it was read), `duplicate` (a client's name
+    already taken) or `status_locked`; `current` is the entity as Central has it now, when it says so. Nothing changed."""
+
+    def __init__(self, kind: str, message: str, current: dict | None):
+        super().__init__("conflict", message)
+        self.kind = kind
+        self.current = current
+
+
+def write(target: Connection, method: str, path: str, body: dict, client: httpx.Client | None = None,
+          deadline: float | None = None) -> dict:
+    """One write of Central's API (`POST` or `PATCH`, never anything that deletes): the JSON object it answers, a
+    CentralConflict on 409 with what Central has now, or a CentralApiError without the key. Never repeated here:
+    a 503 (Central busy, nothing written) is said so the user may press again."""
+    if method not in ("POST", "PATCH"):
+        raise CentralApiError("error", "Método no permitido.")
+    if client is None:
+        with session(REQUEST_SECONDS) as (own, own_deadline):
+            return write(target, method, path, body, own, own_deadline)
+    status, _, raw = _exchange(target, method, path, None, body, client, deadline, MAX_BYTES, "application/json")
+    text = raw.decode("utf-8", errors="replace")
+    if status == 409:
+        try:
+            data = json.loads(text, parse_constant=_no_constant)
+        except (ValueError, CentralApiError):
+            data = None
+        data = data if isinstance(data, dict) else {}
+        kind = data.get("error") if data.get("error") in CONFLICTS else "conflict"
+        current = data.get("current") if isinstance(data.get("current"), dict) else None
+        raise CentralConflict(kind, _said(text, target.key) or "Ha cambiado en Central desde que lo leíste.", current)
+    if status == 503:
+        raise CentralApiError("busy", BUSY)
+    if status == 404:
+        raise CentralApiError("not_found", "Eso ya no está en Central.")
+    if status == 422:
+        said = _said(text, target.key)
+        raise CentralApiError("invalid", f"Central no aceptó el cambio{': ' + said if said else ''}.")
+    _refuse(status, text, target.key)
+    return _object(text)
 
 
 def download(target: Connection, path: str, content_type: str, max_bytes: int, client: httpx.Client | None = None,
