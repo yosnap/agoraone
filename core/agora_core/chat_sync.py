@@ -21,13 +21,16 @@ from .db import DB_NAME, connect, now, transaction
 BUDGET = 40.0  # seconds of one reading: «Leer ahora» answers within the backend's time limit
 SYNC_SECONDS = 300
 MAX_CONVERSATION_PAGES = 30
-MAX_MESSAGE_PAGES = 5
+MAX_MESSAGE_PAGES = 5  # per conversation and reading; what is left goes on in the next one
+# No request starts this close to the end of the budget: one more (pause and time limit) still fits in the backend's minute.
+REQUEST_MARGIN = 12.0
 BODY_LIMIT = 20_000
 UNSUPPORTED = "[Unsupported message]"
 SETTING = "chat_sync"  # how the last reading went, for Settings (never the key)
 GONE = "Zernio ya no tiene esta cuenta: vuelve a conectarla en el panel de Zernio. Lo ya leído se conserva."
 
 _LOCK = threading.Lock()
+_clock = time.monotonic  # the reading's own clock, replaceable in tests without touching the time module
 
 
 def _when(value) -> datetime | None:
@@ -82,9 +85,16 @@ def message_fields(item: dict) -> dict | None:
     }
 
 
-def _mark(connection: sqlite3.Connection, ids, status: str, error: str | None) -> None:
-    for account_id in ids:
-        connection.execute("UPDATE chat_account SET status = ?, last_error = ?, last_sync_at = ? WHERE id = ?", (status, error, now(), account_id))
+def _statuses(connection: sqlite3.Connection) -> dict[int, str]:
+    return {r["id"]: r["status"] for r in connection.execute("SELECT id, status FROM chat_account WHERE enabled = 1")}
+
+
+def _mark(connection: sqlite3.Connection, before: dict[int, str], status: str, error: str | None) -> None:
+    """The reading's outcome on the enabled accounts it read, unless the user changed them meanwhile (paused one, or
+    saved a new key, which leaves them pending)."""
+    for account_id, was in before.items():
+        connection.execute("UPDATE chat_account SET status = ?, last_error = ?, last_sync_at = ? WHERE id = ? AND enabled = 1 AND status = ?",
+                           (status, error, now(), account_id, was))
 
 
 def _remember(connection: sqlite3.Connection, result: dict) -> None:
@@ -117,8 +127,9 @@ def _register(connection: sqlite3.Connection, remote: list[dict]) -> dict[str, s
                 """INSERT INTO chat_account (provider, remote_id, phone, label, created_at) VALUES ('zernio', ?, ?, ?, ?)
                    ON CONFLICT (remote_id) DO UPDATE SET phone = coalesce(excluded.phone, phone), label = coalesce(excluded.label, label)""",
                 (remote_id, phone, label, now()))
-        gone = [r["id"] for r in connection.execute("SELECT id, remote_id FROM chat_account").fetchall() if r["remote_id"] not in seen]
-        _mark(connection, gone, "error", GONE)
+        for r in connection.execute("SELECT id, remote_id FROM chat_account").fetchall():
+            if r["remote_id"] not in seen:
+                connection.execute("UPDATE chat_account SET status = 'error', last_error = ?, last_sync_at = ? WHERE id = ?", (GONE, now(), r["id"]))
     rows = connection.execute("SELECT * FROM chat_account WHERE enabled = 1").fetchall()
     return {r["remote_id"]: r for r in rows if r["remote_id"] in seen}
 
@@ -145,9 +156,9 @@ def _changed(row: sqlite3.Row, updated: datetime | None, cutoff: datetime) -> bo
     return updated is not None and (stored is None or updated > stored)
 
 
-def _keep(connection: sqlite3.Connection, conversation_id: int, items: list[dict], cutoff: datetime) -> tuple[int, bool]:
-    """Inserts a page of messages; returns how many were new and whether the page reached what was already kept or
-    older than the cutoff (so there is no need to look further back)."""
+def _keep(connection: sqlite3.Connection, conversation_id: int, items: list[dict], cutoff: datetime, stop_at_known: bool) -> tuple[int, bool]:
+    """Inserts a page of messages (newest first); returns how many were new and whether the page reached what is
+    older than the cutoff or, with `stop_at_known`, what was already kept (so there is no need to look further back)."""
     added, reached = 0, False
     with transaction(connection):
         for item in items:
@@ -164,18 +175,78 @@ def _keep(connection: sqlite3.Connection, conversation_id: int, items: list[dict
                 (conversation_id, fields["remote_id"], fields["direction"], fields["sender_name"], fields["body"], fields["unsupported"],
                  fields["attachments"], fields["source"], fields["sent_at"], now())).rowcount
             added += new
-            reached = reached or not new
+            reached = reached or (stop_at_known and not new)
             if fields["direction"] == "incoming" and fields["phone"]:
                 connection.execute("UPDATE chat_conversation SET participant_phone = coalesce(participant_phone, ?) WHERE id = ?", (fields["phone"], conversation_id))
     return added, reached
 
 
+def _walk(connection: sqlite3.Connection, key: str, client: httpx.Client, account: sqlite3.Row, row: sqlite3.Row, cutoff: datetime,
+          cursor: str | None, head: bool, pages: int, late) -> dict:
+    """Reads a conversation's messages newest first from `cursor`, at most `pages` pages. The head pass (from the
+    newest) stops at the first message already kept; a backfill pass does not, because between its cursor and the
+    cutoff there may be a gap of any size. Returns {"added", "used", "done", "cursor" (where to go on), "failed"}."""
+    walked = {"added": 0, "used": 0, "done": False, "cursor": cursor, "failed": None}
+    while walked["used"] < pages and not late():
+        try:
+            items, following = zernio.messages(key, account["remote_id"], row["remote_id"], walked["cursor"], client)
+        except zernio.ZernioError as error:
+            if error.status != "error":
+                raise
+            walked["failed"] = error
+            return walked
+        walked["used"] += 1
+        added, reached = _keep(connection, row["id"], items, cutoff, stop_at_known=head)
+        walked["added"] += added
+        if reached or not following:
+            walked.update(done=True, cursor=None)
+            return walked
+        walked["cursor"] = following
+    return walked
+
+
+def _read_conversation(connection: sqlite3.Connection, key: str, client: httpx.Client, account: sqlite3.Row, row: sqlite3.Row,
+                       updated: datetime | None, cutoff: datetime, head: bool, late, result: dict) -> bool:
+    """Reads what is new in one conversation and goes on with its older messages. Returns False when no request
+    could be made (out of time); the conversation is then left exactly as it was."""
+    pages, backfill, stamp, touched, failed = MAX_MESSAGE_PAGES, row["backfill_cursor"], False, False, None
+    if head:
+        walked = _walk(connection, key, client, account, row, cutoff, None, True, pages, late)
+        result["added"] += walked["added"]
+        pages -= walked["used"]
+        failed = walked["failed"]
+        if walked["used"]:
+            touched = stamp = True  # what is new is in; anything not reached goes on as backfill
+            if not walked["done"]:
+                # From a newer cursor, a backfill that does not stop at kept messages also covers any older gap.
+                backfill = walked["cursor"]
+    if backfill and pages > 0 and failed is None:
+        walked = _walk(connection, key, client, account, row, cutoff, backfill, False, pages, late)
+        result["added"] += walked["added"]
+        touched = touched or walked["used"] > 0
+        failed = walked["failed"]
+        backfill = None if walked["done"] else walked["cursor"]
+    if failed is not None:
+        result["skipped"] += 1
+    if not touched:
+        return failed is not None
+    connection.execute(
+        """UPDATE chat_conversation SET backfill_cursor = ?,
+             updated_time = CASE WHEN ? THEN ? ELSE updated_time END, synced_at = CASE WHEN ? THEN ? ELSE synced_at END,
+             last_incoming_at = (SELECT max(sent_at) FROM chat_message WHERE conversation_id = ? AND direction = 'incoming') WHERE id = ?""",
+        (backfill, stamp, updated.strftime("%Y-%m-%dT%H:%M:%SZ") if updated else None, stamp, now(), row["id"], row["id"]))
+    result["read"] += 1
+    if backfill:
+        result["pending"] += 1
+    return True
+
+
 def sync(connection: sqlite3.Connection, key: str | None, client: httpx.Client | None = None, seconds: float = BUDGET) -> dict:
-    """One reading of every enabled WhatsApp account. Returns {"status", "added", "read", "pending", "accounts",
-    "error"}; failures are recorded on the accounts with a message for the user and never raise. Two readings never
-    run at once ("busy")."""
+    """One reading of every enabled WhatsApp account. Returns {"status", "added", "read", "pending", "skipped",
+    "accounts", "error"}; failures are recorded on the accounts with a message for the user and never raise. Two
+    readings never run at once ("busy")."""
     if not _LOCK.acquire(blocking=False):
-        return {"status": "busy", "added": 0, "read": 0, "pending": 0, "accounts": 0, "error": None}
+        return {"status": "busy", "added": 0, "read": 0, "pending": 0, "skipped": 0, "accounts": 0, "error": None}
     own = client is None
     client = client or httpx.Client()
     try:
@@ -189,22 +260,24 @@ def sync(connection: sqlite3.Connection, key: str | None, client: httpx.Client |
 
 
 def _sync(connection: sqlite3.Connection, key: str | None, client: httpx.Client, seconds: float) -> dict:
-    began = time.monotonic()
-    result = {"status": "ok", "added": 0, "read": 0, "pending": 0, "accounts": 0, "error": None}
-    enabled = [r["id"] for r in connection.execute("SELECT id FROM chat_account WHERE enabled = 1").fetchall()]
+    began = _clock()
+    late = lambda: _clock() - began + REQUEST_MARGIN > seconds  # noqa: E731
+    result = {"status": "ok", "added": 0, "read": 0, "pending": 0, "skipped": 0, "accounts": 0, "error": None}
+    before = _statuses(connection)
     try:
         if not key:
             raise zernio.ZernioError("auth", "Falta la clave de API de Zernio.")
         accounts = _register(connection, zernio.accounts(key, client))
-        enabled = [a["id"] for a in accounts.values()]
+        before = {account_id: status for account_id, status in _statuses(connection).items() if account_id in {a["id"] for a in accounts.values()}}
         result["accounts"] = len(accounts)
         if not accounts:
             return result
+        # The accounts and the first page are always asked for; further pages only while there is time.
         listed, cursor = [], None
         for _ in range(MAX_CONVERSATION_PAGES):
             page, cursor = zernio.conversations(key, cursor, client)
             listed += page
-            if not cursor or time.monotonic() - began > seconds:
+            if not cursor or late():
                 break
         wanted = []
         with transaction(connection):
@@ -215,41 +288,23 @@ def _sync(connection: sqlite3.Connection, key: str | None, client: httpx.Client,
                     continue
                 row, updated = kept
                 cutoff = datetime.now(UTC) - timedelta(days=account["max_age_days"])
-                if _changed(row, updated, cutoff):
-                    wanted.append((updated, row, account, cutoff))
+                head = _changed(row, updated, cutoff)
+                if head or row["backfill_cursor"]:
+                    wanted.append((updated, row, account, cutoff, head))
         oldest = datetime.min.replace(tzinfo=UTC)
         wanted.sort(key=lambda w: w[0] or oldest, reverse=True)  # the most recent conversations first
-        for index, (updated, row, account, cutoff) in enumerate(wanted):
-            if time.monotonic() - began > seconds:
-                result["pending"] = len(wanted) - index
+        for index, (updated, row, account, cutoff, head) in enumerate(wanted):
+            if not _read_conversation(connection, key, client, account, row, updated, cutoff, head, late, result):
+                result["pending"] += len(wanted) - index  # out of time: the rest, untouched, in the next reading
                 break
-            complete, cursor = False, None
-            for _ in range(MAX_MESSAGE_PAGES):
-                page, cursor = zernio.messages(key, account["remote_id"], row["remote_id"], cursor, client)
-                added, reached = _keep(connection, row["id"], page, cutoff)
-                result["added"] += added
-                if reached or not cursor:
-                    complete = True
-                    break
-                if time.monotonic() - began > seconds:
-                    break
-            if not complete and cursor:
-                result["pending"] = len(wanted) - index
-                break  # out of time inside it: its updatedTime stays as it was, so the next reading asks again
-            stamp = updated.strftime("%Y-%m-%dT%H:%M:%SZ") if updated else None
-            connection.execute(
-                """UPDATE chat_conversation SET updated_time = ?, synced_at = ?,
-                     last_incoming_at = (SELECT max(sent_at) FROM chat_message WHERE conversation_id = ? AND direction = 'incoming') WHERE id = ?""",
-                (stamp, now(), row["id"], row["id"]))
-            result["read"] += 1
-        _mark(connection, enabled, "ok", None)
+        _mark(connection, before, "ok", None)
         return result
     except zernio.ZernioError as error:
-        _mark(connection, enabled, error.status, str(error))
+        _mark(connection, before, error.status, str(error))
         return {**result, "status": error.status, "error": str(error)}
     except Exception as error:  # noqa: BLE001 - recorded on the accounts, never raised
         message = f"Error inesperado al leer WhatsApp ({type(error).__name__}); se reintentará."
-        _mark(connection, enabled, "error", message)
+        _mark(connection, before, "error", message)
         return {**result, "status": "error", "error": message}
 
 

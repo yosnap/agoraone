@@ -24,7 +24,8 @@ class KeyIn(BaseModel):
 def key_problem(key: str | None) -> str | None:
     if key is None:
         return None
-    if not 8 <= len(key.strip()) <= 500 or any(c.isspace() for c in key.strip()):
+    key = key.strip()
+    if not 8 <= len(key) <= 500 or not key.isascii() or not key.isprintable() or any(c.isspace() for c in key):
         return "La clave de API de Zernio no parece válida: cópiala entera desde su panel, sin espacios."
     return None
 

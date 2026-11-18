@@ -178,7 +178,7 @@ export type ChatAccount = {
   id: number; provider: 'zernio'; phone: string | null; label: string | null; scopeId: number | null; scopeName: string | null; confidentiality: Level;
   maxAgeDays: number; enabled: boolean; status: MailAccount['status']; lastError: string | null; lastSyncAt: string | null; conversations: number; messages: number;
 };
-export type ChatSyncResult = { status: 'ok' | 'busy' | 'auth' | 'unreachable' | 'error'; added: number; read: number; pending: number; accounts: number; error: string | null };
+export type ChatSyncResult = { status: 'ok' | 'busy' | 'auth' | 'unreachable' | 'error'; added: number; read: number; pending: number; skipped: number; accounts: number; error: string | null };
 export type ChatSettings = { hasKey: boolean; accounts: ChatAccount[]; lastSync: (ChatSyncResult & { at: string }) | null };
 export const getChatSettings = () => core<ChatSettings>('/chat/settings');
 export const putChatKey = (key: string | null) => core<ChatSettings>('/chat/key', { key }, 'PUT');

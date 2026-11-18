@@ -31,6 +31,8 @@ CREATE TABLE chat_conversation (
   updated_time TEXT,
   last_incoming_at TEXT,
   synced_at TEXT,
+  -- Where the reading of older messages goes on (newest first) when a reading could not finish it; NULL when done.
+  backfill_cursor TEXT CHECK (backfill_cursor IS NULL OR length(backfill_cursor) <= 500),
   UNIQUE (account_id, remote_id)
 );
 

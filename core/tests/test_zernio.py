@@ -29,7 +29,7 @@ def test_pide_con_la_clave_en_la_cabecera_y_pagina_por_cursor():
             if request.url.params.get("cursor") == "c2":
                 return httpx.Response(200, json={"data": [{"id": "conv_2"}], "pagination": {"hasMore": False, "nextCursor": None}})
             return httpx.Response(200, json={"data": [{"id": "conv_1"}], "pagination": {"hasMore": True, "nextCursor": "c2"}})
-        return httpx.Response(200, json={"messages": [{"id": "m1"}], "pagination": {"hasMore": False}})
+        return httpx.Response(200, json={"messages": [{"id": "m1"}], "sortOrderApplied": request.url.params.get("sortOrder", "asc"), "pagination": {"hasMore": False}})
 
     http = client(handler)
     assert zernio.accounts(KEY, http)[0]["_id"] == "acc_1"
@@ -42,7 +42,9 @@ def test_pide_con_la_clave_en_la_cabecera_y_pagina_por_cursor():
     assert all(r.url.host == "zernio.com" and r.headers["authorization"] == f"Bearer {KEY}" for r in seen)
     assert all(KEY not in str(r.url) for r in seen), "la clave nunca va en la dirección"
     last = seen[-1]
-    assert last.url.params["accountId"] == "acc_1" and last.url.params["limit"] == "100"
+    assert last.url.params["accountId"] == "acc_1" and last.url.params["limit"] == "100" and last.url.params["sortOrder"] == "desc"
+    listing = next(r for r in seen if r.url.path == "/api/v1/inbox/conversations")
+    assert listing.url.params["platform"] == "whatsapp" and listing.url.params["sortOrder"] == "desc", "solo WhatsApp, lo reciente primero"
     assert last.url.raw_path.startswith(b"/api/v1/inbox/conversations/conv%2F1/messages"), "el id no puede salirse de la ruta"
     assert all(r.method == "GET" for r in seen), "solo lectura"
 
@@ -83,3 +85,10 @@ def test_espacia_las_peticiones(monkeypatch):
     zernio.accounts(KEY, http)
     zernio.accounts(KEY, http)
     assert slept == [1.0], "como mucho una petición por segundo: 60 por minuto"
+
+
+def test_rechaza_mensajes_que_no_vengan_del_mas_nuevo_al_mas_antiguo():
+    http = client(lambda request: httpx.Response(200, json={"messages": [{"id": "m1"}], "sortOrderApplied": "asc"}))
+    with pytest.raises(zernio.ZernioError) as caught:
+        zernio.messages(KEY, "acc_1", "conv_1", client=http)
+    assert caught.value.status == "error"

@@ -13,7 +13,7 @@ API = "https://zernio.com/api/v1"
 SECRET = "zernio-api-key"  # Keychain account of the key
 PAGE = 100
 PAUSE = 1.05  # seconds between requests: under 60 per minute
-TIMEOUT = 20
+TIMEOUT = httpx.Timeout(10, connect=5)  # short: «Leer ahora» must answer within the backend's minute
 
 _PACE = threading.Lock()
 _last = 0.0
@@ -106,13 +106,18 @@ def accounts(key: str, client: httpx.Client | None = None) -> list[dict]:
 
 def conversations(key: str, cursor: str | None = None, client: httpx.Client | None = None) -> tuple[list[dict], str | None]:
     """One page of the inbox's conversations and the cursor of the next one (None when there is no more)."""
-    data = _get("/inbox/conversations", key, {"limit": PAGE, **({"cursor": cursor} if cursor else {})}, client)
+    params = {"limit": PAGE, "platform": "whatsapp", "sortOrder": "desc", **({"cursor": cursor} if cursor else {})}
+    data = _get("/inbox/conversations", key, params, client)
     return _items(data, "data", "conversations"), _next(data)
 
 
 def messages(key: str, account_remote_id: str, conversation_id: str, cursor: str | None = None,
              client: httpx.Client | None = None) -> tuple[list[dict], str | None]:
-    """One page of a conversation's messages (Zernio needs the account) and the cursor of the next one."""
-    params = {"accountId": account_remote_id, "limit": PAGE, **({"cursor": cursor} if cursor else {})}
+    """One page of a conversation's messages, newest first (Zernio needs the account), and the cursor of the next,
+    older one. Zernio's default order is oldest first: an answer not confirming the newest-first order is refused,
+    because reading would then stop before what is new."""
+    params = {"accountId": account_remote_id, "limit": PAGE, "sortOrder": "desc", **({"cursor": cursor} if cursor else {})}
     data = _get(f"/inbox/conversations/{quote(conversation_id, safe='')}/messages", key, params, client)
+    if not isinstance(data, dict) or data.get("sortOrderApplied") != "desc":
+        raise ZernioError("error", "Zernio no devolvió los mensajes del más nuevo al más antiguo: no se lee esa conversación.")
     return _items(data, "messages", "data"), _next(data)

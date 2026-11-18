@@ -24,7 +24,9 @@ function readNote(result: ChatSyncResult): string {
   if (result.status !== 'ok') return result.error ?? syncNotes[result.status];
   if (!result.accounts) return 'Zernio no tiene ninguna cuenta de WhatsApp conectada.';
   const added = `Leídos ${result.added} mensajes nuevos de ${result.read} conversaciones.`;
-  return result.pending ? `${added} Quedan ${result.pending} conversaciones: llegan en las próximas lecturas.` : added;
+  const pending = result.pending ? ` Quedan ${result.pending} conversaciones por completar: llegan en las próximas lecturas.` : '';
+  const skipped = result.skipped ? ` ${result.skipped} no se pudieron leer ahora; se reintentarán.` : '';
+  return `${added}${pending}${skipped}`;
 }
 
 /** WhatsApp through Zernio, read-only: the key goes to the Keychain and is never shown again; each account has its
