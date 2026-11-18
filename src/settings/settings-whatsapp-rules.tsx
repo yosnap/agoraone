@@ -55,7 +55,7 @@ export function WhatsAppRulesCard() {
   return <article className="card" aria-labelledby="whatsapp-rules-title">
     <div className="card-head"><h2 id="whatsapp-rules-title">Reglas de WhatsApp</h2>
       {editing === null && <button type="button" className="button" onClick={() => open(null)}>Añadir regla</button>}</div>
-    <p>Mandan sobre la clasificación automática de las conversaciones: la primera que coincide decide. El contacto es un número (con o sin prefijo) o el identificador del participante; las palabras se buscan en lo que recibes. La etiqueta se muestra como origen de la conversación. El nivel de una regla solo puede ser más estricto que el de la cuenta.</p>
+    <p>Mandan sobre la clasificación automática de las conversaciones: la primera que coincide decide. El contacto es un número (con o sin prefijo) o el identificador del participante; las palabras se buscan en toda la conversación, también en lo que escribes tú. La etiqueta se muestra como origen de la conversación. El nivel de una regla solo puede ser más estricto que el de la cuenta.</p>
     {rules === null && !error ? <Loading label="Leyendo las reglas"/> : <ul className="mail-accounts">
       {rules?.length === 0 && <li className="muted">Aún no hay reglas.</li>}
       {rules?.map(rule => <li key={rule.id}>
