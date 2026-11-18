@@ -11,27 +11,32 @@ const run = (levels: number[], step = 100) => {
   }
   return { stop: null, at: levels.length * step };
 };
+const quiet = (n: number) => Array(n).fill(0.01);
+const loud = (n: number) => Array(n).fill(0.2);
 
 test('para tras hablar y quedarse callado un momento', () => {
-  const said = [...Array(4).fill(0.01), ...Array(20).fill(0.2), ...Array(20).fill(0.01)];
-  const { stop, at } = run(said);
+  const { stop, at } = run([...quiet(8), ...loud(20), ...quiet(25)]);
   assert.equal(stop, 'done');
-  assert.ok(at >= 2400 + 1300 && at <= 2400 + 1500, `paró a los ${at} ms`);
+  assert.ok(at >= 2800 + 1800 && at <= 2800 + 2000, `paró a los ${at} ms`);
 });
 
-test('una pausa corta entre palabras no corta el mensaje', () => {
-  const said = [...Array(4).fill(0.01), ...Array(10).fill(0.2), ...Array(8).fill(0.01), ...Array(10).fill(0.2)];
-  assert.equal(run(said).stop, null);
+test('el final de «Oye Watson» y una pausa para pensar no cortan antes de hablar', () => {
+  // the call's tail at the start, then the user waits a second and a half before speaking, with pauses
+  assert.equal(run([...loud(4), ...quiet(4), ...quiet(15), ...loud(10), ...quiet(12), ...loud(10)]).stop, null);
 });
 
-test('si no se dice nada, se rinde a los ocho segundos', () => {
-  const { stop, at } = run(Array(100).fill(0.01));
+test('un golpe o un clic no cuentan como hablar', () => {
+  const { stop } = run([...quiet(8), ...loud(2), ...quiet(30)]);
+  assert.equal(stop, null, 'sigue esperando a que hable');
+});
+
+test('si no se dice nada, se rinde a los diez segundos', () => {
+  const { stop, at } = run(quiet(150));
   assert.equal(stop, 'nothing');
-  assert.equal(at, 8000);
+  assert.equal(at, 10000);
 });
 
 test('en una sala ruidosa la voz tiene que destacar sobre el ruido', () => {
-  const noisy = [...Array(4).fill(0.08), ...Array(30).fill(0.1)];
-  assert.equal(run(noisy).stop, null, 'el ruido de fondo no cuenta como voz ni como silencio tras hablar');
-  assert.equal(run([...Array(4).fill(0.08), ...Array(10).fill(0.4), ...Array(14).fill(0.08)]).stop, 'done');
+  assert.equal(run([...Array(8).fill(0.08), ...Array(30).fill(0.1)]).stop, null);
+  assert.equal(run([...Array(8).fill(0.08), ...Array(10).fill(0.4), ...Array(20).fill(0.08)]).stop, 'done');
 });

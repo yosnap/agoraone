@@ -3,6 +3,7 @@ import { transcribeVoice } from '../api/core';
 import { useListenRequests } from '../assistant/listen';
 import { moduleOn, useModules } from '../shell/modules';
 import { hear, silence } from './silence';
+import { play } from '../sound/sound';
 
 const LIMIT_MS = 60_000;
 const MAX_BYTES = 1024 * 1024; // what the server lets through
@@ -107,7 +108,7 @@ export function DictationButton({ onText, disabled, onPhase, big = false }: {
     };
     recorder.current = media;
     move('recording'); setSeconds(0);
-    if (handsFree) watchSilence(input);
+    if (handsFree) { play('step'); watchSilence(input); }  // a sound says «speak now» (when sounds are on)
     const tick = (n: number) => { timers.current.push(window.setTimeout(() => { setSeconds(n); if (n * 1000 < LIMIT_MS) tick(n + 1); }, 1000)); };
     tick(1);
     timers.current.push(window.setTimeout(() => { if (media.state === 'recording') media.stop(); }, LIMIT_MS));

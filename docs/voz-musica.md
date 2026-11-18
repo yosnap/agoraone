@@ -130,7 +130,7 @@ de macOS y Ajustes dice «Abriendo VoiceStudio».
 
 - ⌃⌥W desde cualquier app (lo registra la app de escritorio con el plugin de atajos globales de Tauri): AgoraOne
   pasa delante, abre el Cerebro y el micrófono de Watson empieza a escuchar. Para solo cuando terminas de hablar
-  (1,3 s de silencio tras la voz; si no dices nada en 8 s, lo deja sin enviar: `src/ui/silence.ts`), y otra
+  (1,8 s de silencio tras al menos 0,4 s de voz; el primer 0,8 s solo mide la sala, para que el final de «Oye Watson» no cuente; si no dices nada en 10 s, lo deja sin enviar: `src/ui/silence.ts`), y otra
   pulsación, o el botón, también para y envía. Si otra app ya usa ese atajo, AgoraOne arranca igual, sin él.
 - «Oye Watson», que se enciende en Ajustes › Voz y está apagado por defecto:
   - Lo escucha `agora-wake` (`core/helpers/wake-macos.swift`), con el reconocimiento de voz de Apple en este
