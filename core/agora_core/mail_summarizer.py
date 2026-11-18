@@ -83,9 +83,21 @@ MAX_ATTEMPTS = 3  # a batch the model keeps failing is classified locally, so it
 
 
 def summarize_once(connection: sqlite3.Connection, engines: list[Engine], ask=None, budget: Budget | None = None,
-                   attempts: dict[int, int] | None = None, health: SummaryHealth | None = None, reader: Reader = MAIL) -> int:
+                   attempts: dict[int, int] | None = None, health: SummaryHealth | None = None, reader: Reader = MAIL,
+                   shadow=None) -> int:
     """Classifies one round; returns how many messages it settled (0 when nothing can be done now).
-    What may not leave this Mac is settled every round; one batch at most goes to the model."""
+    What may not leave this Mac is settled every round; one batch at most goes to the model. `shadow`
+    (`jev_shadow.Shadow`) is kicked at the end, whatever happened: it asks Jev in a thread of its own about what
+    was kept as normal, so the round never waits for Jev nor fails because of it."""
+    try:
+        return _summarize_once(connection, engines, ask, budget, attempts, health, reader)
+    finally:
+        if shadow is not None:
+            shadow.kick()
+
+
+def _summarize_once(connection: sqlite3.Connection, engines: list[Engine], ask, budget: Budget | None,
+                    attempts: dict[int, int] | None, health: SummaryHealth | None, reader: Reader) -> int:
     attempts = attempts if attempts is not None else {}
     ask = ask or (lambda engine, items: _ask(engine, items, reader))
     messages = reader.unread(connection)
@@ -133,8 +145,9 @@ def summarize_once(connection: sqlite3.Connection, engines: list[Engine], ask=No
 
 
 def summary_worker(settings: Settings, make_engines: Callable[[], list[Engine]], stop: threading.Event, health: SummaryHealth,
-                   reader: Reader = MAIL, budget: Budget | None = None) -> None:
-    """`budget` may be shared between workers, so they spend the user's Claude quota together."""
+                   reader: Reader = MAIL, budget: Budget | None = None, shadow=None) -> None:
+    """`budget` may be shared between workers, so they spend the user's Claude quota together; `shadow` asks Jev
+    in shadow after each round (see `summarize_once`)."""
     budget, attempts = budget or Budget(), {}
     while not stop.is_set():
         wait = PAUSE_SECONDS
@@ -142,7 +155,7 @@ def summary_worker(settings: Settings, make_engines: Callable[[], list[Engine]],
             connection = connect(settings.data_dir / DB_NAME)
             health.problem = None  # summarize_once says again what is still wrong
             try:
-                done = summarize_once(connection, make_engines(), budget=budget, attempts=attempts, health=health, reader=reader)
+                done = summarize_once(connection, make_engines(), budget=budget, attempts=attempts, health=health, reader=reader, shadow=shadow)
             finally:
                 connection.close()
             if not done:

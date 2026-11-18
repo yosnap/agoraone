@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { getJevSettings, putJevKey, putJevSettings, testJev, type JevPoint, type JevSettings } from '../api/core';
 import { ModernSelect } from '../ui/modern-select';
+import { shadowLine } from './jev-shadow';
 import { Loading, LoadError } from '../ui/load-state';
 
 const PINNED = 'pinned';
@@ -68,7 +69,8 @@ export function JevSettingsCard() {
     <div className="card-head"><h2 id="jev-title">Jev (TypeSafe)</h2>
       <span className={`status-badge ${state.hasKey ? 'good' : 'paused'}`}>{state.hasKey ? 'Clave guardada' : 'Sin clave'}</span></div>
     <p>Jev es un modelo que <strong>decide, no escribe</strong>: responde a preguntas tipadas (qué clase tiene un correo, con qué prisa, a qué proyecto va) con su confianza. Claude sigue escribiendo resúmenes, actas y borradores. Solo recibe lo de nivel normal, nunca lo «solo en este Mac» ni lo privado, y nunca sustituye una confirmación tuya. TypeSafe lo aloja en EE. UU. y no entrena con lo que recibe.</p>
-    <p className="muted">Pendiente: por ahora solo se conecta y se prueba. Ningún punto de decisión le pregunta todavía; cuando lo haga, empezará en sombra, sin cambiar nada de lo que ves.</p>
+    <p className="muted">En sombra: el correo y WhatsApp ya le preguntan, pero su respuesta solo se guarda para compararla con lo de hoy (reglas, Haiku o palabras locales); no cambia nada de lo que ves. Los demás puntos, pendientes.</p>
+    <p><strong>{shadowLine(state.shadow)}.</strong></p>
     <form className="field-row" onSubmit={saveKey}>
       <label className="field">{state.hasKey ? 'Cambiar la clave de API de TypeSafe' : 'Clave de API de TypeSafe'}
         <input type="password" autoComplete="off" spellCheck={false} value={key} onChange={event => setKey(event.target.value)} placeholder="Va directa al Llavero"/></label>

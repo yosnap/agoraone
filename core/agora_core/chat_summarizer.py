@@ -16,5 +16,5 @@ CHAT = Reader(chat_inbox.unread, chat_inbox.plan, chat_inbox.store, lambda entry
 
 
 def chat_summary_worker(settings: Settings, make_engines: Callable[[], list[Engine]], stop: threading.Event, health: SummaryHealth,
-                        budget: Budget | None = None) -> None:
-    summary_worker(settings, make_engines, stop, health, reader=CHAT, budget=budget)
+                        budget: Budget | None = None, shadow=None) -> None:
+    summary_worker(settings, make_engines, stop, health, reader=CHAT, budget=budget, shadow=shadow)
