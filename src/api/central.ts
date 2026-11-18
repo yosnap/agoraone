@@ -25,7 +25,7 @@ export const testCentralConnection = (url?: string, key?: string) =>
 // The «Central» section, read live through the core (/api/core/central/views/*): the core picks the fixed path of
 // Central's API for each view and copies only what is shown here (no paths, IPs nor tokens). Contact comes only in
 // a client's record.
-export type CentralViewName = 'resumen' | 'alertas' | 'pendientes' | 'clientes' | 'proyectos';
+export type CentralViewName = 'resumen' | 'alertas' | 'pendientes' | 'clientes' | 'proyectos' | 'webs' | 'servidores' | 'agenda';
 /** When Central does not answer, clients come from the last snapshot, read at `readAt`. */
 export type CentralFallback = { fallback?: { readAt: string | null; problem: string } };
 export type CentralSummary = { alerts: { critical: number; warning: number }; pending: number; clients: number; activeProjects: number; activeProjectsMore: boolean };
@@ -48,9 +48,34 @@ export type CentralProjectRecord = { id: string | null; name: string | null; kin
   defaultBranch: string | null; lastCommitAt: string | null; lastActivity: string | null;
   deploy: { status: string | null; hosting: string | null; version: string | null; environments: string[] };
   services: CentralService[]; websites: CentralWebsite[]; notes: CentralNote[]; auditedAt: string | null };
+/** A monitored website of the «Webs» tab: its last check, as Central lists it. */
+export type CentralWebsiteRow = { id: string | null; url: string | null; kind: string | null; client: string | null; status: string | null;
+  code: number | null; ms: number | null; checkedAt: string | null };
+/** green = bien, amber = mirar, red = actuar, grey = sin dato (Central's levels). */
+export type CentralLevel = 'green' | 'amber' | 'red' | 'grey';
+export type CentralServerProject = { projectId: string | null; project: string | null; service: string | null; environment: string | null; url: string | null;
+  containers: { name: string | null; state: string | null }[] };
+export type CentralServerRow = { id: string | null; name: string | null; provider: string | null; panel: string | null; status: CentralLevel; error: string | null;
+  lastOkAt: string | null; cpu: number | null; memory: number | null; disk: number | null;
+  services: { ok: number | null; total: number | null; down: string[] } | null;
+  protection: { done: number | null; total: number | null; level: CentralLevel } | null; projects: CentralServerProject[] };
+type Card<T> = { level: CentralLevel } & T;
+export type CentralServerCards = Partial<{
+  cpu: Card<{ pct: number | null }>; memory: Card<{ pct: number | null }>; disk: Card<{ pct: number | null }>;
+  webs: Card<{ down: number | null; slow: number | null }>; certificate: Card<{ days: number | null }>; sessions: Card<{ count: number | null }>;
+  attempts: Card<{ hour: number | null; day: number | null }>; banned: Card<{ now: number | null }>; ports: Card<{ odd: number[]; exposed: number[] }>;
+  maintenance: Card<{ pending: number | null; security: number | null; reboot: boolean }>;
+  services: Card<{ ok: number | null; total: number | null; down: string[]; stopped: string[] }>;
+}>;
+export type CentralServerRecord = CentralServerRow & { cards: CentralServerCards; readAt: string | null; root: boolean; domains: string[] | null;
+  containers: { name: string | null; kind: string | null; state: string | null; detail: string | null }[];
+  checks: { key: string | null; ok: boolean | null; detail: string | null; fix: string | null }[] };
+export type CentralEvent = { summary: string | null; calendar: string | null; start: string | null; end: string | null; allDay: boolean;
+  location: string | null; client: string | null; project: string | null };
 export type CentralLists = {
   resumen: CentralSummary; alertas: { alerts: CentralAlert[] }; pendientes: { pending: CentralPending[] };
   clientes: CentralFallback & { clients: CentralClientRow[] }; proyectos: { projects: CentralProjectRow[]; nextCursor: string | null };
+  webs: { websites: CentralWebsiteRow[] }; servidores: { servers: CentralServerRow[] }; agenda: { events: CentralEvent[]; errors: string[] };
 };
 export type ProjectFilters = { estado?: string; tipo?: string; cliente?: string; q?: string; cursor?: string };
 
@@ -60,7 +85,10 @@ export function getCentralView<V extends CentralViewName>(view: V, params: Recor
 }
 export const getCentralClient = (id: string) => core<CentralClientRecord>(`/central/views/clientes/${encodeURIComponent(id)}`);
 export const getCentralProject = (id: string) => core<CentralProjectRecord>(`/central/views/proyectos/${encodeURIComponent(id)}`);
+export const getCentralServer = (id: string) => core<CentralServerRecord>(`/central/views/servidores/${encodeURIComponent(id)}`);
 
 export const projectStatusLabels: Record<string, string> = { ACTIVE: 'Activo', MAINTENANCE: 'Mantenimiento', DORMANT: 'Parado', ARCHIVED: 'Archivo' };
 export const projectKindLabels: Record<string, string> = { CLIENT: 'Cliente', OWN: 'Propio', TRAINING: 'Formación', EXPERIMENT: 'Experimento' };
 export const deployLabels: Record<string, string> = { UNKNOWN: 'Sin indicar', NOT_DEPLOYED: 'Sin desplegar', STAGING: 'En pruebas', PRODUCTION: 'En producción', RETIRED: 'Retirado' };
+export const webKindLabels: Record<string, string> = { CLIENT: 'Cliente', OWN: 'Propia', CENTRAL: 'Centralizada' };
+export const levelLabels: Record<CentralLevel, string> = { green: 'Bien', amber: 'Mirar', red: 'Actuar', grey: 'Sin dato' };

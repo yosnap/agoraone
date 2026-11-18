@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { ApiError } from '../api/client';
-import type { CentralViewName } from '../api/central';
+import type { CentralEvent, CentralLevel, CentralViewName } from '../api/central';
 
 // What the «Central» section has read, shared by its tabs: each view (or record) is asked once, when it is first
 // shown, and kept while the section lives, so going back to a tab does not ask Central again. «Volver a leer»
@@ -66,8 +66,12 @@ export type CentralTab = { id: CentralViewName; label: string };
 /** The tabs of the section, in order; each one reads only its own view when opened. */
 export const centralTabs: CentralTab[] = [
   { id: 'resumen', label: 'Resumen' }, { id: 'alertas', label: 'Alertas' }, { id: 'pendientes', label: 'Pendientes' },
-  { id: 'clientes', label: 'Clientes' }, { id: 'proyectos', label: 'Proyectos' },
+  { id: 'clientes', label: 'Clientes' }, { id: 'proyectos', label: 'Proyectos' }, { id: 'webs', label: 'Webs' },
+  { id: 'servidores', label: 'Servidores' }, { id: 'agenda', label: 'Agenda de Central' },
 ];
+
+/** The badge of each of Central's levels. */
+export const levelTone: Record<CentralLevel, string> = { green: 'good', amber: 'waiting', red: 'bad', grey: 'neutral' };
 
 const clock = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
 const day = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
@@ -93,4 +97,84 @@ export function dateLabel(iso: string | null | undefined) {
  * forgotten without notifying, since nothing of the section is on screen yet. */
 export function startCentral() {
   entries.clear();
+}
+
+const madridParts = new Intl.DateTimeFormat('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Europe/Madrid' });
+const heading = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' });
+
+/** The day (AAAA-MM-DD) of an instant in Madrid, whatever the zone of this computer. */
+export function madridDay(at: Date) {
+  const part = (type: string) => madridParts.formatToParts(at).find(p => p.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+/** `day` moved by some days (calendar days, no hours involved). */
+export function addDays(day: string, days: number) {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** Central's agenda reads at most 62 days, both included. */
+export const AGENDA_DAYS = 62;
+
+const wall = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Madrid', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+/** How far Madrid's clock is ahead of UTC at an instant (one hour in winter, two in summer). */
+function madridOffset(at: number) {
+  const p = Object.fromEntries(wall.formatToParts(new Date(at)).map(x => [x.type, x.value]));
+  return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - Math.floor(at / 1000) * 1000;
+}
+
+/** The instant of 00:00 of a day AAAA-MM-DD in Madrid (the changes of hour are after midnight: no ambiguity). */
+function madridMidnight(day: string) {
+  const utc = Date.parse(`${day}T00:00:00Z`);
+  return utc - madridOffset(utc - madridOffset(utc));
+}
+
+/** Why a range of the agenda cannot be asked, measured like Central: from 00:00 of «desde» to the end of «hasta» in
+ * Madrid, in real time, so 62 days that cross the autumn change of hour (a day of 25 hours) do not fit. */
+export function agendaRangeProblem(from: string, to: string): string | null {
+  const valid = (day: string) => /^\d{4}-\d{2}-\d{2}$/.test(day) && addDays(day, 0) === day && +day.slice(0, 4) >= 2000 && +day.slice(0, 4) <= 2100;
+  if (!valid(from) || !valid(to)) return 'Elige dos días que existan, entre 2000 y 2100.';
+  if (to < from) return '«Hasta» es anterior a «desde».';
+  const span = madridMidnight(addDays(to, 1)) - 1 - madridMidnight(from);
+  return span > AGENDA_DAYS * 864e5
+    ? `La agenda de Central abarca como mucho ${AGENDA_DAYS} días (61 si el rango cruza el cambio de hora de octubre).` : null;
+}
+
+const shortDay = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', timeZone: 'Europe/Madrid' });
+
+/** An event in the agenda: under which day it goes and, when it ends another day, «hasta el 20 nov.» (with the
+ * time when it is not all day). */
+export type AgendaItem = { event: CentralEvent; until: string | null };
+
+/** The events grouped by their day in Madrid, in Central's order. One that began before «desde» goes under «desde». */
+export function agendaDays(events: CentralEvent[], from: string): [string, AgendaItem[]][] {
+  const days = new Map<string, AgendaItem[]>();
+  for (const event of events) {
+    const start = event.start ? new Date(event.start) : null;
+    if (!start || Number.isNaN(start.getTime())) continue;
+    const startDay = madridDay(start);
+    const day = startDay < from ? from : startDay;
+    const end = event.end ? new Date(event.end) : null;
+    let until: string | null = null;
+    if (end && !Number.isNaN(end.getTime())) {
+      // an all-day event ends at 00:00 of the day after its last one, in Central's zone (UTC on a server, Madrid on a
+      // Mac): twelve hours earlier is its last day in Madrid either way
+      const last = event.allDay ? new Date(end.getTime() - 12 * 3600e3) : end;
+      if (madridDay(last) !== startDay) until = event.allDay ? `hasta el ${shortDay.format(last)}` : `hasta el ${shortDay.format(last)}, ${clock.format(last)}`;
+    }
+    days.set(day, [...(days.get(day) ?? []), { event, until }]);
+  }
+  return [...days.entries()];
+}
+
+/** «miércoles, 18 de noviembre de 2026» for a day AAAA-MM-DD of Madrid. */
+export const dayHeading = (day: string) => heading.format(new Date(`${day}T12:00:00Z`));
+
+/** «10:30» in Madrid's time, or «». */
+export function timeLabel(iso: string | null | undefined) {
+  const at = iso ? new Date(iso) : null;
+  return at && !Number.isNaN(at.getTime()) ? clock.format(at) : '';
 }
