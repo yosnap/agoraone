@@ -9,6 +9,7 @@ import { CardControls, JobManager, useAction, type ActionState } from '../ui/pro
 import { cost, count, duration, tokens } from './work-format';
 import { CardHistory } from './card-history';
 import { ClientProjectsSection } from './client-projects';
+import { ClientsDirectoryView } from './clients-directory';
 import { CommissionForm, type ProfileChoice } from './commission-form';
 import './jobs.css';
 
@@ -64,6 +65,9 @@ export function JobsView({ discreet }: { discreet: boolean }) {
   const [error, setError] = useState('');
   const [period, setPeriod] = useState<Period>('7d');
   const [profile, setProfile] = useState(ALL);
+  const [tab, setTab] = useState<'work' | 'clients'>('work');
+  const onClients = useRef(false);  // the timer does not refresh the work while the «Clientes» tab is open
+  onClients.current = tab === 'clients';
   const started = useRef(false);
   const request = useRef(0);
   // The refresh lives while the section is on screen: leaving it stops the timer.
@@ -86,7 +90,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
     getJobsSettings().then(found => setCentral(found.central)).catch(() => setCentral('default'));
     const tick = () => {
       // Not while a comment, block reason or task is being written: a card moving column would lose it.
-      if (document.visibilityState === 'visible' && !document.querySelector('section.jobs .task-form')) void load();
+      if (document.visibilityState === 'visible' && !onClients.current && !document.querySelector('section.jobs .task-form')) void load();
       timer.current = window.setTimeout(tick, REFRESH);
     };
     timer.current = window.setTimeout(tick, REFRESH);
@@ -112,6 +116,11 @@ export function JobsView({ discreet }: { discreet: boolean }) {
     <div className="eyebrow">TRABAJOS{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="jobs-title">Trabajos</h1>
     <p className="page-lead">Las tareas programadas y el kanban de todos tus perfiles de Hermes, con el tiempo y los tokens que Hermes ha registrado en cada ejecución. Los cambios usan las funciones de Hermes y solo ocurren al pulsar cada botón.</p>
+    <div className="segmented jobs-tabs" role="group" aria-label="Pestañas de Trabajos">
+      <button aria-pressed={tab === 'work'} onClick={() => setTab('work')}>Trabajos</button>
+      <button aria-pressed={tab === 'clients'} onClick={() => setTab('clients')}>Clientes</button>
+    </div>
+    {tab === 'clients' ? <ClientsDirectoryView discreet={discreet}/> : <>
     <div className="fiscal-bar">
       <div className="segmented" role="group" aria-label="Periodo">{periods.map(p =>
         <button key={p.id} aria-pressed={period === p.id} onClick={() => setPeriod(p.id)}>{p.label}</button>)}</div>
@@ -153,6 +162,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
         })}</div>}
       <h2>Proyectos de clientes</h2>
       <ClientProjectsSection period={period} discreet={discreet}/>
+    </>}
     </>}
   </section>;
 }

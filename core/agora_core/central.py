@@ -15,9 +15,9 @@ import shutil
 import threading
 import sqlite3
 from pathlib import Path
-from urllib.parse import urlparse
 
 from . import central_api
+from .clients import client_domain as _client_domain, domain as _domain
 from .db import now, transaction
 
 TOTAL_SECONDS = 180
@@ -25,8 +25,6 @@ _REFRESHING = threading.Lock()  # one reading at a time (the half-hourly one or 
 READING_TOOLS = {"list_clients", "list_projects", "list_websites", "list_servers", "get_project"}
 SNAPSHOT_SETTING = "central.snapshot"
 CALL_SECONDS = 60
-_FREE_MAIL = {"gmail.com", "googlemail.com", "hotmail.com", "outlook.com", "live.com", "yahoo.com", "yahoo.es", "icloud.com", "me.com",
-              "protonmail.com", "proton.me", "gmx.com", "aol.com", "msn.com"}
 
 
 class CentralError(RuntimeError):
@@ -87,14 +85,6 @@ async def _call_all(folder: Path) -> dict:
     return {"clients": clients, "projects": projects, "websites": websites, "servers": servers, "details": details}
 
 
-def _domain(value: str | None) -> str | None:
-    if not value:
-        return None
-    host = value.rsplit("@", 1)[-1] if "@" in value and "//" not in value else urlparse(value if "//" in value else f"//{value}").hostname
-    host = (host or "").lower().removeprefix("www.")
-    return host if re.fullmatch(r"(?:[a-z0-9-]+\.)+[a-z]{2,63}", host or "") else None
-
-
 _GITHUB = re.compile(r"(?:https://(?:www\.)?github\.com/|git@github\.com:)((?!-)[A-Za-z0-9-]{1,39})/([A-Za-z0-9._-]{1,100}?)(?:\.git)?/?")
 
 
@@ -114,7 +104,7 @@ def shape(raw: dict) -> dict:
         detail = raw.get("details", {}).get(name, {})
         email = (detail.get("email") or "").strip().lower() or None
         domains = set()
-        if email and _domain(email) and _domain(email) not in _FREE_MAIL:
+        if email and _client_domain(_domain(email)):
             domains.add(_domain(email))
         by_client[name] = {"id": client.get("id"), "name": name, "company": detail.get("company"), "email": email, "phone": detail.get("phone"),
                            "taxId": detail.get("taxId"), "domains": domains, "projects": [], "websites": []}
@@ -122,7 +112,7 @@ def shape(raw: dict) -> dict:
         client = by_client.get(site.get("client") or "")
         if client and site.get("url"):
             client["websites"].append({"url": site["url"], "status": site.get("status")})
-            if _domain(site["url"]):
+            if _client_domain(_domain(site["url"])):
                 client["domains"].add(_domain(site["url"]))
     for project in raw.get("projects", []):
         client = by_client.get(project.get("client") or "")
@@ -190,17 +180,11 @@ def stored(connection: sqlite3.Connection) -> dict | None:
 
 
 def client_for(connection: sqlite3.Connection, address: str | None) -> dict | None:
-    """The Central client a sender belongs to: by its exact address, else by its domain (never a free mail
-    domain such as gmail.com, which many people share)."""
-    data = snapshot(connection)
-    if not data or not address:
-        return None
-    address = address.lower()
-    domain = _domain(address)
-    exact = next((c for c in data["clients"] if c.get("email") == address), None)
-    if exact or not domain or domain in _FREE_MAIL:
-        return exact
-    return next((c for c in data["clients"] if domain in c["domains"] or any(domain.endswith("." + d) for d in c["domains"])), None)
+    """The client a sender belongs to, in the directory of clients (Central's and the user's own): by its exact
+    address, else by its domain (never a free mail domain such as gmail.com, which many people share)."""
+    from . import clients
+
+    return clients.match(connection, address=address)
 
 
 WRITE_TOOL = "create_quote"  # the only writing tool AgoraOne may call, and only for a quote the user confirmed

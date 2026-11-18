@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
-import { createIssue, getCentral, getIssueTarget, type IssueSource } from '../api/core';
-import { ApiError } from '../api/client';
-import { moduleOn, useModules } from '../shell/modules';
+import { createIssue, getIssueTarget, type IssueSource } from '../api/core';
+import { getClients } from '../api/clients';
 import { IssueToOrca } from '../orca/issue-to-orca';
 import { useOrcaProjects } from '../orca/orca-projects';
 import { ModernSelect } from '../ui/modern-select';
@@ -24,8 +23,7 @@ export function IssueFromSource({ source, client: firstClient, project: firstPro
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const orca = useOrcaProjects();
-  const centralOn = moduleOn(useModules(), 'central');
-  const [off, setOff] = useState(false);
+  const [centralOn, setCentralOn] = useState(true);
   const asked = useRef(false);
   const latest = useRef('');  // the project chosen last: an older answer must not paint its repository's warning
   const look = (key: string) => {
@@ -34,17 +32,15 @@ export function IssueFromSource({ source, client: firstClient, project: firstPro
     void getIssueTarget(client, project).then(found => { if (latest.current === key) setTarget(found); })
       .catch(() => { if (latest.current === key) setTarget({ repo: null, visibility: null }); });
   };
-  if (!asked.current && centralOn) {
+  if (!asked.current) {
     asked.current = true;
-    void getCentral().then(found => {
-      const list = (found.snapshot?.clients ?? []).flatMap(c => c.projects.filter(p => p.repo).map(p => ({ client: c.name, project: p.name })));
+    void getClients().then(found => {
+      const list = found.clients.flatMap(c => c.projects.filter(p => p.repo).map(p => ({ client: c.name, project: p.name })));
+      setCentralOn(found.central.on);
       setProjects(list);
       const first = list.find(p => p.client === firstClient && p.project === firstProject) ?? list.find(p => p.client === firstClient) ?? list[0];  // the mail's own project first
       if (first) look(keyOf(first.client, first.project));
-    }).catch(failure => {
-      if (failure instanceof ApiError && failure.status === 404) setOff(true);  // just turned off
-      else setError(failure instanceof Error ? failure.message : 'No se pudo leer Central.');
-    });
+    }).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer tus clientes.'));
   }
   const create = async () => {
     const [client, project] = JSON.parse(chosen) as [string, string];
@@ -62,8 +58,9 @@ export function IssueFromSource({ source, client: firstClient, project: firstPro
       <div className="inbox-actions"><button type="button" className="button" onClick={() => onClose(`Issue creada en ${made.repo}.`)}>Cerrar</button></div>
     </div>;
   }
-  if (!centralOn || off) return <p className="muted">Central está apagado en Ajustes › Módulos: sin sus proyectos no hay repositorio al que llevar la issue. <button type="button" className="button" onClick={() => onClose()}>Cerrar</button></p>;
-  if (projects && projects.length === 0) return <p className="muted">Ningún proyecto de Central tiene repositorio de GitHub. <button type="button" className="button" onClick={() => onClose()}>Cerrar</button></p>;
+  if (projects && projects.length === 0) return <p className="muted">{centralOn
+    ? 'Ningún proyecto de Central tiene repositorio de GitHub.'
+    : 'Tus clientes propios no tienen proyectos: una issue va al repositorio de un proyecto de Central, y Central está apagado en Ajustes › Módulos.'} <button type="button" className="button" onClick={() => onClose()}>Cerrar</button></p>;
   return <form className="project-note" aria-label="Crear issue" onSubmit={event => { event.preventDefault(); void create(); }}>
     {projects && <label className="field">Proyecto<ModernSelect value={chosen} onChange={look}
       options={projects.map(p => ({ value: keyOf(p.client, p.project), label: `${p.client} › ${p.project}` }))}/></label>}

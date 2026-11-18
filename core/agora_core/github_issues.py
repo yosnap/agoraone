@@ -25,9 +25,9 @@ class IssueError(ValueError):
 
 
 def _projects(connection: sqlite3.Connection) -> list[dict]:
-    from .central import snapshot
+    from .clients import directory
 
-    return [{**p, "client": c["name"]} for c in ((snapshot(connection) or {}).get("clients") or []) for p in (c.get("projects") or []) if p.get("name")]
+    return [{**p, "client": c["name"]} for c in directory(connection) for p in c["projects"] if p.get("name")]
 
 
 def repos(connection: sqlite3.Connection) -> dict[tuple[str, str], str]:

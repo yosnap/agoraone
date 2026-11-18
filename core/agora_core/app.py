@@ -54,6 +54,7 @@ from .meetings import Recorder
 from .meeting_notes import Worker
 from .routes_calendar import calendar_router
 from .routes_central import CentralHealth, central_router, central_worker
+from .routes_clients import clients_router
 from .routes_summary import summary_router
 from .settings import DEFAULT_DATA, Settings
 
@@ -215,6 +216,7 @@ def create_app(
     app.include_router(inbox_router(settings, summary_health, secrets))
     app.include_router(fiscal_router(settings, secrets))
     app.include_router(central_router(settings, central_health, secrets))
+    app.include_router(clients_router(settings))
     if calendar is not None:
         calendar_store.use(calendar)
     app.include_router(calendar_router(settings))

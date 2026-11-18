@@ -28,3 +28,7 @@
 .projects-unmatched { margin-top:8px; font-size:12px }
 .projects-unmatched ul { margin:4px 0 0; padding-left:18px }
 .client-projects .fiscal-bar { flex-wrap:wrap; gap:10px }
+.jobs-tabs { margin-bottom:12px }
+.client-form { display:grid; gap:12px; margin-bottom:16px }
+.clients-table td .actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end }
+.clients-table td:last-child { text-align:right }

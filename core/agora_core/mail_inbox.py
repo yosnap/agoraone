@@ -196,14 +196,11 @@ def _suggestion(row: sqlite3.Row) -> dict | None:
 
 
 def _client(clients: list[dict], address: str | None) -> dict | None:
-    from .central import _FREE_MAIL, _domain
+    """The sender's client in the directory (Central's and the user's own), with its active projects: only the
+    name and project names, never its address, phone or tax id."""
+    from .clients import find
 
-    if not address:
-        return None
-    address, domain = address.lower(), _domain(address)
-    found = next((c for c in clients if c.get("email") == address), None)
-    if not found and domain and domain not in _FREE_MAIL:
-        found = next((c for c in clients if domain in c["domains"] or any(domain.endswith("." + d) for d in c["domains"])), None)
+    found = find(clients, address=address)
     if not found:
         return None
     active = [p["name"] for p in found["projects"] if p.get("status") in ("ACTIVE", "MAINTENANCE")][:5]
@@ -211,7 +208,8 @@ def _client(clients: list[dict], address: str | None) -> dict | None:
 
 
 def _item(row: sqlite3.Row, clients: list[dict] | None = None) -> dict:
-    return {"client": _client(clients or [], row["from_address"]),
+    # A private mail is matched to no client, as a private WhatsApp conversation is not.
+    return {"client": None if row["level"] == "private" else _client(clients or [], row["from_address"]),
         "id": row["message_id"], "kind": row["kind"], "source": row["source"], "ruleId": row["rule_id"], "ruleName": row["rule_name"],
         "confidentiality": row["level"], "summary": row["summary"] if row["level"] == "normal" else None,
         "details": json.loads(row["details"] or "{}") if row["level"] == "normal" else {},
@@ -241,9 +239,9 @@ def inbox(connection: sqlite3.Connection, state: str = "pending", limit: int = 1
         where.append(f"{_LEVEL} = 'normal'")
     rows = connection.execute(f"{_SELECT} WHERE {' AND '.join(where)} ORDER BY COALESCE(m.sent_at, m.received_at) DESC LIMIT ?",
                               [*args, limit]).fetchall()
-    from .central import snapshot
+    from .clients import directory
 
-    clients = (snapshot(connection) or {}).get("clients", [])
+    clients = directory(connection)
     return [_item(row, clients) for row in rows]
 
 
