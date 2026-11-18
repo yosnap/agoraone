@@ -14,7 +14,7 @@ whether the window may stay (`allowed`: the module on) and the panel's address (
 
 `POST /fabrica/start` asks macOS to start the fábrica's own service (`fabrica_service`), never stops or changes it.
 
-With the «Mi fábrica» module off every route answers 404, except closing and `/internal`."""
+With the «Mi fábrica» module off every route answers 404, except closing, checking and `/internal`."""
 
 from contextlib import contextmanager
 from pathlib import Path
@@ -141,9 +141,7 @@ def fabrica_window_router(settings: Settings, relay: Relay | None = None) -> API
 
     @router.post("/fabrica/window/check")
     async def check_window():
-        on, *_ = await run_in_threadpool(lookup)
-        if not on:
-            return problem(404, OFF, "off")
+        """Always allowed, like closing: with the module off the desktop app looks again at once and closes the window."""
         return {"done": relay.available() and relay.push({"action": "check"}) > 0}
 
     @router.post("/fabrica/start")

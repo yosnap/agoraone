@@ -131,11 +131,14 @@ def test_modulo_apagado_404_salvo_cerrar(client, opened):
     with database(client) as c:
         modules.save(c, {"fabrica": False})
     for path, body in (("/fabrica/window", {"ruta": "corridas"}), ("/fabrica/window/browser", {"ruta": "corridas"}),
-                       ("/fabrica/window/external", {"url": "https://example.com/"}), ("/fabrica/window/check", {}), ("/fabrica/start", {})):
+                       ("/fabrica/window/external", {"url": "https://example.com/"}), ("/fabrica/start", {})):
         answer = client.post(path, json=body, headers=HEADERS)
         assert answer.status_code == 404 and answer.json()["status"] == "off", path
     assert client.post("/fabrica/window/close", headers=HEADERS).status_code == 200
-    assert desktop(client)["allowed"] is False
+    seq = desktop(client)["seq"]
+    assert client.post("/fabrica/window/check", headers=HEADERS).json() == {"done": True}, "comprobar se acepta para cerrar al momento"
+    answer = desktop(client, seq)
+    assert answer["commands"][-1]["action"] == "check" and answer["allowed"] is False
     assert opened == []
 
 
