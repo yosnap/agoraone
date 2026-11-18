@@ -40,7 +40,9 @@ export type CentralClientProject = { id: string | null; name: string | null; kin
 export type CentralClientRecord = CentralFallback & { id: string | null; name: string | null; company: string | null; email: string | null; phone: string | null;
   taxId: string | null; address: string | null; projects: CentralClientProject[]; websites: CentralWebsite[]; notes: CentralNote[];
   /** The version Central gave this record to change it; null: it cannot be changed from here (old Central or a snapshot). */
-  revision: string | null };
+  revision: string | null;
+  /** The data exactly as Central keeps it (not scrubbed nor cut), only for the edit form; null in a snapshot. */
+  editable: Record<'name' | 'company' | 'email' | 'phone' | 'taxId' | 'address', string | null> | null };
 export type CentralProjectRow = { id: string | null; name: string | null; type: string | null; kind: string | null; status: string | null; phase: string | null;
   client: string | null; version: string | null; framework: string | null; lastActivity: string | null };
 export type CentralService = { id: string | null; name: string | null; environment: string | null; url: string | null; hosting: string | null;

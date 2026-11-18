@@ -94,7 +94,9 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
         </span>
       </li>)}</ul>}
     {creating !== null && !discreet && <div className="card">{creation.busy && !creation.preview ? <Loading label="Preparando el cliente para Central" lines={2}/>
-      : <ChangeReview change={creation} onCancel={stopCreating} onReview={stopCreating}/>}</div>}
+      : <ChangeReview change={creation} onCancel={stopCreating} onReview={stopCreating}
+        onLink={centralId => void act(async () => { stopCreating(); await refreshCentral(); await linkClient(creating, centralId); },
+          `Enlazado con «${creation.exists?.centralName ?? 'el cliente'}» de Central.`)}/>}</div>}
     {note && <p role="status" className="task-done">{note}</p>}
     {error && <LoadError message={error}/>}
     {data.clients.length === 0 ? <p className="muted">Todavía no tienes clientes. Crea uno con «Nuevo cliente» para que la Bandeja, WhatsApp, las reuniones, Fiscal y Watson lo reconozcan.</p>

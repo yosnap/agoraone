@@ -53,7 +53,7 @@ function ClientRecord({ id, discreet, onBack, onOpen }: { id: string; discreet: 
   if (read.failure) return <><div className="actions central-actions">{back}</div><CentralProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/></>;
   if (!read.data) return <><div className="actions central-actions">{back}</div><Loading label="Leyendo la ficha del cliente" lines={4}/></>;
   const c = read.data;
-  const editable = !discreet && can.central && c.revision && c.id ? { ...c, id: c.id, revision: c.revision } : null;
+  const editable = !discreet && can.central && c.revision && c.id && c.editable ? { ...c, id: c.id, revision: c.revision, editable: c.editable } : null;
   const done = (text: string) => { setEditing(null); setSaid(text); forgetCentral(); };
   const open = (next: Editing) => { setSaid(''); setEditing(next); };
   const contact: [string, string][] = [['Correo', c.email || '—'], ['Teléfono', c.phone || '—'], ['NIF', c.taxId || '—'], ['Dirección', c.address || '—']];

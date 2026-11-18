@@ -18,7 +18,7 @@ export type ChangePreview = { token: string; kind: ChangeRequest['kind']; title:
 export type CurrentRow = { field: string; label: string; value: string | null };
 export type ChangeDone = { done: true; kind: ChangeRequest['kind']; title: string; warning?: string; repeated?: boolean };
 /** Whether the saved key may change Central's records and quote phases; `problem` says how to get such a key. */
-export type WritePermissions = { central: boolean; quotes: boolean; problem: string | null };
+export type WritePermissions = { central: boolean; quotes: boolean; problem: string | null; quotesProblem: string | null };
 
 export const getWritePermissions = () => core<WritePermissions>('/central/write/permissions');
 export const previewCentralChange = (change: ChangeRequest) => core<ChangePreview>('/central/write/preview', change);

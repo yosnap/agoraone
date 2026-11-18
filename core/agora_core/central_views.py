@@ -89,6 +89,24 @@ def revision(value) -> str | None:
     return value if isinstance(value, str) and REVISION.fullmatch(value) else None
 
 
+def project_revision(data: dict) -> str | None:
+    """A project's hash to change it: `editVersion` when Central gives it; only without it, a `version` that has the
+    shape of the hash (Central 0.6.0 gave it there, over the project's own version)."""
+    if "editVersion" in data:
+        return revision(data.get("editVersion"))
+    return revision(data.get("version"))
+
+
+# Central's limits of a client's fields: what the edit form gets, as Central has it (not scrubbed nor cut to show).
+EDIT_LIMITS = {"name": 120, "company": 160, "email": 200, "phone": 40, "taxId": 30, "address": 500}
+
+
+def editable_client(data: dict) -> dict:
+    """A client's data exactly as Central keeps it, only for the edit form: a value edited from a scrubbed or cut copy
+    would write the marks or the cut into Central."""
+    return {name: data.get(name)[:limit] if isinstance(data.get(name), str) else None for name, limit in EDIT_LIMITS.items()}
+
+
 def _web_url(value) -> str | None:
     """A public web address: https or http with a host name, never an IP literal, a name carrying one (sslip.io,
     traefik.me, Dokploy's 1-2-3-4 form, any domain) nor a name of a local network (.local, .internal, .lan…)."""
@@ -224,7 +242,7 @@ def client_record(data: dict) -> dict:
     return {"id": _id(data.get("id")), "name": _plain(data.get("name")), "company": _plain(data.get("company")),
             "email": _plain(data.get("email")), "phone": _plain(data.get("phone"), 60), "taxId": _plain(data.get("taxId"), 40),
             "address": _text(data.get("address"), 300), "projects": projects, "websites": [website(w) for w in _rows(data, "websites")],
-            "notes": [note(n) for n in _rows(data, "notes")], "revision": revision(data.get("version"))}
+            "notes": [note(n) for n in _rows(data, "notes")], "revision": revision(data.get("version")), "editable": editable_client(data)}
 
 
 def project_row(row: dict) -> dict:
@@ -238,13 +256,15 @@ def project_record(data: dict) -> dict:
     services, variable files, push token or anything else that describes this or another machine."""
     client = data.get("client") if isinstance(data.get("client"), dict) else {}
     # Central's record gives in `version` the hash to change it, over the project's own version: never shown as that.
-    edit = revision(data.get("version"))
+    edit = project_revision(data)
+    # Without `editVersion`, a `version` that is the hash is not the project's own version: never shown as that.
+    software = None if "editVersion" not in data and edit else _plain(data.get("version"), 40)
     services = [{"id": _id(s.get("id")), "name": _plain(s.get("name"), 80), "environment": _plain(s.get("environment"), 40),
                  "url": _web_url(s.get("url")), "hosting": _text(s.get("hosting"), 120), "liveVersion": _plain(s.get("liveVersion"), 40),
                  "liveVersionAt": _plain(s.get("liveVersionAt"), 40)} for s in _rows(data, "services")]
     return {"id": _id(data.get("id")), "name": _plain(data.get("name")), "kind": _plain(data.get("kind"), 20), "status": _plain(data.get("status"), 20),
             "phase": _plain(data.get("phase")), "description": _text(data.get("description"), 2000), "client": {"id": _id(client.get("id")), "name": _plain(client.get("name"))} if client else None,
-            "version": None if edit else _plain(data.get("version"), 40), "framework": _plain(data.get("framework"), 80), "stack": _list(data.get("stack")),
+            "version": software, "framework": _plain(data.get("framework"), 80), "stack": _list(data.get("stack")),
             "statusLocked": data.get("statusLocked") is True, "revision": edit, "repo": central.github_repo(data.get("repoUrl")), "defaultBranch": _plain(data.get("defaultBranch"), 100),
             "lastCommitAt": _plain(data.get("lastCommitAt"), 40), "lastActivity": _plain(data.get("lastActivityAt"), 40),
             "deploy": {"status": _plain(data.get("deployStatus"), 20), "hosting": _text(data.get("hosting"), 120),
@@ -415,5 +435,5 @@ def stored_client(snapshot: dict | None, item: str) -> dict | None:
                                   "version": None, "repo": _plain(p.get("repo")), "lastActivity": None} for p in c.get("projects") or [] if isinstance(p, dict)],
                     "websites": [{"id": None, "url": _web_url(w.get("url")), "label": None, "kind": None, "status": _plain(w.get("status"), 20), "code": None,
                                   "ms": None, "checkedAt": None, "sslDaysLeft": None} for w in c.get("websites") or [] if isinstance(w, dict)],
-                    "notes": [], "revision": None}
+                    "notes": [], "revision": None, "editable": None}
     return None

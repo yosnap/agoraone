@@ -17,6 +17,7 @@ phases. Without a key with the permission, 403 without asking Central for anythi
 no tool that reaches these routes. Never the key, Central's address nor the values changed in an answer of error or
 in the action log (only the names of the fields)."""
 
+import hashlib
 import json
 import logging
 import secrets as random
@@ -41,10 +42,11 @@ NO_WRITE = ("La clave de Central no tiene el permiso «escritura»: crea en Ajus
 NO_QUOTES = ("Para cambiar los hitos de un presupuesto, la clave de Central necesita los permisos «escritura» y «presupuestos»: créala en "
              "Ajustes › Apps conectadas de Central y guárdala en Ajustes › Central.")
 EXPIRED = "Esa vista previa ya no vale: vuelve a revisar el cambio."
-UNKNOWN = "No se sabe si Central llegó a crearlo: vuelve a leer Central antes de intentarlo otra vez."
+UNKNOWN = "Central no respondió a tiempo y puede haberse creado: revisa en Central antes de repetirlo."
+MOVED = "La conexión con Central ha cambiado desde la vista previa: vuelve a revisar el cambio."
 SENDING = "Ese cambio ya se está enviando a Central."
 BUSY_TARGET = "Hay otro cambio de esto enviándose a Central: espera a que termine y revisa otra vez."
-STATUS_CODES = {"forbidden": 403, "not_found": 404, "invalid": 422, "config": 502, "auth": 502}
+STATUS_CODES = {"forbidden": 403, "not_found": 404, "invalid": 422, "config": 502, "auth": 502, "busy": 503}
 TOKEN_SECONDS = 900
 MAX_TOKENS = 200
 LOG = logging.getLogger(__name__)
@@ -65,12 +67,18 @@ class ConfirmIn(BaseModel):
 class Pending:
     change: central_write.Change
     at: float
+    central: str  # the Central (address and key) it was previewed against: sent only there
     state: str = "ready"  # ready, sending, done or unknown
     result: dict | None = None
 
 
 def module_of(kind: str) -> str:
     return "presupuestos" if kind == "fase" else "central"
+
+
+def central_of(target: central_api.Connection) -> str:
+    """A fingerprint of the Central and key a change is for (never kept nor shown: only compared in memory)."""
+    return hashlib.sha256(f"{central_api.origin(target.url)}|{target.key}".encode()).hexdigest()
 
 
 def central_write_router(settings: Settings, secrets) -> APIRouter:
@@ -133,14 +141,15 @@ def central_write_router(settings: Settings, secrets) -> APIRouter:
         if not central_on and not quotes_on:
             return problem(404, OFF["central"], "off")
         if target is None:
-            return {"central": False, "quotes": False, "problem": NOT_CONNECTED}
+            return {"central": False, "quotes": False, "problem": NOT_CONNECTED, "quotesProblem": NOT_CONNECTED}
         try:
             scopes = set((await run_in_threadpool(central_api.status, target))["scopes"])
         except central_api.CentralApiError as error:
             return failed(error, "cliente")
         writes = {"escritura", "lectura"} <= scopes
-        return {"central": central_on and writes, "quotes": quotes_on and writes and "presupuestos" in scopes,
-                "problem": None if writes else NO_WRITE}
+        quotes = writes and "presupuestos" in scopes
+        return {"central": central_on and writes, "quotes": quotes_on and quotes,
+                "problem": None if writes else NO_WRITE, "quotesProblem": None if quotes else NO_QUOTES}
 
     @router.post("/central/write/preview")
     async def preview(body: PreviewIn):
@@ -158,19 +167,21 @@ def central_write_router(settings: Settings, secrets) -> APIRouter:
             if not allowed(target, kind):
                 raise central_api.CentralApiError("forbidden", "")
             if kind == "cliente-nuevo":
-                return with_db(lambda connection: central_write.new_client(connection, given))
+                return with_db(lambda connection: central_write.new_client(connection, target, given))
             return central_write.plan(target, given)
         try:
             change = await run_in_threadpool(work)
         except central_write.ChangeError as error:
             return problem(422, str(error), "invalid")
+        except central_write.ExistsError as error:
+            return problem(409, str(error), "exists", centralId=error.central_id, centralName=error.name)
         except central_write.StaleError as error:
             return problem(409, str(error), "conflict", current=error.current)
         except central_api.CentralApiError as error:
             return failed(error, kind)
         forget_old()
         token = random.token_urlsafe(24)
-        pending[token] = Pending(change, time.time())
+        pending[token] = Pending(change, time.time(), central_of(target))
         return {"token": token, **change.public()}
 
     @router.post("/central/write/confirm")
@@ -204,6 +215,9 @@ def central_write_router(settings: Settings, secrets) -> APIRouter:
         if not on or target is None:
             pending.pop(token, None)
             return problem(404, OFF[module_of(change.kind)], "off") if not on else problem(409, NOT_CONNECTED, "not_connected")
+        if central_of(target) != entry.central:
+            pending.pop(token, None)
+            return problem(409, MOVED, "expired")
         if change.local_id is not None:
             own = await run_in_threadpool(with_db, lambda c: clients.get(c, change.local_id))
             if own is None or own["centralId"]:
@@ -218,7 +232,8 @@ def central_write_router(settings: Settings, secrets) -> APIRouter:
             if error.status == "busy" or (change.method == "PATCH" and error.status in ("unreachable", "error")):
                 entry.state = "ready"  # nothing written, or a version Central would refuse if it was: the user may press again
             elif error.status in ("unreachable", "error"):
-                entry.state = "unknown"  # Central may have created it: never twice
+                entry.state = "unknown"  # Central may have created it: never twice, and said so from the first answer
+                return problem(502, UNKNOWN, "unknown")
             else:
                 pending.pop(token, None)
             return failed(error, change.kind)

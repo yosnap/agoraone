@@ -12,12 +12,13 @@ const FIELDS: { field: ClientField; label: string; max: number; type?: string; l
 /** A client's data in Central, changed from its record: «Revisar el cambio» shows exactly what changes (and which
  * contact fields are emptied) and only «Guardar en Central» sends it, with the version of the record read. */
 export function CentralEditClient({ client, onDone, onCancel, onReview }: {
-  client: CentralClientRecord & { id: string; revision: string }; onDone: (said: string) => void; onCancel: () => void; onReview: () => void;
+  client: CentralClientRecord & { id: string; revision: string; editable: NonNullable<CentralClientRecord['editable']> }; onDone: (said: string) => void; onCancel: () => void; onReview: () => void;
 }) {
   const [values, setValues] = useState<Record<ClientField, string>>(() =>
-    Object.fromEntries(FIELDS.map(({ field }) => [field, client[field] ?? ''])) as Record<ClientField, string>);
+    Object.fromEntries(FIELDS.map(({ field }) => [field, client.editable[field] ?? ''])) as Record<ClientField, string>);
   const change = useCentralChange(onDone);
-  const changed = FIELDS.filter(({ field }) => values[field].trim() !== (client[field] ?? '').trim());
+  // Compared with the data as Central keeps it, never with the scrubbed copy shown in the record.
+  const changed = FIELDS.filter(({ field }) => values[field].trim() !== (client.editable[field] ?? '').trim());
   const review = () => void change.ask({
     kind: 'cliente', id: client.id, revision: client.revision,
     changes: Object.fromEntries(changed.map(({ field }) => [field, values[field].trim() || null])),

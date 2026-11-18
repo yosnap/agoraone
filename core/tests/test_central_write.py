@@ -6,6 +6,7 @@ Central is a stand-in with the real shape and rules of its write API (`src/lib/a
 `feat/api-v1-escrituras`): version as a hash of the editable fields, 409 `conflict`/`duplicate`/`status_locked` with
 `current`, 422 for ARCHIVED and `statusLocked: false`, 503 when busy."""
 
+import asyncio
 import hashlib
 import json
 import threading
@@ -99,7 +100,7 @@ class FakeCentral:
             return httpx.Response(201, json={"client": {"id": C2, **body, "version": "a" * 20}})
         if path == f"/api/v1/proyectos/{P1}":
             if method == "GET":
-                return httpx.Response(200, json={**self.project, "repoUrl": None, "kumaPushToken": None, "version": self.project_version()})
+                return httpx.Response(200, json={**self.project, "repoUrl": None, "editVersion": self.project_version()})
             if body.get("status") == "ARCHIVED" or body.get("statusLocked") is False:
                 return httpx.Response(422, json={"error": "invalid", "detail": "status: Archivar se hace en Central"})
             if body.pop("version", None) != self.project_version():
@@ -148,10 +149,13 @@ def confirm(client, token):
 
 
 def test_permisos_segun_la_clave(client, fake):
-    assert client.get("/central/write/permissions", headers=HEADERS).json() == {"central": True, "quotes": True, "problem": None}
+    assert client.get("/central/write/permissions", headers=HEADERS).json() == {"central": True, "quotes": True, "problem": None, "quotesProblem": None}
     fake.scopes = ["lectura", "presupuestos"]
     answer = client.get("/central/write/permissions", headers=HEADERS).json()
     assert answer["central"] is False and answer["quotes"] is False and "Apps conectadas" in answer["problem"]
+    fake.scopes = ["lectura", "escritura"]
+    answer = client.get("/central/write/permissions", headers=HEADERS).json()
+    assert answer["central"] is True and answer["quotes"] is False and answer["problem"] is None and "presupuestos" in answer["quotesProblem"]
 
 
 def test_vista_previa_con_antes_y_despues_y_aviso_al_vaciar(client, fake):
@@ -277,11 +281,12 @@ def test_ocupada_permite_volver_a_pulsar_y_una_alta_desconocida_no_se_repite(cli
     token = preview(client, kind="proyecto", id=P1, revision=fake.project_version(), changes={"phase": "Entrega"}).json()["token"]
     fake.busy = True
     busy = confirm(client, token)
-    assert busy.status_code == 502 and busy.json()["status"] == "busy"
+    assert busy.status_code == 503 and busy.json()["status"] == "busy"
     assert confirm(client, token).status_code == 200 and fake.project["phase"] == "Entrega"
     token = preview(client, kind="nota", target="proyecto", id=P1, body="Hola").json()["token"]
     fake.fail_writes = 500
-    assert confirm(client, token).status_code == 502
+    first = confirm(client, token)
+    assert first.status_code == 502 and first.json()["status"] == "unknown" and "puede haberse creado" in first.json()["error"]
     fake.fail_writes = None
     again = confirm(client, token)
     assert again.status_code == 409 and again.json()["status"] == "unknown" and fake.notes == []
@@ -289,7 +294,6 @@ def test_ocupada_permite_volver_a_pulsar_y_una_alta_desconocida_no_se_repite(cli
 
 def test_crear_en_central_enlaza_el_cliente_propio_sin_duplicar(client, fake):
     own = client.post("/clients", json={"name": "Cliente Nuevo", "email": "hola@nuevo.es", "taxId": "B87654321", "notes": "privado"}, headers=HEADERS).json()
-    assert preview(client, kind="cliente-nuevo", localId=own["localId"]).status_code == 422, "sin leer Central antes, no"
     assert client.post("/central/refresh", headers=HEADERS).status_code == 200
     data = preview(client, kind="cliente-nuevo", localId=own["localId"]).json()
     assert {r["field"]: r["after"] for r in data["rows"]} == {"name": "Cliente Nuevo", "email": "hola@nuevo.es", "taxId": "B87654321"}
@@ -335,3 +339,73 @@ def test_las_fichas_dan_su_version_para_cambiar_sin_confundirla_con_la_del_proye
     assert central_views.client_record({"id": C1, "name": "X", "version": "../x"})["revision"] is None
     phases = central_quotes.quote_record({"id": Q1, "phases": [{"id": F1, "version": "a" * 20, "name": "Inicio", "status": "PENDING"}]})["phases"]
     assert phases[0]["id"] == F1 and phases[0]["revision"] == "a" * 20
+
+
+def test_crear_en_central_lee_central_ahora_y_ofrece_enlazar(client, fake):
+    # Central has this client since after its last reading (another name, the same tax id): never a second one.
+    own = client.post("/clients", json={"name": "Uno Soluciones", "taxId": "b-12345678"}, headers=HEADERS).json()
+    answer = preview(client, kind="cliente-nuevo", localId=own["localId"])
+    assert answer.status_code == 409 and answer.json()["status"] == "exists"
+    assert answer.json()["centralId"] == C1 and answer.json()["centralName"] == "Cliente Uno"
+    other = client.post("/clients", json={"name": "Otra Persona", "email": "INFO@clienteuno.com"}, headers=HEADERS).json()
+    assert preview(client, kind="cliente-nuevo", localId=other["localId"]).json()["status"] == "exists"
+    named = client.post("/clients", json={"name": "  CLIENTE   uno "}, headers=HEADERS).json()
+    assert preview(client, kind="cliente-nuevo", localId=named["localId"]).json()["status"] == "exists"
+    assert fake.writes() == []
+
+
+def test_la_ficha_da_el_valor_completo_para_editar(client, fake):
+    long = "Calle " + "x" * 400 + " /home/ana/notas"
+    fake.client["address"] = long
+    record = client.get(f"/central/views/clientes/{C1}", headers=HEADERS).json()
+    assert record["address"] != long and record["editable"]["address"] == long, "se muestra tratado, se edita tal cual"
+
+
+def test_no_se_guardan_marcadores_y_se_avisa_del_recorte(client, fake):
+    fake.client["address"] = "Calle Mayor 1, 28001 Madrid, portal 3"
+    answer = preview(client, kind="cliente", id=C1, revision=fake.client_version(), changes={"address": "Calle [ruta oculta] 1"})
+    assert answer.status_code == 422 and "ruta oculta" in answer.json()["error"]
+    cut = preview(client, kind="cliente", id=C1, revision=fake.client_version(), changes={"address": "Calle Mayor 1, 28001"}).json()
+    assert any("recortado" in w for w in cut["warnings"])
+    assert preview(client, kind="proyecto", id=P1, revision=fake.project_version(), changes={"phase": "Fase [IP oculta]"}).status_code == 422
+    assert fake.writes() == []
+
+
+@pytest.mark.parametrize("changes", [{"status": ["ACTIVE"]}, {"status": {"a": 1}}, {"phase": 3}, {"statusLocked": "true"}])
+def test_tipos_que_no_son_texto_dan_422(client, fake, changes):
+    assert preview(client, kind="proyecto", id=P1, revision=fake.project_version(), changes=changes).status_code == 422
+    assert preview(client, kind="fase", id=Q1, phaseId=F1, revision=fake.phase_version(), changes={"status": ["DONE"]}).status_code == 422
+
+
+def test_correo_y_topes_como_central(client, fake):
+    for bad in ("a..b@uno.es", ".a@uno.es", "a%b@uno.es", "a@uno"):
+        assert preview(client, kind="cliente", id=C1, revision=fake.client_version(), changes={"email": bad}).status_code == 422, bad
+    assert preview(client, kind="cliente", id=C1, revision=fake.client_version(), changes={"name": "😀" * 60}).status_code == 200
+    assert preview(client, kind="cliente", id=C1, revision=fake.client_version(), changes={"name": "😀" * 61}).status_code == 422, "120 unidades UTF-16"
+
+
+def test_la_version_de_edicion_del_proyecto_y_su_version_de_software(client, fake):
+    record = client.get(f"/central/views/proyectos/{P1}", headers=HEADERS).json()
+    assert record["revision"] == fake.project_version() and record["version"] == "1.0.0"
+
+
+def test_si_cambia_la_conexion_no_se_envia_a_otra_central(client, fake):
+    token = preview(client, kind="proyecto", id=P1, revision=fake.project_version(), changes={"phase": "Entrega"}).json()["token"]
+    other = "cen_" + "Zz9_-" * 8 + "abc"
+    assert client.put("/central/connection", json={"url": URL, "key": other}, headers=HEADERS).status_code == 200
+    answer = confirm(client, token)
+    assert answer.status_code == 409 and answer.json()["status"] == "expired" and fake.writes() == []
+
+
+def test_envios_simultaneos_en_el_mismo_bucle(client, fake):
+    """Several confirmations at once in one event loop: the reservation before any wait lets one only through."""
+    token = preview(client, kind="nota", target="proyecto", id=P1, body="Una vez").json()["token"]
+    app = client.app
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url=str(client.base_url)) as asynchronous:
+            answers = await asyncio.gather(*[asynchronous.post("/central/write/confirm", json={"token": token}, headers=HEADERS) for _ in range(6)])
+        return [a.json().get("status") if a.status_code != 200 else "ok" for a in answers]
+    outcomes = asyncio.run(run())
+    assert len(fake.notes) == 1 and outcomes.count("ok") >= 1 and set(outcomes) <= {"ok", "repeated"}, outcomes

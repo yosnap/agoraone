@@ -48,17 +48,21 @@ y Watson no ve `proponer_presupuesto`.
 Con una clave de Central con el permiso `escritura` (que lleva `lectura`), las fichas de la sección Central cambian
 los datos de un cliente, añaden notas a un cliente o a un proyecto y cambian el estado y la fase de un proyecto; en
 Trabajos › Clientes, «Crear en Central» da de alta en Central un cliente que solo está en AgoraOne y lo enlaza con el
-propio (se ve una sola vez). Lo hace el usuario desde la ficha, nunca Watson ni un correo o un mensaje: Watson sigue
+propio (se ve una sola vez); antes lee los clientes de Central en ese momento y, si ya hay uno con el mismo nombre, NIF o
+correo, ofrece «Enlazar con el existente» en vez de crear otro. Lo hace el usuario desde la ficha, nunca Watson ni un correo o un mensaje: Watson sigue
 limitado a proponer borradores de presupuesto (`proponer_presupuesto`) y no tiene ninguna herramienta que llegue a
 estas rutas (`core/agora_core/central_write.py`, `routes_central_write.py`, `src/central/central-change.tsx`).
 
 - «Revisar el cambio» enseña el cambio exacto, campo a campo («Ahora en Central» y «Después»), leído en ese momento de
   Central y comprobado contra la versión de la ficha que se editó; vaciar un dato de contacto se avisa. Solo «Guardar
-  en Central» lo envía, exactamente ese cuerpo y con esa versión, guardado en el núcleo con un token de un solo uso
+  en Central» lo envía, exactamente ese cuerpo y con esa versión, y solo a la misma Central de la vista previa, guardado en el núcleo con un token de un solo uso
   que se reserva antes de esperar nada: una doble pulsación o dos envíos a la vez escriben una sola vez.
+- El formulario parte de los datos tal como los guarda Central (no de la copia que se muestra, con rutas e IP ocultas):
+  un valor con «[ruta oculta]» o «[IP oculta]» no se guarda, y un valor que es solo el principio del actual se avisa como
+  recortado. Correo y topes se comprueban como Central (topes en unidades UTF-16).
 - Si alguien lo cambió en Central mientras tanto, Central responde 409 y no cambia nada: se ve lo que hay ahora y
   «Volver a revisar» vuelve a leer la ficha. Nada se reintenta solo. Si Central está ocupada, se puede pulsar otra vez;
-  si no se sabe si un alta llegó a crearse, no se repite con ese token.
+  si un alta se queda sin respuesta, se avisa de que puede haberse creado y de revisarlo en Central antes de repetirlo.
 - Nunca se borra nada. Archivar un proyecto o dejar de fijar su estado se hace en Central (quita auditorías, alertas
   y su monitor de Uptime Kuma); un estado fijado a mano sigue fijado y uno sin fijar se puede fijar.
 - Sin el permiso, los botones no aparecen y la ficha explica cómo crear la clave en Ajustes › Apps conectadas de

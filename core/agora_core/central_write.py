@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from . import central_api, clients
-from .central_views import ID, revision
+from .central_views import ID, project_revision, revision
 
 READ_SECONDS = 20
 NOTE_MAX = 5000
@@ -28,7 +28,10 @@ PHASE_STATUSES = {"PENDING": "Pendiente", "IN_PROGRESS": "En curso", "DONE": "He
 PROJECT_FIELDS = {"status": "Estado", "statusLocked": "Estado fijado a mano", "phase": "Fase"}
 PHASE_FIELDS = {"status": "Estado", "dueDate": "Fecha prevista"}
 KINDS = ("cliente", "cliente-nuevo", "nota", "proyecto", "fase")
-_EMAIL = re.compile(r"[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,63}")
+# Central's own check of a mail (zod's `z.email()`), so a mail it would refuse is refused here before confirming.
+_EMAIL = re.compile(r"(?!\.)(?!.*\.\.)[A-Za-z0-9_'+\-.]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}")
+# What AgoraOne puts instead of a path or an IP when it shows a text: never written back into Central.
+MARKS = ("[ruta oculta]", "[IP oculta]")
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 UNFIXED = "Sin fijarlo, el escáner de Central puede volver a calcular el estado en su próxima pasada."
 FIXED = "El estado está fijado a mano en Central: seguirá fijado con el estado nuevo."
@@ -36,6 +39,15 @@ FIXED = "El estado está fijado a mano en Central: seguirá fijado con el estado
 
 class ChangeError(ValueError):
     """A change that cannot be asked (a field not allowed, a value out of range): 422, Central is not asked."""
+
+
+class ExistsError(Exception):
+    """«Crear en Central» for a client Central already has (same name, tax id or mail): link it instead."""
+
+    def __init__(self, central_id: str | None, name: str):
+        super().__init__(f"Central ya tiene este cliente como «{name}»: enlázalo con el tuyo en vez de crear otro.")
+        self.central_id = central_id
+        self.name = name
 
 
 class StaleError(Exception):
@@ -80,11 +92,28 @@ def _text(value, label: str, limit: int, required: bool = False, lines: bool = F
     allowed = "\n\t" if lines else ""
     if any(ord(c) < 32 and c not in allowed for c in value) or "\x7f" in value:
         raise ChangeError(f"«{label}» lleva caracteres no válidos.")
-    if len(value) > limit:
+    if _units(value) > limit:
         raise ChangeError(f"«{label}» pasa de {limit} caracteres, el máximo de Central.")
     if required and not value:
         raise ChangeError(f"«{label}» no puede quedar vacío.")
     return value or None
+
+
+def _units(value: str) -> int:
+    """A length counted as Central counts it (JavaScript: UTF-16 units, so an emoji is two)."""
+    return len(value.encode("utf-16-le")) // 2
+
+
+def _no_marks(label: str, value: str | None, before: str | None) -> None:
+    """A value with AgoraOne's own marks of hidden text was edited from a scrubbed copy: never written into Central."""
+    if value and any(mark in value and mark not in (before or "") for mark in MARKS):
+        raise ChangeError(f"«{label}» lleva «[ruta oculta]» o «[IP oculta]», que AgoraOne pone al mostrar un texto: escríbelo completo.")
+
+
+def _cut_warnings(rows: list[dict]) -> list[str]:
+    """A new value that is only the start of the old one: likely a cut copy, said before saving."""
+    return [f"«{r['label']}» queda recortado: el valor nuevo es solo el principio del actual." for r in rows
+            if r["after"] and r["before"] and r["before"].startswith(r["after"]) and r["after"] != r["before"]]
 
 
 def _client_value(name: str, value) -> str | None:
@@ -218,8 +247,10 @@ def _client(target: central_api.Connection, given: dict) -> Change:
     rows = _rows({k: v[0] for k, v in CLIENT_FIELDS.items()}, before, after)
     if not rows:
         raise ChangeError("No hay cambios: los datos son los mismos que en Central.")
+    for r in rows:
+        _no_marks(r["label"], after[r["field"]], before.get(r["field"]))
     warnings = [f"Se vacía «{r['label']}» en Central: «{r['before']}» se pierde (Central no guarda el valor anterior)."
-                for r in rows if r["emptied"] and r["field"] in CONTACT]
+                for r in rows if r["emptied"] and r["field"] in CONTACT] + _cut_warnings(rows)
     body = {"version": version, **{r["field"]: after[r["field"]] for r in rows}}
     return Change("cliente", "PATCH", f"/api/v1/clientes/{item}", body, f"Cliente «{before['name'] or '—'}»", rows, f"cliente:{item}",
                   warnings=warnings)
@@ -231,6 +262,8 @@ def _project(target: central_api.Connection, given: dict) -> Change:
     changes = _changes(given, PROJECT_FIELDS)
     after: dict = {}
     if "status" in changes:
+        if not isinstance(changes["status"], str):
+            raise ChangeError("El estado no es válido.")
         if changes["status"] == "ARCHIVED":
             raise ChangeError("Archivar un proyecto se hace en Central: quita sus auditorías, sus alertas y su monitor de Uptime Kuma.")
         if changes["status"] not in EDITABLE_STATUSES:
@@ -244,7 +277,9 @@ def _project(target: central_api.Connection, given: dict) -> Change:
         after["phase"] = _text(changes["phase"], "Fase", 80)
     data = _read(target, f"/api/v1/proyectos/{item}")
     before = project_now(data)
-    version = _fresh("proyecto", given.get("revision"), revision(data.get("version")), data)
+    version = _fresh("proyecto", given.get("revision"), project_revision(data), data)
+    if "phase" in after:
+        _no_marks("Fase", after["phase"], before["phase"])
     notes: list[str] = []
     if "status" in after and after["status"] != before["status"]:
         if before["statusLocked"]:
@@ -262,7 +297,7 @@ def _project(target: central_api.Connection, given: dict) -> Change:
         body["statusLocked"] = True  # not a change (it was fixed), but Central needs it said to change a fixed state
     name = data.get("name") if isinstance(data.get("name"), str) else "—"
     return Change("proyecto", "PATCH", f"/api/v1/proyectos/{item}", body, f"Proyecto «{name[:200]}»", rows, f"proyecto:{item}", notes=notes,
-                  warnings=[f"Se vacía «Fase» en Central: «{r['before']}» se pierde." for r in rows if r["emptied"]])
+                  warnings=[f"Se vacía «Fase» en Central: «{r['before']}» se pierde." for r in rows if r["emptied"]] + _cut_warnings(rows))
 
 
 def _phase(target: central_api.Connection, given: dict) -> Change:
@@ -271,13 +306,14 @@ def _phase(target: central_api.Connection, given: dict) -> Change:
     changes = _changes(given, PHASE_FIELDS)
     after: dict = {}
     if "status" in changes:
-        if changes["status"] not in PHASE_STATUSES:
+        if not isinstance(changes["status"], str) or changes["status"] not in PHASE_STATUSES:
             raise ChangeError("El estado del hito no es válido.")
         after["status"] = changes["status"]
     if "dueDate" in changes:
         after["dueDate"] = _day(changes["dueDate"])
     data = _read(target, f"/api/v1/presupuestos/{quote}")
-    found = next((p for p in data.get("phases") or [] if isinstance(p, dict) and p.get("id") == phase), None)
+    phases = data.get("phases") if isinstance(data.get("phases"), list) else []
+    found = next((p for p in phases if isinstance(p, dict) and p.get("id") == phase), None)
     if found is None:
         raise central_api.CentralApiError("not_found", "Ese hito ya no está en el presupuesto.")
     before = phase_now(found)
@@ -312,11 +348,10 @@ def _note(target: central_api.Connection, given: dict) -> Change:
                   f"nota:{item}", notes=["Las notas no se cambian ni se borran desde AgoraOne: se corrigen en Central."])
 
 
-def new_client(connection: sqlite3.Connection, given: dict) -> Change:
-    """«Crear en Central» for a client kept only here: its name, company, mail, phone and tax id as they are. Never
-    for one that is already one of Central's (linked, or the same by name, tax id or mail) nor before Central is read."""
-    from . import central
-
+def new_client(connection: sqlite3.Connection, target: central_api.Connection, given: dict) -> Change:
+    """«Crear en Central» for a client kept only here: its name, company, mail, phone and tax id as they are. Checked
+    against Central's clients read now (not the last snapshot): one with the same name, tax id or mail is offered to
+    link (ExistsError) instead of creating a second one. Never for a client already linked."""
     _check_keys(given, {"kind", "localId"})
     local_id = given.get("localId")
     if isinstance(local_id, bool) or not isinstance(local_id, int) or local_id < 1:
@@ -324,13 +359,21 @@ def new_client(connection: sqlite3.Connection, given: dict) -> Change:
     own = clients.get(connection, local_id)
     if own is None:
         raise central_api.CentralApiError("not_found", "Ese cliente ya no está en AgoraOne.")
-    if central.snapshot(connection) is None:
-        raise ChangeError("Antes hay que leer los clientes de Central (Ajustes › Central) para no crearlo dos veces.")
     entry = next((e for e in clients.directory(connection) if e.get("localId") == local_id), None)
-    if own["centralId"] or entry is None or entry["source"] != "local":
+    if own["centralId"] or (entry is not None and entry["source"] != "local"):
         raise ChangeError("Ese cliente ya está en Central: no se crea otra vez.")
     after = {"name": _client_value("name", own["name"]), **{name: _client_value(name, own[name]) for name in ("company", "email", "phone", "taxId")}}
     after = {name: value for name, value in after.items() if value is not None}
+    with central_api.session(READ_SECONDS) as (client, deadline):
+        remote = central_api.request(target, "GET", "/api/v1/clientes", client=client, deadline=deadline).get("clients")
+    for other in remote if isinstance(remote, list) else []:
+        if not isinstance(other, dict) or not isinstance(other.get("name"), str):
+            continue
+        same = clients.same_name(other["name"]) == clients.same_name(after["name"])
+        same = same or (bool(after.get("taxId")) and clients.tax_key(other.get("taxId")) == clients.tax_key(after.get("taxId")))
+        same = same or (bool(after.get("email")) and isinstance(other.get("email"), str) and other["email"].strip().lower() == after["email"].lower())
+        if same:
+            raise ExistsError(other.get("id") if isinstance(other.get("id"), str) and ID.fullmatch(other["id"]) else None, other["name"][:200])
     rows = _rows({k: v[0] for k, v in CLIENT_FIELDS.items()}, {}, after)
     notes = ["Al crearlo, tu cliente queda enlazado con el de Central: se ve una sola vez.",
              "Sus dominios y notas se quedan solo en AgoraOne."]

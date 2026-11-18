@@ -124,7 +124,7 @@ export function QuoteDetail({ id, discreet, onBack, onOpen }: { id: string; disc
     {said && <p className="ok-note" role="status">{said}</p>}
     {discreet ? <p className="muted">En modo discreto no se abren documentos.</p> : <div className="central-wide"><DocumentButtons id={id}/></div>}
     <Body q={q} discreet={discreet} phases={<Phases q={q} discreet={discreet} canWrite={can.quotes} onSaid={setSaid}/>}/>
-    {!discreet && !can.quotes && can.problem && q.phases.length > 0 && <p className="muted">{can.problem}</p>}
+    {!discreet && !can.quotes && can.quotesProblem && q.phases.length > 0 && <p className="muted">{can.quotesProblem}</p>}
     <p className="muted">Enviar el presupuesto, cambiar su estado o sus partidas se hace en Central.</p>
   </RecordLayout>;
 }
