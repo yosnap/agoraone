@@ -94,7 +94,18 @@ if (-not $hermesHome) { $hermesHome = $env:HERMES_HOME }
 if (-not $hermesHome) { $hermesHome = Join-Path $HOME '.hermes' }
 $hermesCode = $env:AGORA_HERMES_PATH
 if (-not $hermesCode) { $hermesCode = Join-Path $hermesHome 'hermes-agent' }
-if (Test-Path (Join-Path $hermesCode 'run_agent.py')) { Write-Ok 'Hermes' $hermesCode }
+if (Test-Path (Join-Path $hermesCode 'run_agent.py')) {
+  # AgoraOne only uses the Hermes commit its bridges were verified against.
+  $expected = $null
+  $bridge = Join-Path $root 'desktop\server\python\hermes_bridge.py'
+  if ((Get-Content $bridge -Raw) -match 'EXPECTED_COMMIT = "([0-9a-f]{40})"') { $expected = $Matches[1] }
+  $revision = $null
+  if (Get-Command 'git' -ErrorAction SilentlyContinue) { $revision = git -C $hermesCode rev-parse HEAD 2>$null }
+  if ($expected -and $revision -and $revision -ne $expected) {
+    Write-Warn "Hermes está en el commit $revision" "AgoraOne exige $expected y no lo usará. Ver docs/windows.md, apartado Hermes."
+  }
+  else { Write-Ok 'Hermes' "$hermesCode ($revision)" }
+}
 else { Write-Warn "No se encuentra Hermes en $hermesCode" 'AgoraOne abre igual, pero sin perfiles ni chats. Si está en otra ruta, indícala con AGORA_HERMES_HOME y AGORA_HERMES_PATH en .env.' }
 
 if ($env:SSLKEYLOGFILE -like '*aswMonFltProxy*') {

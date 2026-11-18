@@ -63,17 +63,27 @@ Abre el navegador con un enlace de acceso de un solo uso. Solo hace falta la pri
 
 ## 5. Hermes
 
-AgoraOne funciona sin Hermes, pero entonces la Oficina 3D no muestra perfiles y no hay chats con ellos. Lo busca en `%USERPROFILE%\.hermes\hermes-agent` (el archivo `run_agent.py`) y usa el Python de su entorno, `venv\Scripts\python.exe`. Si lo tienes en otra ruta, indícala en `.env`:
+AgoraOne funciona sin Hermes, pero entonces la Oficina 3D no muestra perfiles y no hay chats con ellos.
 
+AgoraOne solo trabaja con **un commit concreto de Hermes**, el que figura como `EXPECTED_COMMIT` en `desktop/server/python/hermes_bridge.py` (ahora `d1b46d718ffe675427928eff7e5fff69bcb4519b`). Con otra revisión, o con cambios en el código de Hermes, se niega a usarlo. Por eso no sirve instalar la última versión ni ejecutar `hermes update`.
+
+El instalador de Hermes para Windows permite fijar ese commit y elegir la carpeta. Este ejemplo lo deja todo en `E:\hermes` y omite el navegador y el controlador de «uso del ordenador», que AgoraOne no necesita:
+
+```powershell
+[Environment]::SetEnvironmentVariable('HERMES_HOME', 'E:\hermes', 'User')
+$env:HERMES_HOME = 'E:\hermes'
+irm https://hermes-agent.nousresearch.com/install.ps1 -OutFile $env:TEMP\hermes-install.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File $env:TEMP\hermes-install.ps1 -Commit d1b46d718ffe675427928eff7e5fff69bcb4519b -SkipBrowser -SkipComputerUse
 ```
-AGORA_HERMES_HOME=D:\ruta\a\.hermes
-AGORA_HERMES_PATH=D:\ruta\a\hermes-agent
-AGORA_HERMES_PYTHON=D:\ruta\a\hermes-agent\venv\Scripts\python.exe
-```
 
-Con Hermes instalado, `pnpm check:hermes` comprueba que AgoraOne puede cargarlo (sin llamar al modelo). Más detalle en [docs/catalogo-hermes.md](catalogo-hermes.md).
+- Para ver qué carpetas usaría sin instalar nada, añade `-ShowResolvedPaths`.
+- El código queda en `E:\hermes\hermes-agent`, su Python y sus herramientas en `E:\hermes\tools`, y el comando `hermes` en `E:\hermes\bin`.
+- Al final, el instalador pregunta por el proveedor del modelo. Los perfiles lo necesitan para conversar; se puede configurar después con `hermes setup`.
+- Si falla al descargar con errores de certificado, pausa el escudo web del antivirus mientras dura la instalación.
 
-**Pendiente:** la integración con Hermes todavía no se ha probado en Windows con una instalación real.
+**Variable `HERMES_HOME`.** Sin ella, Hermes se instala en Windows en `%LOCALAPPDATA%\hermes`, pero AgoraOne lo busca en `%USERPROFILE%\.hermes`. Con `HERMES_HOME` definida, los dos usan la misma carpeta. Si prefieres no definirla, indica la ruta en el `.env` de AgoraOne con `AGORA_HERMES_HOME` (y, si el código está en otro sitio, `AGORA_HERMES_PATH`). Abre una terminal nueva antes de `pnpm dev` para que la vea.
+
+`pnpm check:hermes` comprueba que AgoraOne puede cargar Hermes, sin llamar al modelo; debe terminar con `"ok":true` y la revisión esperada. En la Oficina 3D aparecen entonces los perfiles. Un perfil sale «Sin conexión» mientras no tenga conectada ninguna plataforma del gateway (Telegram, por ejemplo); es normal. Más detalle en [docs/catalogo-hermes.md](catalogo-hermes.md).
 
 ## Qué cambia respecto a macOS
 
