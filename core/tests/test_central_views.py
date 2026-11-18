@@ -68,18 +68,25 @@ SERVER = {
     "error": "Lectura parcial desde 203.0.113.7 con /Users/ana/.ssh/infobar_ed25519", "lastOkAt": NOW, "nextAt": NOW,
     "cpu": 12.5, "memory": 61.2, "disk": 70, "services": {"ok": 5, "total": 6, "down": ["n8n"]}, "protection": {"done": 7, "total": 9, "level": "amber"},
     "projects": [{"projectId": P1, "project": "Web Uno", "service": "web", "environment": "production", "url": "http://203.0.113.7:3000",
-                  "containers": [{"name": "web_app", "state": "ok", "detail": "running"}]}],
+                  "containers": [{"name": "web_app", "state": "ok", "detail": "running"}]},
+                 {"projectId": P2, "project": "Tienda", "service": "api", "environment": "production", "url": "https://tienda-api-203-0-113-7.traefik.me",
+                  "containers": []},
+                 {"projectId": P2, "project": "Tienda", "service": "grafana", "environment": "production", "url": "https://grafana.internal", "containers": []}],
     "host": "203.0.113.7", "sshPort": 2222, "panelUrl": "http://203.0.113.7:3000", "keyPath": "~/.ssh/infobar_ed25519", "ip": "198.51.100.4",
     "knownIps": ["198.51.100.9"],
 }
 SERVER_RECORD = {
-    **SERVER, "readAt": NOW, "root": True, "domains": ["www.clienteuno.com", "*.apps.ejemplo.com", "203.0.113.7", "web.198.51.100.4.sslip.io"],
+    **SERVER, "readAt": NOW, "root": True, "domains": ["www.clienteuno.com", "*.apps.ejemplo.com", "203.0.113.7", "web.198.51.100.4.sslip.io", "app.203.0.113.7.traefik.me",
+                                                 "web-198-51-100-4.traefik.me", "panel.lan", "app.local"],
     "cards": {"cpu": {"level": "green", "pct": 12.5}, "sessions": {"level": "amber", "count": 2, "strange": ["198.51.100.66"]},
               "ports": {"level": "red", "odd": [8080], "exposed": [22, 80, 443, 8080]},
               "maintenance": {"level": "amber", "pending": 4, "security": 1, "reboot": False},
               "services": {"level": "amber", "ok": 5, "total": 6, "down": ["n8n"], "stopped": []}},
-    "containers": [{"name": "web_app", "kind": "swarm", "state": "ok", "detail": "running", "projectServiceId": "x"}],
-    "checks": [{"key": "ssh-password", "ok": False, "detail": "SSH acepta contraseña", "fix": "sudo sed -i ... && ssh root@203.0.113.7"}],
+    "containers": [{"name": "web_app", "kind": "swarm", "state": "ok", "detail": "running en 2001:db8::7", "projectServiceId": "x"}],
+    "checks": [{"key": "ssh-password", "ok": False, "detail": "SSH acepta contraseña", "fix": "sudo sed -i ... && ssh root@203.0.113.7"},
+               {"key": "ssh-config", "ok": False, "detail": "Falta /etc/ssh/sshd_config.d/00-sin-contrasena.conf",
+                "fix": "echo 'PasswordAuthentication no' | sudo tee /etc/ssh/sshd_config.d/00-sin-contrasena.conf && sudo sshd -t"},
+               {"key": "key", "ok": None, "detail": "Clave en ~/.ssh/infobar_ed25519 desde 10-0-0-5.ejemplo.com", "fix": None}],
 }
 EVENTS = [
     {"summary": "Reunión con Cliente Uno", "calendar": "Trabajo", "start": "2026-11-19T09:00:00.000Z", "end": "2026-11-19T10:00:00.000Z",
@@ -325,17 +332,21 @@ def test_servidores_sin_ips_rutas_ni_direcciones_aunque_central_las_mande(client
     server = listed.json()["servers"][0]
     assert server["status"] == "amber" and server["cpu"] == 12.5 and server["protection"] == {"done": 7, "total": 9, "level": "amber"}
     assert server["services"] == {"ok": 5, "total": 6, "down": ["n8n"]}
-    assert server["projects"][0]["project"] == "Web Uno" and server["projects"][0]["url"] is None
+    assert [p["url"] for p in server["projects"]] == [None, None, None], "ni IPs, ni nombres con una IP, ni nombres de red local"
     shown = client.get(f"/central/views/servidores/{S1}", headers=HEADERS)
     record = shown.json()
     assert record["domains"] == ["www.clienteuno.com", "*.apps.ejemplo.com"]
     assert record["cards"]["sessions"] == {"level": "amber", "count": 2}, "sin los orígenes de las sesiones"
     assert record["cards"]["ports"] == {"level": "red", "odd": [8080], "exposed": [22, 80, 443, 8080]}
     assert record["checks"][0]["ok"] is False and "[IP oculta]" in record["checks"][0]["fix"]
-    assert record["containers"] == [{"name": "web_app", "kind": "swarm", "state": "ok", "detail": "running"}]
+    assert record["checks"][1]["fix"] == SERVER_RECORD["checks"][1]["fix"], "las órdenes de arreglo salen enteras"
+    assert record["checks"][1]["detail"] == SERVER_RECORD["checks"][1]["detail"]
+    assert record["checks"][2]["detail"] == "Clave en [ruta oculta] desde [IP oculta].ejemplo.com"
+    assert record["containers"] == [{"name": "web_app", "kind": "swarm", "state": "ok", "detail": "running en [IP oculta]"}]
     for answer in (listed, shown):
         for hidden in ("203.0.113.7", "198.51.100", "/Users/ana", "infobar_ed25519", ".ssh", "sslip", "host", "sshPort", "panelUrl", "keyPath",
-                       "knownIps", '"ip"', "liveStatus", "projectServiceId", "strange"):
+                       "knownIps", '"ip"', "liveStatus", "projectServiceId", "strange", "traefik.me", "2001:db8", "10-0-0-5",
+                       "grafana.internal", "panel.lan", "app.local"):
             assert hidden not in answer.text, hidden
 
 
@@ -351,7 +362,8 @@ def test_agenda_con_cliente_y_proyecto_y_sin_enlaces(client):
 
 @pytest.mark.parametrize("query", ["", "desde=2026-11-18", "hasta=2026-11-30", "desde=2026-02-31&hasta=2026-03-02", "desde=18-11-2026&hasta=2026-11-30",
                                    "desde=2026-11-30&hasta=2026-11-18", "desde=2026-01-01&hasta=2026-03-05", "desde=２０２６-11-18&hasta=2026-11-30",
-                                   "desde=2026-11-18&hasta=2026-11-30&cliente=x", "desde=2026-10-01&hasta=2026-12-01"])
+                                   "desde=2026-11-18&hasta=2026-11-30&cliente=x", "desde=2026-10-01&hasta=2026-12-01",
+                                   "desde=9999-12-01&hasta=9999-12-31", "desde=0001-01-01&hasta=0001-01-02", "desde=0050-01-01&hasta=0050-01-02"])
 def test_agenda_fechas_no_validas_o_mas_de_62_dias(client, fake, query):
     assert client.get(f"/central/views/agenda?{query}", headers=HEADERS).status_code == 422, query
     assert paths(fake) == []
@@ -382,3 +394,17 @@ def test_infra_con_el_modulo_apagado_responde_404(client, fake):
         answer = client.get(path, headers=HEADERS)
         assert answer.status_code == 404 and answer.json()["status"] == "off", path
     assert len(fake.seen) == seen
+
+
+@pytest.mark.parametrize("url", ["https://app.203.0.113.7.traefik.me", "https://app-abc-203-0-113-7.traefik.me", "https://10-0-0-5.ejemplo.com",
+                                 "https://grafana.internal", "https://app.local", "https://nas.lan", "https://router.home", "https://x.home.arpa",
+                                 "https://app.localhost"])
+def test_nombres_con_ip_o_de_red_local_no_son_publicos(url):
+    assert central_views._web_url(url) is None
+    assert central_views._domain(url.removeprefix("https://")) is None
+
+
+def test_ips_en_textos_tambien_con_guiones_e_ipv6():
+    assert central_views._text("en 2001:db8::1 y fe80::1") == "en [IP oculta] y [IP oculta]"
+    assert central_views._text("web-203-0-113-7.traefik.me") == "web-[IP oculta].traefik.me"
+    assert central_views._text("versión 1.2.3.4.5, a las 10:45:00 y std::vector") == "versión 1.2.3.4.5, a las 10:45:00 y std::vector"

@@ -30,8 +30,22 @@ MADRID = ZoneInfo("Europe/Madrid")
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 _HOST = re.compile(r"(?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 SUMMARY_PAGES = 5  # active projects counted up to 1000; more is shown as «1000+»
-_IPV4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?(?![\w.])")
+_OCTET = r"(?:25[0-5]|2[0-4]\d|1?\d?\d)"
+_IPV4_RE = rf"{_OCTET}(?:\.{_OCTET}){{3}}"
+_IPV4_DASHED = rf"{_OCTET}(?:-{_OCTET}){{3}}(?=\.)"  # the dashed form of sslip.io, Dokploy or traefik.me: 1-2-3-4.host
+_IPV6 = r"(?:(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}|(?:[0-9a-f]{1,4}:){0,6}[0-9a-f]{0,4}::(?:[0-9a-f]{1,4}(?::[0-9a-f]{1,4}){0,6})?)"
+# An IP in free text, also inside a host name (web.1.2.3.4.sslip.io, app-1-2-3-4.traefik.me), as Central's own
+# `IP_IN_TEXT` (src/lib/api/scrub.ts), but not inside a longer series of numbers (1.2.3.4.5).
+_IPV4 = re.compile(rf"(?<!\d\.)(?<!\d)(?:{_IPV4_RE}(?!\.?\d)(?::\d{{1,5}})?|{_IPV4_DASHED}|(?<![\w:]){_IPV6}(?![\w.:]))", re.I)
+# A host name that carries an IPv4 among its labels, with dots or dashes.
+_HOST_IP = re.compile(r"(?:^|[.-])(?:\d{1,3}[.-]){3}\d{1,3}(?:[.-]|$)")
+# Names that only resolve inside a network, or aliases of an IP: never shown as a public address.
+_NOT_PUBLIC = re.compile(r"(?:^|\.)(?:local|internal|lan|home|localhost|home\.arpa|sslip\.io|nip\.io|xip\.io)$")
 # Never inside a URL or a word (https://ex.com/opt/app stays as it is): only a path that starts a token.
+# Only what Central itself hides (`SENSITIVE_PATH`): user folders, SSH folders and key files. For a server's
+# texts, where /etc, /var or /opt are the system's own paths and the fix commands must stay whole.
+_SECRET_PATH = re.compile(r"(?:~|/Users|/home|/root)/[^\s,;)\"']*|[^\s,;)\"']*\.ssh/[^\s,;)\"']*|\bid_(?:rsa|ed25519|ecdsa|dsa)\b[^\s,;)\"']*"
+                          r"|[^\s,;)\"']+\.(?:pem|key)\b|[A-Za-z]:\\Users\\\S*")
 _PATH = re.compile(r"(?<![\w.-])(?:~/|/Users/|/home/|/root/|/Volumes/|/private/|/var/|/etc/|/opt/|[A-Za-z]:\\)\S*|\S*\.ssh/\S*|\bid_(?:rsa|ecdsa|ed25519)\S*|\S+\.pem\b")
 
 
@@ -42,10 +56,10 @@ class ViewError(ValueError):
     """A request the screen should not make: unknown parameter or a value out of its list (answered with 422)."""
 
 
-def _text(value, limit: int = 2000) -> str | None:
+def _text(value, limit: int = 2000, paths: re.Pattern = _PATH) -> str | None:
     if not isinstance(value, str):
         return None
-    clean = _PATH.sub("[ruta oculta]", _IPV4.sub("[IP oculta]", value))
+    clean = paths.sub("[ruta oculta]", _IPV4.sub("[IP oculta]", value))
     return clean[:limit]
 
 
@@ -63,7 +77,8 @@ def _id(value) -> str | None:
 
 
 def _web_url(value) -> str | None:
-    """A public web address: https or http with a host name, never an IP literal nor a «sslip.io»-like alias of one."""
+    """A public web address: https or http with a host name, never an IP literal, a name carrying one (sslip.io,
+    traefik.me, Dokploy's 1-2-3-4 form, any domain) nor a name of a local network (.local, .internal, .lan…)."""
     if not isinstance(value, str) or len(value) > 500:
         return None
     try:
@@ -74,7 +89,7 @@ def _web_url(value) -> str | None:
     if parts.scheme not in ("https", "http") or not host or parts.username or parts.password or ":" in host:
         return None
     # A name with a real top-level domain: never a number in any base (203.0.113.7, 0x7f000001, 017700000001) nor a bare host.
-    if "." not in host or not _TLD.fullmatch(host.rsplit(".", 1)[1]) or re.search(r"(?:^|\.)(?:sslip|nip|xip)\.io$", host):
+    if "." not in host or not _TLD.fullmatch(host.rsplit(".", 1)[1]) or _NOT_PUBLIC.search(host) or _HOST_IP.search(host):
         return None
     return value
 
@@ -122,7 +137,8 @@ def _day(name: str, value: str) -> str:
     try:
         if not (value.isascii() and _DAY.fullmatch(value)):
             raise ValueError
-        date.fromisoformat(value)
+        if not 2000 <= date.fromisoformat(value).year <= 2100:  # Central reads years before 100 as 19xx; 9999 overflows
+            raise ValueError
     except ValueError:
         raise ViewError(f"«{name}» tiene que ser un día AAAA-MM-DD que exista.") from None
     return value
@@ -280,7 +296,7 @@ def server_row(row: dict) -> dict:
                  "containers": [{"name": _plain(c.get("name"), 120), "state": _plain(c.get("state"), 20)} for c in _rows(p, "containers")[:50]]}
                 for p in _rows(row, "projects")[:200]]
     return {"id": _id(row.get("id")), "name": _plain(row.get("name")), "provider": _plain(row.get("provider"), 60), "panel": _plain(row.get("panel"), 40),
-            "status": _level(row.get("status")), "error": _text(row.get("error"), 500), "lastOkAt": _plain(row.get("lastOkAt"), 40),
+            "status": _level(row.get("status")), "error": _text(row.get("error"), 500, _SECRET_PATH), "lastOkAt": _plain(row.get("lastOkAt"), 40),
             "cpu": _number(row.get("cpu")), "memory": _number(row.get("memory")), "disk": _number(row.get("disk")),
             "services": {"ok": _number(services.get("ok")), "total": _number(services.get("total")), "down": _list(services.get("down"), 100)} if services else None,
             "protection": {"done": _number(protection.get("done")), "total": _number(protection.get("total")), "level": _level(protection.get("level"))} if protection else None,
@@ -289,10 +305,10 @@ def server_row(row: dict) -> dict:
 
 def server_record(data: dict) -> dict:
     """A server's record: its row plus the health cards, the protection checks, the containers and the domains."""
-    containers = [{"name": _plain(c.get("name"), 120), "kind": _plain(c.get("kind"), 20), "state": _plain(c.get("state"), 20), "detail": _text(c.get("detail"), 300)}
+    containers = [{"name": _plain(c.get("name"), 120), "kind": _plain(c.get("kind"), 20), "state": _plain(c.get("state"), 20), "detail": _text(c.get("detail"), 300, _SECRET_PATH)}
                   for c in _rows(data, "containers")[:300]]
-    checks = [{"key": _plain(c.get("key"), 80), "ok": c.get("ok") if isinstance(c.get("ok"), bool) else None, "detail": _text(c.get("detail"), 500),
-               "fix": _text(c.get("fix"), 1000)} for c in _rows(data, "checks")[:100]]
+    checks = [{"key": _plain(c.get("key"), 80), "ok": c.get("ok") if isinstance(c.get("ok"), bool) else None, "detail": _text(c.get("detail"), 500, _SECRET_PATH),
+               "fix": _text(c.get("fix"), 1000, _SECRET_PATH)} for c in _rows(data, "checks")[:100]]
     domains = [d for d in (_domain(v) for v in (data.get("domains") or [])[:300]) if d] if isinstance(data.get("domains"), list) else None
     return {**server_row(data), "cards": _cards(data.get("cards")), "readAt": _plain(data.get("readAt"), 40), "root": data.get("root") is True,
             "domains": domains, "containers": containers, "checks": checks}
