@@ -15,9 +15,9 @@ import shutil
 import threading
 import sqlite3
 from pathlib import Path
-from urllib.parse import urlparse
 
 from . import central_api
+from .clients import FREE_MAIL as _FREE_MAIL, domain as _domain
 from .db import now, transaction
 
 TOTAL_SECONDS = 180
@@ -25,8 +25,6 @@ _REFRESHING = threading.Lock()  # one reading at a time (the half-hourly one or 
 READING_TOOLS = {"list_clients", "list_projects", "list_websites", "list_servers", "get_project"}
 SNAPSHOT_SETTING = "central.snapshot"
 CALL_SECONDS = 60
-_FREE_MAIL = {"gmail.com", "googlemail.com", "hotmail.com", "outlook.com", "live.com", "yahoo.com", "yahoo.es", "icloud.com", "me.com",
-              "protonmail.com", "proton.me", "gmx.com", "aol.com", "msn.com"}
 
 
 class CentralError(RuntimeError):
@@ -85,14 +83,6 @@ async def _call_all(folder: Path) -> dict:
     finally:
         quiet.close()
     return {"clients": clients, "projects": projects, "websites": websites, "servers": servers, "details": details}
-
-
-def _domain(value: str | None) -> str | None:
-    if not value:
-        return None
-    host = value.rsplit("@", 1)[-1] if "@" in value and "//" not in value else urlparse(value if "//" in value else f"//{value}").hostname
-    host = (host or "").lower().removeprefix("www.")
-    return host if re.fullmatch(r"(?:[a-z0-9-]+\.)+[a-z]{2,63}", host or "") else None
 
 
 _GITHUB = re.compile(r"(?:https://(?:www\.)?github\.com/|git@github\.com:)((?!-)[A-Za-z0-9-]{1,39})/([A-Za-z0-9._-]{1,100}?)(?:\.git)?/?")
@@ -190,17 +180,11 @@ def stored(connection: sqlite3.Connection) -> dict | None:
 
 
 def client_for(connection: sqlite3.Connection, address: str | None) -> dict | None:
-    """The Central client a sender belongs to: by its exact address, else by its domain (never a free mail
-    domain such as gmail.com, which many people share)."""
-    data = snapshot(connection)
-    if not data or not address:
-        return None
-    address = address.lower()
-    domain = _domain(address)
-    exact = next((c for c in data["clients"] if c.get("email") == address), None)
-    if exact or not domain or domain in _FREE_MAIL:
-        return exact
-    return next((c for c in data["clients"] if domain in c["domains"] or any(domain.endswith("." + d) for d in c["domains"])), None)
+    """The client a sender belongs to, in the directory of clients (Central's and the user's own): by its exact
+    address, else by its domain (never a free mail domain such as gmail.com, which many people share)."""
+    from . import clients
+
+    return clients.match(connection, address=address)
 
 
 WRITE_TOOL = "create_quote"  # the only writing tool AgoraOne may call, and only for a quote the user confirmed

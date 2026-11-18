@@ -3,21 +3,17 @@ by the name of the folder each agent worked in. A project and a folder go togeth
 are the same once accents, case and punctuation are set aside; whatever does not match is shown apart,
 never guessed. Names, states and counts only."""
 
-import re
 import sqlite3
 import time
-import unicodedata
 from pathlib import Path
 
 from . import addons, central
+from . import clients as client_directory
 
 PERIODS = (("24h", 24), ("7d", 24 * 7), ("30d", 24 * 30))
 
 
-def key(name: str | None) -> str:
-    """«Café-Web S.L.» and «cafe_web_sl» are the same key; nothing else is assumed."""
-    text = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().casefold()
-    return re.sub(r"[^a-z0-9]", "", text)
+key = client_directory.loose  # «Café-Web S.L.» and «cafe_web_sl» are the same key; nothing else is assumed
 
 
 def _usage(connection: sqlite3.Connection, now: float | None) -> tuple[dict[str, dict], bool, str | None]:
@@ -55,7 +51,10 @@ def _usage(connection: sqlite3.Connection, now: float | None) -> tuple[dict[str,
 
 
 def projects(connection: sqlite3.Connection, now: float | None = None) -> dict:
-    snapshot = central.snapshot(connection) or {"clients": [], "fetchedAt": None}
+    # Projects live in Central: the directory gives them under the name the client goes by (a client kept only in
+    # AgoraOne has none and is left out here).
+    snapshot = {"clients": [c for c in client_directory.directory(connection) if c["source"] != "local"],
+                "fetchedAt": (central.snapshot(connection) or {}).get("fetchedAt")}
     usage, costguard, problem = _usage(connection, now)
     empty = {period: {"tokens": 0, "turns": 0} for period, _ in PERIODS}
     # A name shared by two projects (of the same or different clients) cannot tell which one a folder is for.

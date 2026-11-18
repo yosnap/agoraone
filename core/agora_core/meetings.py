@@ -265,32 +265,24 @@ def classify(kind, client, people) -> tuple[str, str | None, list[dict]]:
 
 
 def central_client(connection: sqlite3.Connection, name: str | None) -> str | None:
-    """The client as Central names it: a meeting's client is always one of Central's clients (or none)."""
-    if not name:
-        return None
-    from .central import snapshot
+    """The client as the directory names it: a meeting's client is always one of the user's clients, Central's or
+    kept in AgoraOne (or none)."""
+    from .clients import ClientError, canonical_name
 
-    known = {" ".join(str(c.get("name") or "").split()).casefold(): c["name"] for c in ((snapshot(connection) or {}).get("clients") or []) if c.get("name")}
-    if name.casefold() not in known:
-        raise MeetingError("Ese cliente no está en Central: elige uno de la lista.")
-    return known[name.casefold()]
+    try:
+        return canonical_name(connection, name)
+    except ClientError as error:
+        raise MeetingError(str(error)) from None
 
 
 def central_project(connection: sqlite3.Connection, client: str | None, name) -> str | None:
     """The project as Central names it, and always one of the meeting's client's projects (or none)."""
-    name = " ".join(str(name or "").split())[:200]
-    if not name:
-        return None
-    from .central import snapshot
+    from .clients import ClientError, canonical_project
 
-    if not client:
-        raise MeetingError("Elige antes el cliente del proyecto.")
-    found = next((c for c in ((snapshot(connection) or {}).get("clients") or []) if c.get("name") == client), None)
-    found = found or next((c for c in ((snapshot(connection) or {}).get("clients") or []) if " ".join(str(c.get("name") or "").split()) == client), None)
-    known = {" ".join(str(p.get("name") or "").split()).casefold(): p["name"] for p in ((found or {}).get("projects") or []) if p.get("name")}
-    if name.casefold() not in known:
-        raise MeetingError(f"Ese proyecto no es de {client} en Central: elige uno de la lista.")
-    return known[name.casefold()]
+    try:
+        return canonical_project(connection, client, name)
+    except ClientError as error:
+        raise MeetingError(str(error)) from None
 
 
 def default_title(kind: str, client: str | None) -> str:

@@ -312,6 +312,24 @@ def file_invoice(connection: sqlite3.Connection, folder: dict, root: Path, data:
     return {"id": cursor.lastrowid, "path": relative, "quarter": f"{year}-{quarter}T"}
 
 
+def client_named(known: list[dict], tax_id: str | None) -> str | None:
+    """The name of the user's client (Central's or kept in AgoraOne) an issued invoice went to, by its exact tax id;
+    only shown, it never changes a folder."""
+    from .clients import find
+
+    found = find(known, tax_id=tax_id) if tax_id else None
+    return found["name"] if found else None
+
+
+def with_clients(connection: sqlite3.Connection, income: list[dict]) -> list[dict]:
+    """The issued invoices of a quarter, with `knownClient` when its tax id is one of the user's clients."""
+    from .clients import directory
+
+    known = directory(connection) if income else []
+    named = [client_named(known, row.get("taxId")) for row in income]
+    return [{**row, "knownClient": name} if name else row for row, name in zip(income, named, strict=True)]
+
+
 def invoices(connection: sqlite3.Connection, quarter: str | None = None, folder_id: int | None = None) -> list[dict]:
     where, args = [], []
     if quarter:
@@ -323,7 +341,11 @@ def invoices(connection: sqlite3.Connection, quarter: str | None = None, folder_
     rows = connection.execute(
         "SELECT * FROM invoice" + (f" WHERE {' AND '.join(where)}" if where else "") + " ORDER BY issued_on DESC, id DESC", args,
     ).fetchall()
+    from .clients import directory
+
+    known = directory(connection) if any(r["direction"] == "issued" for r in rows) else []
     return [{"id": r["id"], "folderId": r["folder_id"], "category": r["category"], "direction": r["direction"], "messageId": r["message_id"], "supplier": r["supplier"], "taxId": r["tax_id"],
+             "client": client_named(known, r["tax_id"]) if r["direction"] == "issued" else None,
              "issuedOn": r["issued_on"], "base": r["base"], "vat": r["vat"], "total": r["total"], "currency": r["currency"],
              "notes": r["notes"], "doubts": json.loads(r["doubts"]), "quarter": r["quarter"], "path": r["path"]} for r in rows]
 

@@ -9,8 +9,8 @@ this Mac: local keywords give its kind and it has no summary. Messages WhatsApp 
 The first time, conversations with nothing received in the last days stay quiet, classified here. No message
 triggers any action: this only classifies.
 
-Central does not keep its clients' phone numbers, so a conversation is not matched to a Central client (nothing
-is guessed from names)."""
+A conversation is matched to one of the user's clients (Central's or kept in AgoraOne) only by the participant's
+number (`clients.find`), never guessed from names; a private one is matched to none."""
 
 import json
 import re
@@ -212,12 +212,20 @@ def summaries(connection: sqlite3.Connection, state: str = "pending", limit: int
             FROM chat_summary s JOIN chat_conversation c ON c.id = s.conversation_id JOIN chat_account a ON a.id = c.account_id
             LEFT JOIN chat_rule r ON r.id = s.rule_id LEFT JOIN scope sc ON sc.id = COALESCE(r.scope_id, a.scope_id)
             WHERE s.state = ? ORDER BY last_in DESC LIMIT ?""", (state, limit)).fetchall()
+    from .clients import directory, find
+
+    known = directory(connection) if rows else []
+
+    def client(row) -> dict | None:
+        found = None if row["level"] == "private" else find(known, phone=row["participant_phone"])
+        return {"name": found["name"]} if found else None
     return [{
         "id": row["conversation_id"], "kind": row["kind"], "source": row["source"], "ruleId": row["rule_id"], "ruleName": row["rule_name"],
         "label": row["label"], "confidentiality": row["level"], "state": row["state"],
         "summary": row["summary"] if row["level"] == "normal" else None,
         "details": json.loads(row["details"] or "{}") if row["level"] == "normal" else {},
         "participant": None if row["level"] == "private" else {"name": row["participant_name"], "phone": row["participant_phone"]},
+        "client": client(row),
         "account": {"id": row["account_id"], "phone": row["account_phone"], "label": row["account_label"]},
         "scope": {"id": row["scope_id"], "name": row["scope_name"], "color": row["scope_color"]} if row["scope_id"] else None,
         "lastIncomingAt": row["last_in"], "updatedAt": row["updated_at"],
