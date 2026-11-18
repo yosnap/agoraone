@@ -115,15 +115,17 @@ def _strings(value, limit: int, chars: int) -> list[str]:
     return [re.sub(r"\s+", " ", v).strip()[:chars] for v in value if isinstance(v, str) and v.strip()][:limit]
 
 
-def parse(reply: str, count: int) -> dict[int, dict]:
-    """The model's answer as {n: {"kind", "summary", "details"}}; anything malformed is dropped."""
+def parse(reply: str, count: int, key: str = "correos") -> dict[int, dict]:
+    """The model's answer as {n: {"kind", "summary", "details"}}; anything malformed is dropped. `key` is the
+    list the answer carries (the WhatsApp conversations use the same shape)."""
     match = re.search(r"\{.*\}", reply, re.S)
     try:
         data = json.loads(match[0]) if match else {}
     except json.JSONDecodeError:
         return {}
     found = {}
-    for item in data.get("correos", []) if isinstance(data, dict) else []:
+    items = data.get(key, []) if isinstance(data, dict) else []
+    for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict) or not isinstance(item.get("n"), int) or not 1 <= item["n"] <= count:
             continue
         summary = item.get("resumen")
