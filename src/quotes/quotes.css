@@ -1,0 +1,17 @@
+/* The «Presupuestos» section: the draft form and a quote's record. No side accent stripe anywhere: notices are told
+   apart by their background and text colour, the fieldsets by a full, even border. */
+.quotes-form { display:flex; flex-direction:column; gap:12px; max-width:1100px }
+.quotes-form .field textarea { resize:vertical }
+.quotes-fieldset { border:1px solid var(--c-dfe3d6); border-radius:12px; padding:12px 14px; margin:0; display:flex; flex-direction:column; gap:12px }
+.quotes-fieldset legend { font:600 13px Manrope,sans-serif; padding:0 6px }
+.quotes-item { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr)); gap:8px 12px; align-items:end;
+  padding-bottom:12px; border-bottom:1px solid var(--c-dfe3d6) }
+.quotes-item:last-of-type { border-bottom:0 }
+.quotes-item .quotes-wide { grid-column:1 / -1 }
+.quotes-item .actions { grid-column:1 / -1 }
+.quotes-add { align-items:flex-end }
+.quotes-add .field { flex:1 1 260px }
+.quotes-summary { display:flex; flex-direction:column; gap:8px }
+.quotes-totals { margin-top:8px }
+.quotes-text { white-space:pre-wrap; overflow-wrap:anywhere }
+.quotes-lines { margin:0; padding-left:18px }

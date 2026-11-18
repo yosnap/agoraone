@@ -186,36 +186,32 @@ def session(seconds: float = TOTAL_SECONDS):
         yield client, time.monotonic() + seconds
 
 
-def request(target: Connection, method: str, path: str, params: dict | None = None, body: dict | None = None,
-            client: httpx.Client | None = None, deadline: float | None = None) -> dict:
-    """One call to Central's API; the JSON object it answers or a CentralApiError without the key. With `client`
-    (from `session`) the connection is reused and `deadline` bounds the whole reading."""
+def _exchange(target: Connection, method: str, path: str, params: dict | None, body: dict | None, client: httpx.Client,
+              deadline: float | None, max_bytes: int, accept: str) -> tuple[int, str, bytes]:
+    """One call: status, content type and the bytes of the answer (at most `max_bytes`), or a CentralApiError."""
     if not path.startswith("/api/v1/"):
         raise CentralApiError("error", "Ruta de Central no permitida.")
-    if client is None:
-        with session(REQUEST_SECONDS) as (own, own_deadline):
-            return request(target, method, path, params, body, own, own_deadline)
     url = normalize_url(target.url)
-    headers = {"Authorization": f"Bearer {target.key}", "Accept": "application/json", "User-Agent": "AgoraOne"}
+    headers = {"Authorization": f"Bearer {target.key}", "Accept": accept, "User-Agent": "AgoraOne"}
     until = min(deadline or float("inf"), time.monotonic() + REQUEST_SECONDS)
     late = CentralApiError("unreachable", "Central no respondió a tiempo.")
+    too_big = CentralApiError("error", "Central devolvió una respuesta demasiado grande.")
     if time.monotonic() >= until:
         raise late
     try:
         with client.stream(method, f"{url}{path}", params=params, json=body, headers=headers) as answer:
             declared = answer.headers.get("content-length") or "0"
-            if not declared.isdigit() or int(declared) > MAX_BYTES:
-                raise CentralApiError("error", "Central devolvió una respuesta demasiado grande.")
+            if not (declared.isascii() and declared.isdigit()) or int(declared) > max_bytes:
+                raise too_big
             chunks, read = [], 0
             for chunk in answer.iter_bytes():
                 read += len(chunk)
-                if read > MAX_BYTES:
-                    raise CentralApiError("error", "Central devolvió una respuesta demasiado grande.")
+                if read > max_bytes:
+                    raise too_big
                 if time.monotonic() > until:
                     raise late
                 chunks.append(chunk)
-            status = answer.status_code
-            text = b"".join(chunks).decode("utf-8", errors="replace")
+            return answer.status_code, answer.headers.get("content-type") or "", b"".join(chunks)
     except CentralApiError:
         raise
     except httpx.TimeoutException:
@@ -224,6 +220,10 @@ def request(target: Connection, method: str, path: str, params: dict | None = No
         raise CentralApiError("config", "La dirección de Central no es válida.") from None
     except httpx.HTTPError:
         raise CentralApiError("unreachable", "No se pudo conectar con Central: comprueba la dirección y que esté en marcha.") from None
+
+
+def _refuse(status: int, text: str, key: str) -> None:
+    """Raises the CentralApiError of an answer that is not a 2xx, in plain words and without the key."""
     if 300 <= status < 400:
         raise CentralApiError("error", "Central respondió con una redirección, que no se sigue: revisa la dirección (¿falta https o sobra una ruta?).")
     if status == 401:
@@ -240,20 +240,54 @@ def request(target: Connection, method: str, path: str, params: dict | None = No
         raise CentralApiError("not_found", "Central no tiene eso (o la dirección no es la de su API).")
     if status == 429:
         raise CentralApiError("unreachable", "Central pide esperar un poco (demasiadas peticiones).")
-    if status in (400, 422):
-        said = _said(text, target.key)
+    if status in (400, 409, 422):
+        said = _said(text, key)
         raise CentralApiError("invalid", f"Central no aceptó los datos{': ' + said if said else ''}.")
     if status >= 500:
         raise CentralApiError("unreachable", f"Central no responde bien ahora ({status}).")
     if not 200 <= status < 300:
         raise CentralApiError("error", f"Central respondió con un error ({status}).")
+
+
+def _no_constant(name: str):
+    """NaN and Infinity are not JSON: an answer with them is not understood (it could not be answered on either)."""
+    raise CentralApiError("error", "Central devolvió una respuesta que no se entiende.")
+
+
+def request(target: Connection, method: str, path: str, params: dict | None = None, body: dict | None = None,
+            client: httpx.Client | None = None, deadline: float | None = None) -> dict:
+    """One call to Central's API; the JSON object it answers or a CentralApiError without the key. With `client`
+    (from `session`) the connection is reused and `deadline` bounds the whole reading."""
+    if client is None:
+        with session(REQUEST_SECONDS) as (own, own_deadline):
+            return request(target, method, path, params, body, own, own_deadline)
+    status, _, raw = _exchange(target, method, path, params, body, client, deadline, MAX_BYTES, "application/json")
+    text = raw.decode("utf-8", errors="replace")
+    _refuse(status, text, target.key)
     try:
-        data = json.loads(text)
+        data = json.loads(text, parse_constant=_no_constant)
     except ValueError:
         raise CentralApiError("error", "Central devolvió una respuesta que no se entiende (¿es la dirección de Central?).") from None
     if not isinstance(data, dict):
         raise CentralApiError("error", "Central devolvió una respuesta que no se entiende.")
     return data
+
+
+def download(target: Connection, path: str, content_type: str, max_bytes: int, client: httpx.Client | None = None,
+             deadline: float | None = None) -> bytes:
+    """A file of Central's API (a quote's PDF or Word): only with the expected content type and at most `max_bytes`;
+    whatever else Central answers is an error in plain words. Never a redirection, never the key in a message."""
+    if client is None:
+        with session(REQUEST_SECONDS) as (own, own_deadline):
+            return download(target, path, content_type, max_bytes, own, own_deadline)
+    status, given, raw = _exchange(target, "GET", path, None, None, client, deadline, max_bytes, content_type)
+    if not 200 <= status < 300:
+        _refuse(status, raw[:4096].decode("utf-8", errors="replace"), target.key)
+    if given.split(";", 1)[0].strip().lower() != content_type:
+        raise CentralApiError("error", "Central devolvió un documento de otro tipo.")
+    if not raw:
+        raise CentralApiError("error", "Central devolvió un documento vacío.")
+    return raw
 
 
 def status(target: Connection, client: httpx.Client | None = None, deadline: float | None = None) -> dict:

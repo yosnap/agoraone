@@ -55,6 +55,8 @@ from .meeting_notes import Worker
 from .routes_calendar import calendar_router
 from .routes_central import CentralHealth, central_router, central_worker
 from .routes_central_views import central_views_router
+from .routes_quotes import quotes_router
+from .central_quotes import clean_documents
 from .routes_clients import clients_router
 from .routes_summary import summary_router
 from .settings import DEFAULT_DATA, Settings
@@ -109,6 +111,7 @@ def create_app(
     async def lifespan(app: FastAPI):
         # Each use opens its own connection (sqlite3 connections are not shared between threads here).
         clean_leftovers(settings.data_dir)
+        clean_documents(settings.data_dir)  # quotes' PDF and Word opened more than a day ago
         database = connect(settings.data_dir / DB_NAME)
         try:
             migrate(database, backup_first=lambda: create_backup(settings.data_dir, store, "premigration"))
@@ -218,6 +221,7 @@ def create_app(
     app.include_router(fiscal_router(settings, secrets))
     app.include_router(central_router(settings, central_health, secrets))
     app.include_router(central_views_router(settings, secrets))
+    app.include_router(quotes_router(settings, secrets))
     app.include_router(clients_router(settings))
     if calendar is not None:
         calendar_store.use(calendar)

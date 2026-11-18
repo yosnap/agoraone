@@ -233,12 +233,13 @@ def assistant_router(
         found = proposals.get(proposal_id)
         if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "quote" not in found:
             return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        proposals.pop(proposal_id, None)  # taken before any wait: two confirmations at once create one quote
         def quotes_on():
             with database() as connection:
                 return modules.state(connection)["presupuestos"]
         if not await run_in_threadpool(quotes_on):
+            proposals.setdefault(proposal_id, found)  # not spent: it may be created once the module is on again
             return JSONResponse({"error": "El módulo Presupuestos está apagado."}, status_code=404)
-        proposals.pop(proposal_id, None)  # taken before any wait: a double click creates one quote
         def work():
             with database() as connection:
                 path = addons.config(connection, "central").get("path")

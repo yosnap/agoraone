@@ -7,6 +7,7 @@ and free text is scrubbed again of IPs and user paths (Central already does it; 
 Contact (address, phone, tax id) appears only in a client's record, never in a list. Servers come without their SSH
 address, panel URL, key paths nor the IPs of who logged in or attacked them, even if Central ever sent them."""
 
+import math
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
@@ -69,7 +70,10 @@ def _plain(value, limit: int = 200) -> str | None:
 
 
 def _number(value) -> int | float | None:
-    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+    """A number shown as is; never a bool, NaN nor an infinity (the screen's JSON cannot carry them)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value if math.isfinite(value) else None
 
 
 def _id(value) -> str | None:

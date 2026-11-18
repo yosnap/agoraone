@@ -4,7 +4,7 @@ import { LoadError } from '../ui/load-state';
 import { readAtLabel, type CentralFailure } from './use-central-view';
 
 /** Opens Ajustes on its «Central» tab (the tab Ajustes reads from the link and from this browser). */
-function openCentralSettings(onOpen: (section: Section) => void) {
+export function openCentralSettings(onOpen: (section: Section) => void) {
   try { localStorage.setItem('agora.settings.tab', 'central'); } catch { /* no storage: the link below still says it */ }
   const url = new URL(window.location.href);
   url.searchParams.set('pestana', 'central');
