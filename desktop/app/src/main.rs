@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod central_window;
 mod youtube_window;
 
 use std::path::PathBuf;
@@ -260,6 +261,7 @@ fn main() {
             if let Some(link) = core_link.clone() {
                 notify_loop(app.handle().clone(), link.clone());
                 wake_loop(app.handle().clone(), link.clone());
+                central_window::central_loop(app.handle().clone(), link.clone());
                 youtube_window::youtube_loop(app.handle().clone(), link);
             }
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(address.clone()))
@@ -300,7 +302,7 @@ fn main() {
         .build(tauri::generate_context!())
         .unwrap_or_else(|_| alert("no se pudo abrir la ventana"));
     app.run(move |app, event| {
-        // The hidden YouTube window never keeps the app open: closing AgoraOne's window closes it too.
+        // Neither the hidden YouTube window nor Central's keeps the app open: closing AgoraOne's window closes them too.
         if let RunEvent::WindowEvent { label, event: tauri::WindowEvent::Destroyed, .. } = &event
             && label == "main"
         {
