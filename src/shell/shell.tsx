@@ -15,6 +15,8 @@ import { requestListen } from '../assistant/listen';
 import { YouTubeMini } from '../brain/youtube-player';
 import { CentralLinkNotice } from '../central/open-in-central';
 import { closeCentralWindow } from '../api/central';
+import { closeFabricaWindow } from '../api/fabrica';
+import { FabricaDownloadNotice, FabricaLinkNotice } from '../fabrica/fabrica-notices';
 import { readShell, sectionModule, writeShell, type Section } from './shell-state';
 import { moduleOn, useModules } from './modules';
 import './shell.css';
@@ -29,6 +31,7 @@ const AgentsView = lazy(() => import('../agents/agents-view').then(module => ({ 
 const MeetingsView = lazy(() => import('../meetings/meetings-view').then(module => ({ default: module.MeetingsView })));
 const QuotesView = lazy(() => import('../quotes/quotes-view').then(module => ({ default: module.QuotesView })));
 const CentralView = lazy(() => import('../central/central-view').then(module => ({ default: module.CentralView })));
+const FabricaView = lazy(() => import('../fabrica/fabrica-view').then(module => ({ default: module.FabricaView })));
 const SettingsView = lazy(() => import('../settings/settings-view').then(module => ({ default: module.SettingsView })));
 
 /** AgoraOne's frame: the rail with the sections and the section on screen. The office (the city) stays
@@ -57,16 +60,24 @@ export function Shell() {
     window.addEventListener('agora:listen', () => { setShell(previous => ({ ...previous, section: 'brain' })); window.setTimeout(requestListen, 150); });
   }
   const go = useCallback((next: Section) => { if (next === 'office') setOfficeVisited(true); setShell(previous => ({ ...previous, section: next })); }, []);
-  // Discreet mode closes Central's window too: it would keep showing what discreet mode hides.
-  const setDiscreet = (on: boolean) => { setShell(previous => ({ ...previous, discreet: on })); if (on) void closeCentralWindow().catch(() => undefined); };
+  // Discreet mode closes Central's and the fábrica's windows too: they would keep showing what discreet mode hides.
+  const setDiscreet = (on: boolean) => {
+    setShell(previous => ({ ...previous, discreet: on }));
+    if (on) { void closeCentralWindow().catch(() => undefined); void closeFabricaWindow().catch(() => undefined); }
+  };
   const showOnGraph = (ids: string[]) => { setFocus(ids); go('brain'); };
   const ready = status?.csrf;
   return <div className="shell">
     <ShellNav section={section} onSection={go} discreet={discreet} onDiscreet={setDiscreet} waiting={waiting}/>
-    {ready && <AlertToasts discreet={discreet}/>}
-    <UploadNotice onOpen={() => go('fiscal')}/>
+    {/* One stack of notices over any section: each one adds its own card, none covers another. */}
+    <div className="alert-toasts" role="status" aria-live="polite">
+      {ready && <AlertToasts discreet={discreet}/>}
+      <UploadNotice onOpen={() => go('fiscal')}/>
+      <CentralLinkNotice discreet={discreet}/>
+      <FabricaLinkNotice discreet={discreet}/>
+      <FabricaDownloadNotice discreet={discreet}/>
+    </div>
     <YouTubeMini/>
-    <CentralLinkNotice discreet={discreet}/>
     {ready && <FirstRun/>}
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting} onWatson={() => go('brain')}/>}
@@ -84,6 +95,7 @@ export function Shell() {
           : section === 'agents' ? <AgentsView discreet={discreet} onOpen={go}/>
           : section === 'quotes' ? <QuotesView discreet={discreet} onOpen={go}/>
           : section === 'central' ? <CentralView discreet={discreet} onOpen={go}/>
+          : section === 'fabrica' ? <FabricaView discreet={discreet} onOpen={go}/>
           : <PendingView section={section}/>}
       </Suspense></main>}
       {status?.state === 'offline' && <section className="page" role="alert"><h1>Sin conexión</h1><p>{status.detail}</p></section>}

@@ -1,0 +1,21 @@
+/* The «Mi fábrica» section, the whole width: its state on top and a card per screen of the panel. No side accent
+   stripe anywhere: the state is said by the card's background, its text colour and its badge. */
+.fabrica-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap }
+.page.fabrica > .page-lead { max-width:110ch }
+.fabrica-actions { justify-content:flex-end; margin-left:auto }
+.fabrica-panel { display:flex; flex-direction:column; gap:18px; width:100%; min-width:0 }
+.fabrica-state-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap }
+.fabrica-state-head > div:first-child { display:flex; flex-direction:column; align-items:flex-start; gap:8px; flex:1 1 320px; min-width:0 }
+.fabrica-badge { font-size:11px; font-weight:600; letter-spacing:.3px; padding:3px 10px; border-radius:999px; background:var(--c-dfe3d6); color:var(--c-173d3c) }
+.fabrica-state.running { background:var(--c-dcebdc) }
+.fabrica-state.running .fabrica-badge { background:var(--c-24563a); color:var(--c-fff9e7) }
+.fabrica-state.stopped { background:var(--c-f3e6c4) }
+.fabrica-state.stopped .fabrica-badge { background:var(--c-7a5717); color:var(--c-fff9e7) }
+.fabrica-state.missing, .fabrica-state.wrong, .fabrica-state.unreadable { background:var(--c-f6ddd4); border-color:var(--c-e6c2b5) }
+.fabrica-state.missing .fabrica-badge, .fabrica-state.wrong .fabrica-badge, .fabrica-state.unreadable .fabrica-badge { background:var(--c-8e3d2a); color:var(--c-fff9e7) }
+.fabrica-pages { list-style:none; padding:0; margin:10px 0 0; display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr)); gap:12px }
+.fabrica-pages li { flex-direction:row; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:16px }
+.fabrica-pages li > div:first-child { display:flex; flex-direction:column; gap:2px; flex:1 1 180px; min-width:0 }
+.fabrica-open { display:flex; flex-direction:column; align-items:flex-end; gap:4px; margin-left:auto }
+.fabrica-open .error, .fabrica-open .ok-note { text-align:right; max-width:46ch }
+.fabrica-state-actions { display:flex; flex-direction:column; align-items:flex-end; gap:8px; margin-left:auto }
