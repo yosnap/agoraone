@@ -5,6 +5,7 @@ import { getHermesCatalog, type Status, type DocumentSource } from './api/client
 import { LibraryPanel } from './ui/library-panel';
 import { HermesPanel, type ProfileTab } from './ui/hermes-panel';
 import { sceneCopy } from './ui/scene-copy';
+import { systemTag } from './ui/platform';
 import type { ProfileRoom, RoomStation } from './world/profile-interior';
 import { ResourcePanel } from './ui/resource-panel';
 import { IntegrationsPanel } from './ui/integrations-panel';
@@ -254,7 +255,7 @@ export function Office({ status, active, onWaiting, onWatson }: { status: Status
   });
   return <main hidden={!active} className={indoors || daylight.night > 0.5 ? 'inside-world' : undefined}>
     <div className="world"><WorldBoundary><Suspense fallback={<div className="canvas-fallback" role="status">Cargando la ciudad…</div>}><City paused={!active} statuses={statuses} coding={atWork(coding)} places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected || bookOpen} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf} onBook={id => vaultRoom && openBook(vaultRoom, id)}/></Suspense></WorldBoundary></div>
-    <header className="topbar" data-theme="light"><a className="brand" href="/">a<span>AGORA<span className="brand-light">ONE</span></span></a>{crumbs.length > 1 ? <Breadcrumbs crumbs={crumbs}/> : <span className="top-note">TU MUNDO, EN UN LUGAR</span>}<div className="local-status"><i/> LOCAL · MAC</div></header>
+    <header className="topbar" data-theme="light"><a className="brand" href="/">a<span>AGORA<span className="brand-light">ONE</span></span></a>{crumbs.length > 1 ? <Breadcrumbs crumbs={crumbs}/> : <span className="top-note">TU MUNDO, EN UN LUGAR</span>}<div className="local-status"><i/> LOCAL · {systemTag}</div></header>
     <section data-theme="light" className={`intro ${indoors || daylight.night > 0.5 ? 'interior-intro' : ''}`}><div className="eyebrow">{copy.eyebrow}</div><h1>{copy.title}</h1><p>{copy.text}</p></section>
     <nav className="view-switch" aria-label="Modo de cámara"><button className={!firstPerson ? 'active' : ''} aria-label="Vista ciudad" onClick={exit}><span aria-hidden="true">↗</span> <span className="view-label">Vista ciudad</span></button><button className={firstPerson ? 'active' : ''} aria-label="Primera persona" onClick={() => setFirstPerson(true)}><span aria-hidden="true">◎</span> <span className="view-label">Primera persona</span></button>
       <button aria-pressed={logOpen} aria-label="Registro" title="Registro de lo que Hermes ha hecho en las últimas 24 horas" onClick={() => { setSelected(null); setLogOpen(!logOpen); }}><span aria-hidden="true">◷</span> <span className="view-label">Registro</span></button>
