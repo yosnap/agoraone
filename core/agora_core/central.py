@@ -1,11 +1,11 @@
-"""Central (the user's CRM: clients, projects, websites and servers), read through its own MCP server; the only
+"""Central (the user's CRM: clients, projects, websites and servers), a separate app AgoraOne connects to; the only
 thing ever written is a draft quote the user confirmed (`create_quote`, decision of 15/11/2026).
 
-AgoraOne starts Central's MCP server over stdio in Central's folder (the one in the add-on registry) and
-calls only reading tools; it never creates quotes or changes phases. The result is kept as a snapshot in
-the core's database, refreshed every half hour and on demand, so the brain, Watson and the mail know the
-clients (their address, tax id and domains) and the active servers. One day Central's code will live
-inside AgoraOne; until then it stays an outside service."""
+Central stays its own application, local or remote (user's decision, 18/11/2026). AgoraOne reaches it through its
+HTTP API with a URL and an access key (`central_api.py`); while the old way lasts, a Central folder registered as
+an add-on is still read by starting its MCP server over stdio. Only reading is done, apart from that draft quote.
+The result is kept as a snapshot in the core's database, refreshed every half hour and on demand, so the brain,
+Watson and the mail know the clients (their address, tax id and domains) and the active servers."""
 
 import asyncio
 import json
@@ -17,6 +17,7 @@ import sqlite3
 from pathlib import Path
 from urllib.parse import urlparse
 
+from . import central_api
 from .db import now, transaction
 
 TOTAL_SECONDS = 180
@@ -111,8 +112,8 @@ def shape(raw: dict) -> dict:
         domains = set()
         if email and _domain(email) and _domain(email) not in _FREE_MAIL:
             domains.add(_domain(email))
-        by_client[name] = {"name": name, "company": detail.get("company"), "email": email, "taxId": detail.get("taxId"),
-                           "domains": domains, "projects": [], "websites": []}
+        by_client[name] = {"id": client.get("id"), "name": name, "company": detail.get("company"), "email": email, "phone": detail.get("phone"),
+                           "taxId": detail.get("taxId"), "domains": domains, "projects": [], "websites": []}
     for site in raw.get("websites", []):
         client = by_client.get(site.get("client") or "")
         if client and site.get("url"):
@@ -131,17 +132,35 @@ def shape(raw: dict) -> dict:
     return {"clients": clients, "servers": servers, "fetchedAt": now()}
 
 
-def refresh(connection: sqlite3.Connection, folder: Path, fetch=None) -> dict:
-    """Reads Central now and keeps the snapshot. `fetch(folder)` is for tests."""
+Source = central_api.Connection | Path
+
+
+def source(connection: sqlite3.Connection, secrets, folder: Path | None) -> Source | None:
+    """Where Central is read from: its HTTP API when there are a URL and a key, else the old stdio way when its
+    folder is registered, else nowhere."""
+    return central_api.connection_of(connection, secrets) or folder
+
+
+def _read(origin: Source) -> dict:
+    if isinstance(origin, central_api.Connection):
+        return central_api.read_all(origin)
+    return asyncio.run(asyncio.wait_for(_call_all(origin), TOTAL_SECONDS))
+
+
+def refresh(connection: sqlite3.Connection, origin: Source, fetch=None) -> dict:
+    """Reads Central now and keeps the snapshot. `fetch(origin)` is for tests."""
     if not _REFRESHING.acquire(blocking=False):
         raise CentralError("Ya se está leyendo Central; espera un momento.")
     try:
-        raw = fetch(folder) if fetch else asyncio.run(asyncio.wait_for(_call_all(folder), TOTAL_SECONDS))
+        raw = fetch(origin) if fetch else _read(origin)
         snapshot = shape(raw)
     except CentralError:
         raise
+    except central_api.CentralApiError as error:  # its message never carries the key
+        raise CentralError(str(error)) from None
     except Exception as error:  # noqa: BLE001 - Central is an outside program: any failure is said plainly
-        raise CentralError(f"No se pudo leer Central ({type(error).__name__}). ¿Está su base de datos en marcha?") from error
+        hint = "" if isinstance(origin, central_api.Connection) else " ¿Está su base de datos en marcha?"
+        raise CentralError(f"No se pudo leer Central ({type(error).__name__}).{hint}") from None
     finally:
         _REFRESHING.release()
     with transaction(connection):
@@ -151,6 +170,15 @@ def refresh(connection: sqlite3.Connection, folder: Path, fetch=None) -> dict:
 
 
 def snapshot(connection: sqlite3.Connection) -> dict | None:
+    """The last snapshot, only while the «Central» module is on: turned off, it is kept but nothing uses it."""
+    from . import modules
+
+    if not modules.state(connection)["central"]:
+        return None
+    return stored(connection)
+
+
+def stored(connection: sqlite3.Connection) -> dict | None:
     row = connection.execute("SELECT value FROM setting WHERE key = ?", (SNAPSHOT_SETTING,)).fetchone()
     return json.loads(row["value"]) if row else None
 
@@ -172,9 +200,16 @@ def client_for(connection: sqlite3.Connection, address: str | None) -> dict | No
 WRITE_TOOL = "create_quote"  # the only writing tool AgoraOne may call, and only for a quote the user confirmed
 
 
-def create_quote(folder: Path, quote: dict) -> dict:
+def create_quote(origin: Source, quote: dict) -> dict:
     """Creates in Central the draft quote the user confirmed (Central gives it the next number of the year);
     never sends it nor changes a phase. Returns its id and number."""
+    if isinstance(origin, central_api.Connection):
+        try:
+            return central_api.create_quote(origin, quote)
+        except central_api.CentralApiError as error:
+            raise CentralError(str(error)) from None
+    folder = origin
+
     async def run():
         from mcp.client.session import ClientSession
         from mcp.client.stdio import StdioServerParameters, stdio_client

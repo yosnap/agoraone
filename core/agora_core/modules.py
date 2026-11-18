@@ -11,12 +11,15 @@ from .db import transaction
 
 SETTING = "modules"
 MODULES = {
-    "correo": "Correo y Bandeja", "agenda": "Agenda y avisos", "fiscal": "Fiscal", "trabajos": "Trabajos y Central",
+    "correo": "Correo y Bandeja", "agenda": "Agenda y avisos", "fiscal": "Fiscal", "trabajos": "Trabajos",
     "reuniones": "Reuniones", "voz": "Voz y dictado", "musica": "Música", "oficina": "Oficina 3D", "conectores": "Conectores", "orca": "Orca",
-    "whatsapp": "WhatsApp", "jev": "Jev (decisiones)",
+    "whatsapp": "WhatsApp", "jev": "Jev (decisiones)", "presupuestos": "Presupuestos", "central": "Central",
 }
+# Modules split from «trabajos» (which used to cover Central and its quotes): until saved, they follow it, so whoever
+# had it off does not see them appear.
+INHERITS = {"central": "trabajos", "presupuestos": "trabajos"}
 # Watson's tools that belong to a module.
-TOOLS = {"correo": {"consultar_bandeja", "proponer_regla", "proponer_limpieza"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos", "consultar_clientes", "proponer_presupuesto"},
+TOOLS = {"correo": {"consultar_bandeja", "proponer_regla", "proponer_limpieza"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos"}, "presupuestos": {"proponer_presupuesto"},
          "reuniones": {"consultar_reuniones", "leer_reunion", "proponer_issue"}, "orca": {"proponer_encargo_orca"}}
 CHECK_EVERY = 20.0
 
@@ -24,7 +27,7 @@ CHECK_EVERY = 20.0
 def state(connection: sqlite3.Connection) -> dict[str, bool]:
     row = connection.execute("SELECT value FROM setting WHERE key = ?", (SETTING,)).fetchone()
     saved = json.loads(row["value"]) if row else {}
-    return {name: saved.get(name, True) is not False for name in MODULES}
+    return {name: saved.get(name, saved.get(INHERITS.get(name, name), True)) is not False for name in MODULES}
 
 
 def apply(connection: sqlite3.Connection) -> dict[str, bool]:

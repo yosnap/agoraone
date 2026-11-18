@@ -33,3 +33,26 @@ def test_modulos(tmp_path, monkeypatch):
     stop.set()
     modules.save(c, {"correo": True})
     c.close()
+
+
+def test_central_y_presupuestos_heredan_de_trabajos(tmp_path):
+    """Central and Presupuestos used to be part of «Trabajos»: whoever had it off does not see them appear."""
+    import json
+
+    c = connect(tmp_path / DB_NAME)
+    migrate(c)
+    c.execute("INSERT INTO setting (key, value) VALUES ('modules', ?)", (json.dumps({"trabajos": False, "correo": True}),))
+    on = modules.state(c)
+    assert on["trabajos"] is False and on["central"] is False and on["presupuestos"] is False
+    modules.save(c, {"trabajos": True})
+    assert modules.state(c)["central"] is False, "guardado una vez, cada uno va por su cuenta"
+    modules.save(c, {"central": True, "trabajos": False})
+    on = modules.state(c)
+    assert on["central"] is True and on["presupuestos"] is False and on["trabajos"] is False
+    # Trabajos off no longer hides the quotes; Presupuestos off does. The clients' lookup belongs to no module.
+    names = [s["name"] for s in engines._specs()]
+    assert "consultar_trabajos" not in names and "proponer_presupuesto" not in names and "consultar_clientes" in names
+    modules.save(c, {"trabajos": True, "presupuestos": True})
+    names = [s["name"] for s in engines._specs()]
+    assert "consultar_trabajos" in names and "proponer_presupuesto" in names
+    c.close()
