@@ -35,6 +35,10 @@ final class Listener {
     var task: SFSpeechRecognitionTask?
     var restart: Timer?
     var quietUntil = Date.distantPast
+    // Each session has a number; the end of an older one (cancelled because a new one started) is ignored, or
+    // every restart would trigger another and sessions would last half a second, too short to hear the phrase.
+    var current = 0
+    var lastStart = Date.distantPast
 
     init() {
         guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "es-ES")), recognizer.supportsOnDeviceRecognition else {
@@ -58,6 +62,9 @@ final class Listener {
 
     // Apple's recognition caps a session at about a minute: a fresh one every 50 s.
     func session() {
+        current += 1
+        let number = current
+        lastStart = Date()
         task?.cancel()
         request?.endAudio()
         let request = SFSpeechAudioBufferRecognitionRequest()
@@ -65,13 +72,20 @@ final class Listener {
         request.shouldReportPartialResults = true
         self.request = request
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            guard let self else { return }
-            if let text = result?.bestTranscription.formattedString, heard(text), Date() > self.quietUntil {
-                self.quietUntil = Date().addingTimeInterval(4)
-                print("wake")
-                DispatchQueue.main.async { self.session() }  // forget what was heard
-            } else if error != nil || result?.isFinal == true {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.session() }
+            DispatchQueue.main.async {
+                guard let self, number == self.current else { return }
+                if let text = result?.bestTranscription.formattedString, heard(text), Date() > self.quietUntil {
+                    self.quietUntil = Date().addingTimeInterval(4)
+                    print("wake")
+                    self.session()  // forget what was heard
+                } else if error != nil || result?.isFinal == true {
+                    // A session that fails at once (e.g. silence) waits longer before the next one, so a
+                    // failing recogniser is not hammered: macOS runs out of resources for dictation otherwise.
+                    let wait = Date().timeIntervalSince(self.lastStart) < 2 ? 3.0 : 0.5
+                    DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+                        if number == self.current { self.session() }
+                    }
+                }
             }
         }
         restart?.invalidate()
