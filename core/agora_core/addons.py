@@ -2,7 +2,8 @@
 
 Manifests are generic (this repository is public): how each add-on is recognised, what it offers and how
 to tell it is running. Where it lives on this Mac (paths, ports) is the user's own setting, stored in the
-core's database. Nothing here starts, stops or writes to an add-on.
+core's database. Nothing here starts, stops or writes to an add-on; the one exception, starting Mi fábrica's own
+launchd service on macOS at the user's request, lives in `fabrica_service.py`.
 """
 
 import json
