@@ -70,8 +70,15 @@ def window(connection: sqlite3.Connection, conversation_id: int) -> list[sqlite3
     return kept[::-1]
 
 
+def rule_text(connection: sqlite3.Connection, conversation_id: int) -> str:
+    """Every message of a conversation, received and sent: what the rules' words look at. Never only the window, so
+    a conversation a rule made stricter stays so when the word that matched falls out of what the model would read."""
+    return "\n".join(row["body"] for row in connection.execute(
+        "SELECT body FROM chat_message WHERE conversation_id = ? AND body IS NOT NULL ORDER BY id", (conversation_id,)))
+
+
 def received_text(connection: sqlite3.Connection, conversation_id: int) -> str:
-    """The text received in a conversation's window: what rules and local keywords look at."""
+    """The text received in a conversation's window: what local keywords look at."""
     return "\n".join((m["body"] or "")[:BODY_CHARS] for m in window(connection, conversation_id) if m["direction"] == "incoming")
 
 
@@ -99,8 +106,7 @@ def plan(connection: sqlite3.Connection, conversations: list[sqlite3.Row]) -> tu
     remote, local = [], []
     for conversation in conversations:
         messages = window(connection, conversation["id"])
-        text = "\n".join((m["body"] or "")[:BODY_CHARS] for m in messages if m["direction"] == "incoming")
-        rule = chat_rules.first_match(rules, conversation, text)
+        rule = chat_rules.first_match(rules, conversation, rule_text(connection, conversation["id"]))
         level = stricter(conversation["account_level"], rule["confidentiality"] if rule else None)
         old = conversation["previous"] in (None, "quiet") and is_old(conversation["last_incoming_at"])
         ignored = rule is not None and rule["action"] == "ignore"
@@ -128,6 +134,8 @@ def prompt(chats: list[dict], nonce: str | None = None) -> str:
                 missing += 1
                 continue
             body = re.sub(r"<\s*(/?)\s*chat", r"‹\1chat", (message["body"] or "")[:BODY_CHARS], flags=re.I)
+            # Continuation lines are indented, so a message can never pass for another line («[fecha] Yo: …»).
+            body = re.sub(r"\r\n?|[\n\u2028\u2029\x0b\x0c\x85]", "\n    ", body.strip())
             if not body:
                 kinds = {_plain(a.get("type"))[:20] for a in json.loads(message["attachments"] or "[]") if isinstance(a, dict) and a.get("type")}
                 body = f"[adjunto: {', '.join(sorted(kinds))}]" if kinds else "[sin texto]"
@@ -154,10 +162,9 @@ def store(connection: sqlite3.Connection, entry: dict, found: dict | None) -> No
             WHERE c.id = ?""", (conversation_id,)).fetchone()
     if row is None:  # deleted with its account meanwhile
         return
-    text = received_text(connection, conversation_id)
-    rule = chat_rules.first_match(chat_rules.enabled_rules(connection), row, text)
+    rule = chat_rules.first_match(chat_rules.enabled_rules(connection), row, rule_text(connection, conversation_id))
     level = stricter(row["account_level"], rule["confidentiality"] if rule else None)
-    local = local_kind(text)
+    local = local_kind(received_text(connection, conversation_id))
     kind, source = (found["kind"], "model") if found else (local, "local")
     if rule is not None:
         kind, source = KIND_OF_ACTION.get(rule["action"], kind), "rule"

@@ -62,19 +62,21 @@ async def _ask(engine: Engine, messages: list, reader: Reader = MAIL) -> str:
 
 class Budget:
     """At most MAX_CALLS model calls per hour, so a mailbox connected for the first time does not spend the
-    user's Claude quota in one go; the rest waits for the next hour."""
+    user's Claude quota in one go; the rest waits for the next hour. One budget is shared by the mail and WhatsApp
+    workers, which run in different threads."""
     MAX_CALLS = 40
 
     def __init__(self, clock=time.monotonic):
-        self.clock, self.calls = clock, []
+        self.clock, self.calls, self.lock = clock, [], threading.Lock()
 
     def take(self) -> bool:
-        now = self.clock()
-        self.calls = [t for t in self.calls if now - t < 3600]
-        if len(self.calls) >= self.MAX_CALLS:
-            return False
-        self.calls.append(now)
-        return True
+        with self.lock:
+            now = self.clock()
+            self.calls = [t for t in self.calls if now - t < 3600]
+            if len(self.calls) >= self.MAX_CALLS:
+                return False
+            self.calls.append(now)
+            return True
 
 
 MAX_ATTEMPTS = 3  # a batch the model keeps failing is classified locally, so it never blocks what comes after
@@ -103,6 +105,9 @@ def summarize_once(connection: sqlite3.Connection, engines: list[Engine], ask=No
     with transaction(connection):
         for entry in local:
             reader.store(connection, entry, None)
+    for entry in local:
+        # Settled: if the same item waits again (a conversation with something new), it starts with a clean count.
+        attempts.pop(ident(entry), None)
     if batch and (budget is None or budget.take()):
         reply, failure = None, None
         for engine in candidates:
@@ -128,8 +133,9 @@ def summarize_once(connection: sqlite3.Connection, engines: list[Engine], ask=No
 
 
 def summary_worker(settings: Settings, make_engines: Callable[[], list[Engine]], stop: threading.Event, health: SummaryHealth,
-                   reader: Reader = MAIL) -> None:
-    budget, attempts = Budget(), {}
+                   reader: Reader = MAIL, budget: Budget | None = None) -> None:
+    """`budget` may be shared between workers, so they spend the user's Claude quota together."""
+    budget, attempts = budget or Budget(), {}
     while not stop.is_set():
         wait = PAUSE_SECONDS
         try:

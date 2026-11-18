@@ -8,12 +8,13 @@ from collections.abc import Callable
 
 from . import chat_inbox
 from .engines import Engine
-from .mail_summarizer import Reader, SummaryHealth, summary_worker
+from .mail_summarizer import Budget, Reader, SummaryHealth, summary_worker
 from .settings import Settings
 
 CHAT = Reader(chat_inbox.unread, chat_inbox.plan, chat_inbox.store, lambda entry: entry["chat"], chat_inbox.SYSTEM,
               chat_inbox.prompt, chat_inbox.parse, chat_inbox.BATCH, "WhatsApp", "WhatsApp")
 
 
-def chat_summary_worker(settings: Settings, make_engines: Callable[[], list[Engine]], stop: threading.Event, health: SummaryHealth) -> None:
-    summary_worker(settings, make_engines, stop, health, reader=CHAT)
+def chat_summary_worker(settings: Settings, make_engines: Callable[[], list[Engine]], stop: threading.Event, health: SummaryHealth,
+                        budget: Budget | None = None) -> None:
+    summary_worker(settings, make_engines, stop, health, reader=CHAT, budget=budget)

@@ -112,15 +112,18 @@ def _contact_matches(rule_contact: str, conversation) -> bool:
     wanted = digits(rule_contact)
     if not rule_contact.lstrip("+").isdigit():
         return rule_contact == (conversation["participant_id"] or "")
+    # With «+» the number carries its country: every digit must match. Without it, a number of at least MIN_DIGITS
+    # also matches one written with its country code (and the other way round).
+    international = rule_contact.startswith("+")
     for candidate in (digits(conversation["participant_phone"]), digits(conversation["participant_id"])):
-        if candidate and (candidate == wanted or len(min(candidate, wanted, key=len)) >= MIN_DIGITS
+        if candidate and (candidate == wanted or not international and len(min(candidate, wanted, key=len)) >= MIN_DIGITS
                           and (candidate.endswith(wanted) or wanted.endswith(candidate))):
             return True
     return False
 
 
 def matches(rule, conversation, text: str) -> bool:
-    """`conversation` carries account_id, participant_id and participant_phone; `text` is what was received."""
+    """`conversation` carries account_id, participant_id and participant_phone; `text` is every message of it."""
     if rule["contact"] and not _contact_matches(rule["contact"], conversation):
         return False
     if rule["account_id"] is not None and rule["account_id"] != conversation["account_id"]:
@@ -154,7 +157,7 @@ def reapply(connection: sqlite3.Connection) -> None:
     ).fetchall()
     for row in rows:
         text = chat_inbox.received_text(connection, row["conversation_id"])
-        rule = first_match(rules, row, text)
+        rule = first_match(rules, row, chat_inbox.rule_text(connection, row["conversation_id"]))
         level = stricter(row["account_level"], rule["confidentiality"] if rule else None)
         kind, source, rule_id, label, state = row["kind"], row["source"], row["rule_id"], row["label"], row["state"]
         if state in ("pending", "quiet"):

@@ -32,7 +32,7 @@ from .routes_mail_send import mail_send_router
 from .routes_chat import chat_router
 from .chat_sync import chat_worker
 from .chat_summarizer import chat_summary_worker
-from .mail_summarizer import SummaryHealth, summary_worker
+from .mail_summarizer import Budget, SummaryHealth, summary_worker
 from .routes_inbox import inbox_router
 from .routes_fiscal import fiscal_router
 from . import calendar_store, calls, tts
@@ -87,6 +87,8 @@ def create_app(
     extract_health = ExtractHealth()
     summary_health = SummaryHealth()
     chat_summary_health = SummaryHealth()
+    # Mail and WhatsApp spend the same hourly allowance of Claude calls.
+    summary_budget = Budget()
     central_health = CentralHealth()
     secrets = secrets or KeychainSecrets()
     expected = settings.secret.encode()
@@ -121,11 +123,11 @@ def create_app(
             database_now = lambda: connect(settings.data_dir / DB_NAME)  # noqa: E731
             threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: mail_worker(settings, secrets, own), stop), daemon=True).start()
             # Kinds and summaries of new mail: rules first, then Claude Haiku for what may leave this Mac.
-            threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: summary_worker(settings, extract_engines, own, summary_health), stop), daemon=True).start()
+            threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: summary_worker(settings, extract_engines, own, summary_health, budget=summary_budget), stop), daemon=True).start()
             # WhatsApp through Zernio, read-only, polled every five minutes while «WhatsApp» is on (user's decision, 18/11/2026).
             threading.Thread(target=modules.gated, args=("whatsapp", database_now, lambda own: chat_worker(settings, secrets, own), stop), daemon=True).start()
             # Kinds and summaries of WhatsApp conversations, like mail: rules first, Claude Haiku only for what may leave this Mac.
-            threading.Thread(target=modules.gated, args=("whatsapp", database_now, lambda own: chat_summary_worker(settings, extract_engines, own, chat_summary_health), stop), daemon=True).start()
+            threading.Thread(target=modules.gated, args=("whatsapp", database_now, lambda own: chat_summary_worker(settings, extract_engines, own, chat_summary_health, summary_budget), stop), daemon=True).start()
             # Clients and servers from Central, read-only, every half hour (user's decision, 14/11/2026).
             threading.Thread(target=modules.gated, args=("trabajos", database_now, lambda own: central_worker(settings, own, central_health), stop), daemon=True).start()
             # Watson's voice: VoiceStudio opened in the background if it is closed (user's request, 16/11/2026).
