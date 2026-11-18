@@ -55,7 +55,8 @@ def voice_router(settings: Settings) -> APIRouter:
         chosen = tts.settings(connection)
         voices = tts.voicestudio_voices(fresh=True)
         return {"settings": chosen, "now": tts.resolve(chosen, voices), "voicestudio": voices,
-                "opening": tts._launch["state"] == "opening", "installed": tts.installed_app() is not None}
+                "opening": tts._launch["state"] == "opening", "installed": tts.installed_app() is not None,
+                "running": voices is not None or tts.app_running()}
 
     @router.get("/voice/tts")
     async def tts_get():

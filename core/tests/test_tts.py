@@ -71,6 +71,13 @@ def test_rutas_de_la_voz(tmp_path, monkeypatch):
         assert client.put("/voice/tts", json={"engine": "auto", "quality": "fast"}, headers=h).json()["now"]["steps"] == 8
         assert client.post("/voice/speak", json={"text": "Hola"}, headers=h).content == b"RIFFc638", "pide a VoiceStudio la calidad elegida"
         assert client.put("/voice/tts", json={"quality": "max"}, headers=h).status_code == 422
+        assert view["running"] is True, "si VoiceStudio contesta, está en marcha"
+        monkeypatch.setattr(tts, "voicestudio_voices", lambda fresh=False: None)
+        monkeypatch.setattr(tts, "app_running", lambda: True)
+        loading = client.get("/voice/tts", headers=h).json()
+        assert loading["running"] is True and loading["now"]["engine"] == "macos", "arrancando: en marcha pero sin voces todavía"
+        monkeypatch.setattr(tts, "app_running", lambda: False)
+        assert client.get("/voice/tts", headers=h).json()["running"] is False
 
 
 def test_pide_los_pasos_de_la_calidad_y_no_otros(monkeypatch):

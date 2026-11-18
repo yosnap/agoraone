@@ -1,14 +1,18 @@
-import { getTts, speakPiece, warmVoice, type TtsNow } from '../api/core';
+import { getTts, speakPiece, warmVoice, type TtsNow, type TtsView } from '../api/core';
 import { advance, fresh, type Progress } from './voice-pieces';
 
 /** Plays Watson's answers aloud (1.7). With VoiceStudio, piece by piece: the next one is prepared while one plays,
  * and the first starts as soon as the first sentence is written. If VoiceStudio fails, the rest is said with the
- * macOS voice and the problem is kept for Ajustes › Voz. With macOS, the whole answer at the end, as before. */
+ * macOS voice and the problem is kept for Ajustes › Voz. With macOS, the whole answer at the end, as before.
+ * When VoiceStudio is wanted and its app is running or being opened, Watson waits for it (up to two minutes)
+ * instead of speaking with macOS; when it is not open, macOS speaks and the panel says why (user's request,
+ * 18/11/2026). */
 
 type Turn = { progress: Progress; queue: string[]; next: number; final: boolean; stopped: boolean;
   ready: Map<number, Promise<string>>; abort: AbortController; wake?: () => void; audio?: HTMLAudioElement; urls: string[] };
 
 let voice: TtsNow | null = null;
+let view: TtsView | null = null;
 let asked: Promise<void> | null = null;
 let turn: Turn | null = null;
 let onSpeaking: (now: boolean) => void = () => undefined;
@@ -17,10 +21,36 @@ export let lastProblem: string | null = null;
 /** What speaks now, read again from the core (after a change in Ajustes, or at most once a minute). */
 export function refreshVoice(): Promise<void> {
   // While AgoraOne opens VoiceStudio, read again in a few seconds so its voice is used as soon as it is up.
-  asked = getTts().then(view => { voice = view.now; lastProblem = view.now.problem; if (view.opening) readAt = Date.now() - 55_000; }).catch(() => { voice = null; });
+  asked = getTts().then(read => { view = read; voice = read.now; lastProblem = read.now.problem; if (read.opening) readAt = Date.now() - 55_000; }).catch(() => { view = null; voice = null; });
   return asked;
 }
 let readAt = 0;
+// What the panel says about the voice while it speaks (waiting for VoiceStudio, or macOS in its place), or null.
+let notice: string | null = null;
+const noticeListeners = new Set<() => void>();
+function setNotice(text: string | null) { if (notice !== text) { notice = text; noticeListeners.forEach(listener => listener()); } }
+export const voiceNotice = { get: () => notice, subscribe(listener: () => void) { noticeListeners.add(listener); return () => { noticeListeners.delete(listener); }; } };
+const WAIT_FOR_STUDIO = 120_000;
+const pause = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
+const studioWanted = (read: TtsView | null) => !!read && (read.settings.engine === 'voicestudio' || (read.settings.engine === 'auto' && read.installed));
+const studioLoading = (read: TtsView | null) => studioWanted(read) && read!.voicestudio === null && (read!.opening || read!.running);
+
+/** The voice for this answer: while VoiceStudio is wanted and still starting, wait for it; else what speaks now,
+ * saying so in the panel when macOS speaks in VoiceStudio's place. */
+async function settle(t: Turn): Promise<TtsNow | null> {
+  await current();
+  const limit = Date.now() + WAIT_FOR_STUDIO;
+  while (!t.stopped && studioLoading(view) && Date.now() < limit) {
+    setNotice('Esperando a que VoiceStudio esté listo para hablar…');
+    await pause(2000);
+    readAt = Date.now();
+    await refreshVoice();
+  }
+  if (t.stopped) return voice;
+  const instead = studioWanted(view) && voice?.engine !== 'voicestudio';
+  setNotice(instead ? (view?.voicestudio === null ? 'VoiceStudio no está abierto: Watson habla con la voz de macOS hasta que arranque.' : voice?.problem ?? null) : null);
+  return voice;
+}
 const current = async () => { if (!asked || Date.now() - readAt > 60_000) { readAt = Date.now(); void refreshVoice(); } await asked; return voice; };
 
 function macSpeak(text: string, done: () => void) {
@@ -53,7 +83,7 @@ const play = (t: Turn, url: string) => new Promise<void>(resolve => {
 });
 
 async function run(t: Turn) {
-  const now = await current();
+  const now = await settle(t);
   if (t.stopped) return;
   if (now?.engine === 'voicestudio') warmVoice().catch(() => undefined);
   if (now?.engine !== 'voicestudio') {
@@ -73,6 +103,7 @@ async function run(t: Turn) {
     } catch {
       if (t.stopped) break;
       lastProblem = 'VoiceStudio no respondió: Watson siguió con la voz de macOS.';
+      setNotice(lastProblem);
       while (!t.final && !t.stopped) await waitMore(t);
       if (!t.stopped) macSpeak(t.queue.slice(t.next).join(' '), () => { if (turn === t) finish(t); });
       return;

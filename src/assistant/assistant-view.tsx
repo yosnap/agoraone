@@ -9,7 +9,7 @@ import { IssueProposals, useIssueProposals } from './issue-proposals';
 import { OrcaProposals, useOrcaProposals } from './orca-proposals';
 import { CleanupProposals, useCleanupProposals } from './cleanup-proposals';
 import { ReorgProposals, useReorgProposals } from './reorg-proposals';
-import { answerSoFar, beginAnswer, speak, stopSpeaking, useSpeaking } from './speech';
+import { answerSoFar, beginAnswer, speak, stopSpeaking, useSpeaking, useVoiceNotice } from './speech';
 
 // The conversation last open (its number only, in this browser), opened again when coming back to the chat.
 const LAST = 'agora-watson-conversation';
@@ -94,6 +94,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
     return () => stopSpeaking();
   }, [open]);
   const talking = useSpeaking();
+  const voiceNote = useVoiceNotice();
   const send = useCallback(async (text: string, into: number | null) => {
     let id = into;
     let spokeFinal = false;
@@ -208,7 +209,8 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <div>{!embedded && <div className="eyebrow">ASISTENTE</div>}<h1 id="assistant-title">{name}</h1>
           {embedded ? <p className="watson-state" role="status">{hearing === 'recording' ? 'Escuchando… (en este Mac)' : hearing === 'transcribing' ? 'Pasando tu voz a texto…'
             : live ? (live.stage ? stageLabels[live.stage] : 'Enviando…') : 'Listo · escribe o pulsa el micrófono'}</p>
-            : persona && <p className="muted">{persona.conveys}. Inspirado en {persona.origin}.</p>}</div>
+            : persona && <p className="muted">{persona.conveys}. Inspirado en {persona.origin}.</p>}
+          {voiceNote && <p className="muted watson-voice-note" role="status">{voiceNote}</p>}</div>
         {embedded && <div className="actions"><button className="button" aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)}>Conversaciones</button><button className="button" onClick={fresh}>Nueva</button></div>}
         {talking && <button type="button" className="button watson-hush" onClick={stopSpeaking} aria-label="Callar a Watson">■ Callar</button>}
         <span className={`chip ${engine?.active ? 'good' : engine ? 'bad' : ''}`} role="status">
