@@ -36,22 +36,23 @@ fn root() -> PathBuf {
 /// user, never a link, another user's folder or a fixed path baked into the app.
 fn migration_source() -> Option<PathBuf> {
     let folder = PathBuf::from(std::env::var_os("AGORA_MIGRAR_DESDE")?);
-    if !agora_server::platform::is_real_dir(&folder) {
-        return None;
-    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
         let meta = std::fs::symlink_metadata(&folder).ok()?;
         // SAFETY: getuid has no preconditions.
         let mine = meta.uid() == unsafe { libc::getuid() };
-        return mine.then_some(folder);
+        (meta.is_dir() && mine).then_some(folder)
     }
+    // Windows has no owner id to compare: a real folder (no link or junction) inside this user's profile.
     #[cfg(windows)]
     {
-        let home = agora_server::platform::home_dir()?;
+        if !agora_server::platform::is_real_dir(&folder) {
+            return None;
+        }
+        let home = agora_server::platform::canonicalize(&agora_server::platform::home_dir()?).ok()?;
         let real = agora_server::platform::canonicalize(&folder).ok()?;
-        (real.starts_with(agora_server::platform::canonicalize(&home).unwrap_or(home)) || std::fs::read_dir(&real).is_ok()).then_some(real)
+        (real != home && real.starts_with(&home)).then_some(real)
     }
 }
 
@@ -183,6 +184,8 @@ fn wake_loop(app: AppHandle, link: agora_server::core::CoreLink) {
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::null())
                     .kill_on_drop(true);
+                // Windows only: no console window for the listener.
+                #[cfg(windows)]
                 agora_server::platform::configure_group(&mut cmd);
                 if let Ok(mut started) = cmd.spawn()
                 {

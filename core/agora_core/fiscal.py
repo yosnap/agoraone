@@ -42,7 +42,11 @@ def check_folder(value: str, home: Path | None = None) -> Path:
     if not folder.is_dir():
         raise FiscalError("Eso no es una carpeta.")
     icloud = home / ICLOUD
-    protected = [home, icloud, home / "Documents", home / "Desktop", home / "Downloads", home / "AppData"]
+    protected = [home, icloud, home / "Documents", home / "Desktop", home / "Downloads"]
+    # Windows' AppData plays the role of macOS' Library: program data, never the user's activity.
+    system_data = ("Library", "AppData") if os.name == "nt" else ("Library",)
+    if os.name == "nt":
+        protected.append(home / "AppData")
     refuse = FiscalError("Elige la subcarpeta de tu actividad, no la carpeta personal, la raíz de iCloud Drive ni una carpeta que las contenga.")
     if os.name == "nt" and folder.drive and home.drive and folder.drive.lower() != home.drive.lower():
         blocked_roots = {"windows", "program files", "program files (x86)", "programdata", "$recycle.bin", "system volume information"}
@@ -54,7 +58,7 @@ def check_folder(value: str, home: Path | None = None) -> Path:
     relative = folder.relative_to(home)
     if any(part.startswith(".") for part in relative.parts):
         raise refuse
-    if relative.parts[0] in ("Library", "AppData") and icloud not in folder.parents:
+    if relative.parts[0] in system_data and icloud not in folder.parents:
         raise refuse
     return folder
 

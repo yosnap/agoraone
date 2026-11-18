@@ -92,7 +92,7 @@ async fn el_indice_recibe_texto_enmascarado_incremental_y_retira_lo_borrado() {
     fs::write(vault.join("Enorme.md"), "x".repeat(300 * 1024)).unwrap();
     fs::write(vault.join(".obsidian/config.md"), "oculto").unwrap();
     fs::write(base.join("fuera.md"), "fuera del vault").unwrap();
-    symlink(&base.join("fuera.md"), &vault.join("Enlace.md")).unwrap();
+    symlink(base.join("fuera.md"), vault.join("Enlace.md")).unwrap();
     fs::write(base.join("obsidian.json"), json!({ "vaults": { "a": { "path": vault } } }).to_string()).unwrap();
     let (fake, url) = fake_core().await;
     let sync = sync(base.join("obsidian.json"), &url);

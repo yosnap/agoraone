@@ -89,7 +89,7 @@ def _windows_roots() -> list[Path]:
 
 
 def _windows_apps() -> list[dict]:
-    skip = re.compile(r"\b(uninstall|desinstalar|quitar|readme|leeme|help|ayuda|manual|website)\b", re.I)
+    skip = re.compile(r"\b(uninstall|desinstalar|quitar|readme|leeme|help|ayuda|manual|website)\b", re.IGNORECASE)
     found: dict[str, dict] = {}
     paths: dict[str, Path] = {}
     seen_names: set[str] = set()
@@ -138,7 +138,7 @@ def _open_windows_shortcut(ident: str) -> None:
     roots = [r.resolve() for r in _windows_roots() if r.is_dir()]
     if not any(r in lnk.resolve().parents for r in roots):
         raise AppsError("No se pudo abrir la aplicación.")
-    os.startfile(str(lnk))  # noqa: S606 - verified Start Menu .lnk from closed catalog
+    os.startfile(str(lnk))  # a verified Start Menu .lnk from the closed catalog
 
 
 def installed() -> list[dict]:

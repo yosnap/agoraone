@@ -300,7 +300,7 @@ async fn chat_de_perfiles_identidad_memoria_aislamiento_y_revocacion() {
     assert_eq!((asked["sources"][0]["id"].as_str(), asked["identity"]["profileId"].as_str()), (Some("welcome"), Some(alpha.as_str())));
     let before = f.turns().len();
     fs::remove_file(root.join("alpha/SOUL.md")).unwrap();
-    symlink(&root.join("beta/SOUL.md"), &root.join("alpha/SOUL.md")).unwrap();
+    symlink(root.join("beta/SOUL.md"), root.join("alpha/SOUL.md")).unwrap();
     assert_eq!(f.post(&a_messages, json!({ "message": "no ejecutar" })).await.0, StatusCode::FORBIDDEN);
     fs::create_dir(root.join(".deleted")).unwrap();
     fs::write(root.join(".deleted/beta"), "1").unwrap();
@@ -362,7 +362,7 @@ async fn adjuntos_en_chats_de_perfil_copias_ajenas_notas_y_perfil_revocado() {
     // A revoked profile gets nothing, attachment included.
     let soul = f.base.join("hermes/profiles/alpha/SOUL.md");
     fs::remove_file(&soul).unwrap();
-    symlink(&f.base.join("vault/Ideas/Plan.md"), &soul).unwrap();
+    symlink(f.base.join("vault/Ideas/Plan.md"), &soul).unwrap();
     assert_eq!(f.post(&own_messages, json!({ "message": "otra vez", "documentId": note })).await.0, StatusCode::FORBIDDEN);
     assert_eq!(f.turns().len(), 1);
 }

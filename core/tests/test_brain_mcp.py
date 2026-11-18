@@ -127,7 +127,7 @@ def test_por_stdio_como_lo_usaria_hermes(folder):
     async def run():
         params = StdioServerParameters(
             command=sys.executable, args=["-m", "agora_core.brain_mcp"],
-            env={"PATH": os.environ["PATH"], "HOME": os.environ["HOME"], "AGORA_CORE_DATA": str(folder),
+            env={"PATH": os.environ["PATH"], "HOME": str(Path.home()),"AGORA_CORE_DATA": str(folder),
                  "PYTHONPATH": str(Path(__file__).resolve().parents[1])},
         )
         async with stdio_client(params) as (read, write), ClientSession(read, write) as session:

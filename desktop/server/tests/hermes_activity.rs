@@ -155,7 +155,7 @@ fn links_are_not_followed_and_missing_sources_do_not_fail() {
     fs::remove_file(f.work.join("cron/jobs.json")).unwrap();
     let outside = tempfile::tempdir().unwrap();
     fs::write(outside.path().join("jobs.json"), json!([{ "name": "CANARY_OUTSIDE" }]).to_string()).unwrap();
-    symlink(&outside.path().join("jobs.json"), &f.work.join("cron/jobs.json")).unwrap();
+    symlink(outside.path().join("jobs.json"), f.work.join("cron/jobs.json")).unwrap();
     fs::remove_file(f.root.join("kanban.db")).unwrap();
     let activity = read_activity(&f.root, &f.profiles, ms(NOW));
     assert_eq!(activity["profiles"]["p-work"]["jobs"], Value::Null);
