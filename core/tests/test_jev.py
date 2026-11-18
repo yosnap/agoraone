@@ -5,6 +5,7 @@ stand-in with the real shape of its answers (measured with the real account) and
 
 import json
 import logging
+import sqlite3
 
 import httpx
 import pytest
@@ -263,8 +264,12 @@ def test_registro_solo_respuestas(db):
     assert row["subject"] == "mail" and row["subject_id"] == "42" and row["applied"] == 0 and row["model"] == "jev-1.14.0"
     assert json.loads(row["answers"])["kind"]["value"] == "invoice" and row["input_tokens"] == 600
     assert CANARY not in json.dumps(dict(row)), "el estado enviado no se guarda"
-    with pytest.raises(ValueError):
+    with pytest.raises(jev.JevError):
         jev.record(db, "inventado", 1, "kind", found, applied=True)
+    broken = jev.Answer(model="jev-1.14.0", answers={"injection": {"type": "noul", "value": float("nan")}})
+    with pytest.raises(jev.JevError) as caught:
+        jev.record(db, "mail", 1, "kind", broken, applied=False)
+    assert caught.value.status == "storage"
 
 
 def test_modelos_de_la_cuenta():
@@ -285,6 +290,9 @@ def test_rutas_nunca_devuelven_la_clave(tmp_path, monkeypatch):
         assert first["hasKey"] is False and first["model"] == "jev-latest" and first["threshold"] == 0.9 and first["monthlyUsd"] == 2.0
         assert all(first["points"].values()) and first["usage"]["calls"] == 0 and first["usage"]["capTokens"] == jev.cap_tokens(2.0)
         assert client.post("/jev/test", headers=headers).status_code == 422 and fake.seen == []
+        for path in ("/jev/key", "/chat/key"):
+            typed = client.put(path, json={"key": 98765432109}, headers=headers)
+            assert typed.status_code == 422 and "98765432109" not in typed.text and "texto" in typed.json()["error"], path
         bad = client.put("/jev/key", json={"key": "con espacios dentro"}, headers=headers)
         assert bad.status_code == 422 and "espacios dentro" not in bad.text, "un error nunca repite la clave"
         saved = client.put("/jev/key", json={"key": KEY}, headers=headers)
@@ -309,3 +317,64 @@ def test_rutas_nunca_devuelven_la_clave(tmp_path, monkeypatch):
         assert KEY not in dumped, "la clave nunca va a la base de datos"
     finally:
         c.close()
+
+
+def test_estado_con_nan_o_infinito_no_sale(db):
+    fake = FakeTypeSafe()
+    for value in (float("nan"), float("inf")):
+        with pytest.raises(jev.JevError) as caught:
+            ask(db, fake, state={"importe": value})
+        assert caught.value.status == "invalid"
+    assert fake.seen == [] and jev.usage(db)["calls"] == 0, "se rechaza antes de contar la llamada"
+
+
+def test_respuestas_raras_del_servidor_nunca_rompen(db):
+    raw = (b'{"model": "jev-1.14.0", "usage": {"input_tokens": 10}, "answers": {'
+           b'"kind": {"choice": ["invoice"], "confidence": 0.9, "probabilities": {"invoice": 1.0}},'
+           b'"urgency": {"score": NaN, "confidence": 0.9, "probabilities": {"none": 1.0}},'
+           b'"injection": {"noul": NaN}}}')
+    found = jev.ask(db, KEY, STATE, QUESTIONS, level="normal", point="mail",
+                    client=httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, content=raw, headers={"content-type": "application/json"}))))
+    assert found.answers == {}
+    assert jev.record(db, "mail", 1, "kind", found, applied=False) > 0
+    dicty = {**REAL, "answers": {**REAL["answers"], "kind": {"choice": {"invoice": 1}, "confidence": 0.9, "probabilities": {"invoice": 1.0}}}}
+    assert "kind" not in ask(db, FakeTypeSafe(dicty)).answers
+
+
+def test_leyenda_acotada(db):
+    legend = {str(i): ("nivel" if i % 2 else 3) for i in range(4)}
+    body = {**REAL, "answers": {**REAL["answers"], "urgency": {**REAL["answers"]["urgency"], "legend": legend}}}
+    assert ask(db, FakeTypeSafe(body)).answers["urgency"]["legend"] == {"1": "nivel", "3": "nivel"}
+    body["answers"]["urgency"]["legend"] = {str(i): "x" for i in range(50)}
+    assert ask(db, FakeTypeSafe(body)).answers["urgency"]["legend"] is None
+
+
+def test_el_reintento_cuenta_para_el_tope_por_hora(db, monkeypatch):
+    monkeypatch.setattr(jev, "HOURLY_CALLS", 1)
+    fake = FakeTypeSafe()
+    fake.statuses = [429]
+    with pytest.raises(jev.JevError) as caught:
+        ask(db, fake)
+    assert caught.value.status == "budget" and len(fake.seen) == 1
+
+
+def test_tiempo_total_acotado(db, monkeypatch):
+    fake = FakeTypeSafe()
+    monkeypatch.setattr(jev, "TOTAL", 0)
+    with pytest.raises(jev.JevError) as caught:
+        ask(db, fake)
+    assert caught.value.status == "unreachable" and fake.seen == []
+    monkeypatch.setattr(jev, "TOTAL", 2)
+    monkeypatch.setattr(jev, "RETRY_PAUSE", 5)
+    fake.statuses = [529]
+    with pytest.raises(jev.JevError) as caught:
+        ask(db, fake)
+    assert caught.value.status == "overloaded" and len(fake.seen) == 1, "sin tiempo para esperar, no se reintenta"
+
+
+def test_si_no_se_anota_el_gasto_la_respuesta_se_conserva(db, monkeypatch, capsys):
+    def locked(*args):
+        raise sqlite3.OperationalError("database is locked")
+    monkeypatch.setattr(jev, "_spend", locked)
+    assert ask(db, FakeTypeSafe()).answers["kind"]["value"] == "invoice"
+    assert "gasto de Jev" in capsys.readouterr().err

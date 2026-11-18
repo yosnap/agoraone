@@ -10,6 +10,7 @@ logs, answers or the database."""
 import json
 import re
 import sqlite3
+import sys
 import threading
 import time
 import tomllib
@@ -25,6 +26,7 @@ from .db import now, transaction
 API = "https://api.typesafe.ai/v1"
 SECRET = "typesafe-api-key"  # Keychain account of the key
 TIMEOUT = httpx.Timeout(10, connect=5)
+TOTAL = 25.0  # seconds of wall clock for one question, retry and waiting for a free slot included
 RETRY_PAUSE = 1.5  # seconds before the single retry after a 429 or 529
 PARALLEL = threading.BoundedSemaphore(4)  # at most four requests at once from the background work
 
@@ -47,7 +49,7 @@ USAGE = "jev.usage"
 
 class JevError(RuntimeError):
     """`status`: 'private' (not normal level), 'off' (module or point turned off), 'auth', 'invalid', 'limit',
-    'overloaded', 'unreachable' or 'budget'. Callers fall back to their own logic on any of them."""
+    'overloaded', 'unreachable', 'budget' or 'storage' (the answer could not be kept). Callers fall back to their own logic on any of them."""
 
     def __init__(self, status: str, message: str):
         super().__init__(message)
@@ -197,12 +199,12 @@ def trim(state: object, limit: int = STATE_LIMIT) -> object:
     """The state, with its longest texts shortened until it serializes under `limit` characters; JevError when it
     is not plain JSON or cannot be brought under the limit by shortening texts."""
     try:
-        size = len(json.dumps(state, ensure_ascii=False))
+        size = len(json.dumps(state, ensure_ascii=False, allow_nan=False))
     except (TypeError, ValueError) as error:
-        raise JevError("invalid", "El estado para Jev no es JSON.") from error
+        raise JevError("invalid", "El estado para Jev no es JSON (o lleva NaN o infinito).") from error
     if size <= limit:
         return state
-    state = json.loads(json.dumps(state))  # a copy: the caller's data is never shortened in place
+    state = json.loads(json.dumps(state, allow_nan=False))  # a copy: the caller's data is never shortened in place
 
     def strings(node, path=()):
         if isinstance(node, str):
@@ -225,7 +227,7 @@ def trim(state: object, limit: int = STATE_LIMIT) -> object:
         node[path[-1]] = value
 
     for _ in range(200):
-        size = len(json.dumps(state, ensure_ascii=False))
+        size = len(json.dumps(state, ensure_ascii=False, allow_nan=False))
         if size <= limit:
             return state
         path, text = max(strings(state), key=lambda found: len(found[1]), default=((), ""))
@@ -264,7 +266,7 @@ def _answer(question: dict, found: object) -> dict | None:
     if kind == "choice":
         options = set(question["criteria"])
         probabilities = _probabilities(found.get("probabilities"), options)
-        if found.get("choice") not in options or probabilities is None:
+        if not isinstance(found.get("choice"), str) or found["choice"] not in options or probabilities is None:
             return None
         return {"type": "choice", "value": found["choice"], "confidence": confidence, "probabilities": probabilities}
     score = found.get("score")
@@ -274,11 +276,23 @@ def _answer(question: dict, found: object) -> dict | None:
     probabilities = _probabilities(found.get("probabilities"), None)
     if probabilities is None:
         return None
-    legend = found.get("legend") if isinstance(found.get("legend"), dict) else None
+    legend = found.get("legend")
+    legend = ({str(k)[:20]: v[:100] for k, v in legend.items() if isinstance(v, str)}
+              if isinstance(legend, dict) and len(legend) <= levels else None)
     return {"type": "score", "value": float(score), "confidence": confidence, "probabilities": probabilities, "legend": legend}
 
 
 def _parse(data: object, questions: dict) -> Answer:
+    """Jev's answer checked; anything odd in it ends as JevError('invalid'), never as another exception."""
+    try:
+        return _checked(data, questions)
+    except JevError:
+        raise
+    except (TypeError, ValueError, AttributeError, KeyError) as error:
+        raise JevError("invalid", "Jev devolvió una respuesta que no se entiende.") from error
+
+
+def _checked(data: object, questions: dict) -> Answer:
     if not isinstance(data, dict) or not isinstance(data.get("answers"), dict):
         raise JevError("invalid", "Jev devolvió una respuesta que no se entiende.")
     model = data.get("model")
@@ -318,23 +332,34 @@ def _said(answer: httpx.Response, key: str) -> str:
     return text.replace(key, "***") if key else text
 
 
-def _request(method: str, path: str, key: str, body: dict | None, client: httpx.Client | None) -> dict | list:
-    """One request with a single retry after 429 or 529; JevError with its state on anything else."""
+def _request(method: str, path: str, key: str, body: dict | None, client: httpx.Client | None, before_retry=None) -> dict | list:
+    """One request with a single retry after 429 or 529 (`before_retry` runs first: it counts the retry against the
+    allowance and may refuse it), all within TOTAL seconds; JevError with its state on anything else."""
     if not key:
         raise JevError("auth", "Falta la clave de API de TypeSafe.")
+    late = "Jev no respondió a tiempo: sigue la lógica de siempre."
+    deadline = time.monotonic() + TOTAL
     own = client is None
     client = client or httpx.Client()
     headers = {"Authorization": f"Bearer {key}", "Accept": "application/json", "User-Agent": USER_AGENT}
     try:
         for attempt in (1, 2):
+            left = deadline - time.monotonic()
+            if left <= 0 or not PARALLEL.acquire(timeout=left):
+                raise JevError("unreachable", late)
             try:
-                with PARALLEL:
-                    answer = client.request(method, f"{API}{path}", json=body, headers=headers, timeout=TIMEOUT, follow_redirects=False)
+                left = max(0.1, deadline - time.monotonic())
+                timeout = httpx.Timeout(min(TIMEOUT.read, left), connect=min(TIMEOUT.connect, left))
+                answer = client.request(method, f"{API}{path}", json=body, headers=headers, timeout=timeout, follow_redirects=False)
             except httpx.TimeoutException as error:
-                raise JevError("unreachable", "Jev no respondió a tiempo: sigue la lógica de siempre.") from error
+                raise JevError("unreachable", late) from error
             except httpx.HTTPError as error:
                 raise JevError("unreachable", "No se pudo conectar con Jev: sigue la lógica de siempre.") from error
-            if answer.status_code in (429, 529) and attempt == 1:
+            finally:
+                PARALLEL.release()
+            if answer.status_code in (429, 529) and attempt == 1 and deadline - time.monotonic() > RETRY_PAUSE + 1:
+                if before_retry:
+                    before_retry()
                 time.sleep(RETRY_PAUSE)
                 continue
             break
@@ -376,7 +401,10 @@ def ask(connection: sqlite3.Connection, key: str, state: object, questions: dict
         max_chars: int = STATE_LIMIT, client: httpx.Client | None = None) -> Answer:
     """Asks Jev `questions` about `state`. Refused before anything leaves this Mac when the level is not normal,
     when the module or the point is off, or when the allowance is used up. `state` holds the text as data in named
-    fields; the questions never carry text from mail, chats or notes."""
+    fields; the questions never carry text from mail, chats or notes.
+
+    Each thread must pass its own connection: the allowance is counted with `BEGIN IMMEDIATE` transactions and
+    sqlite3 connections are not shared between threads here."""
     if level != "normal":
         raise JevError("private", "Solo lo de nivel normal puede ir a Jev.")
     if point not in POINTS:
@@ -391,16 +419,23 @@ def ask(connection: sqlite3.Connection, key: str, state: object, questions: dict
     checked = check_questions(questions)
     body = {"model": current["model"], "state": trim(state, max_chars), "questions": checked}
     _reserve(connection, current["monthlyUsd"])
-    found = _parse(_request("POST", "/systemone", key, body, client), checked)
-    _spend(connection, found.input_tokens, found.output_tokens)
+    found = _parse(_request("POST", "/systemone", key, body, client, lambda: _reserve(connection, current["monthlyUsd"])), checked)
+    try:
+        _spend(connection, found.input_tokens, found.output_tokens)
+    except sqlite3.Error as error:
+        # The answer is paid for: it is kept and only this month's count stays a little short.
+        print(f"AgoraOne núcleo: no se pudo anotar el gasto de Jev ({type(error).__name__}).", file=sys.stderr)
     return found
 
 
 def record(connection: sqlite3.Connection, subject: str, subject_id: str | int, purpose: str, found: Answer, applied: bool) -> int:
     """Keeps what Jev answered (never the state that was sent) and whether it decided (`applied`) or only shadowed."""
     if subject not in SUBJECTS:
-        raise ValueError(f"Sujeto desconocido para Jev: {subject}")
-    cursor = connection.execute(
-        "INSERT INTO jev_decision (subject, subject_id, purpose, answers, model, input_tokens, output_tokens, applied, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (subject, str(subject_id)[:200], purpose[:60], json.dumps(found.answers), found.model, found.input_tokens, found.output_tokens, int(applied), now()))
+        raise JevError("invalid", f"Sujeto desconocido para Jev: {subject}")
+    try:
+        cursor = connection.execute(
+            "INSERT INTO jev_decision (subject, subject_id, purpose, answers, model, input_tokens, output_tokens, applied, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (subject, str(subject_id)[:200], str(purpose)[:60], json.dumps(found.answers, allow_nan=False), found.model, found.input_tokens, found.output_tokens, int(applied), now()))
+    except (TypeError, ValueError, sqlite3.Error) as error:
+        raise JevError("storage", "No se pudo guardar la decisión de Jev.") from error
     return int(cursor.lastrowid)
