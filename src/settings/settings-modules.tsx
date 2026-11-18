@@ -4,10 +4,11 @@ import { LoadError } from '../ui/load-state';
 import { refreshOrcaProjects } from '../orca/orca-projects';
 import { moduleLabels, moduleOn, setModule, useModules } from '../shell/modules';
 
-const order: ModuleName[] = ['correo', 'agenda', 'fiscal', 'trabajos', 'reuniones', 'voz', 'musica', 'oficina', 'conectores', 'orca', 'whatsapp', 'jev'];
+const order: ModuleName[] = ['correo', 'agenda', 'fiscal', 'trabajos', 'presupuestos', 'reuniones', 'voz', 'musica', 'oficina', 'conectores', 'orca', 'whatsapp', 'jev', 'central'];
 const meaning: Record<ModuleName, string> = {
   correo: 'deja de leer el correo y de resumirlo; Watson no ve la Bandeja', agenda: 'sin agenda en Hoy; Watson no consulta el calendario',
-  fiscal: 'oculta Fiscal', trabajos: 'oculta Trabajos y deja de leer Central', reuniones: 'oculta Reuniones y la tarjeta de grabar',
+  fiscal: 'oculta Fiscal', trabajos: 'oculta Trabajos (tareas de Hermes y proyectos)',
+  presupuestos: 'Watson no propone presupuestos ni se crean en Central', central: 'deja de leer Central y no usa sus clientes; la conexión sigue en Ajustes › Central', reuniones: 'oculta Reuniones y la tarjeta de grabar',
   voz: 'sin micrófonos para dictar ni hablar con Watson', musica: 'sin tarjeta de música', oficina: 'oculta la Oficina 3D', conectores: 'oculta Conectores',
   orca: 'sin botones para llevar encargos a un agente en Orca', whatsapp: 'deja de leer WhatsApp por Zernio',
   jev: 'AgoraOne no pregunta nada a Jev y todo sigue con la lógica de siempre',

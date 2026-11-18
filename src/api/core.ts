@@ -318,7 +318,7 @@ export const openFiscalFile = (folderId: number, path: string | null, reveal = f
 export type CentralClient = { name: string; company: string | null; domains: string[];
   projects: { name: string; status: string; phase: string | null; repo?: string | null }[]; websites: { url: string; status: string | null }[] };
 export type CentralServer = { name: string; status: string | null; provider: string | null; projects: string[] };
-export type CentralState = { configured: boolean; snapshot: { clients: CentralClient[]; servers: CentralServer[]; fetchedAt: string } | null; problem: string | null };
+export type CentralState = { configured: boolean; transport?: 'http' | 'stdio' | null; notice?: string | null; snapshot: { clients: CentralClient[]; servers: CentralServer[]; fetchedAt: string } | null; problem: string | null };
 export const getCentral = () => core<CentralState>('/central');
 export const refreshCentral = () => core<CentralState>('/central/refresh', {});
 /** Data typed by hand, only for an invoice of the folder that could not be read in any way (rates in percent). */
@@ -538,7 +538,7 @@ export type InstallJob = { id: string; name: string; state: 'running' | 'done' |
 export const getInstallJob = () => core<{ job: InstallJob | null }>('/doctor/install');
 export const installPiece = (id: string) => core<{ job: InstallJob }>('/doctor/install', { id });
 /** Modules (1.6): which are on; one off disappears, stops its background work and Watson loses its tools. */
-export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'conectores' | 'orca' | 'whatsapp' | 'jev';
+export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'conectores' | 'orca' | 'whatsapp' | 'jev' | 'presupuestos' | 'central';
 export const getModules = () => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules');
 export const putModules = (modules: Partial<Record<ModuleName, boolean>>) => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules', { modules }, 'PUT');
 export const getFirstRun = () => core<{ done: boolean }>('/setup/first-run');
@@ -556,7 +556,7 @@ export const createIssueFromProposal = (id: string) => core<{ url: string; repo:
 /** A quote Watson proposed, created in Central as a draft once confirmed (1.7). */
 export type ProposedQuote = { client: string; title: string; items: { description: string; details?: string; unitPrice: number; priceMax?: number; quantity: number; unit?: string }[];
   phases?: { name: string; percent?: number }[]; vat?: number; validDays?: number };
-export const createQuoteFromProposal = (id: string) => core<{ created: { id?: string; number?: string; text?: string } }>(`/assistant/proposals/${encodeURIComponent(id)}/quote`, {});
+export const createQuoteFromProposal = (id: string) => core<{ created: { id?: string; number?: string; client?: string; text?: string } }>(`/assistant/proposals/${encodeURIComponent(id)}/quote`, {});
 /** Tidying the mailbox (1.7): the messages Watson listed; only the approved ones move to the archive or the trash. */
 export type CleanupMessage = { id: number; from: string; address: string; subject: string; date: string | null; account: string; level: Level };
 export const cleanMailFromProposal = (id: string, ids: number[]) => core<{ moved: number; problems: string[] }>(`/assistant/proposals/${encodeURIComponent(id)}/mail`, { ids });

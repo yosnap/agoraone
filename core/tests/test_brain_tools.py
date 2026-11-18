@@ -138,7 +138,8 @@ def test_la_propuesta_de_la_ultima_herramienta_llega_a_la_pantalla(tmp_path):
         assert tools[0]["event"]["title"] == "Reunión con Acme"
 
 
-def test_claude_code_solo_con_las_herramientas_del_cerebro(toolbox):
+def test_claude_code_solo_con_las_herramientas_del_cerebro(toolbox, monkeypatch):
+    monkeypatch.setattr(engines, "HIDDEN_TOOLS", set())  # every module on, whatever an earlier test left
     options = ClaudeCodeEngine().options(Turn("s", [{"role": "user", "content": "x"}], "sonnet", toolbox))
     assert options.tools == [] and options.strict_mcp_config is True and options.setting_sources == []
     assert list(options.mcp_servers) == ["cerebro"]

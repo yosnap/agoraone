@@ -2,15 +2,19 @@ import { useRef, useState, useSyncExternalStore } from 'react';
 import { exportMeeting, getCentral, kindLabels, updateMeeting, type MeetingClass, type MeetingDetail, type MeetingKind, type MeetingPerson } from '../api/core';
 import { PeopleField } from './people-field';
 import { ModernSelect } from '../ui/modern-select';
+import { moduleOn, useModules } from '../shell/modules';
+import { ApiError } from '../api/client';
 
 const kinds = (Object.keys(kindLabels) as MeetingKind[]).map(value => ({ value, label: kindLabels[value] }));
 const failed = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
 
 // Central's clients, read once for every form of the section. A failed read (the core may still be starting)
-// is tried again three times, 5 s apart, and «Volver a leer Central» reads it at once.
+// is tried again three times, 5 s apart, and «Volver a leer Central» reads it at once. With the Central module off
+// nothing is asked (a 404 means it was just turned off: no retry, no error).
 type Client = { name: string; projects: { name: string; repo?: string | null }[] };
-type CentralRead = { clients: Client[] | null; failed: boolean; retrying: boolean };  // clients null while reading
+type CentralRead = { clients: Client[] | null; failed: boolean; retrying: boolean; off?: boolean };  // clients null while reading
 let central: CentralRead = { clients: null, failed: false, retrying: false };
+const OFF: CentralRead = { clients: [], failed: false, retrying: false, off: true };
 let asked = false, retries = 0, timer = 0, generation = 0;
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach(listener => listener());
@@ -18,8 +22,9 @@ function fetchCentral() {
   const mine = ++generation;  // only the latest read counts: an older answer never replaces a newer one
   void getCentral().then(state => (state.snapshot?.clients ?? []).map(c => ({ name: c.name, projects: (c.projects ?? []).filter(p => p.name) }))
     .sort((a, b) => a.name.localeCompare(b.name, 'es')))
-    .then(found => { if (mine === generation) central = { clients: found, failed: false, retrying: false }; }, () => {
+    .then(found => { if (mine === generation) central = { clients: found, failed: false, retrying: false }; }, failure => {
       if (mine !== generation) return;
+      if (failure instanceof ApiError && failure.status === 404) { central = OFF; return; }
       const again = retries++ < 3;
       central = { clients: [], failed: true, retrying: again };
       if (again) timer = window.setTimeout(fetchCentral, 5000);
@@ -36,9 +41,17 @@ function readCentral(now = false) {
   asked = true;
   fetchCentral();
 }
-export function useCentralClients() {
-  readCentral();
-  return useSyncExternalStore(listener => { listeners.add(listener); return () => listeners.delete(listener); }, () => central);
+export function useCentralClients(): CentralRead {
+  const on = moduleOn(useModules(), 'central');
+  if (on) readCentral();
+  const read = useSyncExternalStore(listener => { listeners.add(listener); return () => listeners.delete(listener); }, () => central);
+  if (on && read.off) {  // turned on again: read anew (quietly, the answer notifies)
+    central = { clients: null, failed: false, retrying: false };
+    retries = 0;
+    fetchCentral();
+    return central;
+  }
+  return on ? read : OFF;
 }
 
 /** What the meeting was, the client it was about (one of Central's) and who was in it: in the note's
@@ -46,21 +59,22 @@ export function useCentralClients() {
 export type Fields = { kind: MeetingKind; client: string; project: string; people: MeetingPerson[] };
 export const emptyFields: Fields = { kind: 'meeting', client: '', project: '', people: [] };
 export function KindFields({ value, onChange, onTyping }: { value: Fields; onChange: (next: Fields) => void; onTyping?: (text: string) => void }) {
-  const { clients, failed, retrying } = useCentralClients();
+  const { clients, failed, retrying, off } = useCentralClients();
   const names = (clients ?? []).map(c => c.name);
   const projects = (clients ?? []).find(c => c.name === value.client)?.projects ?? [];
   const projectOptions = [{ value: '', label: !value.client ? 'Elige antes el cliente' : projects.length ? 'Sin proyecto' : 'Sin proyectos en Central' },
     ...[...projects.map(p => p.name), ...(value.project && !projects.some(p => p.name === value.project) ? [value.project] : [])]
       .map(name => ({ value: name, label: `${name}${projects.find(p => p.name === name)?.repo ? ' · GitHub' : ''}` }))];
   // A client saved before (or renamed in Central since) stays visible as it is.
-  const options = [{ value: '', label: clients === null ? 'Leyendo Central…' : failed ? 'No se pudo leer Central' : names.length ? 'Sin cliente' : 'Sin clientes en Central' },
+  const options = [{ value: '', label: clients === null ? 'Leyendo Central…' : off ? 'Sin cliente (Central apagado)' : failed ? 'No se pudo leer Central' : names.length ? 'Sin cliente' : 'Sin clientes en Central' },
     ...[...names, ...(value.client && !names.includes(value.client) ? [value.client] : [])].map(name => ({ value: name, label: name }))];
   return <div className="meeting-save-fields">
     <label className="field">Tipo<ModernSelect value={value.kind} options={kinds} onChange={kind => onChange({ ...value, kind: kind as MeetingKind })}/></label>
     <label className="field">Cliente (de Central)<ModernSelect value={value.client} options={options} disabled={!names.length && !value.client} onChange={client => onChange({ ...value, client, project: client === value.client ? value.project : '' })}/></label>
     <label className="field">Proyecto (de Central)<ModernSelect value={value.project} options={projectOptions} disabled={!value.client} onChange={project => onChange({ ...value, project })}/></label>
-    {clients !== null && !names.length && <p className="meeting-central-retry">
-      <small className="muted">{failed ? 'No se pudo leer Central.' : 'Central no tiene clientes todavía o no está configurado en Conectores.'}</small>
+    {off ? <p className="meeting-central-retry"><small className="muted">Central está apagado en Ajustes › Módulos: la reunión se guarda sin cliente de Central.</small></p>
+      : clients !== null && !names.length && <p className="meeting-central-retry">
+      <small className="muted">{failed ? 'No se pudo leer Central.' : 'Central no tiene clientes todavía o no está conectado (Ajustes › Central).'}</small>
       {retrying ? <small className="muted">Se vuelve a intentar sola…</small>
         : <button type="button" className="button" onClick={() => readCentral(true)}>Volver a leer Central</button>}
     </p>}

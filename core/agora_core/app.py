@@ -124,7 +124,7 @@ def create_app(
             extract_engines = lambda: [ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)]  # noqa: E731
             threading.Thread(target=entity_worker, args=(settings, extract_engines, stop, extract_health), daemon=True).start()
             # New mail of the connected accounts, read-only (user's decision, 14/11/2026).
-            # Mail and its summaries only while «Correo» is on; Central only while «Trabajos» is (1.6).
+            # Mail and its summaries only while «Correo» is on; Central only while «Central» is.
             database_now = lambda: connect(settings.data_dir / DB_NAME)  # noqa: E731
             threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: mail_worker(settings, secrets, own), stop), daemon=True).start()
             # Kinds and summaries of new mail: rules first, then Claude Haiku for what may leave this Mac.
@@ -133,8 +133,8 @@ def create_app(
             threading.Thread(target=modules.gated, args=("whatsapp", database_now, lambda own: chat_worker(settings, secrets, own), stop), daemon=True).start()
             # Kinds and summaries of WhatsApp conversations, like mail: rules first, Claude Haiku only for what may leave this Mac.
             threading.Thread(target=modules.gated, args=("whatsapp", database_now, lambda own: chat_summary_worker(settings, extract_engines, own, chat_summary_health, summary_budget, chat_shadow), stop), daemon=True).start()
-            # Clients and servers from Central, read-only, every half hour (user's decision, 14/11/2026).
-            threading.Thread(target=modules.gated, args=("trabajos", database_now, lambda own: central_worker(settings, own, central_health), stop), daemon=True).start()
+            # Clients and servers from Central, read-only, every half hour (user's decisions, 14/11 and 18/11/2026).
+            threading.Thread(target=modules.gated, args=("central", database_now, lambda own: central_worker(settings, own, central_health, secrets), stop), daemon=True).start()
             # Watson's voice: VoiceStudio opened in the background if it is closed (user's request, 16/11/2026).
             threading.Thread(target=tts.open_at_start, args=(database_now,), daemon=True).start()
         try:
@@ -214,7 +214,7 @@ def create_app(
     app.include_router(jev_router(settings, secrets))
     app.include_router(inbox_router(settings, summary_health, secrets))
     app.include_router(fiscal_router(settings, secrets))
-    app.include_router(central_router(settings, central_health))
+    app.include_router(central_router(settings, central_health, secrets))
     if calendar is not None:
         calendar_store.use(calendar)
     app.include_router(calendar_router(settings))

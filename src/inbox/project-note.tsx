@@ -10,6 +10,7 @@ import { VaultFolderBrowser } from '../ui/vault-folder-browser';
 import { noteContent, noteTitle, projectsBase, withLevel } from './project-note-text';
 import { filesSection, NoteFiles, saveFiles, type Chosen } from './note-files';
 import { RepoFolderPicker } from './repo-note';
+import { moduleOn, useModules } from '../shell/modules';
 
 type Vault = { id: string; name: string; folders: string[] };
 const NO_PROJECT = '';
@@ -45,6 +46,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
   const [made, setMade] = useState<{ folder: string; title: string } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const centralOn = moduleOn(useModules(), 'central');
   const asked = useRef(false);
 
   const vault = vaults?.find(v => v.id === vaultId);
@@ -66,7 +68,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
   };
   if (!asked.current) {
     asked.current = true;
-    void getCentral().then(found => setCentral(found.snapshot?.clients ?? [])).catch(() => undefined);  // without Central, the client is typed
+    if (centralOn) void getCentral().then(found => setCentral(found.snapshot?.clients ?? [])).catch(() => undefined);  // without Central, the client is typed
     (async () => {
       const catalog = await getHermesCatalog();
       const found: Vault[] = [];

@@ -225,19 +225,28 @@ def assistant_router(
 
     @router.post("/proposals/{proposal_id}/quote", status_code=201)
     async def create_quote(proposal_id: str, request: Request):
-        """Creates in Central, as a draft, the very quote Watson proposed, once, for the owner it was proposed to."""
-        from . import addons, central
+        """Creates in Central, as a draft, the very quote Watson proposed, once, for the owner it was proposed to.
+        Needs the «Presupuestos» module on (404 otherwise) and a connection whose key has the `presupuestos`
+        permission (or the old Central folder); the «Central» module may be off."""
+        from . import addons, central, modules
         owner = owner_of(request)
         found = proposals.get(proposal_id)
         if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "quote" not in found:
             return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        def quotes_on():
+            with database() as connection:
+                return modules.state(connection)["presupuestos"]
+        if not await run_in_threadpool(quotes_on):
+            return JSONResponse({"error": "El módulo Presupuestos está apagado."}, status_code=404)
         proposals.pop(proposal_id, None)  # taken before any wait: a double click creates one quote
         def work():
             with database() as connection:
                 path = addons.config(connection, "central").get("path")
-            if not path or not addons.recognised("central", Path(path)):
-                raise central.CentralError("Central no está configurado en Conectores.")
-            return central.create_quote(Path(path), found["quote"])
+                folder = Path(path) if path and addons.recognised("central", Path(path)) else None
+                origin = central.source(connection, secrets, folder)
+            if origin is None:
+                raise central.CentralError("Central no está conectado: conéctalo en Ajustes › Central.")
+            return central.create_quote(origin, found["quote"])
         try:
             made = await run_in_threadpool(work)
         except (central.CentralError, Exception) as error:  # noqa: BLE001 - Central's own message, or that it failed

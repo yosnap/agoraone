@@ -21,7 +21,7 @@ export function CentralCard({ discreet }: { discreet: boolean }) {
   return <article className="card summary-wide" aria-labelledby="central-title">
     <div className="card-head"><h2 id="central-title">Clientes y servidores · Central</h2>
       <button type="button" className="button" disabled={busy || !state?.configured} onClick={() => void refresh()}>{busy ? 'Leyendo…' : 'Actualizar'}</button></div>
-    {state && !state.configured ? <p className="muted">Central no está configurado: indica su carpeta en Conectores.</p> : !snapshot ? <p className="muted">Aún no se ha leído Central{state?.problem ? '' : ': se lee cada media hora o con «Actualizar»'}.</p> : <>
+    {state && !state.configured ? <p className="muted">Central no está conectado: conéctalo en Ajustes › Central.</p> : !snapshot ? <p className="muted">Aún no se ha leído Central{state?.problem ? '' : ': se lee cada media hora o con «Actualizar»'}.</p> : <>
       <p className="muted">{snapshot.clients.length} clientes ({active.length} con proyectos activos) · {snapshot.servers.length} servidores · leído {new Date(snapshot.fetchedAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}. Solo lectura.</p>
       <div className="summary-split">
         <div><h3>Servidores</h3><ul className="central-list">{snapshot.servers.map(server => <li key={server.name}>
@@ -32,6 +32,7 @@ export function CentralCard({ discreet }: { discreet: boolean }) {
           <small className="muted">{client.projects.filter(p => p.status === 'ACTIVE' || p.status === 'MAINTENANCE').length} activos{client.domains.length ? '' : ' · sin dominio para el correo'}</small></li>)}</ul>}</div>
       </div>
     </>}
+    {state?.notice && <p className="muted">{state.notice}</p>}
     {(error || state?.problem) && <LoadError message={error || state?.problem || ''}/>}
   </article>;
 }
