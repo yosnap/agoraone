@@ -14,6 +14,7 @@ import { VoiceSettingsCard } from './settings-voice';
 import { MeetingSettingsCard } from './settings-meetings';
 import { AppsSettingsCard } from './settings-apps';
 import { MusicSettingsCard } from './settings-music';
+import { hereLabel, keystoreLabel } from '../ui/platform';
 import './settings.css';
 
 type Tab = { id: string; label: string; cards: () => ReactNode };
@@ -61,7 +62,7 @@ export function SettingsView() {
   return <section className="page settings" aria-labelledby="settings-title">
     <div className="eyebrow">AJUSTES</div>
     <h1 id="settings-title">Ajustes</h1>
-    <p className="page-lead">Todo se guarda en este Mac: los ajustes en la base del cerebro y las claves en el Llavero de macOS.</p>
+    <p className="page-lead">Todo se guarda en {hereLabel}: los ajustes en la base del cerebro y las claves en {keystoreLabel}.</p>
     <div className="settings-tabs" role="tablist" aria-label="Apartados de Ajustes" onKeyDown={keys}>
       {tabs.map(t => <button key={t.id} id={`settings-tab-${t.id}`} ref={node => { buttons.current[t.id] = node; }} role="tab" type="button"
         aria-selected={t.id === current.id} aria-controls="settings-panel" tabIndex={t.id === current.id ? 0 : -1} onClick={() => choose(t.id)}>{t.label}</button>)}

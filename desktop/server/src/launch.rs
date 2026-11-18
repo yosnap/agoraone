@@ -41,18 +41,38 @@ impl Paths {
 impl Paths {
     /// The packaged app: everything it needs inside its `Resources`, the user's data outside the app.
     pub fn packaged(resources: &Path, data: PathBuf) -> Self {
+        let python = if cfg!(windows) { resources.join("python/python.exe") } else { resources.join("python/bin/python3") };
         Self {
             data,
             web: resources.join("web"),
             examples: resources.join("library-test"),
-            core: Some(CoreLaunch::Bundled { python: resources.join("python/bin/python3"), folder: resources.join("core") }),
+            core: Some(CoreLaunch::Bundled { python, folder: resources.join("core") }),
         }
     }
 }
 
-/// Where the packaged app keeps the user's data: `~/Library/Application Support/AgoraOne`.
+/// Where the packaged app keeps the user's data: `~/Library/Application Support/AgoraOne` (or `%LOCALAPPDATA%\AgoraOne` on Windows).
 pub fn app_support() -> Option<PathBuf> {
-    Some(PathBuf::from(std::env::var_os("HOME")?).join("Library/Application Support/AgoraOne"))
+    #[cfg(target_os = "macos")]
+    {
+        Some(crate::platform::home_dir()?.join("Library/Application Support/AgoraOne"))
+    }
+    #[cfg(windows)]
+    {
+        let base = std::env::var_os("LOCALAPPDATA")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| crate::platform::home_dir().map(|h| h.join("AppData/Local")))?;
+        Some(base.join("AgoraOne"))
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let base = std::env::var_os("XDG_DATA_HOME")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| crate::platform::home_dir().map(|h| h.join(".local/share")))?;
+        Some(base.join("AgoraOne"))
+    }
 }
 
 fn is_sqlite(path: &Path) -> bool {
@@ -93,16 +113,18 @@ fn copy_database(from: &Path, to: &Path) -> std::io::Result<()> {
 /// The first time the packaged app starts, the data the user already had in the project's `.agora` is
 /// copied (never moved or deleted) to its own folder; later starts leave both alone. Links are not followed.
 pub fn copy_first_run(from: &Path, to: &Path) -> std::io::Result<bool> {
-    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     if to.exists() || !from.is_dir() {
         return Ok(false);
     }
     let staging = to.with_extension("copiando");
     let _ = std::fs::remove_dir_all(&staging);
     fn copy(from: &Path, to: &Path) -> std::io::Result<()> {
-        std::fs::DirBuilder::new().mode(0o700).create(to)?;
+        crate::platform::create_dir_mode(to, false, 0o700)?;
         for entry in std::fs::read_dir(from)? {
             let entry = entry?;
+            if crate::platform::dir_entry_is_link(&entry) {
+                continue;
+            }
             let kind = entry.file_type()?;
             let target = to.join(entry.file_name());
             if kind.is_dir() {
@@ -126,7 +148,7 @@ pub fn copy_first_run(from: &Path, to: &Path) -> std::io::Result<bool> {
         std::fs::create_dir_all(parent)?;
     }
     copy(from, &staging)?;
-    std::fs::set_permissions(&staging, std::fs::Permissions::from_mode(0o700))?;
+    crate::platform::set_mode(&staging, 0o700)?;
     // Renamed into place only when complete, so an interrupted copy is redone, never half-used.
     std::fs::rename(&staging, to)?;
     Ok(true)
@@ -135,16 +157,22 @@ pub fn copy_first_run(from: &Path, to: &Path) -> std::io::Result<bool> {
 /// An app opened from Finder gets a bare PATH; the user's own program folders are added so the core finds
 /// the installed Claude Code and the profiles' MCP launchers are found as in their terminal.
 pub fn widen_path() {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let current = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin:/usr/sbin:/sbin".into());
-    let mut parts: Vec<String> = current.split(':').filter(|p| !p.is_empty()).map(str::to_string).collect();
-    for extra in [format!("{home}/.local/bin"), "/opt/homebrew/bin".into(), "/usr/local/bin".into()] {
-        if !parts.contains(&extra) && Path::new(&extra).is_dir() {
+    let home = crate::platform::home_dir().unwrap_or_default();
+    let current = std::env::var_os("PATH").unwrap_or_else(|| crate::platform::default_system_path().into());
+    let mut parts: Vec<PathBuf> = std::env::split_paths(&current).filter(|p| !p.as_os_str().is_empty()).collect();
+    #[cfg(windows)]
+    let extras = [home.join(".local/bin")];
+    #[cfg(not(windows))]
+    let extras = [home.join(".local/bin"), PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin")];
+    for extra in extras {
+        if !parts.contains(&extra) && extra.is_dir() {
             parts.push(extra);
         }
     }
-    // SAFETY: called at start-up, before any other thread reads the environment.
-    unsafe { std::env::set_var("PATH", parts.join(":")) };
+    if let Ok(joined) = std::env::join_paths(parts) {
+        // SAFETY: called at start-up, before any other thread reads the environment.
+        unsafe { std::env::set_var("PATH", joined) };
+    }
 }
 
 /// `KEY=value` lines of a dotenv file, for variables not already set (like `node --env-file`). Values are
@@ -168,10 +196,18 @@ pub fn load_dotenv(file: &Path) {
     }
 }
 
+fn port_check_hint(port: u16) -> String {
+    if cfg!(windows) {
+        format!("netstat -ano | findstr :{port}")
+    } else {
+        format!("lsof -iTCP:{port} -sTCP:LISTEN")
+    }
+}
+
 fn exit_message(code: i32) -> String {
     match code {
         2 => "falta el secreto de arranque".into(),
-        3 => "el puerto 4318 está ocupado; comprueba quién lo usa con «lsof -iTCP:4318 -sTCP:LISTEN»".into(),
+        3 => format!("el puerto 4318 está ocupado; comprueba quién lo usa con «{}»", port_check_hint(4318)),
         other => format!("código {other}"),
     }
 }
@@ -183,6 +219,7 @@ pub struct Server {
     listener: TcpListener,
     stop_core: Option<oneshot::Sender<()>>,
     core_done: Option<oneshot::Receiver<()>>,
+    _core_group: Option<crate::platform::ProcessGroup>,
 }
 
 /// Reads or creates the token, binds the port and starts the core.
@@ -190,18 +227,23 @@ pub async fn prepare(paths: &Paths) -> anyhow::Result<Server> {
     let token = access::load_token(&paths.data.join("access-token"))?;
     let listener = TcpListener::bind(("127.0.0.1", PORT)).await.map_err(|error| {
         if error.kind() == std::io::ErrorKind::AddrInUse {
-            anyhow::anyhow!("el puerto {PORT} está ocupado; comprueba quién lo usa con «lsof -iTCP:{PORT} -sTCP:LISTEN»")
+            anyhow::anyhow!("el puerto {PORT} está ocupado; comprueba quién lo usa con «{}»", port_check_hint(PORT))
         } else {
             anyhow::anyhow!("no se pudo escuchar en 127.0.0.1:{PORT} ({error})")
         }
     })?;
     let link = CoreLink { url: crate::core::CORE_URL.into(), secret: access::random_hex() };
-    let (mut stop_core, mut core_done, mut core) = (None, None, None);
+    let (mut stop_core, mut core_done, mut core, mut core_group) = (None, None, None, None);
     match &paths.core {
         None => eprintln!("AgoraOne: no se encuentra el núcleo (carpeta core); se sigue sin él."),
         Some(launch) => match start(launch, &link, &paths.data.join("core")) {
             Err(_) => eprintln!("AgoraOne: no se pudo arrancar el núcleo; instala uv (https://docs.astral.sh/uv/) y reinicia."),
             Ok(mut child) => {
+                // On Windows the core and whatever it starts share a Job Object: closing or killing it stops
+                // them all at once (there is no SIGTERM). On macOS and Linux the core stops as it always did.
+                let group = crate::platform::ProcessGroup::attach(&child);
+                #[cfg(windows)]
+                let waiter_group = group.clone();
                 let (stop, stopped) = oneshot::channel::<()>();
                 let (done, finished) = oneshot::channel::<()>();
                 tokio::spawn(async move {
@@ -212,16 +254,14 @@ pub async fn prepare(paths: &Paths) -> anyhow::Result<Server> {
                             }
                         }
                         _ = stopped => {
-                            // SAFETY: a plain signal to the core this process started.
-                            if let Some(pid) = child.id() { unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) }; }
-                            if tokio::time::timeout(Duration::from_secs(5), child.wait()).await.is_err() {
-                                let _ = child.kill().await;
-                            }
+                            crate::platform::stop_child(&mut child, Duration::from_secs(5)).await;
+                            #[cfg(windows)]
+                            waiter_group.kill();
                         }
                     }
                     let _ = done.send(());
                 });
-                (stop_core, core_done, core) = (Some(stop), Some(finished), Some(launch.clone()));
+                (stop_core, core_done, core, core_group) = (Some(stop), Some(finished), Some(launch.clone()), Some(group));
             }
         },
     }
@@ -235,7 +275,7 @@ pub async fn prepare(paths: &Paths) -> anyhow::Result<Server> {
         extractor: core.as_ref().map(Extractor::from_launch),
     };
     let state = AppState::new(config, &token, core.is_some().then_some(link));
-    Ok(Server { token, state, listener, stop_core, core_done })
+    Ok(Server { token, state, listener, stop_core, core_done, _core_group: core_group })
 }
 
 impl Server {
@@ -301,7 +341,7 @@ mod tests {
         std::fs::create_dir_all(from.join("library/dueño")).unwrap();
         std::fs::write(from.join("access-token"), "token").unwrap();
         std::fs::write(from.join("library/dueño/copia.json"), "{}").unwrap();
-        std::os::unix::fs::symlink("/etc/hosts", from.join("enlace")).unwrap();
+        crate::platform::create_test_link(Path::new("/etc/hosts"), from.join("enlace")).unwrap();
         assert!(copy_first_run(&from, &to).unwrap());
         assert_eq!(std::fs::read_to_string(to.join("library/dueño/copia.json")).unwrap(), "{}");
         assert!(from.join("access-token").exists(), "el original se queda");
@@ -359,7 +399,8 @@ mod tests {
     fn rutas_de_la_app_empaquetada() {
         let paths = Paths::packaged(Path::new("/App/Contents/Resources"), PathBuf::from("/datos"));
         assert_eq!(paths.web, Path::new("/App/Contents/Resources/web"));
-        assert!(matches!(paths.core, Some(CoreLaunch::Bundled { ref python, .. }) if python.ends_with("python/bin/python3")));
+        let expected = if cfg!(windows) { "python/python.exe" } else { "python/bin/python3" };
+        assert!(matches!(paths.core, Some(CoreLaunch::Bundled { ref python, .. }) if python.ends_with(expected)));
     }
 
     #[test]

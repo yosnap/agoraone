@@ -2,7 +2,6 @@
 //! owners, history, streaming, profile identity and revocation, attachments, approvals and turn limits.
 
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -11,6 +10,7 @@ use agora_server::chat::worker::Progress;
 use agora_server::chat::{Adapter, Turn};
 use agora_server::hermes::location::HermesLocation;
 use agora_server::hermes::resources::obsidian_vaults;
+use agora_server::platform::{canonicalize, create_test_link as symlink};
 use agora_server::{AppState, Config, router};
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
@@ -52,7 +52,7 @@ fn recording(turns: Turns, events: Vec<Value>, reply: Result<&'static str, &'sta
 /// `hermes`: the folder of a fictitious Hermes data root (profiles), or none; `vault`: Obsidian registry.
 fn fixture(setup: impl FnOnce(&Path) -> (Option<PathBuf>, Option<PathBuf>), adapter: impl FnOnce(Turns) -> Adapter) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let base = fs::canonicalize(dir.path()).unwrap();
+    let base = canonicalize(dir.path()).unwrap();
     let examples = base.join("ejemplos");
     fs::create_dir(&examples).unwrap();
     fs::write(examples.join("bienvenida.txt"), "Clave del ejemplo: FARO-274").unwrap();
@@ -154,6 +154,8 @@ async fn separa_propietarios_y_conserva_historial_por_conversacion() {
     assert_eq!(f.post("/api/conversations", json!({ "agent": "byte", "context": "library-lobby" })).await.0, StatusCode::BAD_REQUEST);
     assert_eq!(f.post("/api/conversations", json!({ "agent": "luma", "context": "../../private" })).await.0, StatusCode::BAD_REQUEST);
     let saved = fs::metadata(f.base.join("datos/conversations").join(format!("{id}.json"))).unwrap();
+    assert!(saved.is_file());
+    #[cfg(unix)]
     assert_eq!(std::os::unix::fs::PermissionsExt::mode(&saved.permissions()) & 0o777, 0o600);
 }
 
@@ -407,7 +409,7 @@ async fn documentos_por_id_y_cada_turno_revalida_el_archivo() {
     // Replacing the example with a link revokes it for the next turn.
     let example = f.base.join("ejemplos/bienvenida.txt");
     fs::remove_file(&example).unwrap();
-    symlink("/etc/hosts", &example).unwrap();
+    symlink(Path::new("/etc/hosts"), &example).unwrap();
     assert_eq!(f.post(&path, json!({ "message": "leer", "documentId": "welcome" })).await.0, StatusCode::FORBIDDEN);
     assert_eq!(f.turns().len(), 2);
 }

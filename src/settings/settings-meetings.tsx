@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { getLocalModels, getMeetingSettings, getSummarizers, levelLabels, putMeetingSettings, type Level, type MeetingSettings, type Summarizer } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { hereLabel } from '../ui/platform';
 
 /** The model on this machine that summarizes meetings marked «solo en este Mac» or private (LM Studio,
  * Ollama or any server with the OpenAI chat API on 127.0.0.1). Normal meetings are summarized by Claude. */
@@ -37,9 +38,9 @@ export function MeetingSettingsCard() {
   return <article className="card" aria-labelledby="meeting-model-title">
     <div className="card-head"><h2 id="meeting-model-title">Resumen de reuniones</h2>
       {state && <span className={`status-badge ${state.local_model ? 'good' : 'paused'}`}>{state.local_model ? 'Modelo local elegido' : 'Sin modelo local'}</span>}</div>
-    <p>Las reuniones normales las resume Claude. Las marcadas «solo en este Mac» o privadas no salen del equipo: las resume un modelo que tengas aquí (LM Studio u Ollama con su servidor abierto) o, si no eliges ninguno, se quedan solo con la transcripción.</p>
+    <p>Las reuniones normales las resume Claude. Las marcadas «solo en {hereLabel}» o privadas no salen del equipo: las resume un modelo que tengas aquí (LM Studio u Ollama con su servidor abierto) o, si no eliges ninguno, se quedan solo con la transcripción.</p>
     {who && <dl className="summarizers" aria-label="Quién resume cada reunión">
-      <dt>Grabar y transcribir</dt><dd>Siempre en este Mac (whisper). Nadie más oye el audio.</dd>
+      <dt>Grabar y transcribir</dt><dd>Siempre en {hereLabel} (whisper). Nadie más oye el audio.</dd>
       <dt>Reuniones «{levelLabels.normal}»</dt><dd className={who.normal.by === 'claude' ? 'ok' : 'warn'}>{who.normal.label}</dd>
       <dt>«{levelLabels.local_only}» y «{levelLabels.private}»</dt><dd className={who.private.by === 'local' ? 'ok' : 'warn'}>{who.private.label}</dd>
     </dl>}

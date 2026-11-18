@@ -22,7 +22,7 @@ def db(tmp_path):
     connection.close()
 
 
-def test_la_carpeta_fiscal_nunca_es_la_personal_ni_icloud(tmp_path):
+def test_la_carpeta_fiscal_nunca_es_la_personal_ni_icloud(tmp_path, monkeypatch):
     home = tmp_path / "home"
     work = home / "Trabajo" / "Actividad"
     work.mkdir(parents=True)
@@ -30,15 +30,29 @@ def test_la_carpeta_fiscal_nunca_es_la_personal_ni_icloud(tmp_path):
     for bad in (home, tmp_path, home / "no-existe"):
         with pytest.raises(fiscal.FiscalError):
             fiscal.check_folder(str(bad), home=home)
+    if __import__("os").name == "nt" and tmp_path.drive:
+        other_home = Path("C:\\Users\\otro" if tmp_path.drive.upper() != "C:" else "D:\\Users\\otro")
+        assert fiscal.check_folder(str(work), home=other_home) == work.resolve()
+        with pytest.raises(fiscal.FiscalError):
+            fiscal.check_folder(tmp_path.anchor, home=other_home)
+
+
+def _link_dir(link, target):
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        import _winapi
+
+        _winapi.CreateJunction(str(target.resolve()), str(link))
 
 
 def test_rutas_dentro_de_la_carpeta(tmp_path):
     root = tmp_path / "fiscal"
     root.mkdir()
     (tmp_path / "fuera").mkdir()
-    (root / "atajo").symlink_to(tmp_path / "fuera")
+    _link_dir(root / "atajo", tmp_path / "fuera")
     assert fiscal.inside(root.resolve(), "Facturas Entrantes/2026/4T/a.pdf").name == "a.pdf"
-    for bad in ("../fuera/a.pdf", "/etc/passwd", "atajo/a.pdf", "~/a.pdf"):
+    for bad in ("../fuera/a.pdf", "/etc/passwd", "\\fuera\\a.pdf", str(tmp_path / "fuera/a.pdf"), "atajo/a.pdf", "~/a.pdf"):
         with pytest.raises(fiscal.FiscalError):
             fiscal.inside(root.resolve(), bad)
 

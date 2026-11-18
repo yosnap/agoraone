@@ -2,13 +2,13 @@
 //! editing or creating notes without following links or overwriting; plus the routes through the router.
 
 use std::fs;
-use std::os::unix::fs::{MetadataExt, PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use agora_server::access::proof;
 use agora_server::hermes::location::HermesLocation;
 use agora_server::hermes::resources::obsidian_vaults;
+use agora_server::platform::{canonicalize, create_test_link as symlink, inspect_path_nofollow};
 use agora_server::security::Failure;
 use agora_server::vault::{NoteEdit, NoteMove, VaultNote, VaultNotes};
 use agora_server::{AppState, Config, router};
@@ -28,7 +28,7 @@ struct Fixture {
 
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let base = fs::canonicalize(dir.path()).unwrap();
+    let base = canonicalize(dir.path()).unwrap();
     let (vault, outside) = (base.join("Mi vault"), base.join("fuera"));
     fs::create_dir_all(vault.join("Proyectos/Activos")).unwrap();
     for folder in [vault.join(".obsidian"), vault.join(".trash"), outside.clone()] {
@@ -128,8 +128,10 @@ fn las_lineas_con_pinta_de_clave_se_ocultan_salvo_peticion() {
     assert!(!f.notes.document(&id).unwrap().content.contains("CANARY"));
 }
 
+#[cfg(unix)]
 #[test]
 fn una_carpeta_ilegible_no_impide_listar_el_resto() {
+    use std::os::unix::fs::PermissionsExt;
     let f = fixture();
     let all = f.notes.list(&f.id, false).unwrap().notes.len();
     let folder = f.vault.join("Proyectos/Activos");
@@ -148,18 +150,30 @@ fn guarda_con_copia_conserva_lineas_ocultas_y_respeta_cambios_de_fuera() {
     let backups = f.base.join("copias");
     let file = f.vault.join("Claves.md");
     fs::write(&file, "Servicio\napi_key: CANARY_VAULT_KEY\nfin").unwrap();
-    fs::set_permissions(&file, fs::Permissions::from_mode(0o640)).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o640)).unwrap();
+    }
     let note = by_title(&f, "Claves");
     let opened = f.notes.read(&f.id, &note.id, false).unwrap();
     assert!(!opened.content.contains("CANARY"));
     let saved = f.notes.save(&f.id, &note.id, edit(&opened.content.replace("fin", "final editado"), &opened.revision), &backups).unwrap();
     assert_eq!(read(&file), "Servicio\napi_key: CANARY_VAULT_KEY\nfinal editado", "la línea oculta vuelve de disco");
-    assert_eq!(fs::metadata(&file).unwrap().mode() & 0o777, 0o640, "conserva los permisos");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(fs::metadata(&file).unwrap().mode() & 0o777, 0o640, "conserva los permisos");
+    }
     assert_eq!(f.notes.read(&f.id, &note.id, false).unwrap().revision, saved.revision, "la lectura ve la versión nueva");
     let copies: Vec<_> = fs::read_dir(backups.join(&f.id)).unwrap().flatten().collect();
     assert_eq!(copies.len(), 1);
     assert_eq!(read(copies[0].path()), "Servicio\napi_key: CANARY_VAULT_KEY\nfin");
-    assert_eq!(fs::metadata(copies[0].path()).unwrap().mode() & 0o777, 0o600);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(fs::metadata(copies[0].path()).unwrap().mode() & 0o777, 0o600);
+    }
     // Changed in Obsidian meanwhile: the old revision no longer saves.
     fs::write(&file, "otra cosa").unwrap();
     assert_eq!(status(f.notes.save(&f.id, &note.id, edit("pisado", &saved.revision), &backups)), 409);
@@ -210,17 +224,25 @@ fn conserva_archivo_finales_de_linea_bom_y_permisos() {
     fs::write(f.vault.join("Control.md"), "texto\u{c}página").unwrap();
     let crlf = f.vault.join("Windows.md");
     fs::write(&crlf, [&[0xef, 0xbb, 0xbf][..], b"uno\r\napi_key: CANARY_CRLF\r\ndos"].concat()).unwrap();
-    fs::set_permissions(&crlf, fs::Permissions::from_mode(0o664)).unwrap();
-    let before = fs::metadata(&crlf).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&crlf, fs::Permissions::from_mode(0o664)).unwrap();
+    }
+    let before = inspect_path_nofollow(&crlf).unwrap();
     let note = by_title(&f, "Windows");
     let opened = f.notes.read(&f.id, &note.id, false).unwrap();
     f.notes.save(&f.id, &note.id, edit(&opened.content.replace("dos", "tres"), &opened.revision), &backups).unwrap();
     let bytes = fs::read(&crlf).unwrap();
     assert_eq!(&bytes[..3], [0xef, 0xbb, 0xbf], "el BOM se conserva");
     assert_eq!(String::from_utf8_lossy(&bytes[3..]), "uno\r\napi_key: CANARY_CRLF\r\ntres", "CRLF en todas las líneas");
-    let after = fs::metadata(&crlf).unwrap();
-    assert_eq!(after.ino(), before.ino(), "el mismo archivo: Obsidian conserva su fecha de creación");
-    assert_eq!(after.mode() & 0o777, 0o664);
+    let after = inspect_path_nofollow(&crlf).unwrap();
+    assert_eq!(after.id, before.id, "el mismo archivo: Obsidian conserva su fecha de creación");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(fs::metadata(&crlf).unwrap().mode() & 0o777, 0o664);
+    }
 
     let control = by_title(&f, "Control");
     let revision = f.notes.read(&f.id, &control.id, false).unwrap().revision;
@@ -261,16 +283,25 @@ fn mover_y_renombrar_conserva_el_archivo_copia_antes_y_nunca_pisa() {
     let f = fixture();
     let backups = f.base.join("copias");
     let file = f.vault.join("Inicio.md");
-    fs::set_permissions(&file, fs::Permissions::from_mode(0o640)).unwrap();
-    let before = fs::metadata(&file).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o640)).unwrap();
+    }
+    let before = inspect_path_nofollow(&file).unwrap();
     let note = by_title(&f, "Inicio");
     let revision = f.notes.read(&f.id, &note.id, false).unwrap().revision;
     let moved = f.notes.move_note(&f.id, &note.id, target("Proyectos/Activos", "Portada", &revision), &backups).unwrap();
     let dest = f.vault.join("Proyectos/Activos/Portada.md");
     assert!(!file.exists());
     assert_eq!(read(&dest), "# Inicio\nBienvenida al vault.");
-    let after = fs::metadata(&dest).unwrap();
-    assert_eq!((after.ino(), after.mode() & 0o777, after.nlink()), (before.ino(), 0o640, 1), "el mismo archivo, sus permisos y un solo nombre");
+    let after = inspect_path_nofollow(&dest).unwrap();
+    assert_eq!((after.id, after.nlink), (before.id, 1), "el mismo archivo y un solo nombre");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(fs::metadata(&dest).unwrap().mode() & 0o777, 0o640);
+    }
     assert_eq!((moved.folder.as_str(), moved.title.as_str()), ("Proyectos/Activos", "Portada"));
     assert_eq!(by_title(&f, "Portada").id, moved.id, "aparece en el listado con su id nuevo");
     assert_eq!(fs::read_dir(backups.join(&f.id)).unwrap().count(), 1, "copia previa");

@@ -1,9 +1,8 @@
 //! Editing and creating notes in the user's real vaults (user's decision, 18/10/2026): revision-checked,
 //! backed up first, written in place through a handle that never follows links, and never overwriting.
 
-use std::fs::{self, DirBuilder, OpenOptions};
+use std::fs;
 use std::io::{ErrorKind, Read, Write};
-use std::os::unix::fs::{DirBuilderExt, FileExt, MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -14,6 +13,10 @@ use unicode_normalization::UnicodeNormalization;
 use super::{Index, MAX_NOTE_BYTES, VaultNotes, sha256_hex};
 use crate::hermes::safe_read::decode_utf8;
 use crate::js::{digest, js_trim, now_iso};
+use crate::platform::{
+    FileInfo, create_dir_mode, create_mode_file, create_new_nofollow, inspect_handle, inspect_path_nofollow, is_same_real_path,
+    open_nofollow_read, open_nofollow_rw, write_all_at,
+};
 use crate::secret_lines::{CONTROLS, mask_secrets, restore_secrets};
 use crate::security::Failure;
 
@@ -76,7 +79,7 @@ fn folder_of(index: &Index, folder: &str) -> Result<PathBuf, Failure> {
         return Err(Failure::new(404, "Esa carpeta no existe en el vault."));
     }
     let directory = folder.split('/').filter(|p| !p.is_empty()).fold(index.vault.root.clone(), |path, part| path.join(part));
-    if fs::canonicalize(&directory).map_err(internal)? != directory {
+    if !is_same_real_path(&directory).map_err(internal)? {
         return Err(refused(LINKED));
     }
     Ok(directory)
@@ -91,12 +94,12 @@ fn new_folder(index: &Index, folder: &str) -> Result<PathBuf, Failure> {
         return Err(missing());
     }
     let directory = folder_of(index, parent)?.join(name);
-    match DirBuilder::new().mode(0o755).create(&directory) {
+    match create_dir_mode(&directory, false, 0o755) {
         Ok(()) => {}
         Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
         Err(_) => return Err(refused("No se pudo crear la carpeta en el vault.")),
     }
-    if fs::canonicalize(&directory).map_err(internal)? != directory {
+    if !is_same_real_path(&directory).map_err(internal)? {
         return Err(refused(LINKED));
     }
     Ok(directory)
@@ -113,13 +116,13 @@ fn check(content: &str) -> Result<(), Failure> {
 }
 
 /// The note must still be a plain file (no link, one name) inside the vault, in a folder that is no link either.
-fn safe_target(index: &Index, file: &Path) -> Result<fs::Metadata, Failure> {
-    let meta = fs::symlink_metadata(file).map_err(|_| conflict())?;
-    if !meta.is_file() || meta.nlink() != 1 {
+fn safe_target(index: &Index, file: &Path) -> Result<FileInfo, Failure> {
+    let meta = inspect_path_nofollow(file).map_err(|_| conflict())?;
+    if !meta.is_file || meta.nlink != 1 {
         return Err(refused("Esta nota no se puede editar: es un enlace."));
     }
     let folder = file.parent().unwrap_or(Path::new("/"));
-    if fs::canonicalize(folder).map_err(internal)? != folder || !folder.starts_with(&index.vault.root) {
+    if !is_same_real_path(folder).map_err(internal)? || !folder.starts_with(&index.vault.root) {
         return Err(refused(LINKED_FOLDER));
     }
     Ok(meta)
@@ -127,9 +130,9 @@ fn safe_target(index: &Index, file: &Path) -> Result<fs::Metadata, Failure> {
 
 fn backup(backups: &Path, vault_id: &str, note_id: &str, bytes: &[u8]) -> std::io::Result<()> {
     let folder = backups.join(vault_id);
-    DirBuilder::new().recursive(true).mode(0o700).create(&folder)?;
+    create_dir_mode(&folder, true, 0o700)?;
     let name = format!("{note_id}.{}.bak", now_iso().replace(['-', ':'], ""));
-    let mut copy = OpenOptions::new().write(true).create_new(true).mode(0o600).open(folder.join(name))?;
+    let mut copy = create_mode_file(&folder.join(name), true, false, 0o600)?;
     copy.write_all(bytes)?;
     copy.sync_all()?;
     let prefix = format!("{note_id}.");
@@ -161,17 +164,17 @@ impl VaultNotes {
             .find(|e| e.note.id == note_id && e.note.readable)
             .ok_or_else(|| Failure::new(404, "Esta nota no se puede editar: no existe, es demasiado grande o es un enlace."))?;
         let listed = safe_target(&index, &entry.file)?;
-        let mut handle = OpenOptions::new().read(true).write(true).custom_flags(libc::O_NOFOLLOW).open(&entry.file).map_err(|_| conflict())?;
-        let opened = handle.metadata().map_err(internal)?;
-        if !opened.is_file() || opened.nlink() != 1 || opened.ino() != listed.ino() || opened.len() > MAX_NOTE_BYTES {
+        let mut handle = open_nofollow_rw(&entry.file).map_err(|_| conflict())?;
+        let opened = inspect_handle(&handle).map_err(internal)?;
+        if !opened.is_file || opened.nlink != 1 || opened.id != listed.id || opened.len > MAX_NOTE_BYTES {
             return Err(refused("Esta nota no se puede editar: es un enlace o cambió de archivo."));
         }
         let folder = entry.file.parent().unwrap_or(Path::new("/"));
-        if fs::canonicalize(folder).map_err(internal)? != folder || fs::symlink_metadata(&entry.file).map_err(internal)?.ino() != opened.ino() {
+        if !is_same_real_path(folder).map_err(internal)? || inspect_path_nofollow(&entry.file).map_err(internal)?.id != opened.id {
             return Err(refused(LINKED_FOLDER));
         }
         let mut bytes = Vec::new();
-        (&mut handle).take(opened.len()).read_to_end(&mut bytes).map_err(internal)?;
+        (&mut handle).take(opened.len).read_to_end(&mut bytes).map_err(internal)?;
         if sha256_hex(&bytes) != edit.revision {
             return Err(conflict());
         }
@@ -189,7 +192,7 @@ impl VaultNotes {
         let bom: &[u8] = if bytes.starts_with(&[0xef, 0xbb, 0xbf]) { &bytes[..3] } else { &[] };
         let output = [bom, content.as_bytes()].concat();
         backup(backups, vault_id, note_id, &bytes).map_err(internal)?;
-        handle.write_all_at(&output, 0).map_err(internal)?;
+        write_all_at(&handle, &output, 0).map_err(internal)?;
         handle.set_len(output.len() as u64).map_err(internal)?;
         handle.sync_all().map_err(internal)?;
         self.forget(vault_id);
@@ -206,9 +209,9 @@ impl VaultNotes {
             Err(failure) if failure.status.as_u16() == 404 => new_folder(&index, folder)?,
             found => found?,
         };
-        let linked = || fs::canonicalize(&directory).map(|real| real != directory);
+        let linked = || is_same_real_path(&directory).map(|same| !same);
         let file = directory.join(format!("{name}.md"));
-        let mut handle = OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW).mode(0o644).open(&file).map_err(|error| {
+        let mut handle = create_new_nofollow(&file, 0o644).map_err(|error| {
             if error.kind() == ErrorKind::AlreadyExists {
                 Failure::new(409, "Ya existe una nota con ese título en esta carpeta.")
             } else {
@@ -217,6 +220,7 @@ impl VaultNotes {
         })?;
         // The folder was swapped for a link between the check and the creation: undo and stop.
         if linked().unwrap_or(true) {
+            drop(handle);
             let _ = fs::remove_file(&file);
             return Err(refused(LINKED));
         }
@@ -245,13 +249,13 @@ impl VaultNotes {
         let listed = safe_target(&index, &entry.file)?;
         let directory = folder_of(&index, &target.folder)?;
         let file = directory.join(format!("{name}.md"));
-        let handle = OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW).open(&entry.file).map_err(|_| conflict())?;
-        let opened = handle.metadata().map_err(internal)?;
-        if !opened.is_file() || opened.nlink() != 1 || opened.ino() != listed.ino() || opened.len() > MAX_NOTE_BYTES {
+        let handle = open_nofollow_read(&entry.file).map_err(|_| conflict())?;
+        let opened = inspect_handle(&handle).map_err(internal)?;
+        if !opened.is_file || opened.nlink != 1 || opened.id != listed.id || opened.len > MAX_NOTE_BYTES {
             return Err(refused("Esta nota no se puede mover: es un enlace o cambió de archivo."));
         }
         let mut bytes = Vec::new();
-        handle.take(opened.len()).read_to_end(&mut bytes).map_err(internal)?;
+        handle.take(opened.len).read_to_end(&mut bytes).map_err(internal)?;
         if sha256_hex(&bytes) != target.revision {
             return Err(conflict());
         }
@@ -259,7 +263,7 @@ impl VaultNotes {
         if let Err(error) = fs::hard_link(&entry.file, &file) {
             // Same file under another spelling (only case or accents change on a case-insensitive disk): a plain rename.
             let exists = error.kind() == ErrorKind::AlreadyExists;
-            if exists && fs::symlink_metadata(&file).is_ok_and(|m| m.ino() == listed.ino()) {
+            if exists && inspect_path_nofollow(&file).is_ok_and(|m| m.id == listed.id) {
                 fs::rename(&entry.file, &file).map_err(internal)?;
                 self.forget(vault_id);
                 return Ok(created(&index, vault_id, &file, &target.folder, name));
@@ -267,7 +271,7 @@ impl VaultNotes {
             return Err(if exists { Failure::new(409, "Ya existe una nota con ese título en esa carpeta.") } else { refused("No se pudo mover la nota en este disco.") });
         }
         // The destination folder was swapped for a link meanwhile: undo and stop.
-        if fs::canonicalize(&directory).map(|real| real != directory).unwrap_or(true) {
+        if !is_same_real_path(&directory).unwrap_or(false) {
             let _ = fs::remove_file(&file);
             return Err(refused(LINKED));
         }
@@ -281,6 +285,6 @@ impl VaultNotes {
 }
 
 fn created(index: &Index, vault_id: &str, file: &Path, folder: &str, title: String) -> Created {
-    let path = file.strip_prefix(&index.vault.root).unwrap_or(file).to_string_lossy().into_owned();
+    let path = crate::platform::slash_path(file.strip_prefix(&index.vault.root).unwrap_or(file));
     Created { id: format!("note-{}", digest(&format!("{vault_id}:{path}"))), folder: folder.to_string(), title }
 }

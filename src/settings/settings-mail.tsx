@@ -7,6 +7,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { MicrosoftClientField, MicrosoftConnect } from './settings-microsoft';
 import { ProviderLogo } from './provider-logos';
 import { Loading, LoadError } from '../ui/load-state';
+import { hereLabel, keystoreName } from '../ui/platform';
 
 const statusLabels: Record<MailAccount['status'], string> = {
   pending: 'Pendiente de leer', ok: 'Conectada', auth: 'Revisa la contraseña', unreachable: 'Sin conexión', error: 'Error del servidor',
@@ -77,13 +78,13 @@ export function MailSettingsCard() {
       address: form.address.trim(), provider: form.provider, username: form.username.trim() || undefined,
       imapHost: other ? form.imapHost.trim() : undefined, imapPort: other ? form.imapPort : undefined, smtpHost: other && form.smtpHost.trim() ? form.smtpHost.trim() : undefined,
       scopeId: form.scopeId ? Number(form.scopeId) : null, confidentiality: form.confidentiality, maxAgeDays: form.maxAgeDays, password: form.password || undefined,
-    }), `${form.provider === 'microsoft' ? 'Cuenta añadida: pulsa «Conectar con Microsoft».' : 'Cuenta añadida. La contraseña está en el Llavero; pulsa «Leer ahora» para probarla.'}`).then(ok => { if (ok) { setForm(empty); setAdding(false); } });
+    }), `${form.provider === 'microsoft' ? 'Cuenta añadida: pulsa «Conectar con Microsoft».' : `Cuenta añadida. La contraseña está en el ${keystoreName}; pulsa «Leer ahora» para probarla.`}`).then(ok => { if (ok) { setForm(empty); setAdding(false); } });
   };
   if (!accounts || !presets) return <article className="card"><h2>Cuentas de correo</h2>{error ? <LoadError message={error} onRetry={load}/> : <Loading label="Leyendo las cuentas de correo"/>}</article>;
   const preset = presets[form.provider];
   return <article className="card settings-mail" aria-labelledby="settings-mail">
     <h2 id="settings-mail">Cuentas de correo</h2>
-    <p>AgoraOne lee la bandeja de entrada en <strong>solo lectura</strong>: no marca nada como leído, no mueve ni borra. Cada cuenta lleva su ámbito y su nivel: lo «solo en este Mac» no va a modelos externos y lo privado no sale del núcleo.</p>
+    <p>AgoraOne lee la bandeja de entrada en <strong>solo lectura</strong>: no marca nada como leído, no mueve ni borra. Cada cuenta lleva su ámbito y su nivel: lo «solo en {hereLabel}» no va a modelos externos y lo privado no sale del núcleo.</p>
     {accounts.length ? <ul className="mail-accounts compact">{accounts.map(account => <li key={account.id} className={open.has(account.id) ? 'open' : ''}>
       <div className="compact-row">
         <button type="button" className="compact-toggle" aria-expanded={open.has(account.id)} onClick={() => toggle(account.id)}
@@ -111,7 +112,7 @@ export function MailSettingsCard() {
           onChange={value => void act(account.id, () => changeMailAccount(account.id, { confidentiality: value as Level }), 'Nivel guardado.')}/></label>
       </div>
       {account.auth === 'microsoft' ? <MicrosoftConnect accountId={account.id} connected={account.hasPassword} onDone={load}/> :
-      <form className="field-row" onSubmit={event => { event.preventDefault(); void act(account.id, () => changeMailAccount(account.id, { password: passwords[account.id] }), 'Contraseña guardada en el Llavero.').then(ok => { if (ok) setPasswords({ ...passwords, [account.id]: '' }); }); }}>
+      <form className="field-row" onSubmit={event => { event.preventDefault(); void act(account.id, () => changeMailAccount(account.id, { password: passwords[account.id] }), `Contraseña guardada en el ${keystoreName}.`).then(ok => { if (ok) setPasswords({ ...passwords, [account.id]: '' }); }); }}>
         <label className="field">{account.hasPassword ? 'Cambiar la contraseña de aplicación' : 'Contraseña de aplicación'}
           <input type="password" autoComplete="off" spellCheck={false} value={passwords[account.id] ?? ''} onChange={event => setPasswords({ ...passwords, [account.id]: event.target.value })} placeholder="Nunca se muestra una vez guardada"/></label>
         <button className="button" disabled={(passwords[account.id] ?? '').length < 4 || busy === account.id}>Guardar</button>
@@ -119,7 +120,7 @@ export function MailSettingsCard() {
       <div className="actions">
         <button className="button" disabled={busy === account.id} onClick={() => void act(account.id, () => changeMailAccount(account.id, { enabled: !account.enabled }), account.enabled ? 'Cuenta en pausa.' : 'Cuenta reanudada.')}>{account.enabled ? 'Pausar' : 'Reanudar'}</button>
         {removing === account.id ? <span className="field-row" role="group" aria-label={`Confirmar quitar ${account.address}`}>
-          <small>Se borran sus correos guardados y su contraseña del Llavero; el buzón no se toca.</small>
+          <small>Se borran sus correos guardados y su contraseña del {keystoreName}; el buzón no se toca.</small>
           <button className="button danger" disabled={busy === account.id} onClick={() => void act(account.id, () => deleteMailAccount(account.id), 'Cuenta quitada.').then(() => setRemoving(null))}>Quitar</button>
           <button className="button" onClick={() => setRemoving(null)}>Cancelar</button>
         </span> : <button className="button danger" disabled={busy === account.id} onClick={() => setRemoving(account.id)}>Quitar…</button>}
@@ -138,7 +139,7 @@ export function MailSettingsCard() {
         <label className="field">Puerto IMAP (SSL)<input type="number" min={1} max={65535} value={form.imapPort} onChange={event => setForm({ ...form, imapPort: Math.max(1, Math.min(65535, Number(event.target.value) || 993)) })}/></label>
         <label className="field">Servidor SMTP<input value={form.smtpHost} onChange={event => setForm({ ...form, smtpHost: event.target.value })} placeholder="smtp.tudominio.com"/></label>
       </div>}
-      {form.provider !== 'microsoft' && <label className="field">Contraseña de aplicación<input type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} autoComplete="off" spellCheck={false} placeholder="Va directa al Llavero"/></label>}
+      {form.provider !== 'microsoft' && <label className="field">Contraseña de aplicación<input type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} autoComplete="off" spellCheck={false} placeholder={`Va directa al ${keystoreName}`}/></label>}
       <div className="mail-account-fields">
         <label className="field">Ámbito<ScopeSelect value={form.scopeId} scopes={scopes} onCreated={setScopes} onChange={value => setForm({ ...form, scopeId: value })}/></label>
         <label className="field">Nivel<ModernSelect value={form.confidentiality} options={levels} onChange={value => setForm({ ...form, confidentiality: value as Level })}/></label>

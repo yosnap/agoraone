@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import fiscal_folder, invoice_extract
 from . import fiscal_manual
-from .fiscal import ISSUED, MAX_FILE, RECEIVED
+from .fiscal import ISSUED, MAX_FILE, RECEIVED, is_link
 
 DOCS = {".pdf", ".png", ".jpg", ".jpeg", ".heic"}
 
@@ -22,11 +22,11 @@ DOCS = {".pdf", ".png", ".jpg", ".jpeg", ".heic"}
 def _files(root: Path, top: str, year: int, quarter: int, unplaced: list | None = None):
     """The documents of that quarter; those whose folders do not tell a quarter go to `unplaced`."""
     base = root / top
-    if not base.is_dir() or base.is_symlink():
+    if not base.is_dir() or is_link(base):
         return
     for path in sorted(base.rglob("*")):
         try:
-            if path.is_symlink() or not path.is_file() or path.suffix.lower() not in DOCS or path.name.startswith("."):
+            if is_link(path) or not path.is_file() or path.suffix.lower() not in DOCS or path.name.startswith("."):
                 continue
         except OSError:
             continue
@@ -57,7 +57,7 @@ def _cached(connection: sqlite3.Connection, folder_id: int, root: Path, path: Pa
     except OSError:
         return {"unreadable": True}
     row = connection.execute("SELECT size, mtime, fields FROM fiscal_file WHERE folder_id = ? AND path = ?",
-                             (folder_id, str(path.relative_to(root)))).fetchone()
+                             (folder_id, path.relative_to(root).as_posix())).fetchone()
     if not row or row["size"] != stat.st_size or row["mtime"] != stat.st_mtime:
         return None
     fields = json.loads(row["fields"])
@@ -220,7 +220,7 @@ def _remember(connection: sqlite3.Connection, folder_id: int, root: Path, path: 
     except OSError:
         return
     connection.execute("INSERT OR REPLACE INTO fiscal_file (folder_id, path, size, mtime, fields) VALUES (?, ?, ?, ?, ?)",
-                       (folder_id, str(path.relative_to(root)), stat.st_size, stat.st_mtime, json.dumps(fields)))
+                       (folder_id, path.relative_to(root).as_posix(), stat.st_size, stat.st_mtime, json.dumps(fields)))
 
 
 def _read(connection: sqlite3.Connection, folder_id: int, root: Path, path: Path) -> dict:
@@ -323,8 +323,9 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
     file saved twice in the folder counts once. Only what was already read is used; the rest is returned to
     be read in the background."""
     unplaced: list[Path] = []
+    rel = lambda p: p.relative_to(root).as_posix()  # noqa: E731
     issued = list(_files(root, ISSUED, year, quarter, unplaced))
-    received = [(p, r) for p, r in _files(root, RECEIVED, year, quarter, unplaced) if str(p.relative_to(root)) not in known]
+    received = [(p, r) for p, r in _files(root, RECEIVED, year, quarter, unplaced) if rel(p) not in known]
     pending, read = [], {}
     for path, _ in issued + received:
         fields = _cached(connection, folder_id, root, path)
@@ -336,12 +337,11 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
     typed = fiscal_manual.load(connection, folder_id, root)
     issued_paths = {p for p, _ in issued}
     for path, fields in list(read.items()):
-        hand = typed.get(str(path.relative_to(root)))
+        hand = typed.get(rel(path))
         if hand and fiscal_manual.unrecognized(fields, use_model):
             read[path] = fiscal_manual.as_read(fields, hand, path in issued_paths)
     own = own_tax_id(connection, folder_id)
     seen: dict[str, str | None] = dict.fromkeys(known_files or ())  # sha256 → first copy seen (None: already filed)
-    rel = lambda p: str(p.relative_to(root))  # noqa: E731
     counts = {"unreadable": [], "duplicates": [], "duplicateOf": {}, "unplaced": [rel(p) for p in unplaced], "noVat": [],
               # read by the local rules but not yet by the model (the app closed mid-way, or the model was off)
               "modelPending": [p for p, f in read.items() if not f.get("ai") and not f.get("aiTried") and not f.get("unreadable")]}
@@ -382,15 +382,15 @@ def scan(connection: sqlite3.Connection, folder_id: int, root: Path, year: int, 
             client = (fields.get("after") or {}).get(client_tax)
         income.append({"date": day, "number": fields.get("number") or path.stem[:30], "numberRead": bool(fields.get("number")), "client": client or _name(path, rest), "taxId": client_tax or "",
                        # The register says which rows were typed by hand (Ingresos has no notes column).
-                       "concept": str(path.relative_to(root)) + (" · datos escritos a mano" if fields.get("manual") else ""),
+                       "concept": rel(path) + (" · datos escritos a mano" if fields.get("manual") else ""),
                        "base": float(base) if base is not None else None,
                        "vatRate": vat_rate or 0.0, "withholdingRate": irpf_rate, "total": total, "currency": fields.get("currency") or "EUR",
-                       "guessedDate": guessed, "file": str(path.relative_to(root)), "manual": fields.get("manual"),
+                       "guessedDate": guessed, "file": rel(path), "manual": fields.get("manual"),
                        "unreadImage": bool(fields.get("image") and not fields.get("ai"))})
     for path, rest in received:
         if path not in read or not fresh(path, read[path]):
             continue
-        fields, relative = _merged(read[path], issued=False, use_model=use_model), str(path.relative_to(root))
+        fields, relative = _merged(read[path], issued=False, use_model=use_model), rel(path)
         day, guessed = _day(fields, start, end)
         notes = [n for n, on in (("Factura en imagen: revisa los importes", fields.get("image") and not fields.get("ai")),
                                  ("Su fecha es de otro trimestre: está en la carpeta de este", day < start or day > end),

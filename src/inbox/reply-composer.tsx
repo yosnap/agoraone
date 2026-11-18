@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useAssistantName } from '../assistant/assistant-name';
 import { composeReply, getReplyDraft, previewMail, sendMail, type InboxItem, type MailDraft, type MailPreview } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
+import { hereLabel } from '../ui/platform';
 
 /** A reply to a received mail: written by hand or drafted by Watson (only for mail the model may read),
  * then the exact preview, and it leaves only with «Enviar» on that preview. Nothing is sent otherwise. */
@@ -67,7 +68,7 @@ export function ReplyComposer({ item, onDone, onCancel }: { item: InboxItem; onD
         });
         setWritten(answer); setPreview(null);
       })}>{busy === 'compose' ? 'Redactando…' : `Redactar con ${assistant}`}</button>
-    </div> : <p className="muted">Este correo es {item.confidentiality === 'private' ? 'privado' : 'solo de este Mac'}: {assistant} no lo lee, escribe la respuesta tú.</p>}
+    </div> : <p className="muted">Este correo es {item.confidentiality === 'private' ? 'privado' : `solo de ${hereLabel}`}: {assistant} no lo lee, escribe la respuesta tú.</p>}
     <label className="field">Mensaje<textarea value={draft.body} onChange={set('body')} rows={12} required/></label>
     {error && <LoadError message={error}/>}
     <div className="inbox-actions">

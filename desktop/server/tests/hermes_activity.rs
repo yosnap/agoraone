@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
 use agora_server::hermes::activity::read_activity;
@@ -10,6 +9,7 @@ use agora_server::hermes::activity_log::job_runs;
 use agora_server::hermes::catalog::ProfileTarget;
 use agora_server::hermes::summary::{read_hermes_summary, tally_words, top_words};
 use agora_server::js::parse_date_ms;
+use agora_server::platform::{canonicalize, create_test_link as symlink};
 use rusqlite::{Connection, params};
 use serde_json::{Map, Value, json};
 
@@ -34,7 +34,7 @@ struct Fixture {
 
 fn fixture(gateway_at: &str, pid: i64) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = canonicalize(dir.path()).unwrap();
     let work = root.join("profiles/work");
     fs::create_dir_all(work.join("cron")).unwrap();
     fs::create_dir_all(root.join("state")).unwrap();
@@ -168,7 +168,7 @@ fn links_are_not_followed_and_missing_sources_do_not_fail() {
 #[test]
 fn last_run_in_jobs_json_does_not_duplicate_history() {
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = canonicalize(dir.path()).unwrap();
     fs::create_dir(root.join("cron")).unwrap();
     let runs = Connection::open(root.join("cron/executions.db")).unwrap();
     runs.execute_batch("CREATE TABLE executions (job_id TEXT, status TEXT, started_at TEXT, finished_at TEXT)").unwrap();
@@ -191,7 +191,7 @@ fn last_run_in_jobs_json_does_not_duplicate_history() {
 
 fn summary_fixture() -> (tempfile::TempDir, PathBuf, Vec<ProfileTarget>) {
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = canonicalize(dir.path()).unwrap();
     let work = root.join("profiles/work");
     fs::create_dir_all(&work).unwrap();
     let db = Connection::open(work.join("state.db")).unwrap();

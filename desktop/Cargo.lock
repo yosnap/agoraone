@@ -36,6 +36,7 @@ dependencies = [
  "tower",
  "tower-http",
  "unicode-normalization",
+ "windows-sys 0.61.2",
  "zip",
 ]
 
@@ -52,6 +53,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
  "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

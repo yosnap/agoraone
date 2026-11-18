@@ -18,7 +18,6 @@ from tests.test_meetings import HELPER
 from tests.test_voice import FFMPEG, _program, _whisper
 
 SECRET, OWNER = "a" * 64, "b" * 64
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="los programas de prueba son guiones de shell")
 H = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
 
 
@@ -75,6 +74,8 @@ def test_el_modelo_local_solo_en_este_equipo():
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    if sys.platform == "win32":
+        pytest.skip("los programas de prueba son guiones de shell")
     helper = tmp_path / "agora-system-audio"
     helper.write_text(HELPER.replace('printf "audio del sistema"', 'head -c 3000 /dev/zero'))
     helper.chmod(0o755)

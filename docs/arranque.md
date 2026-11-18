@@ -1,6 +1,6 @@
 # Arranque reproducible
 
-Requisitos: macOS, Rust estable con `cargo` (el servidor de AgoraOne), Node >=22.12 (verificado 22.23.1) y pnpm para la interfaz, [uv](https://docs.astral.sh/uv/) (instala por sí mismo Python 3.13 para el núcleo), Hermes en el commit documentado y su entorno Python. No instalar paquetes ni actualizar Hermes. La app empaquetada no necesita nada de esto: ver docs/app-escritorio.md.
+Requisitos: macOS o Windows 11 (`x86_64-pc-windows-msvc`), Rust estable con `cargo` (el servidor de AgoraOne), Node >=22.12 y pnpm para la interfaz, [uv](https://docs.astral.sh/uv/) (instala por sí mismo Python 3.13 para el núcleo), Hermes en el commit documentado y su entorno Python. No instalar paquetes ni actualizar Hermes. La app empaquetada no necesita nada de esto: ver docs/app-escritorio.md.
 
 Desde esta carpeta:
 
@@ -97,3 +97,6 @@ Restaurar conserva la base anterior junto a la nueva como `agora.db.before-resto
 `.agora/conversations` contiene conversaciones privadas. `.agora/hermes` contiene estado de Hermes aislado. La app empaquetada guarda lo mismo en `~/Library/Application Support/AgoraOne`. `.env`, `.agora`, node_modules y dist están ignorados. No compartir esos archivos ni logs sin revisarlos.
 
 Errores del proveedor son visibles y no producen respuestas de prueba. Si cambia el commit de Hermes, el adaptador se detiene hasta revisar compatibilidad. El build puede avisar del tamaño del paquete 3D; no impide ejecutarlo. Hay interior de biblioteca; no hay soporte XR ni interiores de otros edificios.
+
+## Windows
+La guía completa para Windows (herramientas, órdenes de PowerShell, diferencias con macOS y problemas frecuentes) está en [docs/windows.md](windows.md).

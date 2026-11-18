@@ -42,7 +42,10 @@ pub struct Extractor {
 impl Extractor {
     pub fn from_launch(launch: &CoreLaunch) -> Self {
         match launch {
-            CoreLaunch::Uv { folder } => Self { python: folder.join(".venv/bin/python"), folder: folder.clone() },
+            CoreLaunch::Uv { folder } => {
+                let python = if cfg!(windows) { folder.join(".venv/Scripts/python.exe") } else { folder.join(".venv/bin/python") };
+                Self { python, folder: folder.clone() }
+            }
             CoreLaunch::Bundled { python, folder } => Self { python: python.clone(), folder: folder.clone() },
         }
     }
@@ -50,11 +53,11 @@ impl Extractor {
 
 /// The sandbox profile that lets `program` (and the Python installation it belongs to) and `readable` be read.
 pub fn sandbox_profile(program: &Path, readable: &[&Path]) -> String {
-    let mut allowed: Vec<PathBuf> = readable.iter().filter_map(|path| std::fs::canonicalize(path).ok()).collect();
+    let mut allowed: Vec<PathBuf> = readable.iter().filter_map(|path| crate::platform::canonicalize(path).ok()).collect();
     // A venv's python is a link to the real installation, whose standard library lives two levels up. A
     // shallow one (a python straight in ~/bin) would open the whole home, so it is not added.
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    if let Some(root) = std::fs::canonicalize(program).ok().and_then(|real| real.parent()?.parent().map(Path::to_path_buf))
+    let home = crate::platform::home_dir().unwrap_or_default();
+    if let Some(root) = crate::platform::canonicalize(program).ok().and_then(|real| real.parent()?.parent().map(Path::to_path_buf))
         && root.components().count() >= 4
         && !home.starts_with(&root)
     {
@@ -102,18 +105,19 @@ pub async fn extract_upload(extractor: Option<&Extractor>, name: &str, base64: &
 async fn run(extractor: &Extractor, kind: &str, bytes: Vec<u8>) -> Result<String, String> {
     let mut command = sandboxed(&extractor.python, &[&extractor.folder]);
     command
-        .args(["-E", "-s", "-B", "-m", "agora_core.extract", kind])
+        .args(["-X", "utf8", "-E", "-s", "-B", "-m", "agora_core.extract", kind])
         .current_dir(&extractor.folder)
         .env_clear()
-        .env("PATH", "/usr/bin:/bin")
+        .env("PATH", crate::platform::default_system_path())
         .env("LANG", "en_US.UTF-8")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .process_group(0)
         .kill_on_drop(true);
+    crate::platform::apply_minimal_os_env(&mut command);
+    crate::platform::configure_group(&mut command);
     let mut child = command.spawn().map_err(|_| "No se pudo iniciar la extracción.")?;
-    let pid = child.id();
+    let group = crate::platform::ProcessGroup::attach(&child);
     let (mut stdin, stdout) = (child.stdin.take(), child.stdout.take());
     let work = async {
         // The extractor reads all its input before answering; one that stops early just ends the write.
@@ -144,10 +148,7 @@ async fn run(extractor: &Extractor, kind: &str, bytes: Vec<u8>) -> Result<String
         Ok(Some(content)) => Ok(content),
         Ok(None) => Err(FAILED.into()),
         Err(_) => {
-            if let Some(pid) = pid {
-                // SAFETY: signals only the process group this call created.
-                unsafe { libc::kill(-(pid as libc::pid_t), libc::SIGKILL) };
-            }
+            group.kill();
             Err(FAILED.into())
         }
     }

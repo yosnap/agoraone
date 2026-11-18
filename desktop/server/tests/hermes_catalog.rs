@@ -1,7 +1,6 @@
 //! Ported from server/hermes-catalog.test.ts, mcp-tools.test.ts and resource-discovery.test.ts.
 
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 
 use agora_server::hermes::catalog::HermesDiscovery;
@@ -9,6 +8,7 @@ use agora_server::hermes::location::{HermesLocation, hermes_location};
 use agora_server::hermes::mcp_tools::{mcp_fingerprint, read_mcp_tools};
 use agora_server::hermes::resources::{mcp_metadata, obsidian_vaults};
 use agora_server::hermes::safe_read::redact_str;
+use agora_server::platform::{canonicalize, create_test_link as symlink};
 use rusqlite::Connection;
 use serde_json::{Map, Value, json};
 
@@ -33,7 +33,7 @@ fn profile(root: &Path, name: &str) -> PathBuf {
 
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = canonicalize(dir.path()).unwrap();
     let installation = root.join("hermes-agent");
     fs::create_dir_all(&installation).unwrap();
     fs::write(installation.join("pyproject.toml"), "version = \"0.21.4\"").unwrap();
@@ -143,7 +143,7 @@ fn fingerprint_matches_python_json_with_unicode() {
 #[test]
 fn cached_tools_per_profile_with_expiry_changes_and_private_fields_left_out() {
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = canonicalize(dir.path()).unwrap();
     let config = object(json!({ "command": "test-only" }));
     fs::create_dir(root.join("cache")).unwrap();
     fs::create_dir(root.join("other")).unwrap();
@@ -197,7 +197,7 @@ fn mcp_metadata_only_allowed_fields_scoped_per_profile() {
 #[test]
 fn obsidian_registry_bounded_without_notes_or_paths() {
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = canonicalize(dir.path()).unwrap();
     let vault = root.join("Vault de prueba");
     fs::create_dir(&vault).unwrap();
     fs::write(vault.join("privado.md"), "CANARY_PRIVATE_NOTE").unwrap();
@@ -225,9 +225,8 @@ fn obsidian_registry_bounded_without_notes_or_paths() {
 /// bootstrap, never through a link out of its tools; older installations keep their virtual environment.
 #[test]
 fn hermes_python_comes_from_its_tools() {
-    use std::os::unix::fs::symlink;
     let dir = tempfile::tempdir().unwrap();
-    let home = std::fs::canonicalize(dir.path()).unwrap();
+    let home = canonicalize(dir.path()).unwrap();
     let root = home.join(".hermes");
     let installation = root.join("hermes-agent");
     std::fs::create_dir_all(&installation).unwrap();

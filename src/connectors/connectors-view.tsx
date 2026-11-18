@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { getAddons, getBrainMcpSetup, getCostguardUsage, putAddon, type Addon, type AddonStatus, type AgentUsage, type BrainMcpSetup } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
+import { hereLabel } from '../ui/platform';
 
 const statusText: Record<AddonStatus, [string, '' | 'good' | 'warn' | 'bad']> = {
   not_configured: ['Sin configurar', ''], not_found: ['No encontrado', 'bad'], unreadable: ['No se puede leer', 'bad'],
@@ -37,7 +38,7 @@ function AddonCard({ addon, onSaved }: { addon: Addon; onSaved: (addons: Addon[]
         <button type="button" className="button" disabled={busy} onClick={event => void save(event, true)}>Olvidar</button></div>
     </form>
     {error && <LoadError message={error}/>}
-    <small className="muted">AgoraOne solo comprueba si está y si responde en este Mac; no lo arranca, detiene ni modifica.</small>
+    <small className="muted">AgoraOne solo comprueba si está y si responde en {hereLabel}; no lo arranca, detiene ni modifica.</small>
   </article>;
 }
 
@@ -78,7 +79,7 @@ function BrainMcp() {
   const copy = () => { if (command) navigator.clipboard?.writeText(command).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => undefined); };
   return <article className="card brain-mcp-card" aria-labelledby="brain-mcp">
     <div className="card-head"><h2 id="brain-mcp">MCP del cerebro</h2><span className="chip">Solo lectura</span></div>
-    <p>Ofrece tres herramientas a cualquier perfil de Hermes (por ejemplo, el bot central de Telegram): buscar en el cerebro, leer una nota y ver su estado. Nunca entrega notas privadas ni de solo este Mac, y funciona con AgoraOne cerrado.</p>
+    <p>Ofrece tres herramientas a cualquier perfil de Hermes (por ejemplo, el bot central de Telegram): buscar en el cerebro, leer una nota y ver su estado. Nunca entrega notas privadas ni de solo {hereLabel}, y funciona con AgoraOne cerrado.</p>
     <p>AgoraOne no escribe en la configuración de Hermes: ejecuta tú estas órdenes en tu terminal, cambiando <code>&lt;perfil&gt;</code> por el perfil que quieras.</p>
     {error ? <LoadError message={error}/> : !command ? <Loading label="Preparando la orden" lines={2}/> : <>
       <pre className="code-block">{command}</pre>
@@ -98,7 +99,7 @@ export function ConnectorsView() {
   return <section className="page" aria-labelledby="connectors-title">
     <div className="eyebrow">CONECTORES</div>
     <h1 id="connectors-title">Conectores</h1>
-    <p className="page-lead">Lo que AgoraOne sabe de tus otras herramientas y cómo conectar el cerebro a Hermes. Las rutas y puertos se guardan solo en este Mac.</p>
+    <p className="page-lead">Lo que AgoraOne sabe de tus otras herramientas y cómo conectar el cerebro a Hermes. Las rutas y puertos se guardan solo en {hereLabel}.</p>
     <div className="actions page-actions"><button className="button" onClick={load}>Comprobar de nuevo</button></div>
     {error ? <LoadError message={error} onRetry={load}/> : !addons ? <Loading label="Leyendo los complementos"/> : <div className="page-grid">
       {addons.map(addon => <AddonCard key={`${addon.id}:${addon.configured.path ?? addon.configured.dataPath ?? ''}`} addon={addon} onSaved={setAddons}/>)}
