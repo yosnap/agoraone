@@ -27,4 +27,12 @@
 .central-facts dd { margin:2px 0 0; font-size:12px; color:var(--c-173d3c); overflow-wrap:anywhere }
 .central-notes { list-style:none; padding:0 !important; display:flex; flex-direction:column; gap:8px }
 .central-notes p { white-space:pre-wrap; overflow-wrap:anywhere }
+.central-fix { display:block; margin-top:4px; padding:8px 10px; border-radius:8px; background:var(--c-e7ece2); font-size:11px; white-space:pre-wrap; overflow-wrap:anywhere }
+.central-error { display:block; color:var(--c-8e3d2a) }
+.central-day { text-transform:capitalize }
+.central-events { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px }
+.central-events li { display:grid; grid-template-columns:7rem 1fr; gap:12px }
+.central-events li > div { display:flex; flex-direction:column; align-items:flex-start; gap:3px }
+.central-events li > div .chip { margin-left:0 }
+.central-event-time { display:flex; flex-direction:column; font-weight:600 }
 @media (max-width:640px) { .central-table th:nth-child(4), .central-table td:nth-child(4) { display:none } }

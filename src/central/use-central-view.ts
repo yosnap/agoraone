@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { ApiError } from '../api/client';
-import type { CentralViewName } from '../api/central';
+import type { CentralLevel, CentralViewName } from '../api/central';
 
 // What the «Central» section has read, shared by its tabs: each view (or record) is asked once, when it is first
 // shown, and kept while the section lives, so going back to a tab does not ask Central again. «Volver a leer»
@@ -66,8 +66,12 @@ export type CentralTab = { id: CentralViewName; label: string };
 /** The tabs of the section, in order; each one reads only its own view when opened. */
 export const centralTabs: CentralTab[] = [
   { id: 'resumen', label: 'Resumen' }, { id: 'alertas', label: 'Alertas' }, { id: 'pendientes', label: 'Pendientes' },
-  { id: 'clientes', label: 'Clientes' }, { id: 'proyectos', label: 'Proyectos' },
+  { id: 'clientes', label: 'Clientes' }, { id: 'proyectos', label: 'Proyectos' }, { id: 'webs', label: 'Webs' },
+  { id: 'servidores', label: 'Servidores' }, { id: 'agenda', label: 'Agenda de Central' },
 ];
+
+/** The badge of each of Central's levels. */
+export const levelTone: Record<CentralLevel, string> = { green: 'good', amber: 'waiting', red: 'bad', grey: 'neutral' };
 
 const clock = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
 const day = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
@@ -93,4 +97,40 @@ export function dateLabel(iso: string | null | undefined) {
  * forgotten without notifying, since nothing of the section is on screen yet. */
 export function startCentral() {
   entries.clear();
+}
+
+const madridParts = new Intl.DateTimeFormat('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Europe/Madrid' });
+const heading = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' });
+
+/** The day (AAAA-MM-DD) of an instant in Madrid, whatever the zone of this computer. */
+export function madridDay(at: Date) {
+  const part = (type: string) => madridParts.formatToParts(at).find(p => p.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+/** `day` moved by some days (calendar days, no hours involved). */
+export function addDays(day: string, days: number) {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** Central's agenda reads at most 62 days, both included. */
+export const AGENDA_DAYS = 62;
+
+/** Why a range of the agenda cannot be asked (the core checks it again, counting the hour of the autumn change). */
+export function agendaRangeProblem(from: string, to: string): string | null {
+  const valid = (day: string) => /^\d{4}-\d{2}-\d{2}$/.test(day) && addDays(day, 0) === day;
+  if (!valid(from) || !valid(to)) return 'Elige dos días que existan.';
+  const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 864e5 + 1;
+  if (days < 1) return '«Hasta» es anterior a «desde».';
+  return days > AGENDA_DAYS ? `La agenda de Central abarca como mucho ${AGENDA_DAYS} días.` : null;
+}
+
+/** «miércoles, 18 de noviembre de 2026» for a day AAAA-MM-DD of Madrid. */
+export const dayHeading = (day: string) => heading.format(new Date(`${day}T12:00:00Z`));
+
+/** «10:30» in Madrid's time, or «». */
+export function timeLabel(iso: string | null | undefined) {
+  const at = iso ? new Date(iso) : null;
+  return at && !Number.isNaN(at.getTime()) ? clock.format(at) : '';
 }
