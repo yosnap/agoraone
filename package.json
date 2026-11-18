@@ -12,7 +12,7 @@
     "dev:server": "cargo run -q --manifest-path desktop/Cargo.toml --bin agoraone",
     "dev:web": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "test": "node --import tsx --test src/**/*.test.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "test:core": "cd core && uv run --frozen pytest -q",
     "start": "AGORA_WEB_PORT=4317 cargo run -q --release --manifest-path desktop/Cargo.toml --bin agoraone",
     "check:hermes": "cargo run -q --manifest-path desktop/Cargo.toml --bin agoraone -- comprobar-hermes",
