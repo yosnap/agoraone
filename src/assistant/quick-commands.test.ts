@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { MISHEARD, musicQuery, quickCommand } from './quick-commands.ts';
+import { meetingOrder } from './meeting-commands.ts';
 
 test('las órdenes rápidas se reconocen', () => {
   for (const said of ['Pausa', 'siguiente canción', '¡Sube el volumen!', 'pon jazz tranquilo', 'Ponme Kind of Blue en Spotify', 'reproduce Rosalía', 'abre Notas', 'Ábreme Spotify'])
@@ -42,4 +43,15 @@ test('la voz entiende la orden aunque oiga mal «Watson»', () => {
     'Venga, baja', 'Bueno. Sube.', 'No, silencio', 'Luis, pon la mesa', 'Ok, anterior'])
     assert.equal(quickCommand(said), null, said);
   assert.equal(musicQuery('Guatson: pon a Rosalía'.replace(MISHEARD, '')), 'a Rosalía');
+});
+
+test('grabar y parar una reunión con la voz', () => {
+  for (const said of ['Oye Watson, empieza a grabar la reunión', 'Graba la reunión', 'Watson, graba', '¿Empieza a grabar?', 'Para la grabación', 'Deja de grabar', 'Hemos terminado', 'Ya hemos acabado la reunión'])
+    assert.ok(quickCommand(said), said);
+  const plainOf = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  assert.equal(meetingOrder(plainOf('empieza a grabar la reunion')), 'start');
+  assert.equal(meetingOrder(plainOf('para la grabacion')), 'stop');
+  for (const said of ['resume la reunión de ayer', 'graba una nota sobre Acme', 'para la música', 'hemos terminado el presupuesto'])
+    assert.equal(meetingOrder(plainOf(said)), null, said);
+  assert.equal(quickCommand('resume la reunión de ayer'), null);
 });

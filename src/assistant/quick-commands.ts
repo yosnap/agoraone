@@ -2,6 +2,8 @@ import { ApiError } from '../api/client';
 import { controlMusic, getApps, getLibrary, getMusic, openApp, playMusic, searchYouTube, type MusicAction } from '../api/core';
 import { localActive, localControl, playLocal } from '../brain/local-player';
 import { askTicket, playYouTube, stopYouTube, youtubeActive, youtubeControl } from '../brain/youtube-player';
+import { lastChoice, meetingRecorder, startRecording, stopRecording } from '../meetings/meeting-recorder';
+import { meetingOrder } from './meeting-commands';
 
 /** Quick commands (1.5): what Watson does at once, without a model, when the whole message is one of these.
  * Anything else goes to the model as usual. Words are matched in Spanish, with or without accents. */
@@ -60,6 +62,8 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
 function command(text: string): (() => Promise<QuickResult>) | null {
   if (JUST_MUSIC.test(asked(plain(text)))) text = 'pon música';
   const said = asked(plain(text));
+  const meeting = meetingOrder(said);
+  if (meeting) return () => recordByVoice(meeting);
   const control = controls.find(([pattern]) => pattern.test(said));
   // «Abre una nota…», «abre el correo de…» are requests for Watson; «abre Notas» is an app.
   const opening = control ? null : OPEN.exec(said);
@@ -133,6 +137,22 @@ function command(text: string): (() => Promise<QuickResult>) | null {
       return { reply: failure instanceof Error ? failure.message : 'No se pudo hacer.', failed: true };
     }
   };
+}
+
+/** «Graba la reunión» / «para la grabación»: like the rail's button, with the last choices of the form. */
+async function recordByVoice(order: 'start' | 'stop'): Promise<QuickResult> {
+  const now = meetingRecorder();
+  if (order === 'stop') {
+    if (now.phase !== 'recording') return { reply: 'No hay ninguna reunión grabándose.', failed: true };
+    stopRecording();
+    return { reply: 'Paro la grabación: la reunión se transcribe en este Mac y la tendrás en Reuniones.', failed: false };
+  }
+  if (now.phase !== 'idle') return { reply: 'Ya estoy grabando la reunión.', failed: false };
+  const choice = lastChoice();
+  await startRecording('', choice.confidentiality, choice.system);
+  const after = meetingRecorder();
+  if (after.phase !== 'recording') return { reply: after.error || 'No se pudo empezar a grabar.', failed: true };
+  return { reply: `Grabando la reunión${choice.system ? ' (tu micrófono y el audio del Mac)' : ' (tu micrófono)'}. Di «para la grabación» cuando terminéis.`, failed: false };
 }
 
 /** «Abre Notas»: the installed app whose name matches; the allowed ones open at once, the rest after a «sí». */

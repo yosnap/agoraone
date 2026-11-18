@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { transcribeVoice } from '../api/core';
 import { useListenRequests } from '../assistant/listen';
 import { moduleOn, useModules } from '../shell/modules';
+import { hear, silence } from './silence';
 
 const LIMIT_MS = 60_000;
 const MAX_BYTES = 1024 * 1024; // what the server lets through
@@ -15,7 +16,8 @@ const Mic = () => <svg viewBox="0 0 24 24" width="18" height="18" fill="none" st
 
 /** Speaking instead of typing (user's decision, 15/11/2026): press the microphone to record (up to a minute),
  * press again to stop; the words, transcribed on this machine by whisper.cpp, are sent as the message, after
- * anything already typed. The microphone closes when the button leaves the page, and stopping is never
+ * anything already typed. Started hands-free («Oye Watson», ⌃⌥W), it also stops by itself when the user pauses
+ * after speaking, and drops it when nothing was said (silence.ts). The microphone closes when the button leaves the page, and stopping is never
  * disabled. */
 export function DictationButton({ onText, disabled, onPhase, big = false }: {
   onText: (text: string) => void; disabled?: boolean;
@@ -32,7 +34,32 @@ export function DictationButton({ onText, disabled, onPhase, big = false }: {
   const gone = useRef(false);
   const move = (next: State) => { phase.current = next; if (!gone.current) { setState(next); onPhase?.(next); } };
   const clear = () => { timers.current.forEach(t => window.clearTimeout(t)); timers.current = []; };
-  const release = () => { stream.current?.getTracks().forEach(track => track.stop()); stream.current = null; };
+  const listening = useRef<{ context: AudioContext; timer: number } | null>(null);
+  const release = () => {
+    if (listening.current) { window.clearInterval(listening.current.timer); void listening.current.context.close().catch(() => undefined); listening.current = null; }
+    stream.current?.getTracks().forEach(track => track.stop()); stream.current = null;
+  };
+  // Hands-free: the microphone's loudness, ten times a second, decides when the message is over.
+  const dropped = useRef(false);
+  const watchSilence = (input: MediaStream) => {
+    try {
+      const context = new AudioContext();
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      context.createMediaStreamSource(input).connect(analyser);
+      const samples = new Uint8Array(analyser.fftSize);
+      let state = silence(Date.now());
+      const timer = window.setInterval(() => {
+        analyser.getByteTimeDomainData(samples);
+        let sum = 0;
+        for (const sample of samples) sum += ((sample - 128) / 128) ** 2;
+        const { next, stop: end } = hear(state, Math.sqrt(sum / samples.length), Date.now());
+        state = next;
+        if (end) { dropped.current = end === 'nothing'; stop(); }
+      }, 100);
+      listening.current = { context, timer };
+    } catch { /* no Web Audio here: it stops when pressed or at the minute, as before */ }
+  };
   // Leaving the page (another profile, another view) drops what was being recorded and closes the microphone.
   const unmount = () => {
     gone.current = true;
@@ -44,8 +71,9 @@ export function DictationButton({ onText, disabled, onPhase, big = false }: {
   };
   // Stable, so React only runs it on mount and unmount (and twice in development's strict mode, hence the reset).
   const attach = useCallback((node: HTMLSpanElement | null) => { if (!node) return; gone.current = false; return unmount; }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const start = async () => {
+  const start = async (handsFree = false) => {
     if (phase.current !== 'idle') return;
+    dropped.current = false;
     setError('');
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { setError('Este equipo no permite grabar audio aquí.'); return; }
     move('starting');
@@ -67,7 +95,7 @@ export function DictationButton({ onText, disabled, onPhase, big = false }: {
       release();
       recorder.current = null;
       const audio = new Blob(chunks, { type: media.mimeType || type || 'audio/webm' });
-      if (!audio.size) { move('idle'); return; }
+      if (!audio.size || dropped.current) { move('idle'); return; }
       if (audio.size > MAX_BYTES) { move('idle'); setError('La grabación es demasiado grande para dictar; prueba con menos tiempo.'); return; }
       move('transcribing');
       try {
@@ -79,6 +107,7 @@ export function DictationButton({ onText, disabled, onPhase, big = false }: {
     };
     recorder.current = media;
     move('recording'); setSeconds(0);
+    if (handsFree) watchSilence(input);
     const tick = (n: number) => { timers.current.push(window.setTimeout(() => { setSeconds(n); if (n * 1000 < LIMIT_MS) tick(n + 1); }, 1000)); };
     tick(1);
     timers.current.push(window.setTimeout(() => { if (media.state === 'recording') media.stop(); }, LIMIT_MS));
@@ -90,7 +119,7 @@ export function DictationButton({ onText, disabled, onPhase, big = false }: {
   const seen = useRef(requests);
   if (big && seen.current !== requests) {
     seen.current = requests;
-    window.setTimeout(() => { if (phase.current === 'recording') stop(); else if (phase.current === 'idle' && !disabled) void start(); }, 0);
+    window.setTimeout(() => { if (phase.current === 'recording') stop(); else if (phase.current === 'idle' && !disabled) void start(true); }, 0);
   }
   const recording = state === 'recording';
   const modules = useModules();
