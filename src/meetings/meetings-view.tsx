@@ -5,7 +5,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { ClientChip, clientHue } from './client-chip';
 import { MeetingDetailPanel } from './meeting-detail';
 import { forgetMeetingIntent, peekMeetingIntent } from './meeting-intent';
-import { asClass, emptyFields, KindFields, useCentralClients, type Fields } from './meeting-kind';
+import { asClass, emptyFields, KindFields, useClients, type Fields } from './meeting-kind';
 import { lastChoice, rememberChoice, startRecording, stopRecording, useMeetingRecorder } from './meeting-recorder';
 import './meetings.css';
 
@@ -38,7 +38,7 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned, as
     setError('');
     try { await deleteMeeting(meeting.id); onDeleted(); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo borrar.'); }
   };
-  const { clients } = useCentralClients();
+  const { clients } = useClients();
   const client = !hidden && meeting.client ? meeting.client : null;
   // No colour while Central is being read, so the rows do not change hue when the list arrives.
   const hue = client && clients ? clientHue(client, clients.map(c => c.name)) : null;

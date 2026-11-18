@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { useAssistantName } from '../assistant/assistant-name';
 import { createVaultNote, getHermesCatalog, listVaultNotes } from '../api/client';
-import { createRepoNote, decideInbox, getCentral, type CentralClient, type InboxItem, type MailSources } from '../api/core';
+import { createRepoNote, decideInbox, type InboxItem, type MailSources } from '../api/core';
+import { getClients, type DirectoryClient } from '../api/clients';
 import { OrcaLaunch } from '../orca/orca-launch';
 import { clientProjects, useOrcaProjects } from '../orca/orca-projects';
 import { LoadError, Loading } from '../ui/load-state';
@@ -10,14 +11,13 @@ import { VaultFolderBrowser } from '../ui/vault-folder-browser';
 import { noteContent, noteTitle, projectsBase, withLevel } from './project-note-text';
 import { filesSection, NoteFiles, saveFiles, type Chosen } from './note-files';
 import { RepoFolderPicker } from './repo-note';
-import { moduleOn, useModules } from '../shell/modules';
 
 type Vault = { id: string; name: string; folders: string[] };
 const NO_PROJECT = '';
 type Saved = { repo: string; root: string; path: string };
 
 /** «Añadir a la nota del proyecto»: a client's mail becomes one new note in the vault. The client and project
- * come from Central (the mail's own preselected), the folder is browsed to (the client's folder suggested, any
+ * come from the user's clients, Central's and their own (the mail's own preselected), the folder is browsed to (the client's folder suggested, any
  * other reachable, a new one inside an existing one), and the user can change the title and the whole text.
  * Nothing is written until «Crear la nota»; no existing note is ever changed. The card then goes to «Hechos».
  * A note to act on can instead go to the local copy of the project's repository that Orca has (user's decision,
@@ -30,7 +30,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
   const [project, setProject] = useState(item.client?.projects[0] ?? NO_PROJECT);
   const [folder, setFolder] = useState<string | null>(null);  // null: the browser is still suggesting one
   const [browser, setBrowser] = useState(0);  // a new browser (and suggestion) when the client changes and the folder was not chosen
-  const [central, setCentral] = useState<CentralClient[]>([]);
+  const [central, setCentral] = useState<DirectoryClient[]>([]);  // the user's clients, Central's and their own
   const [place, setPlace] = useState<'vault' | 'repo'>('vault');
   const [repoFolder, setRepoFolder] = useState<string | null>(null);
   const [saved, setSaved] = useState<Saved | null>(null);
@@ -46,7 +46,6 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
   const [made, setMade] = useState<{ folder: string; title: string } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const centralOn = moduleOn(useModules(), 'central');
   const asked = useRef(false);
 
   const vault = vaults?.find(v => v.id === vaultId);
@@ -68,7 +67,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
   };
   if (!asked.current) {
     asked.current = true;
-    if (centralOn) void getCentral().then(found => setCentral(found.snapshot?.clients ?? [])).catch(() => undefined);  // without Central, the client is typed
+    void getClients().then(found => setCentral(found.clients)).catch(() => undefined);  // unreadable: the mail's own client is still offered
     (async () => {
       const catalog = await getHermesCatalog();
       const found: Vault[] = [];

@@ -179,7 +179,7 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
           {manualForm}
           <h2>Ingresos · facturas emitidas</h2>
           {view.income.length === 0 ? <p className="muted">Ninguna en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Nº</th><th>Cliente</th><th>Base</th><th>IVA</th><th>Total</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>
-            <tbody>{view.income.map((row, index) => <tr key={index}><td>{day(row.date)}</td><td>{row.number}</td><td>{row.client}</td><td>{money(row.base, row.currency)}</td>
+            <tbody>{view.income.map((row, index) => <tr key={index}><td>{day(row.date)}</td><td>{row.number}</td><td>{row.client}{row.knownClient && row.knownClient !== row.client && <small className="muted"> · {discreet ? '•••' : row.knownClient}</small>}</td><td>{money(row.base, row.currency)}</td>
               <td>{row.vatRate !== null ? `${Math.round((row.vatRate > 1 ? row.vatRate : row.vatRate * 100))} %` : '—'}</td><td>{money(row.total, row.currency)}</td><td><span className="fiscal-file">{fileButtons(row.file)}{editButton(row.file, row.manual)}</span></td></tr>)}</tbody></table></div>}
           <h2>Gastos · facturas recibidas</h2>
           {view.expenses.length === 0 ? <p className="muted">Ninguna archivada en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>NIF</th><th>Total</th><th>Dudas</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>

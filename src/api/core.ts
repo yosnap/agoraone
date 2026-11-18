@@ -218,6 +218,8 @@ export type ChatSummary = {
   id: number; kind: InboxKind; source: 'rule' | 'model' | 'local'; ruleId: number | null; ruleName: string | null; label: string | null;
   confidentiality: Level; state: InboxState; summary: string | null; details: { asks?: string[]; dates?: string[]; amounts?: string[]; language?: string | null };
   participant: { name: string | null; phone: string | null } | null; account: { id: number; phone: string | null; label: string | null };
+  /** The user's client this number belongs to (never for a private conversation). */
+  client: { name: string } | null;
   scope: { id: number; name: string; color: string | null } | null; lastIncomingAt: string | null; updatedAt: string;
 };
 export const getChatSummaries = (state: InboxState = 'pending') =>
@@ -267,7 +269,8 @@ export type InvoicePrepared = {
   links: { url: string; host: string }[];
   proposal: InvoiceFields; doubts: string[]; destination: string;
 };
-export type Invoice = InvoiceFields & { id: number; direction: 'received' | 'issued'; messageId: number | null; doubts: string[]; quarter: string; path: string };
+export type Invoice = InvoiceFields & { id: number; direction: 'received' | 'issued'; messageId: number | null; doubts: string[]; quarter: string; path: string;
+  client?: string | null };
 export type FolderKind = 'autonomo' | 'empresa' | 'personal';
 export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null; holder: string | null };
 export const getFiscalFolders = () => core<{ folders: FiscalFolder[] }>('/fiscal/folders');
@@ -307,7 +310,9 @@ export const getQonto = () => core<{ login: string | null; hasKey: boolean }>('/
 export const putQonto = (changes: { login?: string | null; secret?: string | null }) => core<{ login: string | null; hasKey: boolean }>('/fiscal/qonto', changes, 'PUT');
 export const checkQonto = () => core<{ name: string | null; accounts: number }>('/fiscal/qonto/check', {});
 export type IncomeRow = { date: string; number: string; client: string; taxId: string; concept: string; base: number | null; vatRate: number | null;
-  withholdingRate: number | null; withholding: number | null; total: number | null; currency: string; file?: string; manual?: ManualSaved | null };
+  withholdingRate: number | null; withholding: number | null; total: number | null; currency: string; file?: string; manual?: ManualSaved | null;
+  /** One of the user's clients (Central's or their own) with this exact tax id, when there is one: only shown. */
+  knownClient?: string };
 export type FiscalIssue = { key: string; text: string; items: { label: string; detail: string; path?: string | null; qonto?: string }[] };
 export type QuarterView = { folder: FiscalFolder; income: IncomeRow[]; incomeProblem: string | null; expenses: (Invoice & { file?: string; manual?: ManualSaved | null })[]; notes: string[]; issues: FiscalIssue[]; reading: number; readingTotal: number };
 export const downloadFromQonto = (folderId: number, year: number, quarter: number, numbers: string[]) =>
