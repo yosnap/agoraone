@@ -1,6 +1,8 @@
 """HTTP routes of the «Central» section: `GET /central/views/{view}` and `GET /central/views/{view}/{id}`, read live
 from Central's API with the saved connection. `view` comes from a closed list that maps to a fixed path of the API
 and `id` must look like a cuid, so the screen can never make the core ask Central for another path. Read-only.
+Views: resumen, alertas, pendientes, clientes(/id), proyectos(/id), webs, servidores(/id) and agenda (`desde` and
+`hasta`, days AAAA-MM-DD of Madrid, at most 62 days); the parameters of each are checked in `central_views`.
 
 With the «Central» module off every route answers 404 and nothing is asked. Without an HTTP connection (no URL or no
 key) the answer is 409 `not_connected`, which the screen shows as «Conecta Central». A failure of Central is a 502
