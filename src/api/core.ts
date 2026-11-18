@@ -401,8 +401,9 @@ export type TtsEngine = 'auto' | 'macos' | 'voicestudio';
 export type TtsQuality = 'fast' | 'balanced' | 'best';
 export type TtsSettings = { engine: TtsEngine; voice: string | null; speed: number; macVoice: string | null; quality: TtsQuality; openAtStart: boolean };
 export type TtsNow = { engine: 'macos' | 'voicestudio'; voice: string | null; speed: number; macVoice: string | null; problem: string | null; steps: number };
-/** `opening`: AgoraOne is opening VoiceStudio right now; `installed`: VoiceStudio is on this Mac. */
-export type TtsView = { settings: TtsSettings; now: TtsNow; voicestudio: { id: string; name: string; language: string | null }[] | null; opening: boolean; installed: boolean };
+/** `opening`: AgoraOne is opening VoiceStudio right now; `installed`: VoiceStudio is on this Mac; `running`: its
+ * app is running (it may still be loading). */
+export type TtsView = { settings: TtsSettings; now: TtsNow; voicestudio: { id: string; name: string; language: string | null }[] | null; opening: boolean; installed: boolean; running: boolean };
 export const getTts = () => core<TtsView>('/voice/tts');
 export const putTts = (changes: Partial<TtsSettings>) => core<TtsView>('/voice/tts', changes, 'PUT');
 /** A question was sent: VoiceStudio loads its voice while Watson thinks (nothing when it is ready). */

@@ -106,7 +106,7 @@ En Ajustes › Voz › «Voz de Watson» se elige quién lee las respuestas:
 VoiceStudio (OmniVoice) corre en este Mac, en `127.0.0.1:3900`, una dirección fija en el núcleo (`core/agora_core/tts.py`).
 El texto de la respuesta no sale del equipo. La pantalla corta la respuesta en frases mientras llega
 (`src/assistant/voice-pieces.ts`): la primera suena en cuanto está escrita y las siguientes se preparan mientras habla
-(`src/assistant/voice-player.ts`). Si VoiceStudio no responde, sigue la voz de macOS y Ajustes lo dice. Voicebox
+(`src/assistant/voice-player.ts`). Si VoiceStudio está en marcha o abriéndose, Watson lo espera (hasta dos minutos) en vez de hablar con macOS; si no está abierto o deja de responder, habla con la voz de macOS y el panel de Watson lo dice. Voicebox
 queda para más adelante: genera en segundo plano y necesita descargar antes su modelo.
 
 **Rapidez y consumo (alpha.27).** VoiceStudio trae su perfil «max», que hace 64 pasos por frase. AgoraOne pide

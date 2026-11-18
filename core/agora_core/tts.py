@@ -117,6 +117,18 @@ def installed_app() -> Path | None:
     return next((app for app in APPS if (app / "Contents" / "Info.plist").is_file()), None)
 
 
+def app_running() -> bool:
+    """Whether VoiceStudio's app is running on this Mac (it may still be loading): Watson then waits for its voice
+    instead of speaking with macOS. Only the two usual app folders count."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        found = subprocess.run(["/usr/bin/pgrep", "-f", "VoiceStudio.app/Contents/MacOS/"], capture_output=True, timeout=3, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return found.returncode == 0
+
+
 def open_at_start(connect_db, wait: float = 120.0, opener=subprocess.run) -> str:
     """At start: when Watson may speak with VoiceStudio and it is installed but closed, open it in the background
     (hidden, without taking the focus) and wait for it; then get its voice ready. Returns what happened."""

@@ -2,7 +2,7 @@
  * this Mac (voice-player.ts). Nothing is sent outside this computer. By default it speaks when it was spoken to;
  * the choice is per viewer. */
 import { useSyncExternalStore } from 'react';
-import { player } from './voice-player';
+import { player, voiceNotice } from './voice-player';
 import { MAX_SPOKEN, plainWords } from './voice-pieces';
 
 export type VoiceMode = 'spoken' | 'always' | 'never';
@@ -11,6 +11,8 @@ let speaking = false;
 const listeners = new Set<() => void>();
 const setSpeaking = (now: boolean) => { if (speaking !== now) { speaking = now; listeners.forEach(listener => listener()); } };
 export const useSpeaking = () => useSyncExternalStore(cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, () => speaking);
+/** What the panel says about Watson's voice (waiting for VoiceStudio, or macOS speaking in its place), or null. */
+export const useVoiceNotice = () => useSyncExternalStore(voiceNotice.subscribe, voiceNotice.get);
 const KEY = 'agora-watson-voice';
 const MAX = MAX_SPOKEN;
 
