@@ -5,7 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import doctor, installer, modules
+from . import doctor, installer, modules, zernio
 from .db import DB_NAME, connect, transaction
 from .engines import SECRET_ACCOUNTS
 from .settings import Settings
@@ -30,7 +30,7 @@ def doctor_router(settings: Settings, secrets) -> APIRouter:
     def diagnose():
         connection = connect(settings.data_dir / DB_NAME)
         try:
-            return doctor.check(connection, bool(secrets.get(SECRET_ACCOUNTS["anthropic"])))
+            return doctor.check(connection, bool(secrets.get(SECRET_ACCOUNTS["anthropic"])), bool(secrets.get(zernio.SECRET)))
         finally:
             connection.close()
 

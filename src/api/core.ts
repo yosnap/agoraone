@@ -173,6 +173,19 @@ export const deleteMailAccount = (id: number) => core<{ accounts: MailAccount[] 
 /** Signs in to an account's SMTP server without sending anything. */
 export const checkMailSender = (id: number) => core<{ result: { status: string; detail: string }; accounts: MailAccount[] }>(`/mail/accounts/${id}/check`, {});
 export const syncMailAccount = (id: number) => core<{ result: { status: string; added: number }; accounts: MailAccount[] }>(`/mail/accounts/${id}/sync`, {});
+// WhatsApp through Zernio, read-only. The key goes to the Keychain and is never returned: only whether there is one.
+export type ChatAccount = {
+  id: number; provider: 'zernio'; phone: string | null; label: string | null; scopeId: number | null; scopeName: string | null; confidentiality: Level;
+  maxAgeDays: number; enabled: boolean; status: MailAccount['status']; lastError: string | null; lastSyncAt: string | null; conversations: number; messages: number;
+};
+export type ChatSyncResult = { status: 'ok' | 'busy' | 'auth' | 'unreachable' | 'error'; added: number; read: number; pending: number; skipped: number; accounts: number; error: string | null };
+export type ChatSettings = { hasKey: boolean; accounts: ChatAccount[]; lastSync: (ChatSyncResult & { at: string }) | null };
+export const getChatSettings = () => core<ChatSettings>('/chat/settings');
+export const putChatKey = (key: string | null) => core<ChatSettings>('/chat/key', { key }, 'PUT');
+export const testChat = () => core<{ whatsapp: number; others: number }>('/chat/test', {});
+export const syncChat = () => core<ChatSettings & { result: ChatSyncResult }>('/chat/sync', {});
+export const changeChatAccount = (id: number, changes: Partial<{ scopeId: number | null; confidentiality: Level; maxAgeDays: number; enabled: boolean }>) =>
+  core<ChatSettings>(`/chat/accounts/${id}`, changes, 'PATCH');
 export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error' | 'cancelled'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
 export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail/microsoft');
 export const putMicrosoftClient = (clientId: string | null) => core<{ clientId: string | null }>('/mail/microsoft', { clientId }, 'PUT');
@@ -488,7 +501,7 @@ export type InstallJob = { id: string; name: string; state: 'running' | 'done' |
 export const getInstallJob = () => core<{ job: InstallJob | null }>('/doctor/install');
 export const installPiece = (id: string) => core<{ job: InstallJob }>('/doctor/install', { id });
 /** Modules (1.6): which are on; one off disappears, stops its background work and Watson loses its tools. */
-export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'conectores' | 'orca';
+export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'conectores' | 'orca' | 'whatsapp';
 export const getModules = () => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules');
 export const putModules = (modules: Partial<Record<ModuleName, boolean>>) => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules', { modules }, 'PUT');
 export const getFirstRun = () => core<{ done: boolean }>('/setup/first-run');

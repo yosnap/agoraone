@@ -4,6 +4,7 @@ import { PrivacySettingsCard } from './settings-privacy';
 import { BackupsCard } from './settings-backups';
 import { MailSettingsCard } from './settings-mail';
 import { MailRulesCard } from './settings-mail-rules';
+import { WhatsAppSettingsCard } from './settings-whatsapp';
 import { FiscalSettingsCard } from './settings-fiscal';
 import { AppearanceCard } from './settings-appearance';
 import { QontoSettingsCard } from './settings-qonto';
@@ -25,6 +26,7 @@ const tabs: Tab[] = [
   { id: 'instalacion', label: 'Instalación', cards: () => <><InstallSettingsCard/><ModulesSettingsCard/></> },
   { id: 'asistente', label: 'Asistente', cards: () => <AssistantSettingsCard/> },
   { id: 'correo', label: 'Correo', cards: () => <><MailSettingsCard/><MailRulesCard/></> },
+  { id: 'whatsapp', label: 'WhatsApp', cards: () => <WhatsAppSettingsCard/> },
   { id: 'agenda', label: 'Agenda y avisos', cards: () => <><CalendarsSettingsCard/><AlertsSettingsCard/></> },
   { id: 'fiscal', label: 'Fiscal', cards: () => <><FiscalSettingsCard/><QontoSettingsCard/></> },
   { id: 'trabajos', label: 'Trabajos', cards: () => <JobsSettingsCard/> },

@@ -38,7 +38,7 @@ def _how(brew: str | None = None, linux: str | None = None, windows: str | None 
     return {"kind": "page", "url": url} if url else {"kind": "none"}
 
 
-def check(connection: sqlite3.Connection, has_anthropic_key: bool) -> dict:
+def check(connection: sqlite3.Connection, has_anthropic_key: bool, has_zernio_key: bool = False) -> dict:
     voice = transcribe.status(connection)
     local = local_model.detect()
     pieces = []
@@ -84,6 +84,9 @@ def check(connection: sqlite3.Connection, has_anthropic_key: bool) -> dict:
     orca = orca_binary()
     add("orca", "Orca", bool(orca), ["Orca"], "Lanza Claude Code o Codex en el repositorio de un proyecto." if orca else "Para llevar encargos a un agente en tus repositorios.",
         optional=True)
+    add("zernio", "WhatsApp (Zernio)", has_zernio_key, ["WhatsApp"],
+        "Clave de API de Zernio guardada en el Llavero." if has_zernio_key else "Para leer tu WhatsApp: guarda la clave de Zernio en Ajustes › WhatsApp.",
+        _how(url="https://zernio.com"), optional=True)
     library = music_library.folders(connection)
     add("music-folder", "Carpeta de música", bool(library), ["Música"], ", ".join(library) if library else "Elígela en Ajustes › Voz › Tu música.", optional=True)
     if LINUX:
