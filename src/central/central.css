@@ -1,0 +1,30 @@
+/* The «Central» section: tabs, summary figures, lists and records. No side accent stripe anywhere: the level of a
+   figure is said by its background and text colour. */
+.central-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap }
+.central-actions { justify-content:flex-end; margin-left:auto }
+.central-tabs { margin-bottom:18px; flex-wrap:wrap }
+.central-panel { display:flex; flex-direction:column; gap:14px; max-width:1100px }
+.central-connect { max-width:640px }
+.central-figures { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr)); gap:12px }
+.central-figure { display:flex; flex-direction:column; align-items:flex-start; gap:4px; text-align:left; border:1px solid var(--c-dfe3d6); border-radius:14px;
+  padding:16px; background:var(--c-fbfaf3); color:var(--c-173d3c) }
+.central-figure.bad { background:var(--c-f6ddd4); border-color:var(--c-e6c2b5); color:var(--c-8e3d2a) }
+.central-figure.warn { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.central-figure.good { background:var(--c-dcebdc); color:var(--c-24563a) }
+.central-figure-label { font-size:11px; font-weight:600; letter-spacing:.3px }
+.central-figure-value { font:500 30px/1.1 Manrope,sans-serif }
+.central-figure small { font-size:11px; opacity:.85 }
+.central-table td { vertical-align:top }
+.central-row-actions { text-align:right; white-space:nowrap }
+.central-url { overflow-wrap:anywhere }
+.central-chips { display:inline-flex; gap:6px; flex-wrap:wrap }
+.central-filters { margin-bottom:6px }
+.central-filters .field { flex:1 1 180px }
+.central-record h3 { font:600 13px Manrope,sans-serif; margin:6px 0 6px }
+.central-record section { display:flex; flex-direction:column; gap:4px }
+.central-facts { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr)); gap:8px 16px; margin:0 }
+.central-facts dt { font-size:10px; color:var(--c-6f8379); letter-spacing:.3px }
+.central-facts dd { margin:2px 0 0; font-size:12px; color:var(--c-173d3c); overflow-wrap:anywhere }
+.central-notes { list-style:none; padding:0 !important; display:flex; flex-direction:column; gap:8px }
+.central-notes p { white-space:pre-wrap; overflow-wrap:anywhere }
+@media (max-width:640px) { .central-table th:nth-child(4), .central-table td:nth-child(4) { display:none } }

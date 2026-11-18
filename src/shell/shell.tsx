@@ -13,7 +13,8 @@ import { UploadNotice } from '../fiscal/upload-watch';
 import { FirstRun } from './first-run';
 import { requestListen } from '../assistant/listen';
 import { YouTubeMini } from '../brain/youtube-player';
-import { readShell, writeShell, type Section } from './shell-state';
+import { readShell, sectionModule, writeShell, type Section } from './shell-state';
+import { moduleOn, useModules } from './modules';
 import './shell.css';
 import './page.css';
 
@@ -24,13 +25,18 @@ const ConnectorsView = lazy(() => import('../connectors/connectors-view').then(m
 const JobsView = lazy(() => import('../jobs/jobs-view').then(module => ({ default: module.JobsView })));
 const AgentsView = lazy(() => import('../agents/agents-view').then(module => ({ default: module.AgentsView })));
 const MeetingsView = lazy(() => import('../meetings/meetings-view').then(module => ({ default: module.MeetingsView })));
+const CentralView = lazy(() => import('../central/central-view').then(module => ({ default: module.CentralView })));
 const SettingsView = lazy(() => import('../settings/settings-view').then(module => ({ default: module.SettingsView })));
 
 /** AgoraOne's frame: the rail with the sections and the section on screen. The office (the city) stays
  * mounted once visited so its chats keep going; everything else mounts only while shown. */
 export function Shell() {
   const [status, setStatus] = useState<Status | null>(null);
-  const [{ section, discreet }, setShell] = useState(readShell);
+  const [{ section: chosen, discreet }, setShell] = useState(readShell);
+  // A section whose module is off (remembered or named by a link) is never mounted: the brain is shown instead.
+  const modules = useModules();
+  const owner = sectionModule[chosen];
+  const section: Section = owner && !moduleOn(modules, owner) ? 'brain' : chosen;
   const [officeVisited, setOfficeVisited] = useState(section === 'office');
   // Notes to point out on the graph (the sources of an answer).
   const [focus, setFocus] = useState<string[]>([]);
@@ -71,6 +77,7 @@ export function Shell() {
           : section === 'jobs' ? <JobsView discreet={discreet}/>
           : section === 'meetings' ? <MeetingsView discreet={discreet}/>
           : section === 'agents' ? <AgentsView discreet={discreet} onOpen={go}/>
+          : section === 'central' ? <CentralView discreet={discreet} onOpen={go}/>
           : <PendingView section={section}/>}
       </Suspense></main>}
       {status?.state === 'offline' && <section className="page" role="alert"><h1>Sin conexión</h1><p>{status.detail}</p></section>}
