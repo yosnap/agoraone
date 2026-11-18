@@ -8,6 +8,7 @@ in plain words, never with the key nor Central's address; for clients the last s
 with the time it was read."""
 
 import sqlite3
+import time
 from contextlib import contextmanager
 
 from fastapi import APIRouter, Request
@@ -23,10 +24,22 @@ NOT_CONNECTED = "Central no está conectado por su dirección y clave: conéctal
 NO_VIEW = "Esa vista de Central no existe."
 BAD_ID = "El identificador no es válido."
 STATUS_CODES = {"forbidden": 403, "not_found": 404}
+SUMMARY_SECONDS = 15  # the summary, which takes several requests, is kept this long
 
 
 def central_views_router(settings: Settings, secrets) -> APIRouter:
     router = APIRouter()
+    summaries: dict[str, tuple[float, dict]] = {}  # per Central address: when it was read and what
+
+    def read_list(target: central_api.Connection, view: str, query: dict) -> dict:
+        if view != "resumen":
+            return central_views.read_list(target, view, query)
+        kept = summaries.get(target.url)
+        if kept and time.monotonic() - kept[0] < SUMMARY_SECONDS:
+            return kept[1]
+        data = central_views.read_list(target, view, query)
+        summaries[target.url] = (time.monotonic(), data)
+        return data
 
     @contextmanager
     def database():
@@ -81,7 +94,7 @@ def central_views_router(settings: Settings, secrets) -> APIRouter:
             except central_views.ViewError as error:
                 return problem(422, str(error), "invalid")
             return None
-        return await answer(check, lambda target: central_views.read_list(target, view, query),
+        return await answer(check, lambda target: read_list(target, view, query),
                             lambda snapshot: central_views.stored_clients(snapshot) if view == "clientes" and not query else None)
 
     # «path» so that an id with «/» reaches the check (422) instead of missing the route.

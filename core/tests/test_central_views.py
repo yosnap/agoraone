@@ -10,7 +10,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from agora_core import central_api
+from agora_core import central_api, central_views
 from test_assistant import MemorySecrets
 from test_central_api import HEADERS, KEY, URL, app_with
 
@@ -132,7 +132,8 @@ def test_identificador_con_forma_de_cuid(client, fake, item):
 
 
 def test_parametros_permitidos_por_vista(client, fake):
-    for path in ("/central/views/alertas?q=x", "/central/views/proyectos?estado=BORRADO", "/central/views/proyectos?limite=500",
+    for path in ("/central/views/alertas?q=x", "/central/views/proyectos?estado=BORRADO", "/central/views/proyectos?limite=500", "/central/views/proyectos?limite=²", "/central/views/proyectos?limite=٣",
+                 "/central/views/proyectos?limite=１",
                  "/central/views/proyectos?cursor=../x", "/central/views/proyectos?ruta=/api/v1/secretos", "/central/views/clientes/" + C1 + "?x=1"):
         assert client.get(path, headers=HEADERS).status_code == 422, path
     assert paths(fake) == []
@@ -231,3 +232,33 @@ def test_clientes_con_la_instantanea_si_central_no_responde(client, fake):
     assert client.get("/central/views/proyectos", headers=HEADERS).status_code == 502, "los proyectos no tienen respaldo"
     assert client.get("/central/views/clientes/" + "c" + "9" * 24, headers=HEADERS).status_code == 502
     assert KEY not in listed.text
+
+
+def test_el_filtro_de_cliente_es_exacto(client, fake):
+    # Central filters «cliente» as «contains»; the core keeps only that client's own projects.
+    assert client.get("/central/views/proyectos?cliente=Uno", headers=HEADERS).json()["projects"] == []
+    page = client.get("/central/views/proyectos?cliente=cliente%20uno", headers=HEADERS).json()
+    assert [p["name"] for p in page["projects"]] == ["Web Uno"] and page["nextCursor"] == P1
+
+
+def test_el_resumen_se_guarda_unos_segundos(client, fake):
+    first = client.get("/central/views/resumen", headers=HEADERS).json()
+    asked = len(paths(fake))
+    assert client.get("/central/views/resumen", headers=HEADERS).json() == first
+    assert len(paths(fake)) == asked, "la segunda vez no se pide nada"
+
+
+def test_el_limpiador_no_toca_direcciones_web():
+    assert central_views._text("Ver https://ejemplo.com/opt/app y http://ejemplo.com/var/x") == "Ver https://ejemplo.com/opt/app y http://ejemplo.com/var/x"
+    assert central_views._text("copia en /opt/app y ~/claves") == "copia en [ruta oculta] y [ruta oculta]"
+
+
+@pytest.mark.parametrize("url", ["http://0x7f000001/", "http://2130706433/", "http://017700000001/", "http://127.1/", "http://intranet/",
+                                 "https://web.203.0.113.7.sslip.io", "http://[::1]/", "ftp://ejemplo.com"])
+def test_direcciones_web_que_no_se_muestran(url):
+    assert central_views._web_url(url) is None
+
+
+def test_direcciones_web_que_si_se_muestran():
+    assert central_views._web_url("https://www.clienteuno.com/tienda") == "https://www.clienteuno.com/tienda"
+    assert central_views._web_url("https://xn--caf-dma.es") == "https://xn--caf-dma.es"

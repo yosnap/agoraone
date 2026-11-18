@@ -7,6 +7,7 @@ and free text is scrubbed again of IPs and user paths (Central already does it; 
 Contact (address, phone, tax id) appears only in a client's record, never in a list."""
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlsplit
 
 from . import central, central_api
@@ -20,7 +21,11 @@ PROJECT_STATUSES = ("ACTIVE", "MAINTENANCE", "DORMANT", "ARCHIVED")
 PROJECT_KINDS = ("CLIENT", "OWN", "TRAINING", "EXPERIMENT")
 SUMMARY_PAGES = 5  # active projects counted up to 1000; more is shown as «1000+»
 _IPV4 = re.compile(r"(?<![\w.])(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?(?![\w.])")
-_PATH = re.compile(r"(?:~/|/Users/|/home/|/root/|/Volumes/|/private/|/var/|/etc/|/opt/|[A-Za-z]:\\)\S*|\S*\.ssh/\S*|\bid_(?:rsa|ecdsa|ed25519)\S*|\S+\.pem\b")
+# Never inside a URL or a word (https://ex.com/opt/app stays as it is): only a path that starts a token.
+_PATH = re.compile(r"(?<![\w.-])(?:~/|/Users/|/home/|/root/|/Volumes/|/private/|/var/|/etc/|/opt/|[A-Za-z]:\\)\S*|\S*\.ssh/\S*|\bid_(?:rsa|ecdsa|ed25519)\S*|\S+\.pem\b")
+
+
+_TLD = re.compile(r"[a-z]{2,63}|xn--[a-z0-9-]{1,59}")
 
 
 class ViewError(ValueError):
@@ -58,7 +63,8 @@ def _web_url(value) -> str | None:
         return None
     if parts.scheme not in ("https", "http") or not host or parts.username or parts.password or ":" in host:
         return None
-    if re.fullmatch(r"[\d.]+", host) or re.search(r"(?:^|\.)(?:sslip|nip|xip)\.io$", host) or host in ("localhost",):
+    # A name with a real top-level domain: never a number in any base (203.0.113.7, 0x7f000001, 017700000001) nor a bare host.
+    if "." not in host or not _TLD.fullmatch(host.rsplit(".", 1)[1]) or re.search(r"(?:^|\.)(?:sslip|nip|xip)\.io$", host):
         return None
     return value
 
@@ -96,7 +102,7 @@ def _cursor(name: str, value: str) -> str:
 
 
 def _limit(name: str, value: str) -> int:
-    if not value.isdigit() or not 1 <= int(value) <= 200:
+    if not (value.isascii() and value.isdigit()) or not 1 <= int(value) <= 200:
         raise ViewError("El límite va de 1 a 200.")
     return int(value)
 
@@ -191,17 +197,25 @@ def read_list(target: central_api.Connection, view: str, query: dict) -> dict:
         return {"pending": [pending(p) for p in _rows(data, "pending")]}
     if view == "clientes":
         return {"clients": [client_row(c) for c in _rows(data, "clients")]}
-    cursor = data.get("nextCursor")
-    return {"projects": [project_row(p) for p in _rows(data, "projects")], "nextCursor": _id(cursor)}
+    rows = [project_row(p) for p in _rows(data, "projects")]
+    if query.get("cliente"):
+        # Central matches «cliente» as «contains»: only that client's own projects are shown (a page may come shorter).
+        wanted = query["cliente"].casefold()
+        rows = [p for p in rows if (p["client"] or "").casefold() == wanted]
+    return {"projects": rows, "nextCursor": _id(data.get("nextCursor"))}
 
 
 def _summary(get) -> dict:
-    alerts = _rows(get(LIST_PATHS["alertas"]), "alerts")
-    waiting = _rows(get(LIST_PATHS["pendientes"]), "pending")
-    clients = _rows(get(LIST_PATHS["clientes"]), "clients")
+    """The first four requests at once (one connection, safe across threads); further project pages, if any, after."""
+    first = {"estado": "ACTIVE", "limite": 200}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        asked = [pool.submit(get, LIST_PATHS[name]) for name in ("alertas", "pendientes", "clientes")]
+        asked.append(pool.submit(get, LIST_PATHS["proyectos"], first))
+        answers = [future.result() for future in asked]
+    alerts, waiting, clients = _rows(answers[0], "alerts"), _rows(answers[1], "pending"), _rows(answers[2], "clients")
     active, cursor, more = 0, None, False
     for page in range(SUMMARY_PAGES):
-        data = get(LIST_PATHS["proyectos"], {"estado": "ACTIVE", "limite": 200, **({"cursor": cursor} if cursor else {})})
+        data = answers[3] if page == 0 else get(LIST_PATHS["proyectos"], {**first, "cursor": cursor})
         active += len(_rows(data, "projects"))
         cursor = _id(data.get("nextCursor"))
         if not cursor:
@@ -213,7 +227,8 @@ def _summary(get) -> dict:
 
 
 def read_item(target: central_api.Connection, view: str, item: str) -> dict:
-    data = central_api.request(target, "GET", ITEM_PATHS[view].format(id=item))
+    with central_api.session(VIEW_SECONDS) as (client, deadline):
+        data = central_api.request(target, "GET", ITEM_PATHS[view].format(id=item), client=client, deadline=deadline)
     return client_record(data) if view == "clientes" else project_record(data)
 
 
