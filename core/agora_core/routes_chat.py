@@ -20,12 +20,14 @@ Action = Literal["invoice", "client", "personal", "important", "ignore"]
 
 class KeyIn(BaseModel):
     # null forgets it. Checked in the route, not here: a validation error would echo the key back.
-    key: str | None = None
+    key: object = None
 
 
-def key_problem(key: str | None) -> str | None:
+def key_problem(key: object) -> str | None:
     if key is None:
         return None
+    if not isinstance(key, str):
+        return "La clave de API de Zernio debe ser texto."
     key = key.strip()
     if not 8 <= len(key) <= 500 or not key.isascii() or not key.isprintable() or any(c.isspace() for c in key):
         return "La clave de API de Zernio no parece válida: cópiala entera desde su panel, sin espacios."
@@ -121,7 +123,7 @@ def chat_router(settings: Settings, secrets, health=None) -> APIRouter:
         problem = key_problem(body.key)
         if problem:
             return JSONResponse({"error": problem}, status_code=422)
-        await run_in_threadpool(secrets.put, zernio.SECRET, body.key.strip() if body.key else None)
+        await run_in_threadpool(secrets.put, zernio.SECRET, body.key.strip() if isinstance(body.key, str) else None)
         await db(lambda c: c.execute("UPDATE chat_account SET status = 'pending', last_error = NULL"))
         return await described()
 
