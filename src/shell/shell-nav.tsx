@@ -1,13 +1,10 @@
 import { useState, type ReactNode } from 'react';
-import { menu, type Section } from './shell-state';
+import { menu, sectionModule as moduleOf, type Section } from './shell-state';
 import { applyTheme, readTheme, themeLabels, type ThemeChoice } from './theme';
 import { setSound, useSoundOn } from '../sound/sound';
 import { useMeetingRecorder } from '../meetings/meeting-recorder';
 import { moduleOn, useModules } from './modules';
-import type { ModuleName } from '../api/core';
 
-// The sections that belong to a module that can be turned off (1.6).
-const moduleOf: Partial<Record<Section, ModuleName>> = { inbox: 'correo', agenda: 'agenda', fiscal: 'fiscal', jobs: 'trabajos', meetings: 'reuniones', office: 'oficina', connectors: 'conectores', central: 'central' };
 
 const themeOrder: ThemeChoice[] = ['system', 'light', 'dark'];
 const themeIcons: Record<ThemeChoice, string> = { system: '◑', light: '☀', dark: '☾' };

@@ -61,6 +61,6 @@ export function getCentralView<V extends CentralViewName>(view: V, params: Recor
 export const getCentralClient = (id: string) => core<CentralClientRecord>(`/central/views/clientes/${encodeURIComponent(id)}`);
 export const getCentralProject = (id: string) => core<CentralProjectRecord>(`/central/views/proyectos/${encodeURIComponent(id)}`);
 
-export const projectStatusLabels: Record<string, string> = { ACTIVE: 'Activo', MAINTENANCE: 'Mantenimiento', DORMANT: 'Dormido', ARCHIVED: 'Archivado' };
+export const projectStatusLabels: Record<string, string> = { ACTIVE: 'Activo', MAINTENANCE: 'Mantenimiento', DORMANT: 'Parado', ARCHIVED: 'Archivo' };
 export const projectKindLabels: Record<string, string> = { CLIENT: 'Cliente', OWN: 'Propio', TRAINING: 'Formación', EXPERIMENT: 'Experimento' };
 export const deployLabels: Record<string, string> = { UNKNOWN: 'Sin indicar', NOT_DEPLOYED: 'Sin desplegar', STAGING: 'En pruebas', PRODUCTION: 'En producción', RETIRED: 'Retirado' };

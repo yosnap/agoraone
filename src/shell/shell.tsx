@@ -13,7 +13,8 @@ import { UploadNotice } from '../fiscal/upload-watch';
 import { FirstRun } from './first-run';
 import { requestListen } from '../assistant/listen';
 import { YouTubeMini } from '../brain/youtube-player';
-import { readShell, writeShell, type Section } from './shell-state';
+import { readShell, sectionModule, writeShell, type Section } from './shell-state';
+import { moduleOn, useModules } from './modules';
 import './shell.css';
 import './page.css';
 
@@ -31,7 +32,11 @@ const SettingsView = lazy(() => import('../settings/settings-view').then(module 
  * mounted once visited so its chats keep going; everything else mounts only while shown. */
 export function Shell() {
   const [status, setStatus] = useState<Status | null>(null);
-  const [{ section, discreet }, setShell] = useState(readShell);
+  const [{ section: chosen, discreet }, setShell] = useState(readShell);
+  // A section whose module is off (remembered or named by a link) is never mounted: the brain is shown instead.
+  const modules = useModules();
+  const owner = sectionModule[chosen];
+  const section: Section = owner && !moduleOn(modules, owner) ? 'brain' : chosen;
   const [officeVisited, setOfficeVisited] = useState(section === 'office');
   // Notes to point out on the graph (the sources of an answer).
   const [focus, setFocus] = useState<string[]>([]);

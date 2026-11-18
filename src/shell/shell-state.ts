@@ -1,3 +1,5 @@
+import type { ModuleName } from '../api/core';
+
 // Which section was open and whether discreet mode was on, per browser. Storage may be unavailable
 // (private window, blocked site data): the app then starts on the brain with discreet mode off.
 
@@ -11,6 +13,9 @@ export const menu: { id: Exclude<Section, 'settings'>; label: string }[] = [
   { id: 'office', label: 'Oficina 3D' }, { id: 'connectors', label: 'Conectores' }, { id: 'inbox', label: 'Bandeja' }, { id: 'agenda', label: 'Agenda' },
   { id: 'fiscal', label: 'Fiscal' }, { id: 'jobs', label: 'Trabajos' }, { id: 'meetings', label: 'Reuniones' }, { id: 'central', label: 'Central' },
 ];
+
+/** The sections that belong to a module that can be turned off (1.6): hidden from the rail and never shown while off. */
+export const sectionModule: Partial<Record<Section, ModuleName>> = { inbox: 'correo', agenda: 'agenda', fiscal: 'fiscal', jobs: 'trabajos', meetings: 'reuniones', office: 'oficina', connectors: 'conectores', central: 'central' };
 
 const key = 'agora-shell';
 

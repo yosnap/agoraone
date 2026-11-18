@@ -16,7 +16,7 @@ export function CentralSummary({ onTab, onOpen }: { onTab: (tab: CentralViewName
       tone: s.alerts.critical ? 'bad' : s.alerts.warning ? 'warn' : 'good' },
     { tab: 'pendientes', label: 'Pendientes', value: String(s.pending), detail: s.pending === 1 ? 'proyecto con información por completar' : 'proyectos con información por completar', tone: s.pending ? 'warn' : 'good' },
     { tab: 'clientes', label: 'Clientes', value: String(s.clients), detail: 'en Central', tone: 'neutral' },
-    { tab: 'proyectos', label: 'Proyectos activos', value: `${s.activeProjects}${s.activeProjectsMore ? '+' : ''}`, detail: 'con actividad en los últimos 30 días', tone: 'neutral' },
+    { tab: 'proyectos', label: 'Proyectos activos', value: `${s.activeProjects}${s.activeProjectsMore ? '+' : ''}`, detail: 'en estado Activo', tone: 'neutral' },
   ];
   return <div className="central-figures" aria-label="Resumen de Central">
     {figures.map(f => <button key={f.tab} type="button" className={`central-figure ${f.tone}`} onClick={() => onTab(f.tab)}>

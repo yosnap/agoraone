@@ -5,7 +5,7 @@ import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { CentralProblem } from './central-connect';
 import { NotesList, WebsitesTable } from './central-clients';
-import { dateLabel, useCentralRead, viewKey } from './use-central-view';
+import { dateLabel, useCentralRead, useCentralReadings, viewKey } from './use-central-view';
 
 const ALL = '';
 const PAGE = '50';
@@ -21,7 +21,7 @@ function ProjectsPage({ filters, cursor, last, onMore, onPick, onOpen }: {
   if (!read.data) return <tbody><tr><td colSpan={6}><Loading label="Leyendo los proyectos de Central" lines={3}/></td></tr></tbody>;
   const { projects, nextCursor } = read.data;
   return <tbody>
-    {!cursor && !projects.length && <tr><td colSpan={6} className="muted">Ningún proyecto con estos filtros.</td></tr>}
+    {!cursor && !projects.length && !nextCursor && <tr><td colSpan={6} className="muted">Ningún proyecto con estos filtros.</td></tr>}
     {projects.map((p, index) => <tr key={p.id ?? index}>
       <td><strong>{p.name ?? '—'}</strong>{p.framework && <small className="muted"> · {p.framework}</small>}</td>
       <td>{p.client ?? '—'}</td>
@@ -73,10 +73,13 @@ function ProjectRecord({ id, discreet, onBack, onOpen }: { id: string; discreet:
 export function CentralProjects({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   const [filters, setFilters] = useState<ProjectFilters>({});
   const [typed, setTyped] = useState('');
-  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  // The cursors of the pages loaded, valid only for the reading they came from: «Volver a leer» starts at page one.
+  const readings = useCentralReadings();
+  const [paging, setPaging] = useState<{ readings: number; cursors: (string | undefined)[] }>({ readings, cursors: [undefined] });
+  const cursors = paging.readings === readings ? paging.cursors : [undefined];
   const [open, setOpen] = useState<string | null>(null);
   const clients = useCentralRead(viewKey('clientes'), () => getCentralView('clientes'));
-  const apply = (next: ProjectFilters) => { setFilters(next); setCursors([undefined]); };
+  const apply = (next: ProjectFilters) => { setFilters(next); setPaging({ readings, cursors: [undefined] }); };
   if (open) return <ProjectRecord id={open} discreet={discreet} onBack={() => setOpen(null)} onOpen={onOpen}/>;
   const names = [...new Set((clients.data?.clients ?? []).map(c => c.name).filter((n): n is string => Boolean(n)))];
   return <>
@@ -91,7 +94,7 @@ export function CentralProjects({ discreet, onOpen }: { discreet: boolean; onOpe
     <table className="data-table central-table">
       <thead><tr><th>Proyecto</th><th>Cliente</th><th>Estado</th><th>Fase</th><th>Última actividad</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
       {cursors.map((cursor, index) => <ProjectsPage key={cursor ?? 'first'} filters={filters} cursor={cursor} last={index === cursors.length - 1}
-        onMore={next => setCursors(previous => [...previous, next])} onPick={setOpen} onOpen={onOpen}/>)}
+        onMore={next => setPaging({ readings, cursors: [...cursors, next] })} onPick={setOpen} onOpen={onOpen}/>)}
     </table>
   </>;
 }

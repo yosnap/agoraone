@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { takeJobsTab } from './jobs-tab';
 import { getHermesActivity, getHermesCatalog, getHermesWork } from '../api/client';
 import { getJobsSettings } from '../api/core';
 import type { HermesWork, WorkCard, WorkTask, WorkTokens } from '../../shared/hermes-work';
@@ -65,7 +66,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
   const [error, setError] = useState('');
   const [period, setPeriod] = useState<Period>('7d');
   const [profile, setProfile] = useState(ALL);
-  const [tab, setTab] = useState<'work' | 'clients'>('work');
+  const [tab, setTab] = useState<'work' | 'clients'>(takeJobsTab);
   const onClients = useRef(false);  // the timer does not refresh the work while the «Clientes» tab is open
   onClients.current = tab === 'clients';
   const started = useRef(false);
