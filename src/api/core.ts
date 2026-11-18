@@ -186,6 +186,25 @@ export const testChat = () => core<{ whatsapp: number; others: number }>('/chat/
 export const syncChat = () => core<ChatSettings & { result: ChatSyncResult }>('/chat/sync', {});
 export const changeChatAccount = (id: number, changes: Partial<{ scopeId: number | null; confidentiality: Level; maxAgeDays: number; enabled: boolean }>) =>
   core<ChatSettings>(`/chat/accounts/${id}`, changes, 'PATCH');
+/** The user's rules for WhatsApp conversations: like the mail ones, the first that matches decides and only makes the level stricter. */
+export type ChatRule = {
+  id: number; name: string; contact: string | null; accountId: number | null; words: string | null; action: MailRuleAction;
+  label: string | null; scopeId: number | null; confidentiality: Level | null; enabled: boolean;
+};
+export type ChatRuleIn = Omit<ChatRule, 'id'>;
+export const getChatRules = () => core<{ rules: ChatRule[] }>('/chat/rules');
+export const createChatRule = (rule: ChatRuleIn) => core<{ rules: ChatRule[] }>('/chat/rules', rule);
+export const changeChatRule = (id: number, changes: Partial<ChatRuleIn>) => core<{ rules: ChatRule[] }>(`/chat/rules/${id}`, changes, 'PATCH');
+export const deleteChatRule = (id: number) => core<{ rules: ChatRule[] }>(`/chat/rules/${id}`, undefined, 'DELETE');
+/** A classified conversation, without the text of its messages; a private one carries no participant. */
+export type ChatSummary = {
+  id: number; kind: InboxKind; source: 'rule' | 'model' | 'local'; ruleId: number | null; ruleName: string | null; label: string | null;
+  confidentiality: Level; state: InboxState; summary: string | null; details: { asks?: string[]; dates?: string[]; amounts?: string[]; language?: string | null };
+  participant: { name: string | null; phone: string | null } | null; account: { id: number; phone: string | null; label: string | null };
+  scope: { id: number; name: string; color: string | null } | null; lastIncomingAt: string | null; updatedAt: string;
+};
+export const getChatSummaries = (state: InboxState = 'pending') =>
+  core<{ items: ChatSummary[]; counts: Record<InboxState | 'quiet', number>; problem: string | null }>(`/chat/summaries?state=${state}`);
 export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error' | 'cancelled'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
 export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail/microsoft');
 export const putMicrosoftClient = (clientId: string | null) => core<{ clientId: string | null }>('/mail/microsoft', { clientId }, 'PUT');
