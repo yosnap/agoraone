@@ -80,6 +80,15 @@ def _id(value) -> str | None:
     return value if isinstance(value, str) and ID.fullmatch(value) else None
 
 
+REVISION = re.compile(r"[0-9a-f]{20}")
+
+
+def revision(value) -> str | None:
+    """The `version` Central gives a record to change it (a hash of its editable fields), or None: then that record
+    cannot be changed from AgoraOne (a Central without the write API)."""
+    return value if isinstance(value, str) and REVISION.fullmatch(value) else None
+
+
 def _web_url(value) -> str | None:
     """A public web address: https or http with a host name, never an IP literal, a name carrying one (sslip.io,
     traefik.me, Dokploy's 1-2-3-4 form, any domain) nor a name of a local network (.local, .internal, .lan…)."""
@@ -215,7 +224,7 @@ def client_record(data: dict) -> dict:
     return {"id": _id(data.get("id")), "name": _plain(data.get("name")), "company": _plain(data.get("company")),
             "email": _plain(data.get("email")), "phone": _plain(data.get("phone"), 60), "taxId": _plain(data.get("taxId"), 40),
             "address": _text(data.get("address"), 300), "projects": projects, "websites": [website(w) for w in _rows(data, "websites")],
-            "notes": [note(n) for n in _rows(data, "notes")]}
+            "notes": [note(n) for n in _rows(data, "notes")], "revision": revision(data.get("version"))}
 
 
 def project_row(row: dict) -> dict:
@@ -228,13 +237,15 @@ def project_record(data: dict) -> dict:
     """A project's record: deployment, services and health (its websites). Never its folders, local URL, compose
     services, variable files, push token or anything else that describes this or another machine."""
     client = data.get("client") if isinstance(data.get("client"), dict) else {}
+    # Central's record gives in `version` the hash to change it, over the project's own version: never shown as that.
+    edit = revision(data.get("version"))
     services = [{"id": _id(s.get("id")), "name": _plain(s.get("name"), 80), "environment": _plain(s.get("environment"), 40),
                  "url": _web_url(s.get("url")), "hosting": _text(s.get("hosting"), 120), "liveVersion": _plain(s.get("liveVersion"), 40),
                  "liveVersionAt": _plain(s.get("liveVersionAt"), 40)} for s in _rows(data, "services")]
     return {"id": _id(data.get("id")), "name": _plain(data.get("name")), "kind": _plain(data.get("kind"), 20), "status": _plain(data.get("status"), 20),
             "phase": _plain(data.get("phase")), "description": _text(data.get("description"), 2000), "client": {"id": _id(client.get("id")), "name": _plain(client.get("name"))} if client else None,
-            "version": _plain(data.get("version"), 40), "framework": _plain(data.get("framework"), 80), "stack": _list(data.get("stack")),
-            "repo": central.github_repo(data.get("repoUrl")), "defaultBranch": _plain(data.get("defaultBranch"), 100),
+            "version": None if edit else _plain(data.get("version"), 40), "framework": _plain(data.get("framework"), 80), "stack": _list(data.get("stack")),
+            "statusLocked": data.get("statusLocked") is True, "revision": edit, "repo": central.github_repo(data.get("repoUrl")), "defaultBranch": _plain(data.get("defaultBranch"), 100),
             "lastCommitAt": _plain(data.get("lastCommitAt"), 40), "lastActivity": _plain(data.get("lastActivityAt"), 40),
             "deploy": {"status": _plain(data.get("deployStatus"), 20), "hosting": _text(data.get("hosting"), 120),
                        "version": _plain(data.get("deployedVersion"), 40), "environments": _list(data.get("environments"), 10)},
@@ -404,5 +415,5 @@ def stored_client(snapshot: dict | None, item: str) -> dict | None:
                                   "version": None, "repo": _plain(p.get("repo")), "lastActivity": None} for p in c.get("projects") or [] if isinstance(p, dict)],
                     "websites": [{"id": None, "url": _web_url(w.get("url")), "label": None, "kind": None, "status": _plain(w.get("status"), 20), "code": None,
                                   "ms": None, "checkedAt": None, "sslDaysLeft": None} for w in c.get("websites") or [] if isinstance(w, dict)],
-                    "notes": []}
+                    "notes": [], "revision": None}
     return None

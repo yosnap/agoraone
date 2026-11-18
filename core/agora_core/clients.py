@@ -267,6 +267,16 @@ def set_link(connection: sqlite3.Connection, client_id: int, central_id: str, st
     return get(connection, client_id)
 
 
+def link_created(connection: sqlite3.Connection, client_id: int, central_id: str) -> bool:
+    """Links a client kept here with the one just created from it in Central («Crear en Central»), which the
+    snapshot will only have after its next reading. Never over another link: False when it already had one."""
+    with transaction(connection):
+        changed = connection.execute("UPDATE client SET central_id = ?, updated_at = ? WHERE id = ? AND central_id IS NULL",
+                                     (central_id, now(), client_id)).rowcount
+        connection.execute("DELETE FROM client_distinct WHERE client_id = ? AND central_id = ?", (client_id, central_id))
+    return changed == 1
+
+
 # --- the directory ---------------------------------------------------------------------------------------------
 
 def _central(connection: sqlite3.Connection) -> list[dict]:

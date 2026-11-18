@@ -55,6 +55,7 @@ from .meeting_notes import Worker
 from .routes_calendar import calendar_router
 from .routes_central import CentralHealth, central_router, central_worker
 from .routes_central_views import central_views_router
+from .routes_central_write import central_write_router
 from .routes_central_window import central_window_router
 from .routes_quotes import quotes_router
 from .central_quotes import clean_documents
@@ -222,6 +223,7 @@ def create_app(
     app.include_router(fiscal_router(settings, secrets))
     app.include_router(central_router(settings, central_health, secrets))
     app.include_router(central_views_router(settings, secrets))
+    app.include_router(central_write_router(settings, secrets))
     app.include_router(central_window_router(settings))
     app.include_router(quotes_router(settings, secrets))
     app.include_router(clients_router(settings))

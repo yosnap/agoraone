@@ -22,7 +22,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validat
 
 from . import central_api
 from .system_open import open_path
-from .central_views import ID, ViewError, _SECRET_PATH, _number, _plain, _rows, _text
+from .central_views import ID, ViewError, _SECRET_PATH, _number, _plain, _rows, _text, revision
 
 QUOTE_STATUSES = ("DRAFT", "SENT", "ACCEPTED", "REJECTED", "EXPIRED")
 PHASE_STATUSES = ("PENDING", "IN_PROGRESS", "DONE", "INVOICED")
@@ -70,7 +70,8 @@ def quote_record(data: dict) -> dict:
     items = [{"description": _clean(i.get("description"), 500), "details": _clean(i.get("details"), 3000), "quantity": _number(i.get("quantity")),
               "unit": _plain(i.get("unit"), 30), "unitPrice": _number(i.get("unitPrice")), "priceMax": _number(i.get("priceMax"))}
              for i in _rows(data, "items")[:100]]
-    phases = [{"name": _clean(p.get("name"), 200), "percent": _number(p.get("percent")), "amount": _number(p.get("amount")),
+    phases = [{"id": p["id"] if isinstance(p.get("id"), str) and ID.fullmatch(p["id"]) else None, "revision": revision(p.get("version")),
+               "name": _clean(p.get("name"), 200), "percent": _number(p.get("percent")), "amount": _number(p.get("amount")),
                "dueDate": _plain(p.get("dueDate"), 40), "status": _status(p.get("status"), PHASE_STATUSES), "completedAt": _plain(p.get("completedAt"), 40)}
               for p in _rows(data, "phases")[:50]]
     schedule = [{"when": _clean(s.get("when"), 200), "what": _clean(s.get("what"), 1000)} for s in _rows(data, "schedule")[:50]]
