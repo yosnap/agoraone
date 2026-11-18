@@ -66,7 +66,7 @@ def recognised(addon: str, folder: Path) -> bool:
     if addon == "fabrica":
         try:
             text = (folder / "pyproject.toml").read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, ValueError):  # unreadable, not UTF-8 (UnicodeDecodeError) or a bad path: not the fábrica
             return False
         return 'name = "mi-fabrica"' in text
     return False

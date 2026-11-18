@@ -6,7 +6,9 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod addon_window;
 mod central_window;
+mod fabrica_window;
 mod youtube_window;
 
 use std::path::PathBuf;
@@ -262,6 +264,7 @@ fn main() {
                 notify_loop(app.handle().clone(), link.clone());
                 wake_loop(app.handle().clone(), link.clone());
                 central_window::central_loop(app.handle().clone(), link.clone());
+                fabrica_window::fabrica_loop(app.handle().clone(), link.clone());
                 youtube_window::youtube_loop(app.handle().clone(), link);
             }
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(address.clone()))

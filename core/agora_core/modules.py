@@ -6,7 +6,7 @@ import json
 import sqlite3
 import threading
 
-from . import engines
+from . import addons, engines
 from .db import transaction
 
 SETTING = "modules"
@@ -14,12 +14,15 @@ MODULES = {
     "correo": "Correo y Bandeja", "agenda": "Agenda y avisos", "fiscal": "Fiscal", "trabajos": "Trabajos",
     "reuniones": "Reuniones", "voz": "Voz y dictado", "musica": "Música", "oficina": "Oficina 3D", "conectores": "Conectores", "orca": "Orca",
     "whatsapp": "WhatsApp", "jev": "Jev (decisiones)", "presupuestos": "Presupuestos", "central": "Central",
+    "fabrica": "Mi fábrica",
 }
 # Modules split from «trabajos» (which used to cover Central and its quotes): until the user sets them, they are on
 # when a source of Central exists (its folder as an add-on, a connection or a snapshot already read) and off when
 # there is none, so nobody
 # loses what already worked and nobody without Central sees them appear.
 FOLLOW_CENTRAL = ("central", "presupuestos")
+# «Mi fábrica» follows its folder registered as an add-on in the same way until the user sets it.
+FOLLOW_FABRICA = "fabrica"
 # Watson's tools that belong to a module.
 TOOLS = {"correo": {"consultar_bandeja", "proponer_regla", "proponer_limpieza"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos"}, "presupuestos": {"proponer_presupuesto"},
          "reuniones": {"consultar_reuniones", "leer_reunion", "proponer_issue"}, "orca": {"proponer_encargo_orca"}}
@@ -33,13 +36,15 @@ def state(connection: sqlite3.Connection) -> dict[str, bool]:
     if any(name not in saved for name in FOLLOW_CENTRAL):
         has_central = _central_source(connection)
         default.update({name: has_central for name in FOLLOW_CENTRAL})
+    if FOLLOW_FABRICA not in saved:
+        default[FOLLOW_FABRICA] = bool(addons.config(connection, "fabrica").get("path"))
     return {name: saved.get(name, default[name]) is not False for name in MODULES}
 
 
 def _central_source(connection: sqlite3.Connection) -> bool:
     """A Central folder registered as an add-on, a saved connection, or a snapshot already read (proof that one
     worked before)."""
-    from . import addons, central, central_api
+    from . import central, central_api
 
     return (bool(addons.config(connection, "central").get("path")) or central_api.saved_url(connection) is not None
             or central.stored(connection) is not None)
