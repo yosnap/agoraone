@@ -4,6 +4,7 @@ import { wakeStatus } from './wake-status';
 import { WatsonVoiceChoice } from './watson-voice-choice';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { listenShortcut } from '../ui/platform';
 import { setVoiceMode, voiceMode, type VoiceMode } from '../assistant/speech';
 import { ActionButton } from '../ui/action-button';
 
@@ -56,13 +57,13 @@ export function VoiceSettingsCard() {
         found={state.binaries.map(path => ({ path, text: path }))} onSave={path => void save({ binary: path })}/>
       <PathChoice label="ffmpeg" value={state.chosen.ffmpeg} describe={windows ? 'C:\\…\\ffmpeg.exe' : '/ruta/a/ffmpeg'}
         found={state.ffmpegs.map(path => ({ path, text: path }))} onSave={path => void save({ ffmpeg: path })}/>
-      <PathChoice label="Modelo" value={state.chosen.model} describe="/ruta/a/ggml-large-v3-turbo.bin"
+      <PathChoice label="Modelo" value={state.chosen.model} describe={windows ? 'C:\\…\\ggml-large-v3-turbo.bin' : '/ruta/a/ggml-large-v3-turbo.bin'}
         found={state.models.map(m => ({ path: m.path, text: `${m.name} · ${size(m.bytes)} · ${fileName(m.path)}` }))} onSave={path => void save({ model: path })}/>
       <label className="field">Idioma<ModernSelect value={state.chosen.language} options={languages} onChange={value => void save({ language: value })}/></label>
       <WatsonVoice/>
       </div>
       <WatsonVoiceChoice/>
-      <WakeWord/>
+      <WakeWord platform={state.platform}/>
       {!state.ready && <p className="fiscal-warning">{state.missing.length ? `Lo elegido ya no está (${state.missing.map(k => k === 'binary' ? 'whisper-cli' : k === 'model' ? 'el modelo' : 'ffmpeg').join(', ')}): ¿se desinstaló o actualizó? Elígelo de nuevo.`
         : !state.binary ? 'No se encuentra whisper-cli: instala whisper.cpp (Homebrew, el gestor de paquetes de tu Linux o la versión para Windows) o indica dónde está.'
         : !state.ffmpeg ? 'No se encuentra ffmpeg: instálalo o indica dónde está.'
@@ -83,7 +84,9 @@ function WatsonVoice() {
 
 /** «Oye Watson» from any app, heard on this Mac (Apple's on-device recognition): off unless turned on here. Under
  * the box, what the desktop app's listener is doing: listening, or why it could not start and how to fix it. */
-function WakeWord() {
+function WakeWord({ platform }: { platform: string }) {
+  // Heard with macOS' on-device recognition: elsewhere the box says so and stays off.
+  const supported = platform === 'darwin';
   const [wake, setWake] = useState<Wake | null>(null);
   const [error, setError] = useState('');
   const asked = useRef(false);
@@ -107,10 +110,12 @@ function WakeWord() {
   };
   const status = wake?.enabled ? wakeStatus(wake.state) : null;
   return <div className="field">
-    <label className="check"><input type="checkbox" checked={wake?.enabled === true} disabled={wake === null} onChange={event => void change(event.target.checked)}/> Escuchar «Oye Watson»</label>
-    <small className="muted">Di «Oye Watson» desde cualquier app y Watson empieza a escuchar, como con ⌃⌥W. Se reconoce en este Mac (sin internet) y no se guarda ni se envía nada de lo que oye. Mientras esté activo, el micrófono queda abierto y macOS enseña su punto naranja. Solo en la app de escritorio del Mac; la primera vez macOS pide los permisos de micrófono y reconocimiento de voz.</small>
-    {status && <small className={status.ok ? 'ok-note' : 'dictation-error'} role="status">{status.text}</small>}
-    {status && !status.ok && status.retry && <div className="inbox-actions">
+    <label className="check"><input type="checkbox" checked={supported && wake?.enabled === true} disabled={!supported || wake === null} onChange={event => void change(event.target.checked)}/> Escuchar «Oye Watson»</label>
+    <small className="muted">{supported
+      ? 'Di «Oye Watson» desde cualquier app y Watson empieza a escuchar, como con ⌃⌥W. Se reconoce en este Mac (sin internet) y no se guarda ni se envía nada de lo que oye. Mientras esté activo, el micrófono queda abierto y macOS enseña su punto naranja. Solo en la app de escritorio del Mac; la primera vez macOS pide los permisos de micrófono y reconocimiento de voz.'
+      : `«Oye Watson» usa el reconocimiento en el dispositivo de macOS y aún no está disponible aquí; en la app de escritorio puedes llamar a Watson desde cualquier ventana con ${listenShortcut}.`}</small>
+    {supported && status && <small className={status.ok ? 'ok-note' : 'dictation-error'} role="status">{status.text}</small>}
+    {supported && status && !status.ok && status.retry && <div className="inbox-actions">
       <ActionButton icon="refresh" label="Reintentar" onClick={() => void change(true)}/>
     </div>}
     {error && <small className="dictation-error" role="alert">{error}</small>}

@@ -22,7 +22,7 @@ def db(tmp_path):
     connection.close()
 
 
-def test_la_carpeta_fiscal_nunca_es_la_personal_ni_icloud(tmp_path):
+def test_la_carpeta_fiscal_nunca_es_la_personal_ni_icloud(tmp_path, monkeypatch):
     home = tmp_path / "home"
     work = home / "Trabajo" / "Actividad"
     work.mkdir(parents=True)
@@ -30,6 +30,11 @@ def test_la_carpeta_fiscal_nunca_es_la_personal_ni_icloud(tmp_path):
     for bad in (home, tmp_path, home / "no-existe"):
         with pytest.raises(fiscal.FiscalError):
             fiscal.check_folder(str(bad), home=home)
+    if __import__("os").name == "nt" and tmp_path.drive:
+        other_home = Path("C:\\Users\\otro" if tmp_path.drive.upper() != "C:" else "D:\\Users\\otro")
+        assert fiscal.check_folder(str(work), home=other_home) == work.resolve()
+        with pytest.raises(fiscal.FiscalError):
+            fiscal.check_folder(tmp_path.anchor, home=other_home)
 
 
 def _link_dir(link, target):
