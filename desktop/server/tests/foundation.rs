@@ -188,3 +188,11 @@ async fn rutas_internas_doble_barra_cuerpo_grande_y_nucleo_ausente_u_otro() {
     let request = get("/api/core/health").header(header::COOKIE, access()).header("x-agora-csrf", &state.csrf).body(Body::empty()).unwrap();
     assert_eq!(call(&absent, request).await.0, StatusCode::SERVICE_UNAVAILABLE);
 }
+
+#[test]
+fn el_nucleo_conoce_los_puertos_de_agoraone() {
+    let settings = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../core/agora_core/settings.py")).unwrap();
+    let core_port = agora_server::core::CORE_URL.rsplit(':').next().unwrap();
+    assert!(settings.lines().any(|l| l == format!("SERVER_PORT = {}", agora_server::PORT)), "el puerto del servidor, igual en el núcleo");
+    assert!(settings.lines().any(|l| l == format!("PORT = {core_port}")), "el puerto del núcleo, igual en los dos lados");
+}

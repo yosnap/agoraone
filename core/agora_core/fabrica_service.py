@@ -10,6 +10,8 @@ import sys
 LABEL = "com.sn4p.fabrica"
 LAUNCHCTL = "/bin/launchctl"
 TIMEOUT = 10
+# launchctl's answer when launchd does not know the service («Could not find service»).
+NOT_FOUND = 113
 
 
 class StartError(RuntimeError):
@@ -31,5 +33,7 @@ def start() -> None:
         done = subprocess.run([LAUNCHCTL, "kickstart", f"gui/{os.getuid()}/{LABEL}"], capture_output=True, timeout=TIMEOUT, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise StartError("error", "No se pudo pedir a macOS que arranque la fábrica.") from error
-    if done.returncode != 0:
+    if done.returncode == NOT_FOUND:
         raise StartError("not_installed", "Su servicio no está instalado: ejecuta `fabrica servicio instalar` en la carpeta de la fábrica.")
+    if done.returncode != 0:
+        raise StartError("error", "macOS no pudo arrancar el servicio de la fábrica (quizá está desactivado): arráncala en la terminal con `fabrica servir`.")

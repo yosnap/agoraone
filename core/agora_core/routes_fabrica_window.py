@@ -31,8 +31,6 @@ from .settings import Settings
 from .window_links import external_url, open_in_browser
 
 PAGES = {"", "corridas", "publicaciones", "competidores", "piezas", "ideas", "senales", "ajustes"}
-# AgoraOne's server on this machine; the core's own port comes from its settings.
-SERVER_PORT = 4317
 OFF = "El módulo Mi fábrica está apagado."
 NOT_CONFIGURED = "Indica la carpeta de mi fábrica en Conectores."
 OWN_PORT = "El puerto de la fábrica es uno de los de AgoraOne: cámbialo en Conectores."
@@ -67,7 +65,7 @@ def panel_base(connection, own_ports: set[int]) -> tuple[str | None, str]:
 def fabrica_window_router(settings: Settings, relay: Relay | None = None) -> APIRouter:
     router = APIRouter()
     relay = relay or Relay()
-    own_ports = {SERVER_PORT, settings.port}
+    own_ports = {settings.server_port, settings.port}
 
     @contextmanager
     def database():

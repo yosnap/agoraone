@@ -16,6 +16,7 @@ from agora_core import (
     window_links,
 )
 from agora_core.db import DB_NAME, connect, migrate
+from agora_core.settings import SERVER_PORT
 from fastapi.testclient import TestClient
 from test_assistant import MemorySecrets
 from test_central_api import HEADERS, app_with
@@ -120,7 +121,7 @@ def test_sin_carpeta_409_y_la_app_cierra_la_ventana(client, tmp_path):
 
 def test_nunca_un_puerto_de_agoraone(client):
     with database(client) as c:
-        addons.save_config(c, "fabrica", {"port": 4317})
+        addons.save_config(c, "fabrica", {"port": SERVER_PORT})
     desktop(client)
     answer = client.post("/fabrica/window", json={"ruta": "corridas"}, headers=HEADERS)
     assert answer.status_code == 409 and answer.json()["status"] == "own_port"
@@ -166,6 +167,11 @@ def test_arrancar_pide_a_launchd_su_servicio_sin_pararlo(client, monkeypatch):
     monkeypatch.setattr(fabrica_service.subprocess, "run", lambda args, **kw: subprocess.CompletedProcess(args, 113))
     answer = client.post("/fabrica/start", headers=HEADERS)
     assert answer.status_code == 409 and answer.json()["status"] == "not_installed"
+    for code in (1, 5, 37):  # disabled or any other failure: not «install it», which would not help
+        monkeypatch.setattr(fabrica_service.subprocess, "run", lambda args, code=code, **kw: subprocess.CompletedProcess(args, code, b"", b"x"))
+        answer = client.post("/fabrica/start", headers=HEADERS)
+        assert answer.status_code == 502 and answer.json()["status"] == "error", code
+        assert "instalar" not in answer.json()["error"] and answer.json()["error"] != "x"
 
     monkeypatch.setattr(addons, "status", lambda addon, config: "responding")
     monkeypatch.setattr(fabrica_service.subprocess, "run", lambda *a, **kw: pytest.fail("ya en marcha: no se pide nada"))
@@ -177,3 +183,14 @@ def test_arrancar_solo_en_macos(client, monkeypatch):
     monkeypatch.setattr(fabrica_service.subprocess, "run", lambda *a, **kw: pytest.fail("fuera de macOS no se ejecuta nada"))
     answer = client.post("/fabrica/start", headers=HEADERS)
     assert answer.status_code == 409 and answer.json()["status"] == "unsupported"
+
+
+def test_carpeta_con_pyproject_ilegible_nunca_da_500(client, folder):
+    (folder / "pyproject.toml").write_bytes(b'name = "mi-fabrica"\xff\xfe')
+    assert addons.recognised("fabrica", folder) is False
+    desktop(client)
+    for path in ("/fabrica/window", "/fabrica/window/browser", "/fabrica/start"):
+        answer = client.post(path, json={"ruta": "corridas"}, headers=HEADERS)
+        assert answer.status_code == 409 and answer.json()["status"] == "not_configured", path
+    assert desktop(client)["url"] is None
+    assert addons.recognised("fabrica", folder / "a\0b") is False
