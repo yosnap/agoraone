@@ -100,9 +100,14 @@ test('la agenda de Central pone bajo «desde» lo que empezó antes y dice cuán
   assert.equal(local[0][0], '2026-11-20');
 });
 
-test('la ventana de Central solo ofrece abrir en el navegador enlaces https', () => {
-  assert.equal(centralExternalLink({ url: 'https://mail.google.com/mail/u/0/' }), 'https://mail.google.com/mail/u/0/');
-  for (const wrong of [{ url: 'http://example.com/' }, { url: 'javascript:alert(1)' }, { url: 'file:///etc/passwd' }, { url: 'no es una dirección' },
+test('los enlaces de la ventana de Central: web, sin cifrar o inicio de sesión de otro servicio', () => {
+  assert.deepEqual(centralExternalLink({ url: 'https://mail.google.com/mail/u/0/' }), { url: 'https://mail.google.com/mail/u/0/', kind: 'https' });
+  assert.deepEqual(centralExternalLink({ url: 'http://example.com/' }), { url: 'http://example.com/', kind: 'http' });
+  for (const oauth of ['https://accounts.google.com/o/oauth2/v2/auth?client_id=x&redirect_uri=y', 'https://github.com/login/oauth/authorize?client_id=x',
+    'https://auth.example.com/authorize?client_id=x&redirect_uri=https%3A%2F%2Fcentral.example.com']) {
+    assert.equal(centralExternalLink({ url: oauth })?.kind, 'oauth', oauth);
+  }
+  for (const wrong of [{ url: 'javascript:alert(1)' }, { url: 'file:///etc/passwd' }, { url: 'no es una dirección' },
     { url: `https://example.com/${'a'.repeat(2001)}` }, { url: 3 }, {}, null, 'https://example.com/']) {
     assert.equal(centralExternalLink(wrong), null, JSON.stringify(wrong));
   }

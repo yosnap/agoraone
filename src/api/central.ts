@@ -100,11 +100,25 @@ export type CentralPage = '' | 'ajustes' | 'webs' | 'servidores' | 'correo' | `c
 export const openCentralWindow = (ruta: CentralPage) => core<{ seq: number }>('/central/window', { ruta });
 /** The same page in the system's browser. */
 export const openCentralInBrowser = (ruta: CentralPage) => core<{ done: true }>('/central/window/browser', { ruta });
-/** A link of Central to another site (https only), in the system's browser. */
+/** A link of Central to another site (http or https; the screen warns first about http), in the system's browser. */
 export const openCentralLink = (url: string) => core<{ done: true }>('/central/window/external', { url });
-/** The address of the event the desktop app sends for a link of Central to another site: only https, of bounded size. */
-export const centralExternalLink = (detail: unknown): string | null => {
+/** Closes Central's window (discreet mode turned on); nothing happens without the desktop app. */
+export const closeCentralWindow = () => core<{ done: boolean }>('/central/window/close', {});
+/** Makes the desktop app look again at once whether the window may stay (module and address changed). */
+export const checkCentralWindow = () => core<{ done: boolean }>('/central/window/check', {});
+
+/** A link of Central to another site, as the desktop app hands it over: `oauth` when it is a sign-in with another
+ * service (it would come back to a browser without Central's session), `http` when it is not encrypted. */
+export type CentralLink = { url: string; kind: 'oauth' | 'http' | 'https' };
+const OAUTH_HOSTS = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'login.microsoftonline.com', 'login.live.com', 'appleid.apple.com']);
+/** The link of the event the desktop app sends: only web addresses, of bounded size. */
+export const centralExternalLink = (detail: unknown): CentralLink | null => {
   const url = (detail as { url?: unknown } | null)?.url;
   if (typeof url !== 'string' || url.length > 2000) return null;
-  try { return new URL(url).protocol === 'https:' ? url : null; } catch { return null; }
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return null; }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+  const oauth = OAUTH_HOSTS.has(parsed.hostname) || /\/oauth2?(\/|$)/i.test(parsed.pathname)
+    || (parsed.searchParams.has('client_id') && parsed.searchParams.has('redirect_uri'));
+  return { url, kind: oauth ? 'oauth' : parsed.protocol === 'http:' ? 'http' : 'https' };
 };
