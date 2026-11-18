@@ -22,11 +22,8 @@ AgoraOne's access cookie would reach that Central. The browser can still open it
 With the «Central» module off every route answers 404; a quote's page follows the «Presupuestos» module instead,
 which works without the «Central» one."""
 
-import ipaddress
-import re
-import webbrowser
+import webbrowser  # noqa: F401 - the tests patch `webbrowser.open` through this module
 from contextlib import contextmanager
-from urllib.parse import urlsplit
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
@@ -37,10 +34,12 @@ from . import central_api, central_views, modules
 from .db import DB_NAME, connect
 from .hidden_player import Relay
 from .settings import Settings
+from .window_links import agora_host, external_url, open_in_browser
+
+__all__ = ["agora_host", "central_window_router", "external_url", "open_in_browser", "page_url", "route_of"]
 
 PAGES = {"", "ajustes", "webs", "servidores", "alertas", "correo"}
 ITEMS = {"clientes", "proyectos", "servidores", "presupuestos"}
-MAX_URL = 2000
 OFF = "El módulo Central está apagado."
 OFF_QUOTES = "El módulo Presupuestos está apagado."
 NOT_CONNECTED = "Falta la dirección de Central: escríbela en Ajustes › Central."
@@ -50,7 +49,6 @@ BAD_URL = "Solo se abren en el navegador direcciones web (http o https)."
 LOOPBACK_IP = ("La ventana de Central no abre 127.0.0.1 ni ::1, que son la dirección de AgoraOne: escribe la de Central con «localhost» "
                "(por ejemplo http://localhost:3099) en Ajustes › Central.")
 NO_BROWSER = "No se pudo abrir el navegador."
-_HOST = re.compile(r"[a-z0-9.-]{1,253}|[0-9a-f:.]{2,45}")
 
 
 class RouteIn(BaseModel):
@@ -74,40 +72,8 @@ def route_of(value: object) -> tuple[str, str] | None:
     return None
 
 
-def external_url(value: object) -> str | None:
-    """A web address (http or https) with a host and no user or password, printable ASCII (WebKit hands them
-    percent-encoded)."""
-    if not isinstance(value, str) or not 8 < len(value) <= MAX_URL or not all(c.isascii() and c.isprintable() and not c.isspace() for c in value):
-        return None
-    try:
-        parts = urlsplit(value)
-        host = parts.hostname or ""
-        parts.port  # noqa: B018 - raises on a port that is not a number
-    except ValueError:
-        return None
-    if parts.scheme not in ("https", "http") or parts.username is not None or parts.password is not None or not _HOST.fullmatch(host):
-        return None
-    return value
-
-
-def agora_host(url: str) -> bool:
-    """127.x or ::1: AgoraOne's own host, which shares its cookies whatever the port."""
-    try:
-        return ipaddress.ip_address(urlsplit(url).hostname or "").is_loopback
-    except ValueError:
-        return False
-
-
 def page_url(base: str, route: str) -> str:
     return f"{base}/{route}" if route else f"{base}/"
-
-
-def open_in_browser(url: str) -> bool:
-    """The system's browser (Safari, Edge, Firefox…) on macOS, Windows and Linux; never through a shell."""
-    try:
-        return bool(webbrowser.open(url, new=2))
-    except webbrowser.Error:
-        return False
 
 
 def central_window_router(settings: Settings, relay: Relay | None = None) -> APIRouter:
