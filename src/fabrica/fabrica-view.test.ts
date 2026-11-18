@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import type { Addon, AddonStatus } from '../api/core';
 import { fabricaDownload, fabricaExternalLink } from '../api/fabrica';
 import { menu, sectionModule } from '../shell/shell-state';
-import { PANEL_PAGES, canStart, fabricaState, freshFabrica, readFabrica, stateTexts, waitUntilRunning } from './fabrica-state';
+import { PANEL_PAGES, canStart, fabricaState, freshFabrica, readFabrica, stateLabels, stateText, waitUntilRunning } from './fabrica-state';
 
 const addon = (status: AddonStatus): Addon => ({ id: 'fabrica', name: 'Mi fábrica', description: '', offers: [], status, configured: { path: '/x', port: 8742 } });
 
@@ -21,11 +21,15 @@ test('cada estado de la fábrica dice cuál es el caso y solo parada en macOS se
   assert.equal(fabricaState('not_configured'), 'missing');
   assert.equal(fabricaState('not_found'), 'wrong');
   assert.equal(fabricaState('unreadable'), 'unreadable');
-  assert.equal(stateTexts.running.label, 'En marcha');
-  assert.equal(stateTexts.stopped.label, 'Parada');
-  assert.match(stateTexts.stopped.text, /fabrica servicio instalar/);
-  assert.match(stateTexts.missing.text, /Conectores/);
-  assert.match(stateTexts.wrong.text, /no es la de tu fábrica/);
+  assert.equal(stateLabels.running, 'En marcha');
+  assert.equal(stateLabels.stopped, 'Parada');
+  assert.match(stateText('stopped', true), /servicio de macOS.*fabrica servicio instalar/);
+  assert.doesNotMatch(stateText('stopped', false), /macOS|servicio instalar/, 'fuera de macOS solo hay «fabrica servir»');
+  assert.match(stateText('stopped', false), /fabrica servir/);
+  assert.match(stateText('running', true), /ventana/);
+  assert.doesNotMatch(stateText('running', true, true), /se abre en una ventana/, 'en modo discreto no promete abrir nada');
+  assert.match(stateText('missing', true), /Conectores/);
+  assert.match(stateText('wrong', true), /no es la de tu fábrica/);
   assert.equal(canStart('stopped', true), true);
   assert.equal(canStart('stopped', false), false, 'fuera de macOS no hay servicio que arrancar');
   for (const state of ['running', 'missing', 'wrong', 'unreadable'] as const) assert.equal(canStart(state, true), false, state);
@@ -44,6 +48,7 @@ test('los avisos de la ventana solo aceptan direcciones web y nombres sin ruta',
     assert.equal(fabricaExternalLink(wrong), null, JSON.stringify(wrong));
   }
   assert.deepEqual(fabricaDownload({ name: 'guia (2).pdf', ok: true }), { name: 'guia (2).pdf', ok: true });
+  assert.deepEqual(fabricaDownload({ name: '', ok: true }), { name: 'fabrica.pdf', ok: true }, 'sin nombre, el de reserva de la app');
   for (const wrong of [{ name: '/Users/x/Downloads/guia.pdf', ok: true }, { name: 'a\\b.pdf', ok: true }, { name: 'guia.pdf' }, { ok: true }, null]) {
     assert.equal(fabricaDownload(wrong), null, JSON.stringify(wrong));
   }

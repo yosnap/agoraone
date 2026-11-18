@@ -15,7 +15,8 @@ la fábrica. Decisión del usuario del 18/11/2026 (`AGENTS.md`).
   - **En marcha** (su panel responde en `/salud`): «Abrir la fábrica» y una tarjeta por pantalla del panel (Estado,
     Corridas, Publicaciones, Competidores, Piezas, Ideas, Señales y Ajustes), cada una con «Abrir en la ventana».
   - **Parada** (la carpeta es la suya, pero el panel no responde): cómo arrancarla en la terminal y, en macOS, el
-    botón «Arrancar la fábrica».
+    botón «Arrancar la fábrica». «Abrir la fábrica» y las pantallas siguen ahí por si arranca entretanto: antes de
+    abrir se vuelve a comprobar y, si aún no responde, la sección lo dice en vez de abrir una ventana vacía.
   - **Sin carpeta** o **Carpeta errónea**: «Ir a Conectores», donde se indica su carpeta (y su puerto).
 - La primera vez se entra con la contraseña del panel (`fabrica panel-clave`); su sesión dura 8 horas y se recuerda
   al reabrir la app (macOS 14+, Windows y Linux).

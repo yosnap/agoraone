@@ -18,3 +18,4 @@
 .fabrica-pages li > div:first-child { display:flex; flex-direction:column; gap:2px; flex:1 1 180px; min-width:0 }
 .fabrica-open { display:flex; flex-direction:column; align-items:flex-end; gap:4px; margin-left:auto }
 .fabrica-open .error, .fabrica-open .ok-note { text-align:right; max-width:46ch }
+.fabrica-state-actions { display:flex; flex-direction:column; align-items:flex-end; gap:8px; margin-left:auto }

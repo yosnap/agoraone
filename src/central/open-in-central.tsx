@@ -71,17 +71,24 @@ export function CentralPages({ discreet }: { discreet: boolean }) {
 // open in the browser instead.
 const links = eventStore<CentralLink>('agora:central-external', centralExternalLink);
 
+/** What the notice of a link of Central says and does: a sign-in with another service opens Central's settings in the
+ * browser instead, and its address is not shown. */
+export function centralNotice(found: CentralLink) {
+  const oauth = found.kind === 'oauth';
+  return {
+    title: oauth ? 'Conectar una cuenta se hace en tu navegador' : 'Esto se abre en tu navegador',
+    body: oauth ? <p>Dentro de la ventana de Central no funciona: la vuelta llega al navegador, que necesita tu sesión de Central. Abre los Ajustes de
+      Central en tu navegador, inicia sesión allí y conecta la cuenta desde ahí.</p>
+      : <p>La ventana de Central solo carga páginas de Central. Este enlace va a otro sitio{found.kind === 'http' ? ' y no va cifrado (http)' : ''}:</p>,
+    url: oauth ? undefined : found.url,
+    action: oauth ? 'Abrir Ajustes de Central en el navegador' : found.kind === 'http' ? 'Abrir igualmente en el navegador' : 'Abrir en el navegador',
+    onAction: () => oauth ? openCentralInBrowser('ajustes') : openCentralLink(found.url),
+  };
+}
+
 /** «Esto se abre en tu navegador», over any section. In discreet mode the address is not shown. */
 export function CentralLinkNotice({ discreet }: { discreet: boolean }) {
   const found = links.use();
   if (!found) return null;
-  const oauth = found.kind === 'oauth';
-  return <WindowLinkNotice key={found.url} discreet={discreet} onClose={() => links.set(null)}
-    title={oauth ? 'Conectar una cuenta se hace en tu navegador' : 'Esto se abre en tu navegador'}
-    body={oauth ? <p>Dentro de la ventana de Central no funciona: la vuelta llega al navegador, que necesita tu sesión de Central. Abre los Ajustes de
-      Central en tu navegador, inicia sesión allí y conecta la cuenta desde ahí.</p>
-      : <p>La ventana de Central solo carga páginas de Central. Este enlace va a otro sitio{found.kind === 'http' ? ' y no va cifrado (http)' : ''}:</p>}
-    url={oauth ? undefined : found.url}
-    action={oauth ? 'Abrir Ajustes de Central en el navegador' : found.kind === 'http' ? 'Abrir igualmente en el navegador' : 'Abrir en el navegador'}
-    onAction={() => oauth ? openCentralInBrowser('ajustes') : openCentralLink(found.url)}/>;
+  return <WindowLinkNotice key={found.url} discreet={discreet} onClose={() => links.set(null)} {...centralNotice(found)}/>;
 }

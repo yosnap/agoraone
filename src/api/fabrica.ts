@@ -36,5 +36,6 @@ export type FabricaDownload = { name: string; ok: boolean };
 export const fabricaDownload = (detail: unknown): FabricaDownload | null => {
   const found = detail as { name?: unknown; ok?: unknown } | null;
   if (typeof found?.name !== 'string' || typeof found.ok !== 'boolean' || found.name.length > 300 || /[/\\]/.test(found.name)) return null;
-  return { name: found.name, ok: found.ok };
+  // The desktop app always names the file; without a name, the one it falls back to.
+  return { name: found.name.trim() || 'fabrica.pdf', ok: found.ok };
 };

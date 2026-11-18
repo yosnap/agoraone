@@ -13,13 +13,23 @@ export function fabricaState(status: AddonStatus): FabricaState {
     : status === 'not_found' ? 'wrong' : 'unreadable';
 }
 
-export const stateTexts: Record<FabricaState, { label: string; text: string }> = {
-  running: { label: 'En marcha', text: 'Su panel responde. Cada pantalla se abre en una ventana encima de AgoraOne, con su mismo tamaño; al cerrarla vuelves aquí.' },
-  stopped: { label: 'Parada', text: 'La carpeta es la de tu fábrica, pero su panel no responde. Arráncala con su servicio de macOS o en la terminal, desde su carpeta, con «fabrica servicio instalar» (se queda en marcha) o «fabrica servir».' },
-  missing: { label: 'Sin carpeta', text: 'Indica la carpeta de tu fábrica en Conectores (y su puerto, si no es 8742).' },
-  wrong: { label: 'Carpeta errónea', text: 'La carpeta guardada en Conectores no es la de tu fábrica (no tiene su pyproject.toml): corrígela allí.' },
-  unreadable: { label: 'Sin leer', text: 'No se pudo comprobar la fábrica. Vuelve a comprobarlo en un momento.' },
+export const stateLabels: Record<FabricaState, string> = {
+  running: 'En marcha', stopped: 'Parada', missing: 'Sin carpeta', wrong: 'Carpeta errónea', unreadable: 'Sin leer',
 };
+
+/** What the state means and what to do, for this system (only macOS has the fábrica's service) and discreet mode. */
+export function stateText(state: FabricaState, mac: boolean, discreet = false): string {
+  switch (state) {
+    case 'running': return discreet ? 'Su panel responde. En modo discreto no se abre la fábrica.'
+      : 'Su panel responde. Cada pantalla se abre en una ventana encima de AgoraOne, con su mismo tamaño; al cerrarla vuelves aquí.';
+    case 'stopped': return mac
+      ? 'La carpeta es la de tu fábrica, pero su panel no responde. Arráncala con su servicio de macOS o en la terminal, desde su carpeta, con «fabrica servicio instalar» (se queda en marcha) o «fabrica servir».'
+      : 'La carpeta es la de tu fábrica, pero su panel no responde. Arráncala en la terminal, desde su carpeta, con «fabrica servir».';
+    case 'missing': return 'Indica la carpeta de tu fábrica en Conectores (y su puerto, si no es 8742).';
+    case 'wrong': return 'La carpeta guardada en Conectores no es la de tu fábrica (no tiene su pyproject.toml): corrígela allí.';
+    default: return 'No se pudo comprobar la fábrica. Vuelve a comprobarlo en un momento.';
+  }
+}
 
 /** Whether «Arrancar la fábrica» is offered: stopped and on macOS (its service is launchd's). */
 export const canStart = (state: FabricaState, mac: boolean) => state === 'stopped' && mac;
