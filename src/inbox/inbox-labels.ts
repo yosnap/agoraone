@@ -1,4 +1,5 @@
 import type { ChatSummary, InboxItem, InboxKind, MailRuleAction } from '../api/core';
+import { onlyHereLabel } from '../ui/platform';
 
 export const kindLabels: Record<InboxKind, string> = {
   invoice: 'Factura', payment: 'Pago', job: 'Oferta de trabajo', client: 'Cliente', incident: 'Incidencia',
@@ -57,7 +58,7 @@ export const orcaTask = 'Lee el correo del cliente que va debajo y resuelve en e
 export const orcaChatTask = 'Lee la conversación de WhatsApp del cliente que va debajo y resuelve en este repositorio lo que pide. Antes de cambiar nada, explica tu plan.';
 
 /** The level a card carries, when it is not normal (the same words for mail and WhatsApp). */
-export const levelNotes = { normal: null, local_only: 'Solo en este Mac: sin resumen de modelo', private: 'Privado: sin resumen de modelo' } as const;
+export const levelNotes = { normal: null, local_only: `${onlyHereLabel}: sin resumen de modelo`, private: 'Privado: sin resumen de modelo' } as const;
 
 /** What a card can have open: a form, or a conversation's latest messages. One card per action at a time. */
 export type CardAction = 'filing' | 'noting' | 'scheduling' | 'replying' | 'orca' | 'issue' | 'messages';

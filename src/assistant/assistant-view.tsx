@@ -28,6 +28,7 @@ import { engineName, modelName, stageLabels } from './assistant-labels';
 import { play } from '../sound/sound';
 import { Announcements, useAnnouncements } from './assistant-announce';
 import './assistant.css';
+import { hereLabel } from '../ui/platform';
 
 type Live = { question: string; stage: Stage | null; sources: Source[]; text: string; engine?: string; model?: string; steps: string[] };
 /** What Watson is doing right now, for the graph beside it: real events only. */
@@ -211,7 +212,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       <header className="assistant-head">
         {embedded && <div className={`watson-orb ${hearing === 'recording' ? 'hearing' : live ? 'busy' : ''}`} aria-hidden="true"><i/><i/><i/></div>}
         <div>{!embedded && <div className="eyebrow">ASISTENTE</div>}<h1 id="assistant-title">{name}</h1>
-          {embedded ? <p className="watson-state" role="status">{hearing === 'recording' ? 'Escuchando… (en este Mac)' : hearing === 'transcribing' ? 'Pasando tu voz a texto…'
+          {embedded ? <p className="watson-state" role="status">{hearing === 'recording' ? `Escuchando… (en ${hereLabel})` : hearing === 'transcribing' ? 'Pasando tu voz a texto…'
             : live ? (live.stage ? stageLabels[live.stage] : 'Enviando…') : 'Listo · escribe o pulsa el micrófono'}</p>
             : persona && <p className="muted">{persona.conveys}. Inspirado en {persona.origin}.</p>}
           {voiceNote && <p className="muted watson-voice-note" role="status">{voiceNote}</p>}</div>
@@ -245,7 +246,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
           </article>
         </>}
         {(hearing === 'recording' || hearing === 'transcribing') && <div className="watson-heard" aria-live="polite">
-          {hearing === 'recording' ? '«…»' : 'Transcribiendo…'}<small>{hearing === 'recording' ? 'oyendo · se transcribe en este Mac' : 'en este Mac, con whisper'}</small></div>}
+          {hearing === 'recording' ? '«…»' : 'Transcribiendo…'}<small>{hearing === 'recording' ? `oyendo · se transcribe en ${hereLabel}` : `en ${hereLabel}, con whisper`}</small></div>}
         <RuleProposals state={proposals} discreet={discreet}/>
         <NoteProposals state={notes}/>
         <EventProposals state={events}/>

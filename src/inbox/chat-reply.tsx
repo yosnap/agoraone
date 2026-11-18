@@ -5,8 +5,9 @@ import { composeChat, getChatReply, previewChat, sendChat, type ChatPreview, typ
 import { LoadError, Loading } from '../ui/load-state';
 import { closedReason, counter, META_COST_NOTICE, READ_NOTICE, UNSURE_NOTICE, windowText } from './chat-reply-text';
 import { ActionButton } from '../ui/action-button';
+import { hereLabel } from '../ui/platform';
 
-const levelWords = { private: 'privada', local_only: 'solo de este Mac' } as const;
+const levelWords = { private: 'privada', local_only: `solo de ${hereLabel}` } as const;
 
 /** The reply form: the text, Watson's draft only for a normal conversation, a character counter and «Vista previa»,
  * disabled with its reason when Meta's 24 h window is closed. Pure, so it can be rendered on its own. */

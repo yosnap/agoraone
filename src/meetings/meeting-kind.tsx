@@ -4,6 +4,7 @@ import { PeopleField } from './people-field';
 import { ModernSelect } from '../ui/modern-select';
 import { useClients } from '../data/clients-store';
 import { ActionButton } from '../ui/action-button';
+import { hereLabel } from '../ui/platform';
 
 const kinds = (Object.keys(kindLabels) as MeetingKind[]).map(value => ({ value, label: kindLabels[value] }));
 const failed = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
@@ -70,7 +71,7 @@ export function MeetingExport({ detail }: { detail: MeetingDetail }) {
   if (!detail.draft) return null;
   if (detail.confidentiality !== 'normal') return <section aria-label="Exportar" className="meeting-save">
     <h3>Para Claude o Codex</h3>
-    <p className="muted">Esta reunión es privada o solo de este Mac: no se exporta ni se copia para un modelo de fuera.</p>
+    <p className="muted">Esta reunión es privada o solo de {hereLabel}: no se exporta ni se copia para un modelo de fuera.</p>
   </section>;
   const download = async () => {
     try { const made = await exportMeeting(detail.id); say(`Guardado en Descargas: ${made.name}`); }

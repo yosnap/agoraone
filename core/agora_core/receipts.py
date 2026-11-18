@@ -15,6 +15,7 @@ import os
 import secrets
 import socket
 import sqlite3
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -31,9 +32,11 @@ PAGE = """<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name=
 <title>Subir recibo · AgoraOne</title><style>body{{font:16px system-ui;margin:24px;color:#173d3c;background:#f4f2ea}}
 button,input{{font:inherit}}button{{margin-top:16px;padding:12px 18px;border-radius:10px;border:0;background:#244e42;color:#fff}}</style></head>
 <body><h1>Subir un recibo</h1>{body}</body></html>"""
-FORM = """<p>Haz una foto del recibo o elige un PDF. Este enlace sirve para una sola subida.</p>
+# The phone's button names where the receipt goes: this Mac, or this computer elsewhere.
+MACHINE = "Mac" if sys.platform == "darwin" else "ordenador"
+FORM = f"""<p>Haz una foto del recibo o elige un PDF. Este enlace sirve para una sola subida.</p>
 <form method="post" enctype="multipart/form-data"><input type="file" name="recibo" accept="image/*,application/pdf" capture="environment" required>
-<br><button>Enviar al Mac</button></form>"""
+<br><button>Enviar al {MACHINE}</button></form>"""
 
 
 class UploadError(RuntimeError):

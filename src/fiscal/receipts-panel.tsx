@@ -9,6 +9,7 @@ import { BotInbox } from './bot-inbox';
 import { followUpload, RECEIVED, stopFollowing, useUpload } from './upload-watch';
 import '../inbox/inbox.css';
 import { ActionButton } from '../ui/action-button';
+import { machineName } from '../ui/platform';
 
 const suffixes: Record<string, string> = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/heic': '.heic' };
 const today = () => new Date().toLocaleDateString('sv-SE');
@@ -56,7 +57,7 @@ export function ReceiptsPanel({ onNote }: { onNote: (note: string) => void }) {
       <img className="receipt-qr" alt="Código QR para subir el recibo" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(upload.qr)}`}/>
       <div>
         {watched.state?.receiving && <p className="ok-note" role="status">Recibiendo el archivo del móvil…</p>}
-        <p>Escanea el código con la cámara del móvil (en la misma wifi de casa), haz la foto del recibo o elige un PDF y pulsa «Enviar al Mac».</p>
+        <p>Escanea el código con la cámara del móvil (en la misma wifi de casa), haz la foto del recibo o elige un PDF y pulsa «Enviar al {machineName}».</p>
         <p className="muted">El enlace sirve para una sola subida y se cierra solo en unos {minutes} minutos. Mientras esté abierto, solo esa página es accesible desde la red de casa. Si macOS pregunta si permites conexiones entrantes, acéptalo para esta subida.</p>
       </div>
     </div>}

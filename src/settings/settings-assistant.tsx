@@ -8,6 +8,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { Loading, LoadError } from '../ui/load-state';
 import { engineLabels, modelLabels } from '../assistant/assistant-labels';
 import { ActionButton } from '../ui/action-button';
+import { keystoreName } from '../ui/platform';
 
 const toneNames: Record<ToneKey, string> = { register: 'Registro', humor: 'Humor', length: 'Extensión', address: 'Tratamiento', language: 'Idioma' };
 const toneValues: Record<string, string> = {
@@ -21,7 +22,7 @@ function KeyField({ kind, label }: { kind: 'anthropic' | 'compatible'; label: st
   const [error, setError] = useState('');
   const save = async (event: FormEvent, forget = false) => {
     event.preventDefault(); setNote(''); setError('');
-    try { await putKey(kind, forget ? null : value.trim()); setValue(''); setNote(forget ? 'Clave borrada del Llavero.' : 'Clave guardada en el Llavero.'); }
+    try { await putKey(kind, forget ? null : value.trim()); setValue(''); setNote(forget ? `Clave borrada del ${keystoreName}.` : `Clave guardada en el ${keystoreName}.`); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar la clave.'); }
   };
   return <form className="field-row" onSubmit={save}>
