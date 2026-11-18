@@ -73,8 +73,9 @@ pub fn start(launch: &CoreLaunch, link: &CoreLink, data: &Path) -> std::io::Resu
     }
     command
         .stdin(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
+        .kill_on_drop(true);
+    crate::platform::configure_group(&mut command);
+    command.spawn()
 }
 
 /// The server's own calls to the core (`/internal/index/*`), with the start secret: GET without a body,
