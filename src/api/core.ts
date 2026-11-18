@@ -204,7 +204,9 @@ export type JevSettings = {
   /** Jev in shadow: decisions kept, how many compare with what is shown now and in how many it agrees. */
   shadow: Record<'mail' | 'chat', JevShadowCounts>;
 };
-export type JevShadowCounts = { decisions: number; compared: number; agree: number };
+/** `advertisingAsOther`: advertising kept as «other», left out of the comparison; `withdrawn`: decisions about what is
+ * no longer normal (or gone), not shown. */
+export type JevShadowCounts = { decisions: number; compared: number; agree: number; advertisingAsOther: number; withdrawn: number };
 export type JevSettingsIn = Partial<{ model: string; monthlyUsd: number; threshold: number; points: Partial<Record<JevPoint, boolean>> }>;
 export const getJevSettings = () => core<JevSettings>('/jev/settings');
 export const putJevSettings = (changes: JevSettingsIn) => core<JevSettings>('/jev/settings', changes, 'PUT');
