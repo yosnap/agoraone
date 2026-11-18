@@ -13,7 +13,7 @@ export function useQuoteProposals() {
     settle(proposal.id, { state: 'busy' });
     try {
       const { created } = await createQuoteFromProposal(proposal.id);
-      settle(proposal.id, { state: 'made', result: `Presupuesto${created.number ? ` ${created.number}` : ''} creado en Central como borrador: revísalo y envíalo desde allí.` });
+      settle(proposal.id, { state: 'made', result: `Presupuesto${created.number ? ` ${created.number}` : ''}${created.client ? ` para ${created.client}` : ''} creado en Central como borrador: revísalo y envíalo desde allí.` });
     } catch (failure) { settle(proposal.id, { state: 'dismissed', result: failure instanceof Error ? failure.message : 'Central no pudo crearlo.' }); }
   };
   const dismiss = (proposal: QuoteProposal) => { settle(proposal.id, { state: 'dismissed', result: 'Presupuesto descartado: no se ha creado nada.' }); void dismissProposal(proposal.id).catch(() => undefined); };

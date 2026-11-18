@@ -33,6 +33,10 @@ class CentralError(RuntimeError):
     pass
 
 
+class NoReadingError(CentralError):
+    """The connected key has no «lectura» permission: nothing to read over HTTP, and nothing broken."""
+
+
 def _bun() -> str | None:
     return shutil.which("bun") or next((str(p) for p in (Path.home() / ".bun/bin/bun",) if p.exists()), None)
 
@@ -156,6 +160,8 @@ def refresh(connection: sqlite3.Connection, origin: Source, fetch=None) -> dict:
         snapshot = shape(raw)
     except CentralError:
         raise
+    except central_api.NoReadingError as error:
+        raise NoReadingError(str(error)) from None
     except central_api.CentralApiError as error:  # its message never carries the key
         raise CentralError(str(error)) from None
     except Exception as error:  # noqa: BLE001 - Central is an outside program: any failure is said plainly

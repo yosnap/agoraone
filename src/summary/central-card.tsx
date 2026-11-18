@@ -32,6 +32,7 @@ export function CentralCard({ discreet }: { discreet: boolean }) {
           <small className="muted">{client.projects.filter(p => p.status === 'ACTIVE' || p.status === 'MAINTENANCE').length} activos{client.domains.length ? '' : ' · sin dominio para el correo'}</small></li>)}</ul>}</div>
       </div>
     </>}
+    {state?.notice && <p className="muted">{state.notice}</p>}
     {(error || state?.problem) && <LoadError message={error || state?.problem || ''}/>}
   </article>;
 }

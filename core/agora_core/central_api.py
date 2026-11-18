@@ -10,6 +10,8 @@ plain words and never include the key, the request headers or the raw answer."""
 import json
 import re
 import sqlite3
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -21,7 +23,9 @@ SECRET = "central-api-key"  # account of the key in the secret store
 SETTING = "central.connection"
 SUGGESTED_URL = "https://central.example.com"
 SCOPES = ("lectura", "presupuestos", "escritura")
-TIMEOUT = httpx.Timeout(15, connect=5)
+TIMEOUT = httpx.Timeout(15, connect=5)  # per operation (connect, each read)
+REQUEST_SECONDS = 60  # a whole request, however slowly Central drips its answer
+TOTAL_SECONDS = 180  # a whole reading of the snapshot, like the stdio way
 MAX_BYTES = 8 * 1024 * 1024
 _KEY = re.compile(r"cen_[A-Za-z0-9_-]{43}")
 _LOOPBACK = {"localhost", "127.0.0.1", "::1"}
@@ -54,9 +58,13 @@ def normalize_url(value: object) -> str:
     try:
         parts = urlsplit(value.strip())
         host = (parts.hostname or "").lower()
-        parts.port  # noqa: B018 - raises on a port that is not a number
+        port = parts.port  # raises on a port that is not a number or out of range
     except ValueError:
         raise CentralApiError("config", "La dirección de Central no es válida.") from None
+    if port is not None and not 1 <= port <= 65535:
+        raise CentralApiError("config", "La dirección de Central no es válida: el puerto va de 1 a 65535.")
+    if host and ":" not in host and not _valid_host(host):
+        raise CentralApiError("config", "La dirección de Central no es válida: revisa el nombre del servidor.")
     if parts.scheme not in ("https", "http") or not host or parts.username or parts.password or parts.query or parts.fragment:
         raise CentralApiError("config", "La dirección de Central no es válida: solo https://servidor (sin usuario, ? ni #).")
     if parts.scheme == "http" and host not in _LOOPBACK:
@@ -65,6 +73,31 @@ def normalize_url(value: object) -> str:
         raise CentralApiError("config", "La dirección de Central no es válida.")
     netloc = parts.netloc.rsplit("@", 1)[-1]
     return f"{parts.scheme}://{netloc}{parts.path.rstrip('/')}"
+
+
+_LABEL = re.compile(r"(?!-)[a-z0-9-]{1,63}(?<!-)")
+
+
+def _valid_host(host: str) -> bool:
+    """A host name made of valid labels (international names through idna), never empty labels like «a..b»."""
+    try:
+        ascii_host = host.encode("idna").decode("ascii")
+    except UnicodeError:
+        return False
+    return len(ascii_host) <= 253 and all(_LABEL.fullmatch(label) for label in ascii_host.split("."))
+
+
+def origin(url: str) -> tuple[str, str, int]:
+    """Scheme, host and port of a valid URL: a key saved for one origin never travels to another one unasked."""
+    parts = urlsplit(normalize_url(url))
+    return parts.scheme, (parts.hostname or "").lower(), parts.port or (443 if parts.scheme == "https" else 80)
+
+
+def same_origin(a: str | None, b: str | None) -> bool:
+    try:
+        return bool(a and b) and origin(a) == origin(b)
+    except CentralApiError:
+        return False
 
 
 def key_problem(key: object) -> str | None:
@@ -146,30 +179,49 @@ def _said(answer_text: str, key: str) -> str:
     return text.replace(key, "***") if key else text
 
 
-def request(target: Connection, method: str, path: str, params: dict | None = None, body: dict | None = None) -> dict:
-    """One call to Central's API; the JSON object it answers or a CentralApiError without the key."""
+@contextmanager
+def session(seconds: float = TOTAL_SECONDS):
+    """One connection to Central for several requests, with a deadline for all of them."""
+    with httpx.Client(transport=TRANSPORT, timeout=TIMEOUT, follow_redirects=False) as client:
+        yield client, time.monotonic() + seconds
+
+
+def request(target: Connection, method: str, path: str, params: dict | None = None, body: dict | None = None,
+            client: httpx.Client | None = None, deadline: float | None = None) -> dict:
+    """One call to Central's API; the JSON object it answers or a CentralApiError without the key. With `client`
+    (from `session`) the connection is reused and `deadline` bounds the whole reading."""
     if not path.startswith("/api/v1/"):
         raise CentralApiError("error", "Ruta de Central no permitida.")
+    if client is None:
+        with session(REQUEST_SECONDS) as (own, own_deadline):
+            return request(target, method, path, params, body, own, own_deadline)
     url = normalize_url(target.url)
     headers = {"Authorization": f"Bearer {target.key}", "Accept": "application/json", "User-Agent": "AgoraOne"}
+    until = min(deadline or float("inf"), time.monotonic() + REQUEST_SECONDS)
+    late = CentralApiError("unreachable", "Central no respondió a tiempo.")
+    if time.monotonic() >= until:
+        raise late
     try:
-        with httpx.Client(transport=TRANSPORT, timeout=TIMEOUT, follow_redirects=False) as client:
-            with client.stream(method, f"{url}{path}", params=params, json=body, headers=headers) as answer:
-                declared = answer.headers.get("content-length") or "0"
-                if not declared.isdigit() or int(declared) > MAX_BYTES:
+        with client.stream(method, f"{url}{path}", params=params, json=body, headers=headers) as answer:
+            declared = answer.headers.get("content-length") or "0"
+            if not declared.isdigit() or int(declared) > MAX_BYTES:
+                raise CentralApiError("error", "Central devolvió una respuesta demasiado grande.")
+            chunks, read = [], 0
+            for chunk in answer.iter_bytes():
+                read += len(chunk)
+                if read > MAX_BYTES:
                     raise CentralApiError("error", "Central devolvió una respuesta demasiado grande.")
-                chunks, read = [], 0
-                for chunk in answer.iter_bytes():
-                    read += len(chunk)
-                    if read > MAX_BYTES:
-                        raise CentralApiError("error", "Central devolvió una respuesta demasiado grande.")
-                    chunks.append(chunk)
-                status = answer.status_code
-                text = b"".join(chunks).decode("utf-8", errors="replace")
+                if time.monotonic() > until:
+                    raise late
+                chunks.append(chunk)
+            status = answer.status_code
+            text = b"".join(chunks).decode("utf-8", errors="replace")
     except CentralApiError:
         raise
     except httpx.TimeoutException:
-        raise CentralApiError("unreachable", "Central no respondió a tiempo.") from None
+        raise late from None
+    except (httpx.InvalidURL, UnicodeError, ValueError):
+        raise CentralApiError("config", "La dirección de Central no es válida.") from None
     except httpx.HTTPError:
         raise CentralApiError("unreachable", "No se pudo conectar con Central: comprueba la dirección y que esté en marcha.") from None
     if 300 <= status < 400:
@@ -204,9 +256,9 @@ def request(target: Connection, method: str, path: str, params: dict | None = No
     return data
 
 
-def status(target: Connection) -> dict:
+def status(target: Connection, client: httpx.Client | None = None, deadline: float | None = None) -> dict:
     """`GET /api/v1/estado`: Central's version and the permissions of the key."""
-    data = request(target, "GET", "/api/v1/estado")
+    data = request(target, "GET", "/api/v1/estado", client=client, deadline=deadline)
     scopes = [s for s in data.get("scopes") or [] if s in SCOPES] if isinstance(data.get("scopes"), list) else []
     version = data.get("version")
     runtime = data.get("runtime")
@@ -222,27 +274,51 @@ def _rows(data: dict, name: str) -> list[dict]:
 PROJECT_PAGES = 25  # 200 projects a page: up to 5000, far more than anyone has
 
 
-def read_all(target: Connection) -> dict:
+NO_READING = "La clave de Central no tiene el permiso «lectura»: no se leen clientes ni servidores."
+
+
+class NoReadingError(CentralApiError):
+    """The key works but cannot read (only «presupuestos», say): a setting, not a failure."""
+
+    def __init__(self):
+        super().__init__("forbidden", NO_READING)
+
+
+def read_all(target: Connection, seconds: float = TOTAL_SECONDS) -> dict:
     """What the snapshot needs, in the same shape as the stdio reading: clients, projects, websites, servers and
-    each client's contact. Needs the `lectura` permission."""
-    if "lectura" not in status(target)["scopes"]:
-        raise CentralApiError("forbidden", "La clave de Central no tiene el permiso «lectura»: no se leen clientes ni servidores.")
-    clients = _rows(request(target, "GET", "/api/v1/clientes"), "clients")
-    projects: list[dict] = []
-    cursor = None
-    for _ in range(PROJECT_PAGES):
-        page = request(target, "GET", "/api/v1/proyectos", {"limite": 200, **({"cursor": cursor} if cursor else {})})
-        projects += _rows(page, "projects")
-        cursor = page.get("nextCursor")
-        if not isinstance(cursor, str) or not cursor:
-            break
-    websites = _rows(request(target, "GET", "/api/v1/webs"), "websites")
-    servers = _rows(request(target, "GET", "/api/v1/servidores"), "servers")
+    each client's contact. Needs the `lectura` permission; one connection and one deadline for the whole reading."""
+    with session(seconds) as (client, deadline):
+        def get(path: str, params: dict | None = None) -> dict:
+            return request(target, "GET", path, params, client=client, deadline=deadline)
+        if "lectura" not in status(target, client, deadline)["scopes"]:
+            raise NoReadingError()
+        clients = _rows(get("/api/v1/clientes"), "clients")
+        projects: list[dict] = []
+        cursor = None
+        for _ in range(PROJECT_PAGES):
+            page = get("/api/v1/proyectos", {"limite": 200, **({"cursor": cursor} if cursor else {})})
+            projects += _rows(page, "projects")
+            cursor = page.get("nextCursor")
+            if not isinstance(cursor, str) or not cursor:
+                break
+        websites = _rows(get("/api/v1/webs"), "websites")
+        servers = _rows(get("/api/v1/servidores"), "servers")
     details = {c["name"]: {k: c.get(k) for k in ("company", "email", "phone", "taxId")} for c in clients if isinstance(c.get("name"), str)}
     return {"clients": clients, "projects": projects, "websites": websites, "servers": servers, "details": details}
 
 
 def create_quote(target: Connection, quote: dict) -> dict:
-    """`POST /api/v1/presupuestos`: a draft with the next number of the year. Needs the `presupuestos` permission."""
-    data = request(target, "POST", "/api/v1/presupuestos", body=quote)
-    return {"id": data.get("id"), "number": data.get("number")}
+    """`POST /api/v1/presupuestos`: a draft with the next number of the year. Needs the `presupuestos` permission.
+    Then reads it back for the client's name as Central has it (left out if that reading fails)."""
+    with session(REQUEST_SECONDS * 2) as (client, deadline):
+        data = request(target, "POST", "/api/v1/presupuestos", body=quote, client=client, deadline=deadline)
+        made = {"id": data.get("id"), "number": data.get("number")}
+        if isinstance(made["id"], str) and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", made["id"]):
+            try:
+                full = request(target, "GET", f"/api/v1/presupuestos/{made['id']}", client=client, deadline=deadline)
+            except CentralApiError:
+                return made
+            name = full.get("client", {}).get("name") if isinstance(full.get("client"), dict) else None
+            if isinstance(name, str) and name:
+                made["client"] = name[:200]
+    return made

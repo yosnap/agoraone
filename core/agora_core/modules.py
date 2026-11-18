@@ -15,9 +15,11 @@ MODULES = {
     "reuniones": "Reuniones", "voz": "Voz y dictado", "musica": "Música", "oficina": "Oficina 3D", "conectores": "Conectores", "orca": "Orca",
     "whatsapp": "WhatsApp", "jev": "Jev (decisiones)", "presupuestos": "Presupuestos", "central": "Central",
 }
-# Modules split from «trabajos» (which used to cover Central and its quotes): until saved, they follow it, so whoever
-# had it off does not see them appear.
-INHERITS = {"central": "trabajos", "presupuestos": "trabajos"}
+# Modules split from «trabajos» (which used to cover Central and its quotes): until the user sets them, they are on
+# when a source of Central exists (its folder as an add-on, a connection or a snapshot already read) and off when
+# there is none, so nobody
+# loses what already worked and nobody without Central sees them appear.
+FOLLOW_CENTRAL = ("central", "presupuestos")
 # Watson's tools that belong to a module.
 TOOLS = {"correo": {"consultar_bandeja", "proponer_regla", "proponer_limpieza"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos"}, "presupuestos": {"proponer_presupuesto"},
          "reuniones": {"consultar_reuniones", "leer_reunion", "proponer_issue"}, "orca": {"proponer_encargo_orca"}}
@@ -27,7 +29,20 @@ CHECK_EVERY = 20.0
 def state(connection: sqlite3.Connection) -> dict[str, bool]:
     row = connection.execute("SELECT value FROM setting WHERE key = ?", (SETTING,)).fetchone()
     saved = json.loads(row["value"]) if row else {}
-    return {name: saved.get(name, saved.get(INHERITS.get(name, name), True)) is not False for name in MODULES}
+    default = {name: True for name in MODULES}
+    if any(name not in saved for name in FOLLOW_CENTRAL):
+        has_central = _central_source(connection)
+        default.update({name: has_central for name in FOLLOW_CENTRAL})
+    return {name: saved.get(name, default[name]) is not False for name in MODULES}
+
+
+def _central_source(connection: sqlite3.Connection) -> bool:
+    """A Central folder registered as an add-on, a saved connection, or a snapshot already read (proof that one
+    worked before)."""
+    from . import addons, central, central_api
+
+    return (bool(addons.config(connection, "central").get("path")) or central_api.saved_url(connection) is not None
+            or central.stored(connection) is not None)
 
 
 def apply(connection: sqlite3.Connection) -> dict[str, bool]:
@@ -42,10 +57,12 @@ def apply(connection: sqlite3.Connection) -> dict[str, bool]:
 
 
 def save(connection: sqlite3.Connection, changes: dict) -> dict[str, bool]:
-    on = state(connection)
-    on.update({name: bool(value) for name, value in changes.items() if name in MODULES})
+    """Keeps only what the user set: a module never touched keeps following its default."""
+    row = connection.execute("SELECT value FROM setting WHERE key = ?", (SETTING,)).fetchone()
+    saved = json.loads(row["value"]) if row else {}
+    saved.update({name: bool(value) for name, value in changes.items() if name in MODULES})
     with transaction(connection):
-        connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", (SETTING, json.dumps(on)))
+        connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", (SETTING, json.dumps(saved)))
     return apply(connection)
 
 

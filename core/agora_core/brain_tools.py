@@ -726,6 +726,10 @@ class Toolbox:
         # goes as typed and Central itself refuses a client it does not have.
         if not client:
             return json.dumps({"error": "Falta el cliente del presupuesto."}, ensure_ascii=False)
+        # Central also finds a client by its id: without a snapshot to name it, an id (perhaps copied from a mail) is
+        # refused, so the screen always shows a client's name.
+        if not known and re.fullmatch(r"c[a-z0-9]{20,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", client.lower()):
+            return json.dumps({"error": "Escribe el nombre del cliente, no su identificador."}, ensure_ascii=False)
         if known and client.lower() not in known:
             return json.dumps({"error": f"«{client}» no es un cliente de Central: usa consultar_clientes para el nombre exacto."}, ensure_ascii=False)
         known.setdefault(client.lower(), client)

@@ -31,7 +31,7 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
   const [waiting, setWaiting] = useState(0);
   const asked = useRef(false);
   const modules = useModules();
-  const mailOn = moduleOn(modules, 'correo'), agendaOn = moduleOn(modules, 'agenda'), fiscalOn = moduleOn(modules, 'fiscal'), centralOn = moduleOn(modules, 'central');
+  const mailOn = moduleOn(modules, 'correo'), agendaOn = moduleOn(modules, 'agenda'), fiscalOn = moduleOn(modules, 'fiscal'), centralOn = moduleOn(modules, 'central'), jobsOn = moduleOn(modules, 'trabajos');
   // Each reading is a round: an answer from an older round (a slow one, after «Actualizar») never overwrites a newer one.
   const read = () => {
     const mine = ++latest;
@@ -109,7 +109,7 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
           <span>{note.text}{note.detail && <small> · {note.detail}</small>}</span>
         </li>)}</ul>}
       </Block>
-      {centralOn && data.central?.configured && <Block title="Servidores" count={servers.length} alert={down > 0 ? `${down} con problemas` : undefined} onOpen={() => onOpen('jobs')} openLabel="Abrir Trabajos"
+      {centralOn && data.central?.configured && <Block title="Servidores" count={servers.length} alert={down > 0 ? `${down} con problemas` : undefined} onOpen={() => onOpen(jobsOn ? 'jobs' : 'summary')} openLabel={jobsOn ? 'Abrir Trabajos' : 'Abrir Resumen'}
         empty="Central no tiene servidores.">
         {servers.length > 0 && <ul className="home-list">{servers.slice(0, 6).map((server, index) => <li key={`${server.name}-${index}`} className={server.status === 'red' ? 'warn' : ''}>
           <span className={`home-dot ${server.status ?? 'grey'}`} aria-hidden="true"/>

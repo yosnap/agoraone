@@ -73,6 +73,8 @@ class FakeCentral:
                 return httpx.Response(422, json={"error": "invalid", "detail": "No existe ese cliente en Central"})
             self.created.append(body)
             return httpx.Response(201, json={"id": "q1", "number": "P-2026-007", "status": "DRAFT"})
+        if path == "/api/v1/presupuestos/q1" and request.method == "GET":
+            return httpx.Response(200, json={"id": "q1", "number": "P-2026-007", "status": "DRAFT", "client": {"id": "c1", "name": "Cliente Uno"}})
         return httpx.Response(404, json={"error": "not_found"})
 
 
@@ -95,7 +97,9 @@ TARGET = central_api.Connection(URL, KEY)
 
 
 @pytest.mark.parametrize("url", ["http://central.example.com", "ftp://central.example.com", "https://yo:clave@central.example.com", "https://central.example.com/?a=1",
-                                 "https://central.example.com/#x", "", "central.example.com", "http://192.168.1.10:3099", "https://central .example.com", 42])
+                                 "https://central.example.com/#x", "", "central.example.com", "http://192.168.1.10:3099", "https://central .example.com", 42,
+                                 "https://a..b", "https://-a.com", "https://a-.com", "https://central.example.com:0", "https://central.example.com:70000",
+                                 "https://" + "a" * 64 + ".com"])
 def test_direcciones_rechazadas(url):
     with pytest.raises(central_api.CentralApiError):
         central_api.normalize_url(url)
@@ -106,6 +110,7 @@ def test_direcciones_aceptadas():
     assert central_api.normalize_url("http://127.0.0.1:3099") == "http://127.0.0.1:3099"
     assert central_api.normalize_url("http://[::1]:3099") == "http://[::1]:3099"
     assert central_api.normalize_url(" https://central.example.com ") == "https://central.example.com"
+    assert central_api.normalize_url("https://central.example.com:8443/central/") == "https://central.example.com:8443/central"
     assert "KEY" not in repr(TARGET) and KEY not in repr(TARGET)
 
 
@@ -205,7 +210,7 @@ def test_sin_permiso_de_lectura_no_se_leen_clientes(db, fake):
     assert central.stored(db) is None
     assert [r.url.path for r in fake.seen] == ["/api/v1/estado"]
     made = central.create_quote(TARGET, {"client": "Cliente Uno", "title": "Web", "items": [{"description": "Diseño", "unitPrice": 900}]})
-    assert made == {"id": "q1", "number": "P-2026-007"}
+    assert made == {"id": "q1", "number": "P-2026-007", "client": "Cliente Uno"}
     with pytest.raises(central.CentralError, match="No existe ese cliente"):
         central.create_quote(TARGET, {"client": "Nadie", "title": "Web", "items": [{"description": "Diseño", "unitPrice": 900}]})
 
@@ -236,7 +241,7 @@ def test_rutas_de_la_conexion_nunca_devuelven_la_clave(tmp_path, fake, caplog):
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
         first = client.get("/central/connection", headers=HEADERS).json()
         assert first == {"url": None, "hasKey": False, "storeProblem": None, "legacyFolder": False, "transport": None, "suggestedUrl": "https://central.example.com"}
-        assert client.get("/central", headers=HEADERS).json()["configured"] is False
+        assert client.get("/central", headers=HEADERS).status_code == 404, "sin ninguna fuente, Central empieza apagado"
         for wrong in ({"url": "http://central.example.com", "key": KEY}, {"url": URL, "key": "cen_mala"}, {"url": URL, "key": 123}):
             answer = client.put("/central/connection", json=wrong, headers=HEADERS)
             assert answer.status_code == 422 and KEY not in answer.text and "cen_mala" not in answer.text, wrong
@@ -342,7 +347,7 @@ def test_presupuesto_por_http_solo_con_presupuestos_y_sin_lectura(tmp_path, fake
         proposal = propose(client)
         assert proposal["quote"]["client"] == "Cliente Uno", "sin instantánea, el nombre va tal cual y Central lo comprueba"
         made = client.post(f"/assistant/proposals/{proposal['id']}/quote", headers=HEADERS)
-        assert made.status_code == 201 and made.json()["created"] == {"id": "q1", "number": "P-2026-007"}
+        assert made.status_code == 201 and made.json()["created"] == {"id": "q1", "number": "P-2026-007", "client": "Cliente Uno"}
         assert fake.created == [{"client": "Cliente Uno", "title": "Web nueva", "items": [{"description": "Diseño", "unitPrice": 900.0, "quantity": 1.0}]}]
         assert client.post(f"/assistant/proposals/{proposal['id']}/quote", headers=HEADERS).status_code == 404, "una sola vez"
 
@@ -359,3 +364,119 @@ def test_presupuestos_apagado(tmp_path, fake):
         assert refused.status_code == 404 and fake.created == []
         client.put("/modules", json={"modules": {"presupuestos": True}}, headers=HEADERS)
         assert client.post(f"/assistant/proposals/{proposal['id']}/quote", headers=HEADERS).status_code == 201, "la propuesta no se gastó"
+
+
+def connected(client, secrets):
+    assert client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
+    assert secrets.get(central_api.SECRET) == KEY
+
+
+def test_la_clave_guardada_nunca_va_a_otro_servidor(tmp_path, fake):
+    secrets = MemorySecrets()
+    settings, app = app_with(tmp_path, secrets)
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        assert client.put("/central/connection", json={"url": URL}, headers=HEADERS).status_code == 422, "la primera vez, con clave"
+        connected(client, secrets)
+        before = len(fake.seen)
+        for other in ("https://central.example.net", "https://central.example.com:8443", "http://localhost:3099"):
+            tested = client.post("/central/connection/test", json={"url": other}, headers=HEADERS)
+            assert tested.status_code == 422 and "escribe otra vez la clave" in tested.json()["error"], other
+            saved = client.put("/central/connection", json={"url": other}, headers=HEADERS)
+            assert saved.status_code == 422 and "escribe otra vez la clave" in saved.json()["error"], other
+        assert len(fake.seen) == before, "nada salió hacia otra dirección"
+        assert client.get("/central/connection", headers=HEADERS).json()["url"] == URL
+        assert client.post("/central/connection/test", json={"url": URL + "/"}, headers=HEADERS).status_code == 200, "mismo origen, vale"
+        assert client.put("/central/connection", json={"url": "https://CENTRAL.example.com:443"}, headers=HEADERS).status_code == 200
+        moved = client.put("/central/connection", json={"url": "https://central.example.net", "key": KEY}, headers=HEADERS)
+        assert moved.status_code == 200 and moved.json()["url"] == "https://central.example.net", "con la clave escrita, sí"
+        assert client.post("/central/connection/test", json={"url": "https://a..b", "key": KEY}, headers=HEADERS).status_code == 422, "nunca un 500"
+
+
+def test_plazos_de_cada_peticion_y_de_toda_la_lectura(monkeypatch):
+    import time
+
+    def dripping(request):
+        def chunks():
+            for _ in range(5):
+                time.sleep(0.03)
+                yield b" "
+            yield b"{}"
+        return httpx.Response(200, content=chunks())
+    monkeypatch.setattr(central_api, "TRANSPORT", httpx.MockTransport(dripping))
+    monkeypatch.setattr(central_api, "REQUEST_SECONDS", 0.05)
+    with pytest.raises(central_api.CentralApiError, match="a tiempo") as failure:
+        central_api.request(TARGET, "GET", "/api/v1/estado")
+    assert failure.value.status == "unreachable"
+
+
+def test_toda_la_lectura_con_una_conexion_y_un_plazo(monkeypatch, fake):
+    opened = []
+    real = httpx.Client
+
+    def counting(*args, **kwargs):
+        opened.append(kwargs.get("follow_redirects"))
+        return real(*args, **kwargs)
+    monkeypatch.setattr(central_api.httpx, "Client", counting)
+    raw = central_api.read_all(TARGET)
+    assert len(raw["projects"]) == 3 and opened == [False], "una sola conexión, sin redirecciones"
+    with pytest.raises(central_api.CentralApiError, match="a tiempo"):
+        central_api.read_all(TARGET, seconds=0)
+
+
+def test_sin_instantanea_no_vale_un_identificador_como_cliente(tmp_path, monkeypatch):
+    import asyncio
+    from contextlib import contextmanager
+
+    from agora_core.brain_tools import Toolbox
+    from agora_core.embed import VectorCache
+
+    monkeypatch.setattr(engines, "HIDDEN_TOOLS", set())
+    c = connect(tmp_path / DB_NAME)
+    migrate(c)
+
+    @contextmanager
+    def database():
+        yield c
+    box = Toolbox(database, None, VectorCache())
+    box.owner = "o"
+    items = [{"concepto": "Diseño", "precio": 900}]
+    for raw_id in ("clx0a1b2c3d4e5f6g7h8i9j0k", "123e4567-e89b-12d3-a456-426614174000"):
+        answer = json.loads(asyncio.run(box.call("proponer_presupuesto", {"cliente": raw_id, "titulo": "Web", "partidas": items})))
+        assert "nombre del cliente" in answer["error"], raw_id
+    answer = json.loads(asyncio.run(box.call("proponer_presupuesto", {"cliente": "Cliente Uno", "titulo": "Web", "partidas": items})))
+    assert "No está creado" in answer["estado"]
+    c.close()
+
+
+def central_folder(tmp_path):
+    folder = tmp_path / "central"
+    (folder / "src" / "mcp").mkdir(parents=True)
+    (folder / "src" / "mcp" / "server.ts").write_text("")
+    (folder / "package.json").write_text(json.dumps({"name": "central"}))
+    return folder
+
+
+def test_clave_sin_lectura_usa_la_carpeta_o_avisa_sin_alarma(tmp_path, fake, monkeypatch):
+    from agora_core import addons
+
+    fake.scopes = ["presupuestos"]
+    secrets = MemorySecrets()
+    settings, app = app_with(tmp_path, secrets)
+
+    async def by_stdio(folder):
+        return stdio_raw()
+    monkeypatch.setattr(central, "_call_all", by_stdio)
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        connected(client, secrets)
+        quiet = client.post("/central/refresh", headers=HEADERS)
+        assert quiet.status_code == 200 and quiet.json()["problem"] is None and "lectura" in quiet.json()["notice"], "un aviso, no una avería"
+        assert quiet.json()["snapshot"] is None
+        shown = client.get("/central", headers=HEADERS).json()
+        assert shown["problem"] is None and "lectura" in shown["notice"]
+        c = connect(settings.data_dir / DB_NAME)
+        try:
+            addons.save_config(c, "central", {"path": str(central_folder(tmp_path))})
+        finally:
+            c.close()
+        read = client.post("/central/refresh", headers=HEADERS).json()
+        assert read["transport"] == "stdio" and read["snapshot"]["clients"][0]["name"] == "Cliente Uno", "la carpeta sigue leyendo"

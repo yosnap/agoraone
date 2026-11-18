@@ -22,7 +22,8 @@ REFRESH_SECONDS = 1800
 
 class CentralHealth:
     def __init__(self):
-        self.problem: str | None = None
+        self.problem: str | None = None  # a failure, shown as a warning
+        self.notice: str | None = None  # a setting worth saying once and quietly (a key that cannot read)
 
 
 def _folder(connection: sqlite3.Connection) -> Path | None:
@@ -38,6 +39,28 @@ class ConnectionIn(BaseModel):
 
 NOT_CONFIGURED = "Central no está conectado: conéctalo en Ajustes › Central."
 OFF = "El módulo Central está apagado."
+NEW_ORIGIN = "Para otra dirección (otro servidor, puerto o esquema), escribe otra vez la clave: la guardada no viaja a un servidor nuevo."
+
+
+def read_now(connection: sqlite3.Connection, secrets, health: CentralHealth) -> tuple[dict | None, str | None]:
+    """Reads Central from its source: the API when connected, else the old folder. A key without «lectura» is
+    not a failure: the folder is read when there is one, and otherwise nothing, with a quiet notice."""
+    folder = _folder(connection)
+    origin = central.source(connection, secrets, folder)
+    if origin is None:
+        return None, None
+    way = "http" if isinstance(origin, central_api.Connection) else "stdio"
+    try:
+        data = central.refresh(connection, origin)
+        health.notice = None
+    except central.NoReadingError as error:
+        health.notice = str(error)
+        if folder is None:
+            health.problem = None
+            return central.snapshot(connection), way
+        data, way = central.refresh(connection, folder), "stdio"
+    health.problem = None
+    return data, way
 
 
 def central_worker(settings: Settings, stop: threading.Event, health: CentralHealth, secrets) -> None:
@@ -46,10 +69,7 @@ def central_worker(settings: Settings, stop: threading.Event, health: CentralHea
         try:
             connection = connect(settings.data_dir / DB_NAME)
             try:
-                origin = central.source(connection, secrets, _folder(connection))
-                if origin is not None:
-                    central.refresh(connection, origin)
-                    health.problem = None
+                read_now(connection, secrets, health)
             finally:
                 connection.close()
         except Exception as error:  # noqa: BLE001 - the worker survives anything and says so
@@ -96,17 +116,17 @@ def central_router(settings: Settings, health: CentralHealth, secrets) -> APIRou
         if found is None:
             return JSONResponse({"error": OFF}, status_code=404)
         data, way = found
-        return {"configured": way is not None, "transport": way, "snapshot": public(data), "problem": health.problem}
+        return {"configured": way is not None, "transport": way, "snapshot": public(data), "problem": health.problem, "notice": health.notice}
 
     @router.post("/central/refresh")
     async def refresh():
         def work(connection):
             if off(connection):
                 return None
-            origin = central.source(connection, secrets, _folder(connection))
-            if origin is None:
+            data, way = read_now(connection, secrets, health)
+            if way is None:
                 raise central.CentralError(NOT_CONFIGURED)
-            return central.refresh(connection, origin), "http" if isinstance(origin, central_api.Connection) else "stdio"
+            return data, way
         try:
             found = await db(work)
         except central.CentralError as error:
@@ -115,7 +135,7 @@ def central_router(settings: Settings, health: CentralHealth, secrets) -> APIRou
         if found is None:
             return JSONResponse({"error": OFF}, status_code=404)
         health.problem = None
-        return {"configured": True, "transport": found[1], "snapshot": public(found[0]), "problem": None}
+        return {"configured": True, "transport": found[1], "snapshot": public(found[0]), "problem": None, "notice": health.notice}
 
     # The connection: available with the module off, so Settings can always connect or disconnect.
     async def described() -> dict:
@@ -141,6 +161,8 @@ def central_router(settings: Settings, health: CentralHealth, secrets) -> APIRou
         url_problem = central_api.url_problem(body.url)
         if url_problem:
             return problem(422, url_problem)
+        if body.key is None and not await db(lambda c: central_api.same_origin(central_api.saved_url(c), body.url)):
+            return problem(422, NEW_ORIGIN)
         if body.key is not None:
             key_problem = central_api.key_problem(body.key)
             if key_problem:
@@ -149,7 +171,10 @@ def central_router(settings: Settings, health: CentralHealth, secrets) -> APIRou
                 await run_in_threadpool(central_api.write_key, secrets, body.key.strip())
             except central_api.CentralApiError as error:
                 return problem(503, str(error))
-        await db(lambda c: central_api.save_url(c, body.url))
+        def store(connection):
+            central_api.save_url(connection, body.url)
+            modules.apply(connection)  # a first connection turns on the modules that follow Central
+        await db(store)
         return await described()
 
     @router.delete("/central/connection")
@@ -170,7 +195,10 @@ def central_router(settings: Settings, health: CentralHealth, secrets) -> APIRou
         if body.key is not None and central_api.key_problem(body.key):
             return problem(422, central_api.key_problem(body.key))
         def work(connection):
-            url = central_api.normalize_url(body.url) if body.url is not None else central_api.saved_url(connection)
+            saved = central_api.saved_url(connection)
+            url = central_api.normalize_url(body.url) if body.url is not None else saved
+            if not isinstance(body.key, str) and url and not central_api.same_origin(saved, url):
+                raise central_api.CentralApiError("config", NEW_ORIGIN)  # the saved key never goes to another server
             key = body.key.strip() if isinstance(body.key, str) else central_api.read_key(secrets)
             if not url or not key:
                 raise central_api.CentralApiError("config", "Escribe la dirección y la clave de Central.")
