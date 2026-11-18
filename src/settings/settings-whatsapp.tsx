@@ -5,6 +5,7 @@ import {
 } from '../api/core';
 import { ModernSelect } from '../ui/modern-select';
 import { Loading, LoadError } from '../ui/load-state';
+import { WhatsAppRulesCard } from './settings-whatsapp-rules';
 
 const statusLabels: Record<ChatAccount['status'], string> = {
   pending: 'Pendiente de leer', ok: 'Conectada', auth: 'Revisa la clave', unreachable: 'Sin conexión', error: 'Error',
@@ -29,9 +30,14 @@ function readNote(result: ChatSyncResult): string {
   return `${added}${pending}${skipped}`;
 }
 
+/** Settings › WhatsApp: the connection and, below, the rules for its conversations. */
+export function WhatsAppSettingsCard() {
+  return <><WhatsAppConnectionCard/><WhatsAppRulesCard/></>;
+}
+
 /** WhatsApp through Zernio, read-only: the key goes to the Keychain and is never shown again; each account has its
  * scope, confidentiality and days back. Nothing is sent or marked as read. */
-export function WhatsAppSettingsCard() {
+function WhatsAppConnectionCard() {
   const [state, setState] = useState<ChatSettings | null>(null);
   const [scopes, setScopes] = useState<Scope[]>([]);
   const [key, setKey] = useState('');

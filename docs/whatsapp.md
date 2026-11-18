@@ -29,9 +29,26 @@ Meta corta la conexión si la app del móvil no se abre en 14 días.
   correo. Una lectura nunca cambia la confidencialidad.
 - El módulo «WhatsApp» se apaga en Ajustes › Módulos; entonces no hay lectura ni peticiones a Zernio.
 
+## Clasificación (1.7.0-alpha.49)
+- Cada conversación con mensajes recibidos nuevos recibe clase, resumen, lo que pide, fechas e importes, y queda
+  pendiente, hecha, descartada o en silencio. Vuelve a pendiente solo cuando llega algo recibido; lo que escribe
+  el usuario no la reabre. La primera vez, lo que lleva más de 7 días sin recibir nada queda en silencio.
+- **Reglas** (Ajustes › WhatsApp › Reglas): por contacto (número; con «+» exige todos los dígitos, sin «+» admite
+  que falte el prefijo de país, con 9 dígitos como mínimo), cuenta o palabras, con etiqueta opcional para la
+  fuente (p. ej. «Instinct», cuyo número fijo le escribe al usuario por WhatsApp). Decide la primera que
+  coincide y solo endurece la confidencialidad. Las palabras se buscan en **toda** la conversación, también en
+  lo que escribe el usuario (decisión del usuario, 18/11/2026). Crear, cambiar o quitar una regla la reaplica sin
+  modelo.
+- Lo normal lo resume Claude Haiku (últimos 30 mensajes, como mucho 4000 caracteres, como dato delimitado). Lo
+  «solo en este Mac» y lo privado se clasifican con palabras clave locales, sin resumen. Los mensajes no
+  disponibles no se envían. El correo y WhatsApp comparten el límite de 40 llamadas por hora.
+- Central no guarda teléfonos de clientes, así que una conversación no se marca como de cliente.
+- `GET /chat/summaries` nunca devuelve el texto de los mensajes; lo privado, sin nombre ni número.
+
 ## Pendiente
-Clasificar los mensajes, tarjetas en la Bandeja, responder con vista previa y Watson: ver el plan
+Tarjetas en la Bandeja, responder con vista previa y Watson: ver el plan
 `plans/261118-0155-whatsapp-zernio-e-instinct/plan.md`.
 
-Código: `core/agora_core/zernio.py`, `chat_sync.py`, `routes_chat.py`, migración `0030_chat.sql`,
-`src/settings/settings-whatsapp.tsx`. Pruebas: `core/tests/test_zernio.py`, `core/tests/test_chat_sync.py`.
+Código: `core/agora_core/zernio.py`, `chat_sync.py`, `routes_chat.py`, `chat_rules.py`, `chat_inbox.py`,
+`chat_summarizer.py`, migraciones `0030_chat.sql` y `0031_chat_summary.sql`, `src/settings/settings-whatsapp.tsx`
+y `settings-whatsapp-rules.tsx`. Pruebas: `core/tests/test_zernio.py`, `test_chat_sync.py`, `test_chat_inbox.py`.
