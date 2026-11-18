@@ -1,5 +1,6 @@
-"""HTTP routes of WhatsApp (through Zernio), read-only: the key in the Keychain, a test, «Leer ahora» and each
-account's scope, confidentiality and days back. The key is never returned: only whether there is one."""
+"""HTTP routes of WhatsApp (through Zernio), read-only: the key in the Keychain, a test, «Leer ahora», each
+account's scope, confidentiality and days back, the user's rules and the classified conversations. The key is never
+returned: only whether there is one. No route acts on what a message says."""
 
 import sqlite3
 from typing import Literal
@@ -9,11 +10,12 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import chat_sync, zernio
-from .db import DB_NAME, connect
+from . import chat_inbox, chat_rules, chat_sync, zernio
+from .db import DB_NAME, connect, transaction
 from .settings import Settings
 
 Level = Literal["normal", "local_only", "private"]
+Action = Literal["invoice", "client", "personal", "important", "ignore"]
 
 
 class KeyIn(BaseModel):
@@ -34,6 +36,30 @@ class AccountChange(BaseModel):
     scopeId: StrictInt | None = None
     confidentiality: Level | None = None
     maxAgeDays: StrictInt | None = Field(default=None, ge=1, le=3650)
+    enabled: StrictBool | None = None
+
+
+class RuleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    contact: str | None = Field(default=None, max_length=100)
+    accountId: StrictInt | None = None
+    words: str | None = Field(default=None, max_length=200)
+    action: Action
+    label: str | None = Field(default=None, max_length=40)
+    scopeId: StrictInt | None = None
+    confidentiality: Level | None = None
+    enabled: StrictBool = True
+
+
+class RuleChange(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    contact: str | None = Field(default=None, max_length=100)
+    accountId: StrictInt | None = None
+    words: str | None = Field(default=None, max_length=200)
+    action: Action | None = None
+    label: str | None = Field(default=None, max_length=40)
+    scopeId: StrictInt | None = None
+    confidentiality: Level | None = None
     enabled: StrictBool | None = None
 
 
@@ -59,11 +85,15 @@ def update_account(connection: sqlite3.Connection, account_id: int, changes: dic
     columns = {"scopeId": "scope_id", "confidentiality": "confidentiality", "maxAgeDays": "max_age_days", "enabled": "enabled"}
     values = {columns[name]: int(value) if name == "enabled" else value for name, value in changes.items() if name in columns}
     if values:
-        connection.execute(f"UPDATE chat_account SET {', '.join(f'{column} = ?' for column in values)} WHERE id = ?", (*values.values(), account_id))
+        with transaction(connection):
+            connection.execute(f"UPDATE chat_account SET {', '.join(f'{column} = ?' for column in values)} WHERE id = ?", (*values.values(), account_id))
+            if "confidentiality" in values:
+                # A stricter account takes its conversations' summaries out of reach at once.
+                chat_rules.reapply(connection)
     return None
 
 
-def chat_router(settings: Settings, secrets) -> APIRouter:
+def chat_router(settings: Settings, secrets, health=None) -> APIRouter:
     router = APIRouter()
 
     def db(work):
@@ -121,5 +151,45 @@ def chat_router(settings: Settings, secrets) -> APIRouter:
         if problem:
             return JSONResponse({"error": problem}, status_code=404 if problem == "Esa cuenta no existe." else 422)
         return await described()
+
+    async def rules():
+        return {"rules": await db(chat_rules.list_rules)}
+
+    def refused(error: Exception) -> JSONResponse:
+        return JSONResponse({"error": str(error) if isinstance(error, chat_rules.RuleError) else "Regla no válida."}, status_code=422)
+
+    @router.get("/chat/rules")
+    async def get_rules():
+        return await rules()
+
+    @router.post("/chat/rules", status_code=201)
+    async def create_rule(body: RuleIn):
+        try:
+            await db(lambda c: chat_rules.create_rule(c, body.model_dump()))
+        except (chat_rules.RuleError, sqlite3.IntegrityError) as error:
+            return refused(error)
+        return await rules()
+
+    @router.patch("/chat/rules/{rule_id}")
+    async def change_rule(rule_id: int, body: RuleChange):
+        try:
+            found = await db(lambda c: chat_rules.update_rule(c, rule_id, body.model_dump(exclude_unset=True)))
+        except (chat_rules.RuleError, sqlite3.IntegrityError) as error:
+            return refused(error)
+        if not found:
+            return JSONResponse({"error": "Esa regla no existe."}, status_code=404)
+        return await rules()
+
+    @router.delete("/chat/rules/{rule_id}")
+    async def delete_rule(rule_id: int):
+        if not await db(lambda c: chat_rules.delete_rule(c, rule_id)):
+            return JSONResponse({"error": "Esa regla no existe."}, status_code=404)
+        return await rules()
+
+    @router.get("/chat/summaries")
+    async def summaries(state: Literal["pending", "done", "dismissed"] = "pending", limit: int = 100):
+        limit = max(1, min(limit, 300))
+        items, counted = await db(lambda c: (chat_inbox.summaries(c, state, limit), chat_inbox.counts(c)))
+        return {"items": items, "counts": counted, "problem": health.problem if health else None}
 
     return router

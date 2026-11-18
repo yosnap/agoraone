@@ -31,6 +31,7 @@ from .routes_mail import mail_router, mail_worker
 from .routes_mail_send import mail_send_router
 from .routes_chat import chat_router
 from .chat_sync import chat_worker
+from .chat_summarizer import chat_summary_worker
 from .mail_summarizer import SummaryHealth, summary_worker
 from .routes_inbox import inbox_router
 from .routes_fiscal import fiscal_router
@@ -85,6 +86,7 @@ def create_app(
     embed_health = EmbedHealth()
     extract_health = ExtractHealth()
     summary_health = SummaryHealth()
+    chat_summary_health = SummaryHealth()
     central_health = CentralHealth()
     secrets = secrets or KeychainSecrets()
     expected = settings.secret.encode()
@@ -122,6 +124,8 @@ def create_app(
             threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: summary_worker(settings, extract_engines, own, summary_health), stop), daemon=True).start()
             # WhatsApp through Zernio, read-only, polled every five minutes while «WhatsApp» is on (user's decision, 18/11/2026).
             threading.Thread(target=modules.gated, args=("whatsapp", database_now, lambda own: chat_worker(settings, secrets, own), stop), daemon=True).start()
+            # Kinds and summaries of WhatsApp conversations, like mail: rules first, Claude Haiku only for what may leave this Mac.
+            threading.Thread(target=modules.gated, args=("whatsapp", database_now, lambda own: chat_summary_worker(settings, extract_engines, own, chat_summary_health), stop), daemon=True).start()
             # Clients and servers from Central, read-only, every half hour (user's decision, 14/11/2026).
             threading.Thread(target=modules.gated, args=("trabajos", database_now, lambda own: central_worker(settings, own, central_health), stop), daemon=True).start()
             # Watson's voice: VoiceStudio opened in the background if it is closed (user's request, 16/11/2026).
@@ -199,7 +203,7 @@ def create_app(
     app.include_router(assistant_router(settings, embedder, cache, secrets, engines))
     app.include_router(mail_router(settings, secrets))
     app.include_router(mail_send_router(settings, secrets, drafter))
-    app.include_router(chat_router(settings, secrets))
+    app.include_router(chat_router(settings, secrets, chat_summary_health))
     app.include_router(inbox_router(settings, summary_health, secrets))
     app.include_router(fiscal_router(settings, secrets))
     app.include_router(central_router(settings, central_health))
