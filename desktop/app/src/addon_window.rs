@@ -59,6 +59,12 @@ impl State {
     pub const fn new() -> Self {
         Self { origin: Mutex::new(None), last_told: Mutex::new(None), last_focus: Mutex::new(None), downloads: Mutex::new(Vec::new()) }
     }
+
+    /// A closed window: no address open and no download on its way (a closed window may never say they ended).
+    fn forget(&self) {
+        *lock(&self.origin) = None;
+        lock(&self.downloads).clear();
+    }
 }
 
 /// One add-on's window. Its label names the rest: the core's `/internal/{label}/window/next`, the events
@@ -153,36 +159,47 @@ pub fn macos_major(version: &[u8]) -> Option<u32> {
     std::str::from_utf8(version).ok()?.trim_end_matches('\0').split('.').next()?.parse().ok()
 }
 
-/// How the window keeps its data. There is no third way: the default store (AgoraOne's window's) is never chosen.
-#[derive(Debug, PartialEq, Eq)]
-enum Store {
-    /// Its own store, kept between launches.
-    Own,
-    /// Nothing kept: private.
-    Private,
+/// How the window keeps its data, as the window's options `(incognito, data store identifier)`. Two ways and neither
+/// is the default store (AgoraOne's window's): its own store (not private, always with its identifier) or private
+/// (nothing kept).
+fn store_options(own: bool, identifier: [u8; 16]) -> (bool, Option<[u8; 16]>) {
+    if own { (false, Some(identifier)) } else { (true, None) }
 }
 
-fn store_mode(own: bool) -> Store {
-    if own { Store::Own } else { Store::Private }
+/// Characters that do not show (controls and Unicode format ones: direction marks and overrides, zero width…), which
+/// could make a name look like another (`guia\u{202E}fdp.exe`).
+fn hidden_char(c: char) -> bool {
+    c.is_control()
+        || matches!(c, '\u{00AD}' | '\u{061C}' | '\u{180E}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}')
+}
+
+/// Names Windows keeps for its devices (`CON`, `NUL`, `COM1`…, with any extension), where a download would fail.
+fn reserved_on_windows(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or_default().trim_end().to_ascii_uppercase();
+    let numbered = stem.len() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && matches!(stem.as_bytes()[3], b'1'..=b'9');
+    numbered || matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
 }
 
 /// Where a download goes: the Downloads folder and only the file's own name (no folders, nothing hidden), never over
-/// a file that is there («nombre (2).pdf»…). `None` when no free name is found.
-pub fn download_target(folder: &Path, suggested: &str, fallback: &str) -> Option<PathBuf> {
+/// a file that is there nor where a download still on its way goes (`taken`): «nombre (2).pdf»… Nothing invisible
+/// and no name Windows keeps. `None` when no free name is found.
+pub fn download_target(folder: &Path, suggested: &str, fallback: &str, taken: &[&Path]) -> Option<PathBuf> {
     let clean: String = suggested
         .chars()
-        .filter(|c| !c.is_control() && !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+        .filter(|&c| !hidden_char(c) && !matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
         .take(150)
         .collect();
-    let clean = clean.trim().trim_start_matches('.').trim();
-    let name = if clean.is_empty() { fallback } else { clean };
+    let clean = clean.trim().trim_start_matches('.').trim_end_matches(['.', ' ']).trim();
+    let reserved = format!("_{clean}");
+    let name = if clean.is_empty() { fallback } else if reserved_on_windows(clean) { reserved.as_str() } else { clean };
     let (stem, extension) = match name.rsplit_once('.') {
         Some((stem, extension)) if !stem.is_empty() => (stem, format!(".{extension}")),
         _ => (name, String::new()),
     };
     (1..=999).map(|n| if n == 1 { name.to_string() } else { format!("{stem} ({n}){extension}") })
         .map(|candidate| folder.join(candidate))
-        .find(|path| !path.exists() && path.symlink_metadata().is_err())
+        .find(|path| !taken.contains(&path.as_path()) && !path.exists() && path.symlink_metadata().is_err())
 }
 
 /// A download asked by the window: only of the open origin and a page the spec allows, to the Downloads folder.
@@ -193,14 +210,22 @@ fn start_download(spec: &Spec, app: &AppHandle, url: &Url, destination: &mut Pat
     }
     let Ok(folder) = app.path().download_dir() else { return false };
     let suggested = destination.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default();
-    let Some(target) = download_target(&folder, &suggested, &format!("{}.pdf", spec.label)) else { return false };
-    let mut pending = lock(&spec.state.downloads);
-    if pending.len() >= MAX_PENDING {
-        return false;
-    }
-    pending.push((url.as_str().to_string(), target.clone()));
+    let Some(target) = reserve(&spec.state, url, &folder, &suggested, &format!("{}.pdf", spec.label)) else { return false };
     *destination = target;
     true
+}
+
+/// Picks a download's file and keeps it as on its way, with the list held: two downloads of the same name in a row
+/// never get the same file. `None` with too many on their way or no free name.
+fn reserve(state: &State, url: &Url, folder: &Path, suggested: &str, fallback: &str) -> Option<PathBuf> {
+    let mut pending = lock(&state.downloads);
+    if pending.len() >= MAX_PENDING {
+        return None;
+    }
+    let taken: Vec<&Path> = pending.iter().map(|(_, path)| path.as_path()).collect();
+    let target = download_target(folder, suggested, fallback, &taken)?;
+    pending.push((url.as_str().to_string(), target.clone()));
+    Some(target)
 }
 
 /// A download that ended: AgoraOne's window is told its name (never the full path) and whether it worked.
@@ -216,7 +241,7 @@ fn finish_download(spec: &Spec, app: &AppHandle, url: &Url, success: bool) {
 }
 
 pub fn close(spec: &Spec, app: &AppHandle) {
-    *lock(&spec.state.origin) = None;
+    spec.state.forget();
     if let Some(window) = app.get_webview_window(spec.label) {
         let _ = window.destroy();
     }
@@ -282,10 +307,11 @@ fn open(spec: &'static Spec, app: &AppHandle, url: Url) {
         None => builder.inner_size(SIZE.0, SIZE.1),
     };
     let folder = app.path().app_local_data_dir().ok().map(|folder| folder.join(format!("{}-web", spec.label)));
-    builder = match store_mode(own_store(folder.is_some())) {
-        Store::Own => builder.incognito(false).data_store_identifier(spec.store),
-        Store::Private => builder.incognito(true),
-    };
+    let (incognito, identifier) = store_options(own_store(folder.is_some()), spec.store);
+    builder = builder.incognito(incognito);
+    if let Some(identifier) = identifier {
+        builder = builder.data_store_identifier(identifier);
+    }
     if let Some(folder) = folder {
         builder = builder.data_directory(folder);
     }
@@ -352,8 +378,13 @@ mod tests {
 
     #[test]
     fn nunca_el_almacen_por_defecto() {
-        assert_eq!(store_mode(true), Store::Own);
-        assert_eq!(store_mode(false), Store::Private, "sin almacén propio, privada");
+        let id = [7u8; 16];
+        assert_eq!(store_options(true, id), (false, Some(id)), "almacén propio con su identificador");
+        assert_eq!(store_options(false, id), (true, None), "sin almacén propio, privada");
+        for own in [true, false] {
+            let (incognito, identifier) = store_options(own, id);
+            assert!(incognito || identifier == Some(id), "sin privada, siempre con identificador propio");
+        }
     }
 
     #[test]
@@ -361,20 +392,52 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("agora-descargas-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
-        assert_eq!(download_target(&folder, "guion.pdf", "x.pdf"), Some(folder.join("guion.pdf")));
+        assert_eq!(download_target(&folder, "guion.pdf", "x.pdf", &[]), Some(folder.join("guion.pdf")));
         std::fs::write(folder.join("guion.pdf"), b"a").unwrap();
-        assert_eq!(download_target(&folder, "guion.pdf", "x.pdf"), Some(folder.join("guion (2).pdf")), "nunca sobrescribe");
+        assert_eq!(download_target(&folder, "guion.pdf", "x.pdf", &[]), Some(folder.join("guion (2).pdf")), "nunca sobrescribe");
         std::fs::write(folder.join("guion (2).pdf"), b"b").unwrap();
-        assert_eq!(download_target(&folder, "guion.pdf", "x.pdf"), Some(folder.join("guion (3).pdf")));
-        assert_eq!(download_target(&folder, "../../etc/passwd", "x.pdf"), Some(folder.join("etcpasswd")), "sin carpetas");
-        assert_eq!(download_target(&folder, "..\\..\\a.pdf", "x.pdf"), Some(folder.join("a.pdf")));
-        assert_eq!(download_target(&folder, ".oculto", "x.pdf"), Some(folder.join("oculto")), "nada oculto");
-        assert_eq!(download_target(&folder, "", "x.pdf"), Some(folder.join("x.pdf")));
-        assert_eq!(download_target(&folder, "..", "x.pdf"), Some(folder.join("x.pdf")));
-        assert_eq!(download_target(&folder, "a\u{0}b\nc.pdf", "x.pdf"), Some(folder.join("abc.pdf")));
-        assert_eq!(download_target(&folder, "sin-extension", "x.pdf"), Some(folder.join("sin-extension")));
+        assert_eq!(download_target(&folder, "guion.pdf", "x.pdf", &[]), Some(folder.join("guion (3).pdf")));
+        assert_eq!(download_target(&folder, "../../etc/passwd", "x.pdf", &[]), Some(folder.join("etcpasswd")), "sin carpetas");
+        assert_eq!(download_target(&folder, "..\\..\\a.pdf", "x.pdf", &[]), Some(folder.join("a.pdf")));
+        assert_eq!(download_target(&folder, ".oculto", "x.pdf", &[]), Some(folder.join("oculto")), "nada oculto");
+        assert_eq!(download_target(&folder, "", "x.pdf", &[]), Some(folder.join("x.pdf")));
+        assert_eq!(download_target(&folder, "..", "x.pdf", &[]), Some(folder.join("x.pdf")));
+        assert_eq!(download_target(&folder, "a\u{0}b\nc.pdf", "x.pdf", &[]), Some(folder.join("abc.pdf")));
+        assert_eq!(download_target(&folder, "sin-extension", "x.pdf", &[]), Some(folder.join("sin-extension")));
         let long = "a".repeat(400);
-        assert_eq!(download_target(&folder, &long, "x.pdf").unwrap().file_name().unwrap().len(), 150);
+        assert_eq!(download_target(&folder, &long, "x.pdf", &[]).unwrap().file_name().unwrap().len(), 150);
+        assert_eq!(download_target(&folder, "guia\u{202E}fdp.exe", "x.pdf", &[]), Some(folder.join("guiafdp.exe")), "nada invisible");
+        assert_eq!(download_target(&folder, "a\u{200B}\u{2066}b\u{FEFF}.pdf", "x.pdf", &[]), Some(folder.join("ab.pdf")));
+        assert_eq!(download_target(&folder, "CON.pdf", "x.pdf", &[]), Some(folder.join("_CON.pdf")), "nombre reservado en Windows");
+        assert_eq!(download_target(&folder, "nul", "x.pdf", &[]), Some(folder.join("_nul")));
+        assert_eq!(download_target(&folder, "com1.tar.gz", "x.pdf", &[]), Some(folder.join("_com1.tar.gz")));
+        assert_eq!(download_target(&folder, "com0.pdf", "x.pdf", &[]), Some(folder.join("com0.pdf")));
+        assert_eq!(download_target(&folder, "console.pdf", "x.pdf", &[]), Some(folder.join("console.pdf")));
+        assert_eq!(download_target(&folder, "guia.pdf. ", "x.pdf", &[]), Some(folder.join("guia.pdf")), "sin punto ni espacio al final");
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn dos_descargas_seguidas_del_mismo_nombre_no_comparten_archivo() {
+        let folder = std::env::temp_dir().join(format!("agora-descargas-seguidas-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).unwrap();
+        let state = State::new();
+        let first = Url::parse("http://127.0.0.1:8742/corridas/a/archivos/1").unwrap();
+        let second = Url::parse("http://127.0.0.1:8742/corridas/b/archivos/1").unwrap();
+        assert_eq!(reserve(&state, &first, &folder, "guia.pdf", "x.pdf"), Some(folder.join("guia.pdf")));
+        assert_eq!(reserve(&state, &second, &folder, "guia.pdf", "x.pdf"), Some(folder.join("guia (2).pdf")), "la primera aún no está en el disco");
+        let taken = [folder.join("guia.pdf")];
+        assert_eq!(download_target(&folder, "guia.pdf", "x.pdf", &[taken[0].as_path()]), Some(folder.join("guia (2).pdf")));
+        lock(&state.downloads).clear();
+        for n in 0..MAX_PENDING {
+            assert!(reserve(&state, &first, &folder, &format!("{n}.pdf"), "x.pdf").is_some());
+        }
+        assert_eq!(reserve(&state, &first, &folder, "otra.pdf", "x.pdf"), None, "como mucho las pendientes permitidas");
+        *lock(&state.origin) = Some(("http".into(), "127.0.0.1".into(), 8742));
+        state.forget();
+        assert!(lock(&state.origin).is_none());
+        assert!(reserve(&state, &first, &folder, "otra.pdf", "x.pdf").is_some(), "al cerrar se liberan las pendientes");
         let _ = std::fs::remove_dir_all(&folder);
     }
 }
