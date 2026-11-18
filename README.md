@@ -43,6 +43,7 @@ Los paseantes y el movimiento de la ciudad son decorativos: no representan tarea
 ## Qué necesitas
 
 - Para usar la app: un **Mac con Apple Silicon** (macOS 13 o superior). La app es autocontenida: lleva su servidor, su Python y la interfaz.
+- En **Windows 11**, AgoraOne funciona desde el código, en el navegador. Sigue la guía [docs/windows.md](docs/windows.md).
 - Para desarrollar: **Rust** estable (con `cargo`), **Node.js 22.12 o superior** para la interfaz y [**uv**](https://docs.astral.sh/uv/) para el núcleo Python.
 - **Hermes** instalado en `~/.hermes`. Si está en otra ruta, indícala con `AGORA_HERMES_HOME` y `AGORA_HERMES_PATH`.
 - Para conversar con Luma, un **proveedor de inferencia compatible con OpenAI** (modelo, URL y clave). Los perfiles usan su propia configuración de Hermes.
@@ -50,6 +51,8 @@ Los paseantes y el movimiento de la ciudad son decorativos: no representan tarea
 - Un navegador con WebGL. La ciudad se ve mejor con aceleración gráfica.
 
 ## Puesta en marcha
+
+¿En Windows? Sigue [docs/windows.md](docs/windows.md): las órdenes son de PowerShell y trae un script que comprueba el equipo.
 
 ```sh
 git clone https://github.com/yosnap/agoraone.git

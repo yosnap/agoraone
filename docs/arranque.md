@@ -98,7 +98,5 @@ Restaurar conserva la base anterior junto a la nueva como `agora.db.before-resto
 
 Errores del proveedor son visibles y no producen respuestas de prueba. Si cambia el commit de Hermes, el adaptador se detiene hasta revisar compatibilidad. El build puede avisar del tamaño del paquete 3D; no impide ejecutarlo. Hay interior de biblioteca; no hay soporte XR ni interiores de otros edificios.
 
-## Notas para Windows
-- **Cachés e instalaciones fuera de `C:`**: define `UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR`, `CARGO_HOME` y `RUSTUP_HOME` apuntando a tu unidad de desarrollo antes de ejecutar `uv sync --frozen` o `cargo`.
-- **Puertos y rutas locales**: para ver quién ocupa el puerto 4317 o 4318 usa `netstat -ano | findstr :4318`. El registro de vaults de Obsidian se lee de `%APPDATA%\obsidian\obsidian.json`, los datos de la app empaquetada viven en `%LOCALAPPDATA%\AgoraOne` y las claves cifradas se guardan en el Administrador de credenciales de Windows (`keyring`).
-- **Integraciones por sistema**: selectores nativos de carpetas, apertura en el Explorador, catálogo de apps del Menú Inicio y transcripción con `whisper-cli.exe` funcionan en Windows. Calendarios (`EventKit`), historial de llamadas (`CallHistoryDB`), audio del sistema en reuniones (`ScreenCaptureKit`) y escucha continua «Oye Watson» son exclusivos de macOS y se muestran explícitamente como no disponibles.
+## Windows
+La guía completa para Windows (herramientas, órdenes de PowerShell, diferencias con macOS y problemas frecuentes) está en [docs/windows.md](windows.md).
