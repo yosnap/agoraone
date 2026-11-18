@@ -1,6 +1,7 @@
-import { useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ApiError } from '../api/client';
 import { centralExternalLink, openCentralInBrowser, openCentralLink, openCentralWindow, type CentralLink, type CentralPage } from '../api/central';
+import { eventStore, WindowLinkNotice } from '../shell/window-link-notice';
 import './central.css';
 
 /** Central's own web in a window of AgoraOne (1.7), never in a frame: for what has no native view here and for
@@ -68,40 +69,19 @@ export function CentralPages({ discreet }: { discreet: boolean }) {
 // offers to open it in the system's browser (http only after warning it is not encrypted). A sign-in with another
 // service (Google…) is not offered: its return would reach a browser without Central's session, so Central's settings
 // open in the browser instead.
-let link: CentralLink | null = null;
-const listeners = new Set<() => void>();
-const setLink = (next: CentralLink | null) => { link = next; listeners.forEach(listener => listener()); };
-const useLink = () => useSyncExternalStore(cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, () => link);
-
-if (typeof window !== 'undefined') window.addEventListener('agora:central-external', event => {
-  const found = centralExternalLink((event as CustomEvent<unknown>).detail);
-  if (found) setLink(found);
-});
+const links = eventStore<CentralLink>('agora:central-external', centralExternalLink);
 
 /** «Esto se abre en tu navegador», over any section. In discreet mode the address is not shown. */
 export function CentralLinkNotice({ discreet }: { discreet: boolean }) {
-  const found = useLink();
-  const [failure, setFailure] = useState('');
+  const found = links.use();
   if (!found) return null;
-  const close = () => { setFailure(''); setLink(null); };
-  const open = async () => {
-    try {
-      if (found.kind === 'oauth') await openCentralInBrowser('ajustes'); else await openCentralLink(found.url);
-      close();
-    } catch (error) { setFailure(message(error, 'No se pudo abrir el navegador.')); }
-  };
   const oauth = found.kind === 'oauth';
-  return <div className="alert-toasts" role="status" aria-live="polite">
-    <div className="alert-toast">
-      <div><strong>{oauth ? 'Conectar una cuenta se hace en tu navegador' : 'Esto se abre en tu navegador'}</strong>
-        {oauth ? <p>Dentro de la ventana de Central no funciona: la vuelta llega al navegador, que necesita tu sesión de Central. Abre los Ajustes de
-          Central en tu navegador, inicia sesión allí y conecta la cuenta desde ahí.</p>
-          : <p>La ventana de Central solo carga páginas de Central. Este enlace va a otro sitio{found.kind === 'http' ? ' y no va cifrado (http)' : ''}:</p>}
-        {!oauth && (discreet ? <p className="muted">Dirección oculta en modo discreto.</p> : <p className="central-url">{found.url}</p>)}
-        {failure && <p className="error">{failure}</p>}
-        <div className="actions central-actions"><button type="button" className="button" onClick={() => void open()}>
-          {oauth ? 'Abrir Ajustes de Central en el navegador' : found.kind === 'http' ? 'Abrir igualmente en el navegador' : 'Abrir en el navegador'}</button></div></div>
-      <button type="button" className="icon-button" aria-label="Cerrar el aviso" onClick={close}>×</button>
-    </div>
-  </div>;
+  return <WindowLinkNotice key={found.url} discreet={discreet} onClose={() => links.set(null)}
+    title={oauth ? 'Conectar una cuenta se hace en tu navegador' : 'Esto se abre en tu navegador'}
+    body={oauth ? <p>Dentro de la ventana de Central no funciona: la vuelta llega al navegador, que necesita tu sesión de Central. Abre los Ajustes de
+      Central en tu navegador, inicia sesión allí y conecta la cuenta desde ahí.</p>
+      : <p>La ventana de Central solo carga páginas de Central. Este enlace va a otro sitio{found.kind === 'http' ? ' y no va cifrado (http)' : ''}:</p>}
+    url={oauth ? undefined : found.url}
+    action={oauth ? 'Abrir Ajustes de Central en el navegador' : found.kind === 'http' ? 'Abrir igualmente en el navegador' : 'Abrir en el navegador'}
+    onAction={() => oauth ? openCentralInBrowser('ajustes') : openCentralLink(found.url)}/>;
 }
