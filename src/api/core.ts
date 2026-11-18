@@ -196,7 +196,6 @@ export const getChatRules = () => core<{ rules: ChatRule[] }>('/chat/rules');
 export const createChatRule = (rule: ChatRuleIn) => core<{ rules: ChatRule[] }>('/chat/rules', rule);
 export const changeChatRule = (id: number, changes: Partial<ChatRuleIn>) => core<{ rules: ChatRule[] }>(`/chat/rules/${id}`, changes, 'PATCH');
 export const deleteChatRule = (id: number) => core<{ rules: ChatRule[] }>(`/chat/rules/${id}`, undefined, 'DELETE');
-/** A classified conversation, without the text of its messages; a private one carries no participant. */
 export type JevPoint = 'mail' | 'chat' | 'deadlines' | 'tasks' | 'meetings' | 'fiscal' | 'watson';
 export type JevSettings = {
   hasKey: boolean; model: string; monthlyUsd: number; threshold: number; aliases: string[];
@@ -209,6 +208,7 @@ export const putJevSettings = (changes: JevSettingsIn) => core<JevSettings>('/je
 export const putJevKey = (key: string | null) => core<JevSettings>('/jev/key', { key }, 'PUT');
 export const testJev = () => core<{ models: string[] }>('/jev/test', {});
 
+/** A classified conversation, without the text of its messages; a private one carries no participant. */
 export type ChatSummary = {
   id: number; kind: InboxKind; source: 'rule' | 'model' | 'local'; ruleId: number | null; ruleName: string | null; label: string | null;
   confidentiality: Level; state: InboxState; summary: string | null; details: { asks?: string[]; dates?: string[]; amounts?: string[]; language?: string | null };
