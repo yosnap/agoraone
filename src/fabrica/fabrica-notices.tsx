@@ -20,11 +20,9 @@ export function FabricaLinkNotice({ discreet }: { discreet: boolean }) {
 export function FabricaDownloadNotice({ discreet }: { discreet: boolean }) {
   const found = downloads.use();
   if (!found) return null;
-  return <div className="alert-toasts" role="status" aria-live="polite">
-    <div className="alert-toast">
+  return <div className="alert-toast">
       <div><strong>{found.ok ? 'Descargado en Descargas' : 'No se pudo descargar'}</strong>
         <p>{discreet ? 'Nombre oculto en modo discreto.' : found.name}</p></div>
       <button type="button" className="icon-button" aria-label="Cerrar el aviso" onClick={() => downloads.set(null)}>×</button>
-    </div>
-  </div>;
+    </div>;
 }

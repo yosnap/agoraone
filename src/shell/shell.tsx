@@ -69,12 +69,15 @@ export function Shell() {
   const ready = status?.csrf;
   return <div className="shell">
     <ShellNav section={section} onSection={go} discreet={discreet} onDiscreet={setDiscreet} waiting={waiting}/>
-    {ready && <AlertToasts discreet={discreet}/>}
-    <UploadNotice onOpen={() => go('fiscal')}/>
+    {/* One stack of notices over any section: each one adds its own card, none covers another. */}
+    <div className="alert-toasts" role="status" aria-live="polite">
+      {ready && <AlertToasts discreet={discreet}/>}
+      <UploadNotice onOpen={() => go('fiscal')}/>
+      <CentralLinkNotice discreet={discreet}/>
+      <FabricaLinkNotice discreet={discreet}/>
+      <FabricaDownloadNotice discreet={discreet}/>
+    </div>
     <YouTubeMini/>
-    <CentralLinkNotice discreet={discreet}/>
-    <FabricaLinkNotice discreet={discreet}/>
-    <FabricaDownloadNotice discreet={discreet}/>
     {ready && <FirstRun/>}
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting} onWatson={() => go('brain')}/>}

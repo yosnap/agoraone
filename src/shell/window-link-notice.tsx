@@ -23,7 +23,7 @@ export function eventStore<T>(event: string, parse: (detail: unknown) => T | nul
 
 export const failureText = (error: unknown, fallback: string) => error instanceof ApiError || error instanceof Error ? error.message : fallback;
 
-/** «Esto se abre en tu navegador», over any section: what the link is, its address (hidden in discreet mode) and one
+/** «Esto se abre en tu navegador», over any section (inside the shell's one stack of notices): what the link is, its address (hidden in discreet mode) and one
  * button on the right that opens it. */
 export function WindowLinkNotice({ title, body, url, discreet, action, onAction, onClose }: {
   title: string; body: ReactNode; url?: string; discreet: boolean; action: string;
@@ -35,14 +35,12 @@ export function WindowLinkNotice({ title, body, url, discreet, action, onAction,
   const act = async () => {
     try { await onAction(); close(); } catch (error) { setFailure(failureText(error, 'No se pudo abrir el navegador.')); }
   };
-  return <div className="alert-toasts" role="status" aria-live="polite">
-    <div className="alert-toast">
+  return <div className="alert-toast">
       <div><strong>{title}</strong>
         {body}
         {url !== undefined && (discreet ? <p className="muted">Dirección oculta en modo discreto.</p> : <p className="window-link-url">{url}</p>)}
         {failure && <p className="error">{failure}</p>}
         <div className="actions window-link-actions"><button type="button" className="button" onClick={() => void act()}>{action}</button></div></div>
       <button type="button" className="icon-button" aria-label="Cerrar el aviso" onClick={close}>×</button>
-    </div>
-  </div>;
+    </div>;
 }
