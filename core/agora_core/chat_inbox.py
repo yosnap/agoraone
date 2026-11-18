@@ -56,11 +56,19 @@ def local_kind(text: str) -> str:
     return mail_inbox.local_kind(None, text)
 
 
-def window(connection: sqlite3.Connection, conversation_id: int) -> list[sqlite3.Row]:
-    """The latest messages of a conversation, oldest first: at most MESSAGES and CHARS of text."""
+def window(connection: sqlite3.Connection, conversation_id: int, until: int | None = None) -> list[sqlite3.Row] | None:
+    """The latest messages of a conversation, oldest first: at most MESSAGES and CHARS of text. With `until`, the
+    window that ended at that message (what the model read then); None when that message is gone."""
+    bound, args = "", [conversation_id]
+    if until is not None:
+        last = connection.execute(f"SELECT {_MOMENT.format('m')} AS at FROM chat_message m WHERE id = ? AND conversation_id = ?",
+                                  (until, conversation_id)).fetchone()
+        if last is None:
+            return None
+        bound, args = f" AND ({_MOMENT.format('m')}, id) <= (?, ?)", [conversation_id, last["at"], until]
     rows = connection.execute(
         f"""SELECT id, direction, sender_name, body, unsupported, attachments, {_MOMENT.format('m')} AS at
-            FROM chat_message m WHERE conversation_id = ? ORDER BY at DESC, id DESC LIMIT ?""", (conversation_id, MESSAGES)).fetchall()
+            FROM chat_message m WHERE conversation_id = ?{bound} ORDER BY at DESC, id DESC LIMIT ?""", (*args, MESSAGES)).fetchall()
     kept, size = [], 0
     for row in rows:
         size += len((row["body"] or "")[:BODY_CHARS])
@@ -242,34 +250,59 @@ JEV_QUESTIONS = {
 
 
 def jev_waiting(connection: sqlite3.Connection, since: str, purpose: str, limit: int) -> list[str]:
-    """Current classifications («conversation:last message covered») kept as normal since `since` that Jev has not
-    answered about yet for `purpose`, newest first. A conversation classified again is a new one."""
+    """Current classifications («conversation:last message covered») kept as normal, with something received and a
+    classification since `since`, that Jev has not answered about yet for `purpose`, newest first. A conversation
+    classified again is a new one. What a rule «ignore» silenced is never asked about."""
     return [row[0] for row in connection.execute(
-        """SELECT s.conversation_id || ':' || s.until_message_id FROM chat_summary s
-           WHERE s.updated_at >= ? AND s.confidentiality = 'normal' AND s.until_message_id IS NOT NULL
-             AND NOT EXISTS (SELECT 1 FROM jev_decision j WHERE j.subject = 'chat' AND j.purpose = ?
-                             AND j.subject_id = s.conversation_id || ':' || s.until_message_id)
-           ORDER BY s.updated_at DESC LIMIT ?""", (since, purpose, limit))]
+        f"""SELECT s.conversation_id || ':' || s.until_message_id FROM chat_summary s
+            JOIN (SELECT conversation_id, max({_MOMENT.format('m')}) AS at FROM chat_message m WHERE direction = 'incoming'
+                  GROUP BY conversation_id) last ON last.conversation_id = s.conversation_id
+            WHERE s.updated_at >= ? AND last.at >= ? AND s.confidentiality = 'normal' AND s.until_message_id IS NOT NULL
+              AND NOT (s.state = 'quiet' AND s.source = 'rule')
+              AND NOT EXISTS (SELECT 1 FROM jev_decision j WHERE j.subject = 'chat' AND j.purpose = ?
+                              AND j.subject_id = s.conversation_id || ':' || s.until_message_id)
+            ORDER BY last.at DESC LIMIT ?""", (since, since, purpose, limit))]
 
 
-def jev_entry(connection: sqlite3.Connection, ident: str) -> tuple[str, dict] | None:
-    """The conversation's level now (the strictest of the stored one, its account's and the rule that matches today)
-    and the state for Jev: the window the model read, up to the last message covered, as data. None when it is gone
-    or was classified again meanwhile."""
-    conversation_id, _, until = ident.partition(":")
+def jev_rules(connection: sqlite3.Connection) -> list:
+    return chat_rules.enabled_rules(connection)
+
+
+def _jev_judged(connection: sqlite3.Connection, ident: str, rules: list) -> tuple[sqlite3.Row, dict | None, str] | None:
+    """The conversation, the rule that matches it today and its level now: the strictest of the stored one, its
+    account's and that rule's. None when the conversation or its summary is gone."""
     row = connection.execute(
         """SELECT c.id, c.account_id, c.participant_id, c.participant_name, c.participant_phone, a.confidentiality AS account_level,
                   s.confidentiality AS stored, s.until_message_id
            FROM chat_conversation c JOIN chat_account a ON a.id = c.account_id JOIN chat_summary s ON s.conversation_id = c.id
-           WHERE c.id = ?""", (int(conversation_id),)).fetchone()
-    if row is None or str(row["until_message_id"]) != until:
+           WHERE c.id = ?""", (int(ident.partition(":")[0]),)).fetchone()
+    if row is None:
         return None
-    rule = chat_rules.first_match(chat_rules.enabled_rules(connection), row, rule_text(connection, row["id"]))
-    level = stricter(stricter(row["account_level"], rule["confidentiality"] if rule else None), row["stored"])
-    messages = window(connection, row["id"])
-    cut = next((n for n, message in enumerate(messages) if message["id"] == row["until_message_id"]), len(messages) - 1)
+    rule = chat_rules.first_match(rules, row, rule_text(connection, row["id"]))
+    return row, rule, stricter(stricter(row["account_level"], rule["confidentiality"] if rule else None), row["stored"])
+
+
+def jev_level(connection: sqlite3.Connection, ident: str, rules: list) -> str | None:
+    """The level of a conversation Jev answered about, as it is now; None when it is gone."""
+    judged = _jev_judged(connection, ident, rules)
+    return judged[2] if judged else None
+
+
+def jev_entry(connection: sqlite3.Connection, ident: str) -> tuple[str, dict] | None:
+    """The conversation's level now and the state for Jev: exactly the window the model read, up to the last message
+    covered, as data. None when it is gone, was classified again meanwhile, that message is gone or a rule «ignore»
+    matches it today."""
+    judged = _jev_judged(connection, ident, jev_rules(connection))
+    if judged is None:
+        return None
+    row, rule, level = judged
+    if str(row["until_message_id"]) != ident.partition(":")[2] or (rule is not None and rule["action"] == "ignore"):
+        return None
+    messages = window(connection, row["id"], until=row["until_message_id"])
+    if not messages:
+        return None
     lines, missing = [], 0
-    for message in messages[:cut + 1]:
+    for message in messages:
         if message["unsupported"]:
             missing += 1
             continue

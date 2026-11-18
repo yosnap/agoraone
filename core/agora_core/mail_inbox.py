@@ -317,16 +317,23 @@ JEV_QUESTIONS = jev_questions("email", "email")
 
 
 def jev_waiting(connection: sqlite3.Connection, since: str, purpose: str, limit: int) -> list[str]:
-    """Messages kept as normal since `since` that Jev has not answered about yet for `purpose`, newest first."""
+    """Messages kept as normal, received and classified since `since`, that Jev has not answered about yet for
+    `purpose`, newest first. What a rule «ignore» silenced is never asked about: the user wants it left alone."""
     return [str(row[0]) for row in connection.execute(
-        """SELECT s.message_id FROM mail_summary s WHERE s.created_at >= ? AND s.confidentiality = 'normal'
-           AND NOT EXISTS (SELECT 1 FROM jev_decision j WHERE j.subject = 'mail' AND j.subject_id = CAST(s.message_id AS TEXT) AND j.purpose = ?)
-           ORDER BY s.created_at DESC LIMIT ?""", (since, purpose, limit))]
+        """SELECT s.message_id FROM mail_summary s JOIN mail_message m ON m.id = s.message_id
+           WHERE s.created_at >= ? AND COALESCE(m.sent_at, m.received_at) >= ? AND s.confidentiality = 'normal'
+             AND NOT (s.state = 'quiet' AND s.source = 'rule')
+             AND NOT EXISTS (SELECT 1 FROM jev_decision j WHERE j.subject = 'mail' AND j.subject_id = CAST(s.message_id AS TEXT) AND j.purpose = ?)
+           ORDER BY COALESCE(m.sent_at, m.received_at) DESC LIMIT ?""", (since, since, purpose, limit))]
 
 
-def jev_entry(connection: sqlite3.Connection, ident: str) -> tuple[str, dict] | None:
-    """The message's level now (the strictest of the stored one, its account's and the rule that matches today) and
-    the state for Jev, with its text as data in named fields; None when it is gone."""
+def jev_rules(connection: sqlite3.Connection) -> list:
+    return mail_rules.enabled_rules(connection)
+
+
+def _jev_judged(connection: sqlite3.Connection, ident: str, rules: list) -> tuple[sqlite3.Row, dict | None, str] | None:
+    """The message, the rule that matches it today and its level now: the strictest of the stored one, its account's
+    and that rule's. None when the message or its summary is gone."""
     message = connection.execute(
         """SELECT m.id, m.account_id, m.from_address, m.from_name, m.subject, m.body, m.sent_at, m.received_at,
                   a.confidentiality AS account_level, s.confidentiality AS stored
@@ -334,8 +341,24 @@ def jev_entry(connection: sqlite3.Connection, ident: str) -> tuple[str, dict] | 
            WHERE m.id = ?""", (int(ident),)).fetchone()
     if message is None:
         return None
-    rule = mail_rules.first_match(mail_rules.enabled_rules(connection), message)
+    rule = mail_rules.first_match(rules, message)
     level = mail_rules.stricter(mail_rules.stricter(message["account_level"], rule["confidentiality"] if rule else None), message["stored"])
+    return message, rule, level
+
+
+def jev_level(connection: sqlite3.Connection, ident: str, rules: list) -> str | None:
+    """The level of a message Jev answered about, as it is now; None when it is gone."""
+    judged = _jev_judged(connection, ident, rules)
+    return judged[2] if judged else None
+
+
+def jev_entry(connection: sqlite3.Connection, ident: str) -> tuple[str, dict] | None:
+    """The message's level now and the state for Jev, with its text as data in named fields; None when it is gone or a
+    rule «ignore» matches it today."""
+    judged = _jev_judged(connection, ident, jev_rules(connection))
+    if judged is None or (judged[1] is not None and judged[1]["action"] == "ignore"):
+        return None
+    message, _, level = judged
     sender = f"{message['from_name'] or ''} <{message['from_address'] or ''}>".strip()
     return level, {"email": {"from": sender, "subject": message["subject"] or "", "date": message["sent_at"] or message["received_at"] or "",
                              "body": (message["body"] or "")[:BODY_CHARS]}}

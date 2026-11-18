@@ -76,8 +76,7 @@ def jev_router(settings: Settings, secrets) -> APIRouter:
 
     @router.get("/jev/shadow")
     async def shadow(subject: Literal["mail", "chat"], limit: int = Query(default=500, ge=1, le=5000)):
-        return await db(lambda c: {"subject": subject, "counts": jev_shadow.shadow_counts(c, subject),
-                                   "items": jev_shadow.shadow_items(c, subject, limit)})
+        return await db(lambda c: jev_shadow.shadow_report(c, subject, limit))
 
     @router.put("/jev/key")
     async def save_key(body: KeyIn):

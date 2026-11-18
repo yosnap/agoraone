@@ -4,6 +4,7 @@ is stored or shown changes; off, without a key or failing, the summary round goe
 for it. TypeSafe is a stand-in with the real shape of its answers and invented data."""
 
 import json
+import dataclasses
 import threading
 from pathlib import Path
 
@@ -66,12 +67,12 @@ def never(request):
     raise AssertionError("nada de esto puede llegar a Jev")
 
 
-def shadow(db, subject, handler, key=KEY):
+def shadow(db, subject, handler, key=KEY, **extra):
     secrets = MemorySecrets()
     if key:
         secrets.put(jev.SECRET, key)
     path = db_path(db)
-    return jev_shadow.Shadow(subject, lambda: connect(path), secrets, client=lambda: httpx.Client(transport=httpx.MockTransport(handler)))
+    return jev_shadow.Shadow(subject, lambda: connect(path), secrets, client=lambda: httpx.Client(transport=httpx.MockTransport(handler)), **extra)
 
 
 def db_path(db):
@@ -122,13 +123,14 @@ def test_correo_en_sombra_solo_lo_normal_y_nada_cambia(db):
     summarize_once(db, [mails.FakeEngine()], ask)
     before = table(db, "mail_summary")
     fake = FakeTypeSafe(kind="important")
-    assert shadow(db, jev_shadow.MAIL, fake).run_once(db) == 3
+    assert shadow(db, jev_shadow.MAIL, fake).run_once(db) == 2
     sent = json.dumps(fake.seen, ensure_ascii=False)
     assert CANARY not in sent, "lo solo en este Mac y lo privado nunca llegan a Jev"
+    assert "Descuentos" not in sent, "lo que silenció una regla «ignorar» no se pregunta"
     asked = sorted(int(body["state"]["email"]["subject"] == "Presupuesto") for body in fake.seen)
-    assert asked == [0, 0, 1] and all(body["questions"] == mail_inbox.JEV_QUESTIONS for body in fake.seen)
+    assert asked == [0, 1] and all(body["questions"] == mail_inbox.JEV_QUESTIONS for body in fake.seen)
     assert all("Ignora lo anterior" not in json.dumps(body["questions"], ensure_ascii=False) for body in fake.seen), "el texto va como dato"
-    assert sorted(d["subject_id"] for d in decisions(db)) == sorted(str(found[k]) for k in ("model", "rule", "ignored"))
+    assert sorted(d["subject_id"] for d in decisions(db)) == sorted(str(found[k]) for k in ("model", "rule"))
     assert {(d["subject"], d["purpose"], d["applied"]) for d in decisions(db)} == {("mail", "class", 0)}
     # Jev said «important» with high confidence and flagged the injection: nothing of what is stored or shown changed.
     assert table(db, "mail_summary") == before
@@ -204,12 +206,12 @@ def test_jev_caido_pausa_y_la_ronda_no_espera_ni_cambia(db):
     stored = table(db, "mail_summary")
     gate.set()
     waiting.thread.join(10)
-    assert table(db, "mail_summary") == stored and len(decisions(db)) == 3
+    assert table(db, "mail_summary") == stored and len(decisions(db)) == 2
     assert len(budget.calls) == 1 and alone.take(), "el límite de Haiku no cambia por Jev"
     mails.add(db, mails.account(db, "otra@gmail.com"), "eva@cliente.example", "Nuevo", "Hola")
     summarize_once(db, [mails.FakeEngine()], ask)
     failing = shadow(db, jev_shadow.MAIL, FakeTypeSafe(status=503))
-    assert failing.run_once(db) == 0 and len(decisions(db)) == 3 and failing.paused_until > 0
+    assert failing.run_once(db) == 0 and len(decisions(db)) == 2 and failing.paused_until > 0
     failing.kick()
     assert failing.thread is None, "en pausa no arranca otra pasada"
     broken = jev_shadow.Shadow(jev_shadow.MAIL, lambda: (_ for _ in ()).throw(OSError("sin disco")), MemorySecrets())
@@ -238,10 +240,114 @@ def test_ruta_de_sombra_sin_texto_ni_nombres(tmp_path):
         text = answer.text
         assert all(word not in text for word in ("secreto", "Cuerpo", "ana@", "luis", "Otro asunto"))
         body = answer.json()
-        assert body["counts"] == {"decisions": 2, "compared": 2, "agree": 2}
+        assert body["counts"] == {"decisions": 2, "compared": 2, "agree": 2, "advertisingAsOther": 0, "withdrawn": 0}
         item = next(i for i in body["items"] if i["id"] == str(first))
         assert item["jev"]["kind"] == {"value": "client", "confidence": 0.97} and item["jev"]["injection"] == 0.9
         assert item["current"] == {"kind": "client", "source": "model"} and item["user"] == {"state": "done", "moved": None} and item["agrees"] is True
         assert client.get("/jev/shadow", params={"subject": "otro"}, headers=headers).status_code == 422
         assert client.get("/jev/shadow", params={"subject": "chat"}, headers=headers).json()["items"] == []
-        assert client.get("/jev/settings", headers=headers).json()["shadow"]["mail"] == {"decisions": 2, "compared": 2, "agree": 2}
+        assert client.get("/jev/settings", headers=headers).json()["shadow"]["mail"] == {"decisions": 2, "compared": 2, "agree": 2, "advertisingAsOther": 0, "withdrawn": 0}
+
+
+def test_lo_que_pasa_a_privado_o_solo_en_este_mac_sale_de_la_comparacion(db):
+    account = mails.account(db, "yo@gmail.com")
+    clinica = mails.add(db, account, "medico@clinica.example", "Resultados", "texto")
+    otra = mails.add(db, mails.account(db, "otra@gmail.com"), "eva@cliente.example", "Hola", "texto")
+    ask, _ = mails.asker(mail_reply("personal"))
+    summarize_once(db, [mails.FakeEngine()], ask)
+    shadow(db, jev_shadow.MAIL, FakeTypeSafe(kind="personal")).run_once(db)
+    assert {i["id"] for i in jev_shadow.shadow_items(db, "mail")} == {str(clinica), str(otra)}
+    mail_rules.create_rule(db, {"name": "Clínica", "action": "personal", "sender": "clinica.example", "confidentiality": "private"})
+    assert [i["id"] for i in jev_shadow.shadow_items(db, "mail")] == [str(otra)], "una regla privada nueva la retira"
+    db.execute("UPDATE mail_account SET confidentiality = 'local_only' WHERE address = 'otra@gmail.com'")
+    assert jev_shadow.shadow_items(db, "mail") == []
+    assert jev_shadow.shadow_counts(db, "mail") == {"decisions": 0, "compared": 0, "agree": 0, "advertisingAsOther": 0, "withdrawn": 2}
+    db.execute("UPDATE mail_account SET confidentiality = 'normal'")
+    db.execute("DELETE FROM mail_rule")
+    db.execute("DELETE FROM mail_summary WHERE message_id = ?", (clinica,))
+    assert [i["id"] for i in jev_shadow.shadow_items(db, "mail")] == [str(otra)] and jev_shadow.shadow_counts(db, "mail")["withdrawn"] == 1
+
+
+def test_publicidad_guardada_como_otro_no_cuenta_como_desacuerdo(db):
+    account = mails.account(db, "yo@gmail.com")
+    mails.add(db, account, "promo@tienda.example", "Rebajas", "Solo hoy, 50 % en todo")  # sin palabras de baja
+    ask, _ = mails.asker(mail_reply("publicidad"))
+    summarize_once(db, [mails.FakeEngine()], ask)
+    assert table(db, "mail_summary")[0]["kind"] == "other"
+    shadow(db, jev_shadow.MAIL, FakeTypeSafe(kind="advertising")).run_once(db)
+    item = jev_shadow.shadow_items(db, "mail")[0]
+    assert item["agrees"] is None and item["advertisingAsOther"] is True
+    assert jev_shadow.shadow_counts(db, "mail") == {"decisions": 1, "compared": 0, "agree": 0, "advertisingAsOther": 1, "withdrawn": 0}
+
+
+def test_solo_lo_recibido_en_los_ultimos_dias_al_conectar_una_cuenta(db):
+    account = mails.account(db, "yo@gmail.com")
+    for days in (10, 20, 28):
+        mails.add(db, account, f"x{days}@viejo.example", f"Viejo {days}", "hola", days_ago=days)
+    nuevo = mails.add(db, account, "ana@nuevo.example", "Nuevo", "hola", days_ago=1)
+    ask, _ = mails.asker(mail_reply("cliente"))
+    summarize_once(db, [mails.FakeEngine()], ask)
+    assert shadow(db, jev_shadow.MAIL, FakeTypeSafe()).run_once(db) == 1 and [d["subject_id"] for d in decisions(db)] == [str(nuevo)]
+    phone = chats.account(db)
+    vieja, reciente = chats.conversation(db, phone), chats.conversation(db, phone, name="Luis Prueba")
+    chats.say(db, vieja, "Hola de hace tiempo", days_ago=10)
+    chats.say(db, reciente, "Hola de ayer", days_ago=1)
+    chats.run(db, *chats.asker(chats.reply_all())[:1])
+    assert shadow(db, jev_shadow.CHAT, FakeTypeSafe()).run_once(db) == 1
+    assert [d["subject_id"].split(":")[0] for d in decisions(db) if d["subject"] == "chat"] == [str(reciente)]
+
+
+def test_whatsapp_manda_la_ventana_que_leyo_el_modelo(db):
+    phone = chats.account(db)
+    ana = chats.conversation(db, phone)
+    chats.say(db, ana, "¿Me mandas el presupuesto del jardín?")
+    chats.run(db, *chats.asker(chats.reply_all())[:1])
+    for minute in (1, 2):  # what the user sends later does not open it again, and it is long
+        chats.say(db, ana, "Respuesta larga del usuario " + "x" * 3000, direction="outgoing", minutes=minute)
+    fake = FakeTypeSafe(kind="client")
+    assert shadow(db, jev_shadow.CHAT, fake).run_once(db) == 1
+    texts = [m["text"] for m in fake.seen[0]["state"]["conversation"]["messages"]]
+    assert texts == ["¿Me mandas el presupuesto del jardín?"]
+    otra = chats.conversation(db, phone, name="Eva Prueba")
+    until = chats.say(db, otra, "Hola")
+    chats.run(db, *chats.asker(chats.reply_all())[:1])
+    db.execute("DELETE FROM chat_message WHERE id = ?", (until,))
+    db.execute("INSERT INTO chat_message (conversation_id, remote_id, direction, body, unsupported, sent_at, created_at) "
+               "VALUES (?, 'm_otra', 'outgoing', 'Otra cosa', 0, '2000-01-01T00:00:00Z', '2000-01-01T00:00:00Z')", (otra,))
+    assert shadow(db, jev_shadow.CHAT, never).run_once(db) == 0, "si el último mensaje leído ya no está, no se pregunta"
+
+
+def test_un_elemento_roto_no_bloquea_el_resto_y_apagar_el_modulo_para_la_pasada(db):
+    phone = chats.account(db)
+    rota, buena = chats.conversation(db, phone), chats.conversation(db, phone, name="Luis Prueba")
+    db.execute("INSERT INTO chat_message (conversation_id, remote_id, direction, body, unsupported, attachments, sent_at, created_at) "
+               "VALUES (?, 'm_rota', 'incoming', NULL, 0, '{roto', ?, ?)", (rota, chats._stamp(0.2), chats._stamp()))
+    chats.say(db, buena, "Hola")
+    chats.run(db, *chats.asker(chats.reply_all())[:1])
+    pending = shadow(db, jev_shadow.CHAT, FakeTypeSafe())
+    assert pending.run_once(db) == 1 and pending.paused_until == 0, "el roto se deja y la pasada sigue sin pausar"
+    assert [d["subject_id"].split(":")[0] for d in decisions(db)] == [str(buena)]
+    account = mails.account(db, "yo@gmail.com")
+    for n in range(3):
+        mails.add(db, account, f"p{n}@cliente.example", f"Asunto {n}", "hola")
+    summarize_once(db, [mails.FakeEngine()], mails.asker(mail_reply())[0])
+    asked = []
+
+    def entry(connection, ident):
+        if asked:
+            modules.save(connection, {"correo": False})
+        asked.append(ident)
+        return mail_inbox.jev_entry(connection, ident)
+    stopping = shadow(db, dataclasses.replace(jev_shadow.MAIL, entry=entry), FakeTypeSafe())
+    assert stopping.run_once(db) == 2 and len([d for d in decisions(db) if d["subject"] == "mail"]) == 2
+    assert stopping.run_once(db) == 0, "con «Correo» apagado no se pregunta nada"
+
+
+def test_clave_rechazada_pausa_una_hora(db):
+    mails.add(db, mails.account(db, "yo@gmail.com"), "ana@cliente.example", "Hola", "texto")
+    ask, _ = mails.asker(mail_reply())
+    summarize_once(db, [mails.FakeEngine()], ask)
+    refused = shadow(db, jev_shadow.MAIL, FakeTypeSafe(status=401), clock=lambda: 1000.0)
+    assert refused.run_once(db) == 0 and refused.paused_until == 1000.0 + jev_shadow.AUTH_PAUSE_SECONDS
+    down = shadow(db, jev_shadow.MAIL, FakeTypeSafe(status=503), clock=lambda: 1000.0)
+    assert down.run_once(db) == 0 and down.paused_until == 1000.0 + jev_shadow.PAUSE_SECONDS
