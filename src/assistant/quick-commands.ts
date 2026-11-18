@@ -17,7 +17,7 @@ const controls: [RegExp, MusicAction, string][] = [
   [/^(sube|sube el volumen|mas alto|subele)$/, 'louder', 'Volumen más alto.'],
   [/^(baja|baja el volumen|mas bajo|bajale)$/, 'quieter', 'Volumen más bajo.'],
 ];
-const PLAY = /^(?:pon(?:me)?|reproduce|quiero escuchar|toca)\s+(.+?)(?:\s+en\s+(spotify|musica|apple music|youtube|mi biblioteca|la biblioteca))?$/;
+const PLAY = /^(?:pon(?:me)?|reproduce(?:me)?|quiero (?:escuchar|oir)|toca)\s+(.+?)(?:\s+en\s+(spotify|musica|apple music|youtube|mi biblioteca|la biblioteca))?$/;
 // What people add when they speak: «Oye Watson, …», «¿me puedes poner…?», «… por favor».
 const CALLED = /^(?:(?:oye|hey|ok|hola)\s+)?watson\s+/;  // on plain text: commas and colons are already gone
 const ASKING = /^(?:me\s+)?(?:puedes|podrias|quieres|podras)\s+(?:poner(?:me)?|reproducir(?:me)?)\s+/;
@@ -59,8 +59,14 @@ export function quickCommand(text: string): (() => Promise<QuickResult>) | null 
   return command(text.replace(MISHEARD, ''));
 }
 
+// Said without «pon»: «Música de Alejandro Sanz desde YouTube», «canciones de Rosalía en Spotify».
+const MUSIC_OF = /^(?:musica|canciones|temas|algo) de\s+\S/;
+const FROM = /\bdesde\s+(youtube|spotify|m[uú]sica|apple music|mi biblioteca|la biblioteca)\b/i;
+
 function command(text: string): (() => Promise<QuickResult>) | null {
+  text = text.replace(FROM, 'en $1');  // «desde YouTube» is «en YouTube»
   if (JUST_MUSIC.test(asked(plain(text)))) text = 'pon música';
+  else if (MUSIC_OF.test(asked(plain(text)))) text = `pon ${text.replace(/^[\s¿¡]*(?:(?:oye|hey|ok|hola)[\s,]+)?watson[\s,.:;]+/i, '')}`;
   const said = asked(plain(text));
   const meeting = meetingOrder(said);
   if (meeting) return () => recordByVoice(meeting);

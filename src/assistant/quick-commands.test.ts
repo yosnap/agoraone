@@ -55,3 +55,11 @@ test('grabar y parar una reunión con la voz', () => {
     assert.equal(meetingOrder(plainOf(said)), null, said);
   assert.equal(quickCommand('resume la reunión de ayer'), null);
 });
+
+test('música pedida sin «pon»', () => {
+  for (const said of ['Música de Alejandro Sanz desde YouTube.', 'Canciones de Rosalía en Spotify', 'Watson, música de Estopa', 'Quiero oír a Sabina', 'Reprodúceme jazz'])
+    assert.ok(quickCommand(said), said);
+  assert.equal(musicQuery('pon Música de Alejandro Sanz en YouTube.'), 'Música de Alejandro Sanz');
+  for (const said of ['Música de la reunión de ayer, ¿qué dijimos?', 'temas de la reunión de ayer'])
+    assert.equal(quickCommand(said), null, said);
+});
