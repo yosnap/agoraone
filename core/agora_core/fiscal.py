@@ -42,14 +42,19 @@ def check_folder(value: str, home: Path | None = None) -> Path:
     if not folder.is_dir():
         raise FiscalError("Eso no es una carpeta.")
     icloud = home / ICLOUD
-    protected = [home, icloud, home / "Documents", home / "Desktop", home / "Downloads"]
+    protected = [home, icloud, home / "Documents", home / "Desktop", home / "Downloads", home / "AppData"]
     refuse = FiscalError("Elige la subcarpeta de tu actividad, no la carpeta personal, la raíz de iCloud Drive ni una carpeta que las contenga.")
+    if os.name == "nt" and folder.drive and home.drive and folder.drive.lower() != home.drive.lower():
+        blocked_roots = {"windows", "program files", "program files (x86)", "programdata", "$recycle.bin", "system volume information"}
+        if len(folder.parts) < 3 or folder.parts[1].lower() in blocked_roots or any(part.startswith(".") for part in folder.parts[1:]):
+            raise refuse
+        return folder
     if home not in folder.parents or any(folder == p or folder in p.parents for p in protected):
         raise refuse
     relative = folder.relative_to(home)
     if any(part.startswith(".") for part in relative.parts):
         raise refuse
-    if relative.parts[0] == "Library" and icloud not in folder.parents:
+    if relative.parts[0] in ("Library", "AppData") and icloud not in folder.parents:
         raise refuse
     return folder
 
@@ -147,23 +152,48 @@ def suggested_folder(connection: sqlite3.Connection, message_id: int | None) -> 
 _CHOOSING = threading.Lock()
 
 
-def choose_with_finder(runner=None) -> str | None:
-    """Opens the macOS folder chooser and returns the chosen path (None if cancelled)."""
+def choose_system_folder(prompt: str, runner=None) -> str | None:
+    """Opens the OS native folder chooser (`prompt` must be a fixed literal) and returns the chosen path."""
     import subprocess
+    import sys
 
     run = runner or subprocess.run
-    script = 'POSIX path of (choose folder with prompt "Elige la carpeta fiscal")'
+    if sys.platform == "darwin":
+        script = f'POSIX path of (choose folder with prompt "{prompt}")'
+        done = run(["/usr/bin/osascript", "-e", script], capture_output=True, text=True, timeout=110)
+        return (done.stdout or "").strip().rstrip("/") or None if done.returncode == 0 else None
+    if sys.platform == "win32":
+        ps = (
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+            f"$d.Description = '{prompt}'; $d.UseDescriptionForTitle = $true; "
+            "if ($d.ShowDialog() -eq 'OK') { [Console]::Out.WriteLine($d.SelectedPath) }"
+        )
+        flags = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if runner is None else {}
+        done = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-Command", ps],
+                   capture_output=True, text=True, encoding="utf-8", timeout=110, **flags)
+        chosen = (done.stdout or "").strip()
+        if done.returncode != 0 or not chosen:
+            return None
+        root = Path(chosen).anchor
+        return chosen if chosen == root else chosen.rstrip("/\\")
+    return None
+
+
+def choose_with_finder(runner=None) -> str | None:
+    """Opens the system folder chooser and returns the chosen path (None if cancelled)."""
+    import subprocess
+
     if not _CHOOSING.acquire(blocking=False):
         raise FiscalError("Ya hay un selector de carpetas abierto.")
     try:
         # Below the server's wait for the core, so a slow choice never comes back as «core unavailable».
-        done = run(["/usr/bin/osascript", "-e", script], capture_output=True, text=True, timeout=110)
+        return choose_system_folder("Elige la carpeta fiscal", runner=runner)
     except (OSError, subprocess.TimeoutExpired):
         return None
     finally:
         _CHOOSING.release()
-    path = (done.stdout or "").strip()
-    return path.rstrip("/") or None if done.returncode == 0 else None
 
 
 def is_link(path: Path) -> bool:

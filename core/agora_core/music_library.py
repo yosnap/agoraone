@@ -44,7 +44,7 @@ def save_folders(connection: sqlite3.Connection, chosen: list[str]) -> list[str]
     clean = []
     for folder in chosen[:10]:
         path = Path(folder).expanduser()
-        if not path.is_absolute() or not path.is_dir() or path == Path("/") or "\x00" in folder:
+        if not path.is_absolute() or not path.is_dir() or path == Path("/") or path == Path(path.anchor) or "\x00" in folder:
             raise LibraryError(f"«{folder}» no es una carpeta de este equipo.")
         if str(path.resolve()) not in clean:
             clean.append(str(path.resolve()))
@@ -56,19 +56,19 @@ def save_folders(connection: sqlite3.Connection, chosen: list[str]) -> list[str]
 
 
 def choose() -> str | None:
-    """macOS's folder chooser; None if cancelled or on another system (there the path is typed)."""
-    if sys.platform != "darwin":
+    """Native folder chooser on macOS and Windows; None if cancelled or on another system."""
+    if sys.platform not in ("darwin", "win32"):
         return None
     if not _choosing.acquire(blocking=False):
         raise LibraryError("Ya hay un selector de carpetas abierto.")
     try:
-        done = subprocess.run(["/usr/bin/osascript", "-e", 'POSIX path of (choose folder with prompt "Elige tu carpeta de música")'],
-                              capture_output=True, text=True, timeout=110, check=False)
+        from .fiscal import choose_system_folder
+
+        return choose_system_folder("Elige tu carpeta de música")
     except (OSError, subprocess.TimeoutExpired):
         return None
     finally:
         _choosing.release()
-    return (done.stdout or "").strip().rstrip("/") or None if done.returncode == 0 else None
 
 
 def _track(root: Path, path: Path) -> dict:
