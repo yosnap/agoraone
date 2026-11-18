@@ -18,6 +18,7 @@ import { AppsSettingsCard } from './settings-apps';
 import { MusicSettingsCard } from './settings-music';
 import { InstallSettingsCard } from './settings-install';
 import { ModulesSettingsCard } from './settings-modules';
+import { CentralSettingsCard } from './settings-central';
 import './settings.css';
 
 type Tab = { id: string; label: string; cards: () => ReactNode };
@@ -34,6 +35,7 @@ const tabs: Tab[] = [
   { id: 'trabajos', label: 'Trabajos', cards: () => <JobsSettingsCard/> },
   { id: 'voz', label: 'Voz', cards: () => <><VoiceSettingsCard/><MeetingSettingsCard/><MusicSettingsCard/><AppsSettingsCard/></> },
   { id: 'privacidad', label: 'Privacidad y copias', cards: () => <><PrivacySettingsCard/><BackupsCard/></> },
+  { id: 'central', label: 'Central', cards: () => <CentralSettingsCard/> },
 ];
 const STORED = 'agora.settings.tab';
 
@@ -68,7 +70,7 @@ export function SettingsView() {
   return <section className="page settings" aria-labelledby="settings-title">
     <div className="eyebrow">AJUSTES</div>
     <h1 id="settings-title">Ajustes</h1>
-    <p className="page-lead">Todo se guarda en este Mac: los ajustes en la base del cerebro y las claves en el Llavero de macOS.</p>
+    <p className="page-lead">Todo se guarda en este equipo: los ajustes en la base del cerebro y las claves en el almacén de secretos del sistema (el Llavero en macOS).</p>
     <div className="settings-tabs" role="tablist" aria-label="Apartados de Ajustes" onKeyDown={keys}>
       {tabs.map(t => <button key={t.id} id={`settings-tab-${t.id}`} ref={node => { buttons.current[t.id] = node; }} role="tab" type="button"
         aria-selected={t.id === current.id} aria-controls="settings-panel" tabIndex={t.id === current.id ? 0 : -1} onClick={() => choose(t.id)}>{t.label}</button>)}

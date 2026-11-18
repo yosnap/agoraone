@@ -31,7 +31,7 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
   const [waiting, setWaiting] = useState(0);
   const asked = useRef(false);
   const modules = useModules();
-  const mailOn = moduleOn(modules, 'correo'), agendaOn = moduleOn(modules, 'agenda'), fiscalOn = moduleOn(modules, 'fiscal'), jobsOn = moduleOn(modules, 'trabajos');
+  const mailOn = moduleOn(modules, 'correo'), agendaOn = moduleOn(modules, 'agenda'), fiscalOn = moduleOn(modules, 'fiscal'), centralOn = moduleOn(modules, 'central');
   // Each reading is a round: an answer from an older round (a slow one, after «Actualizar») never overwrites a newer one.
   const read = () => {
     const mine = ++latest;
@@ -43,7 +43,7 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
     run(() => getAgenda('semana'), agenda => ({ agenda }), { agenda: { events: [], reminders: [], overlaps: [], problem: 'No se pudo leer la agenda.' } });
     if (fiscalOn) run(getReceipts, r => ({ receipts: r.receipts }), { receipts: [] });
     run(getAlerts, alerts => ({ alerts, alertsProblem: null }), { alertsProblem: 'No se pudieron leer los avisos.' });
-    run(getCentral, central => ({ central }), {});
+    if (centralOn) run(getCentral, central => ({ central }), {});
     run(getDoctor, r => ({ pieces: r.pieces }), {});
     void Promise.resolve().then(() => setWaiting(mine));
     void Promise.allSettled(jobs).then(() => setWaiting(current => current === mine ? 0 : current));
@@ -59,7 +59,7 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
   const open = doneButOpen(data.done ?? [], discreet);
   const { servers, down } = serversByTrouble(data.central?.snapshot?.servers ?? []);
   const readingProblems = mailOn || agendaOn ? data.alerts?.problems ?? [] : [];
-  const notes = systemNotes(data.alerts?.alerts ?? [], [mailOn ? data.mailProblem : null, agendaOn ? data.agenda?.problem : null, jobsOn ? data.central?.problem : null,
+  const notes = systemNotes(data.alerts?.alerts ?? [], [mailOn ? data.mailProblem : null, agendaOn ? data.agenda?.problem : null, centralOn ? data.central?.problem : null,
     data.alertsProblem, ...readingProblems], data.pieces, name => moduleOn(modules, name), discreet);
   return <div className="home" role="region" aria-label="Panel de inicio">
     <div className="home-head">
@@ -109,7 +109,7 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
           <span>{note.text}{note.detail && <small> · {note.detail}</small>}</span>
         </li>)}</ul>}
       </Block>
-      {jobsOn && data.central?.configured && <Block title="Servidores" count={servers.length} alert={down > 0 ? `${down} con problemas` : undefined} onOpen={() => onOpen('jobs')} openLabel="Abrir Trabajos"
+      {centralOn && data.central?.configured && <Block title="Servidores" count={servers.length} alert={down > 0 ? `${down} con problemas` : undefined} onOpen={() => onOpen('jobs')} openLabel="Abrir Trabajos"
         empty="Central no tiene servidores.">
         {servers.length > 0 && <ul className="home-list">{servers.slice(0, 6).map((server, index) => <li key={`${server.name}-${index}`} className={server.status === 'red' ? 'warn' : ''}>
           <span className={`home-dot ${server.status ?? 'grey'}`} aria-hidden="true"/>
