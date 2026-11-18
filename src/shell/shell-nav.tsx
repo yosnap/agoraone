@@ -18,7 +18,7 @@ const calendarIcon = <svg className="rail-svg" viewBox="0 0 24 24" fill="none" s
 
 const icons: Record<(typeof menu)[number]['id'], ReactNode> = {
   brain: '◉', summary: '▤', assistant: '✦', agents: '⚇', office: '▦', connectors: '⧉', inbox: '✉', agenda: calendarIcon,
-  fiscal: '€', jobs: '☰', meetings: '◎', quotes: '§', central: '◈',
+  fiscal: '€', jobs: '☰', meetings: '◎', quotes: '§', central: '◈', fabrica: '⚒',
 };
 const main: Item[] = menu.map(item => ({ ...item, icon: icons[item.id] }));
 // Planned for later versions: shown so the map is complete, marked as pending and without content.

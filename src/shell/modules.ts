@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { getModules, putModules, type ModuleName } from '../api/core';
 import { checkCentralWindow } from '../api/central';
+import { checkFabricaWindow } from '../api/fabrica';
 
 /** Which modules are on, shared by the whole screen (1.6). Until read, everything counts as on. */
 let on: Partial<Record<ModuleName, boolean>> = {};
@@ -19,4 +20,6 @@ export async function setModule(name: ModuleName, value: boolean) {
   publish(await putModules({ [name]: value }));
   // Central's window closes at once when no module that uses it is left on.
   if (!value && (name === 'central' || name === 'presupuestos')) void checkCentralWindow().catch(() => undefined);
+  // The same for the fábrica's window when its module is turned off.
+  if (!value && name === 'fabrica') void checkFabricaWindow().catch(() => undefined);
 }
