@@ -3,7 +3,9 @@
 
 use std::fs::{self, DirBuilder, File, Metadata, OpenOptions};
 use std::io;
-use std::path::{Component, Path, PathBuf, Prefix};
+#[cfg(windows)]
+use std::path::Prefix;
+use std::path::{Component, Path, PathBuf};
 use std::process::ExitStatus;
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -106,20 +108,12 @@ pub fn normalize(path: &Path) -> PathBuf {
     }
 }
 
+/// `HOME`, or on Windows (where it is usually unset) `USERPROFILE`.
 pub fn home_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .filter(|v| !v.is_empty())
-        .or_else(|| {
-            #[cfg(windows)]
-            {
-                std::env::var_os("USERPROFILE").filter(|v| !v.is_empty())
-            }
-            #[cfg(not(windows))]
-            {
-                None
-            }
-        })
-        .map(PathBuf::from)
+    let home = std::env::var_os("HOME").filter(|v| !v.is_empty());
+    #[cfg(windows)]
+    let home = home.or_else(|| std::env::var_os("USERPROFILE").filter(|v| !v.is_empty()));
+    home.map(PathBuf::from)
 }
 
 pub fn default_system_path() -> String {
@@ -150,6 +144,13 @@ pub fn apply_minimal_os_env(command: &mut Command) {
     {
         let _ = command;
     }
+}
+
+/// A relative path written with `/`, as on macOS: Windows' `\` separators are turned into `/`, while on
+/// macOS and Linux a `\` is part of a file name and stays.
+pub fn slash_path(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    if cfg!(windows) { text.replace('\\', "/") } else { text.into_owned() }
 }
 
 pub fn mtime_ms(meta: &Metadata) -> i64 {
@@ -327,6 +328,7 @@ pub fn inspect_path_nofollow(path: &Path) -> io::Result<FileInfo> {
     inspect_handle(&file)
 }
 
+#[cfg_attr(unix, allow(unused_mut))]
 pub fn write_all_at(file: &File, mut data: &[u8], mut offset: u64) -> io::Result<()> {
     #[cfg(unix)]
     {

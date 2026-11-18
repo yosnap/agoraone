@@ -61,7 +61,7 @@ fn catalog_lists_live_profiles_without_secrets() {
     fs::create_dir_all(f.root.join("profiles/.deleted")).unwrap();
     fs::write(f.root.join("profiles/.deleted/deleted"), "1").unwrap();
     fs::create_dir(f.root.join("profiles/ghost")).unwrap();
-    symlink(&home, &f.root.join("profiles/linked")).unwrap();
+    symlink(&home, f.root.join("profiles/linked")).unwrap();
     let before = fs::read(home.join("config.yaml")).unwrap();
     let catalog = f.discovery.scan(false);
     assert_eq!(catalog.profiles.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["default", "coder"]);
@@ -123,7 +123,7 @@ fn portable_location_missing_formats_and_rejected_links() {
     assert_eq!(hermes_location(agora, Path::new("/otro")).root, PathBuf::from("/datos"));
     let f = fixture();
     fs::remove_file(f.root.join("SOUL.md")).unwrap();
-    symlink(&f.root.join(".env"), &f.root.join("SOUL.md")).unwrap();
+    symlink(f.root.join(".env"), f.root.join("SOUL.md")).unwrap();
     Connection::open(f.root.join("state.db")).unwrap().execute_batch("CREATE TABLE unknown(id TEXT)").unwrap();
     let catalog = f.discovery.scan(false);
     assert_eq!(catalog.state, "partial");
@@ -169,7 +169,7 @@ fn cached_tools_per_profile_with_expiry_changes_and_private_fields_left_out() {
     fs::write(&cache, json!({ "demo": fresh }).to_string()).unwrap();
     assert_eq!(read_mcp_tools(&root, &root, "demo", &config).state, "cached");
     fs::remove_file(&cache).unwrap();
-    symlink(&root.join("unreadable"), &cache).unwrap();
+    symlink(root.join("unreadable"), &cache).unwrap();
     assert!(read_mcp_tools(&root, &root, "demo", &config).tools.is_empty());
 }
 
@@ -246,7 +246,7 @@ fn hermes_python_comes_from_its_tools() {
     let outside = home.join("fuera/bin");
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(outside.join("python3"), "").unwrap();
-    symlink(&home.join("fuera"), &tools.join("enlace")).unwrap();
+    symlink(home.join("fuera"), tools.join("enlace")).unwrap();
     std::fs::write(tools.join("facts.json"), r#"{"packages":{"python":{"entry":"enlace"}}}"#).unwrap();
     assert!(!hermes_location(none, &home).python.starts_with(&tools));
 }

@@ -321,7 +321,7 @@ impl Walk<'_> {
                 }
                 let Ok(meta) = fs::symlink_metadata(&file) else { continue };
                 let Ok(info) = crate::platform::inspect_path_nofollow(&file) else { continue };
-                let path = file.strip_prefix(&self.vault.root).unwrap_or(&file).to_string_lossy().replace('\\', "/");
+                let path = crate::platform::slash_path(file.strip_prefix(&self.vault.root).unwrap_or(&file));
                 let folder = path.rsplit_once('/').map(|(f, _)| f.to_string()).unwrap_or_default();
                 // Node rounds the milliseconds; the brain's index compares these dates, so they must match.
                 let modified = crate::platform::mtime_ms(&meta);

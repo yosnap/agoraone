@@ -342,6 +342,6 @@ impl VaultNotes {
 }
 
 fn created(index: &Index, vault_id: &str, file: &Path, folder: &str, title: String) -> Created {
-    let path = file.strip_prefix(&index.vault.root).unwrap_or(file).to_string_lossy().replace('\\', "/");
+    let path = crate::platform::slash_path(file.strip_prefix(&index.vault.root).unwrap_or(file));
     Created { id: format!("note-{}", digest(&format!("{vault_id}:{path}"))), folder: folder.to_string(), title }
 }

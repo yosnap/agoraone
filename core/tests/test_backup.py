@@ -169,7 +169,24 @@ def test_la_clave_es_la_misma_aunque_dos_hilos_la_pidan_a_la_vez(data):
     assert len(set(keys)) == 1 and keys[0] == store.key
 
 
-def test_restaurar_con_wal_pendiente_conserva_la_base_anterior_completa(data, tmp_path):
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows no deja renombrar una base con una conexión abierta")
+def test_restaurar_con_wal_pendiente_conserva_la_base_anterior_completa(data):
+    store = MemoryStore()
+    made = create_backup(data, store, at=NOW)
+    live = connect(data / DB_NAME)
+    live.execute("INSERT INTO scope (slug, name, created_at) VALUES ('wal', 'En el WAL', '2026-01-01T00:00:00Z')")
+    aside = restore(data, made.path, store.key)
+    live.close()
+    import sqlite3
+
+    old = sqlite3.connect(aside)
+    assert "wal" in [r[0] for r in old.execute("SELECT slug FROM scope")], "lo que estaba en el WAL viaja con la base apartada"
+    old.close()
+    assert scopes(data) == ["personal", "prueba"]
+
+
+def test_restaurar_con_wal_pendiente_sin_conexiones_abiertas(data, tmp_path):
+    """As the CLI restores (the core stopped): a WAL left behind is folded into the database set aside."""
     store = MemoryStore()
     made = create_backup(data, store, at=NOW)
     live_dir = tmp_path / "live"
