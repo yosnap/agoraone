@@ -56,17 +56,18 @@ def test_lista_cerrada_de_paginas():
         assert routes_central_window.route_of(wrong) is None, wrong
 
 
-def test_solo_https_hacia_otros_sitios():
+def test_solo_direcciones_web_hacia_otros_sitios():
     good = "https://accounts.google.com/o/oauth2/auth?client_id=x&redirect_uri=https%3A%2F%2Fcentral.example.com"
     assert routes_central_window.external_url(good) == good
-    for wrong in ("http://example.com", "javascript:alert(1)", "file:///etc/passwd", "https://user:pw@example.com/", "https://@example.com/",
+    assert routes_central_window.external_url("http://example.com/x") == "http://example.com/x"
+    for wrong in ("ftp://example.com/", "javascript:alert(1)", "file:///etc/passwd", "https://user:pw@example.com/", "https://@example.com/",
                   "https://", "https://exa mple.com", "https://example.com/é", "https://ex_ample.com/", "https://example.com:99999/",
                   "data:text/html,x", "https://example.com/" + "a" * 2001, None, 1):
         assert routes_central_window.external_url(wrong) is None, wrong
 
 
 def test_orden_para_la_app_de_escritorio(client, opened):
-    assert desktop(client) == {"seq": 0, "commands": []}
+    assert desktop(client) == {"seq": 0, "commands": [], "allowed": True, "url": URL}
     answer = client.post("/central/window", json={"ruta": "ajustes"}, headers=HEADERS)
     assert answer.status_code == 200
     got = client.get("/internal/central/window/next", params={"after": 0}, headers=HEADERS).json()
@@ -94,12 +95,13 @@ def test_sin_app_de_escritorio_ofrece_el_navegador(client, opened):
     assert opened == [f"{URL}/clientes/{C1}"]
 
 
-def test_enlaces_externos_solo_https(client, opened):
+def test_enlaces_externos_solo_web(client, opened):
     assert client.post("/central/window/external", json={"url": "https://mail.google.com/mail/u/0/"}, headers=HEADERS).json() == {"done": True}
-    for wrong in ("http://example.com", "javascript:alert(1)", "file:///etc/passwd", "about:blank"):
+    assert client.post("/central/window/external", json={"url": "http://example.com/"}, headers=HEADERS).json() == {"done": True}
+    for wrong in ("javascript:alert(1)", "file:///etc/passwd", "about:blank"):
         answer = client.post("/central/window/external", json={"url": wrong}, headers=HEADERS)
         assert answer.status_code == 422, wrong
-    assert opened == ["https://mail.google.com/mail/u/0/"]
+    assert opened == ["https://mail.google.com/mail/u/0/", "http://example.com/"]
 
 
 def test_navegador_que_no_abre_da_502(client, monkeypatch):
@@ -131,3 +133,34 @@ def test_modulo_apagado_404(client, opened):
     commands = client.get("/internal/central/window/next", params={"after": 0}, headers=HEADERS).json()["commands"]
     assert [c["url"] for c in commands] == [f"{URL}/presupuestos/{C1}"]
     assert opened == []
+
+
+def test_la_ventana_no_abre_el_host_de_agoraone(client, opened):
+    desktop(client)
+    for address in ("http://127.0.0.1:3099", "http://[::1]:3099"):
+        save_url(client, address)
+        answer = client.post("/central/window", json={"ruta": "ajustes"}, headers=HEADERS)
+        assert answer.status_code == 422 and answer.json()["status"] == "loopback_ip" and "localhost" in answer.json()["error"], address
+    assert desktop(client)["seq"] == 0, "ninguna orden para la ventana"
+    # The browser does not share AgoraOne's cookies with the window: there it still opens.
+    assert client.post("/central/window/browser", json={"ruta": "ajustes"}, headers=HEADERS).json() == {"done": True}
+    save_url(client, "http://localhost:3099")
+    assert client.post("/central/window", json={"ruta": "ajustes"}, headers=HEADERS).status_code == 200
+    assert opened == ["http://[::1]:3099/ajustes"]
+
+
+def test_cerrar_y_comprobar_la_ventana(client):
+    assert client.post("/central/window/close", headers=HEADERS).json() == {"done": False}, "sin app de escritorio no hay nada que cerrar"
+    first = desktop(client)
+    assert first["allowed"] is True and first["url"] == URL
+    assert client.post("/central/window/close", headers=HEADERS).json() == {"done": True}
+    assert client.post("/central/window/check", headers=HEADERS).json() == {"done": True}
+    got = client.get("/internal/central/window/next", params={"after": 0}, headers=HEADERS).json()
+    assert [c["action"] for c in got["commands"]] == ["close", "check"]
+    # Module off or address removed: the answer says so and the desktop app closes the window.
+    client.put("/modules", json={"modules": {"central": False, "presupuestos": False}}, headers=HEADERS)
+    assert client.post("/central/window/close", headers=HEADERS).json() == {"done": True}, "cerrar siempre se puede"
+    assert client.get("/internal/central/window/next", params={"after": 0}, headers=HEADERS).json()["allowed"] is False
+    client.put("/modules", json={"modules": {"central": True}}, headers=HEADERS)
+    save_url(client, None)
+    assert client.get("/internal/central/window/next", params={"after": 0}, headers=HEADERS).json()["url"] is None

@@ -9,11 +9,20 @@ comes from a closed list and an id must look like a cuid, so the screen can only
 address is the saved URL of Central. Without the desktop app (AgoraOne in a browser tab) the answer is 409 and
 `POST /central/window/browser` opens the same page in the system's browser instead. A link of Central to another site
 is never followed inside the window: the desktop app tells AgoraOne's window, which offers it, and
-`POST /central/window/external` (`{url}`, https only) opens it in the system's browser.
+`POST /central/window/external` (`{url}`, http or https; the screen warns first when it is not encrypted) opens it in
+the system's browser. `POST /central/window/close` closes the window (discreet mode turned on) and
+`POST /central/window/check` makes the desktop app look again at once; each answer of `/internal/.../next` says
+whether the window may stay (`allowed`: a module that uses it is on) and Central's saved address (`url`): with the
+module off, the address removed or changed, the desktop app closes it.
+
+A Central on 127.0.0.1 or ::1 is never opened in the window (422 `loopback_ip`, write `localhost` instead): that is
+AgoraOne's own host, and cookies go by host, not by port, so on a Mac without a store of its own for the window
+AgoraOne's access cookie would reach that Central. The browser can still open it.
 
 With the «Central» module off every route answers 404; a quote's page follows the «Presupuestos» module instead,
 which works without the «Central» one."""
 
+import ipaddress
 import re
 import webbrowser
 from contextlib import contextmanager
@@ -37,7 +46,9 @@ OFF_QUOTES = "El módulo Presupuestos está apagado."
 NOT_CONNECTED = "Falta la dirección de Central: escríbela en Ajustes › Central."
 BAD_ROUTE = "Esa página de Central no se puede abrir desde AgoraOne."
 NO_WINDOW = "La ventana de Central solo existe en la app de escritorio: ábrelo en el navegador."
-BAD_URL = "Solo se abren en el navegador direcciones https."
+BAD_URL = "Solo se abren en el navegador direcciones web (http o https)."
+LOOPBACK_IP = ("La ventana de Central no abre 127.0.0.1 ni ::1, que son la dirección de AgoraOne: escribe la de Central con «localhost» "
+               "(por ejemplo http://localhost:3099) en Ajustes › Central.")
 NO_BROWSER = "No se pudo abrir el navegador."
 _HOST = re.compile(r"[a-z0-9.-]{1,253}|[0-9a-f:.]{2,45}")
 
@@ -64,7 +75,8 @@ def route_of(value: object) -> tuple[str, str] | None:
 
 
 def external_url(value: object) -> str | None:
-    """An https address with a host and no user or password, printable ASCII (WebKit hands them percent-encoded)."""
+    """A web address (http or https) with a host and no user or password, printable ASCII (WebKit hands them
+    percent-encoded)."""
     if not isinstance(value, str) or not 8 < len(value) <= MAX_URL or not all(c.isascii() and c.isprintable() and not c.isspace() for c in value):
         return None
     try:
@@ -73,9 +85,17 @@ def external_url(value: object) -> str | None:
         parts.port  # noqa: B018 - raises on a port that is not a number
     except ValueError:
         return None
-    if parts.scheme != "https" or parts.username is not None or parts.password is not None or not _HOST.fullmatch(host):
+    if parts.scheme not in ("https", "http") or parts.username is not None or parts.password is not None or not _HOST.fullmatch(host):
         return None
     return value
+
+
+def agora_host(url: str) -> bool:
+    """127.x or ::1: AgoraOne's own host, which shares its cookies whatever the port."""
+    try:
+        return ipaddress.ip_address(urlsplit(url).hostname or "").is_loopback
+    except ValueError:
+        return False
 
 
 def page_url(base: str, route: str) -> str:
@@ -109,8 +129,9 @@ def central_window_router(settings: Settings, relay: Relay | None = None) -> API
         with database() as connection:
             return modules.state(connection), central_api.saved_url(connection)
 
-    async def target(value: object) -> str | JSONResponse:
-        """The full address of a page of Central, or the refusal: module off (404), not on the list (422), no URL (409)."""
+    async def target(value: object, window: bool = False) -> str | JSONResponse:
+        """The full address of a page of Central, or the refusal: module off (404), not on the list or AgoraOne's own
+        host for the window (422), no URL (409)."""
         on, base = await run_in_threadpool(lookup)
         found = route_of(value)
         module = found[1] if found else "central"
@@ -120,6 +141,8 @@ def central_window_router(settings: Settings, relay: Relay | None = None) -> API
             return problem(422, BAD_ROUTE, "invalid")
         if base is None:
             return problem(409, NOT_CONNECTED, "not_connected")
+        if window and agora_host(base):
+            return problem(422, LOOPBACK_IP, "loopback_ip")
         return page_url(base, found[0])
 
     async def any_module_on() -> bool:
@@ -128,7 +151,7 @@ def central_window_router(settings: Settings, relay: Relay | None = None) -> API
 
     @router.post("/central/window")
     async def open_window(body: RouteIn):
-        url = await target(body.ruta)
+        url = await target(body.ruta, window=True)
         if isinstance(url, JSONResponse):
             return url
         if not relay.available():
@@ -155,8 +178,19 @@ def central_window_router(settings: Settings, relay: Relay | None = None) -> API
             return problem(502, NO_BROWSER, "error")
         return {"done": True}
 
+    @router.post("/central/window/close")
+    async def close_window():
+        """Always allowed (closing hides, never shows): without the desktop app there is nothing to close."""
+        return {"done": relay.available() and relay.push({"action": "close"}) > 0}
+
+    @router.post("/central/window/check")
+    async def check_window():
+        return {"done": relay.available() and relay.push({"action": "check"}) > 0}
+
     @router.get("/internal/central/window/next")  # only the desktop app: the browser cannot reach /internal
     async def window_next(after: int = -1):
-        return await relay.next(after)
+        answer = await relay.next(after)
+        on, base = await run_in_threadpool(lookup)
+        return {**answer, "allowed": on["central"] or on["presupuestos"], "url": base}
 
     return router
