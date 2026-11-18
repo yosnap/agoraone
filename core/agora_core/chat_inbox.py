@@ -229,3 +229,53 @@ def decide(connection: sqlite3.Connection, conversation_id: int, state: str) -> 
         return connection.execute(
             "UPDATE chat_summary SET state = ?, decided_at = ? WHERE conversation_id = ? AND state != 'quiet'",
             (state, None if state == "pending" else now(), conversation_id)).rowcount > 0
+
+
+# ---- Jev (TypeSafe), in shadow: the same questions as mail (English, kinds one to one with KINDS) about the window the
+# model reads, plus whether the last thing received waits for the user's reply. «me» is the user.
+JEV_QUESTIONS = {
+    **mail_inbox.jev_questions("conversation", "WhatsApp conversation"),
+    "kind": {"type": "choice", "criteria": mail_inbox.JEV_KINDS,
+             "instructions": "Judging by the latest messages the user received in `conversation.messages`, what kind of conversation is it?"},
+    "awaits_reply": {"type": "noul", "instructions": "The last messages received in `conversation.messages` wait for a reply from the user (`me`)."},
+}
+
+
+def jev_waiting(connection: sqlite3.Connection, since: str, purpose: str, limit: int) -> list[str]:
+    """Current classifications («conversation:last message covered») kept as normal since `since` that Jev has not
+    answered about yet for `purpose`, newest first. A conversation classified again is a new one."""
+    return [row[0] for row in connection.execute(
+        """SELECT s.conversation_id || ':' || s.until_message_id FROM chat_summary s
+           WHERE s.updated_at >= ? AND s.confidentiality = 'normal' AND s.until_message_id IS NOT NULL
+             AND NOT EXISTS (SELECT 1 FROM jev_decision j WHERE j.subject = 'chat' AND j.purpose = ?
+                             AND j.subject_id = s.conversation_id || ':' || s.until_message_id)
+           ORDER BY s.updated_at DESC LIMIT ?""", (since, purpose, limit))]
+
+
+def jev_entry(connection: sqlite3.Connection, ident: str) -> tuple[str, dict] | None:
+    """The conversation's level now (the strictest of the stored one, its account's and the rule that matches today)
+    and the state for Jev: the window the model read, up to the last message covered, as data. None when it is gone
+    or was classified again meanwhile."""
+    conversation_id, _, until = ident.partition(":")
+    row = connection.execute(
+        """SELECT c.id, c.account_id, c.participant_id, c.participant_name, c.participant_phone, a.confidentiality AS account_level,
+                  s.confidentiality AS stored, s.until_message_id
+           FROM chat_conversation c JOIN chat_account a ON a.id = c.account_id JOIN chat_summary s ON s.conversation_id = c.id
+           WHERE c.id = ?""", (int(conversation_id),)).fetchone()
+    if row is None or str(row["until_message_id"]) != until:
+        return None
+    rule = chat_rules.first_match(chat_rules.enabled_rules(connection), row, rule_text(connection, row["id"]))
+    level = stricter(stricter(row["account_level"], rule["confidentiality"] if rule else None), row["stored"])
+    messages = window(connection, row["id"])
+    cut = next((n for n, message in enumerate(messages) if message["id"] == row["until_message_id"]), len(messages) - 1)
+    lines, missing = [], 0
+    for message in messages[:cut + 1]:
+        if message["unsupported"]:
+            missing += 1
+            continue
+        text = (message["body"] or "")[:BODY_CHARS].strip()
+        if not text:
+            kinds = {str(a.get("type"))[:20] for a in json.loads(message["attachments"] or "[]") if isinstance(a, dict) and a.get("type")}
+            text = f"[attachment: {', '.join(sorted(kinds))}]" if kinds else "[no text]"
+        lines.append({"at": (message["at"] or "")[:16], "from": "me" if message["direction"] == "outgoing" else "contact", "text": text})
+    return level, {"conversation": {"contact": (row["participant_name"] or "")[:120], "unavailable_messages": missing, "messages": lines}}

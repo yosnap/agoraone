@@ -1,13 +1,16 @@
 """HTTP routes of Jev (TypeSafe): the key in the Keychain, a test that costs no tokens, and the settings (model,
-monthly cap, confidence threshold and each decision point's switch) with this month's use. The key is never
-returned: only whether there is one."""
+monthly cap, confidence threshold and each decision point's switch) with this month's use and how Jev does in
+shadow. The key is never returned: only whether there is one. `GET /jev/shadow` lists, read-only, what Jev said
+next to what is shown, without the text of any message nor any name."""
 
-from fastapi import APIRouter
+from typing import Literal
+
+from fastapi import APIRouter, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool
 
-from . import jev
+from . import jev, jev_shadow
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -49,8 +52,8 @@ def jev_router(settings: Settings, secrets) -> APIRouter:
 
     async def described() -> dict:
         has_key = bool(await run_in_threadpool(secrets.get, jev.SECRET))
-        current, used = await db(lambda c: (jev.settings(c), jev.usage(c)))
-        return {"hasKey": has_key, **current, "pointLabels": jev.POINTS, "aliases": list(jev.MODEL_ALIASES),
+        current, used, shadow = await db(lambda c: (jev.settings(c), jev.usage(c), {name: jev_shadow.shadow_counts(c, name) for name in ("mail", "chat")}))
+        return {"hasKey": has_key, **current, "pointLabels": jev.POINTS, "aliases": list(jev.MODEL_ALIASES), "shadow": shadow,
                 "usage": {**{k: used[k] for k in ("month", "calls", "inputTokens", "outputTokens", "spentUsd")}, "capTokens": jev.cap_tokens(current["monthlyUsd"])}}
 
     @router.get("/jev/settings")
@@ -70,6 +73,11 @@ def jev_router(settings: Settings, secrets) -> APIRouter:
             return JSONResponse({"error": "Ese punto de decisión no existe."}, status_code=422)
         await db(lambda c: jev.save_settings(c, changes))
         return await described()
+
+    @router.get("/jev/shadow")
+    async def shadow(subject: Literal["mail", "chat"], limit: int = Query(default=500, ge=1, le=5000)):
+        return await db(lambda c: {"subject": subject, "counts": jev_shadow.shadow_counts(c, subject),
+                                   "items": jev_shadow.shadow_items(c, subject, limit)})
 
     @router.put("/jev/key")
     async def save_key(body: KeyIn):
