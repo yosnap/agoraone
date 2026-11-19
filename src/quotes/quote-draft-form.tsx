@@ -7,6 +7,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { useCentralRead } from '../central/use-central-view';
 import { QuoteItemsEditor, QuotePhasesEditor } from './quote-items-editor';
 import { QuotesProblem } from './quotes-common';
+import { ActionButton } from '../ui/action-button';
 
 const OTHER = '\u0000otro';
 export const NOT_IN_CENTRAL = 'Ese cliente no está en Central: es un cliente propio de AgoraOne. Créalo antes en Central para hacerle un presupuesto.';
@@ -85,8 +86,8 @@ export function QuoteDraftForm({ clientNames, onCreated, onCancel, onOpen }: {
       <DraftSummary draft={review}/>
       {problem && <p className="error" role="alert">{problem}</p>}
       <div className="actions central-actions">
-        <button type="button" className="button" disabled={busy} onClick={() => setReview(null)}>Volver a editar</button>
-        <button type="button" className="button primary" disabled={busy} onClick={() => void confirm()}>{busy ? 'Creando en Central…' : 'Confirmar y crear el borrador'}</button>
+        <ActionButton icon="edit" label="Volver a editar" disabled={busy} onClick={() => setReview(null)}/>
+        <ActionButton icon="check" label="Confirmar y crear el borrador" tone="primary" busyLabel={busy && 'Creando en Central…'} disabled={busy} onClick={() => void confirm()}/>
       </div>
     </article>;
   }
@@ -117,8 +118,8 @@ export function QuoteDraftForm({ clientNames, onCreated, onCancel, onOpen }: {
     <p className="muted">Base orientativa: {'draft' in preview ? euros(draftTotals(preview.draft).base) : '—'} sin IVA.</p>
     {problem && <p className="error" role="alert">{problem}</p>}
     <div className="actions central-actions">
-      <button type="button" className="button" onClick={onCancel}>Cancelar</button>
-      <button type="submit" className="button primary" disabled={ownOnly}>Crear en Central</button>
+      <ActionButton icon="close" label="Cancelar" onClick={onCancel}/>
+      <ActionButton icon="plus" label="Crear en Central" tone="primary" type="submit" disabled={ownOnly}/>
     </div>
   </form>;
 }

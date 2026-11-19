@@ -10,6 +10,7 @@ import { QuoteDraftForm } from './quote-draft-form';
 import { OpenInCentral } from '../central/open-in-central';
 import '../central/central.css';
 import './quotes.css';
+import { ActionButton } from '../ui/action-button';
 
 const ALL = '';
 
@@ -35,8 +36,8 @@ export function QuotesView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
     <div className="central-head">
       <h1 id="quotes-title">Presupuestos</h1>
       {ready && mode.kind === 'list' && <div className="actions central-actions">
-        <button type="button" className="button" disabled={rereading} onClick={() => { setMade(null); forgetCentral(); }}>{rereading ? 'Leyendo…' : 'Volver a leer'}</button>
-        {!discreet && <button type="button" className="button primary" onClick={() => { setMade(null); setMode({ kind: 'new' }); }}>Nuevo borrador</button>}
+        <ActionButton icon="refresh" label="Volver a leer" busyLabel={rereading && 'Leyendo…'} disabled={rereading} onClick={() => { setMade(null); forgetCentral(); }}/>
+        {!discreet && <ActionButton icon="plus" label="Nuevo borrador" tone="primary" onClick={() => { setMade(null); setMode({ kind: 'new' }); }}/>}
       </div>}
     </div>
     <p className="page-lead">Tus presupuestos de Central, leídos ahora mismo. Desde aquí se consultan, se abren en PDF o Word, se crean borradores y, con una clave con permiso «escritura», se cambian el estado y la fecha de sus hitos de pago; enviarlos y cambiar su estado se hace en Central.</p>
@@ -64,7 +65,7 @@ export function QuotesView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
               <td className="num">{discreet ? HIDDEN : amountRange(q.total, q.totalMax)}</td>
               <td className="central-date">{dateLabel(q.issuedAt)}</td>
               <td className="central-row-actions">{q.id && <span className="actions">
-                <button type="button" className="button" onClick={() => setMode({ kind: 'record', id: q.id! })}>Ver</button>
+                <ActionButton icon="eye" label="Ver" onClick={() => setMode({ kind: 'record', id: q.id! })}/>
                 <OpenInCentral page={`presupuestos/${q.id}`} discreet={discreet}/></span>}</td>
             </tr>)}</tbody>
           </table>}

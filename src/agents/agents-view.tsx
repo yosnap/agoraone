@@ -8,6 +8,7 @@ import { refreshAgents, useAgentsFeed } from './agents-feed';
 import { requestOffice } from '../office/office-focus';
 import { CodingSessions } from './coding-sessions';
 import './agents.css';
+import { ActionButton } from '../ui/action-button';
 
 const tokens = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} M` : n >= 1000 ? `${Math.round(n / 1000)} k` : String(n);
 
@@ -58,7 +59,7 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
       <span className={`chip ${working ? 'agents-busy' : ''}`}>{working ? `${working} ${working === 1 ? 'agente trabajando' : 'agentes trabajando'}` : 'Nadie trabajando ahora'}</span>
       {gateway && <span className="chip">Gateway de Hermes: {gateway.state === 'running' ? `en marcha${gateway.activeAgents ? ` · ${gateway.activeAgents} en curso` : ''}` : gateway.state === 'stopped' ? 'detenido' : gateway.state === 'stale' ? 'sin datos recientes' : 'sin estado'}</span>}
       {feed.readAt && <small className="muted">Leído {ago(new Date(feed.readAt).toISOString())}</small>}
-      <button type="button" className="button" onClick={() => void refreshAgents()}>Actualizar</button>
+      <ActionButton icon="refresh" label="Actualizar" onClick={() => void refreshAgents()}/>
     </div>
     {feed.failed.length > 0 && <small className="dictation-error" role="status">No se pudo leer: {feed.failed.join(', ')}. Se muestra lo demás.</small>}
     {!feed.readAt ? <Loading label="Leyendo a los agentes" lines={4}/> : <div className="agents-layout">
@@ -82,7 +83,7 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
           </ul>
           <div className="agent-actions">
             <button type="button" className="button" onClick={() => { requestOffice(profile.id, 'chat'); onOpen('office'); }}>Conversar</button>
-            <button type="button" className="button" onClick={() => { requestOffice(profile.id, 'select'); onOpen('office'); }}>Verlo en la ciudad</button>
+            <ActionButton icon="eye" label="Verlo en la ciudad" onClick={() => { requestOffice(profile.id, 'select'); onOpen('office'); }}/>
             <button type="button" className="button" onClick={() => onOpen('jobs')}>Tareas</button>
           </div>
         </article>)}

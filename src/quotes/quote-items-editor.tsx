@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { emptyItem, emptyPhase, itemFromRate, type ItemFields, type PhaseFields, type Rate } from '../api/quotes';
 import { ModernSelect } from '../ui/modern-select';
 import { euros } from '../api/quotes';
+import { ActionButton } from '../ui/action-button';
 
 const replace = <T,>(list: T[], index: number, change: Partial<T>) => list.map((entry, n) => (n === index ? { ...entry, ...change } : entry));
 
@@ -19,15 +20,15 @@ export function QuoteItemsEditor({ items, onChange, rates }: { items: ItemFields
       <label className="field">Precio<input value={item.unitPrice} inputMode="decimal" maxLength={14} placeholder="1.200,00" onChange={e => onChange(replace(items, index, { unitPrice: e.target.value }))}/></label>
       <label className="field">Precio máximo<input value={item.priceMax} inputMode="decimal" maxLength={14} placeholder="Si es un rango" onChange={e => onChange(replace(items, index, { priceMax: e.target.value }))}/></label>
       <label className="field quotes-wide">Detalle<textarea rows={2} value={item.details} maxLength={3000} onChange={e => onChange(replace(items, index, { details: e.target.value }))}/></label>
-      <div className="actions central-actions"><button type="button" className="button" disabled={items.length === 1} onClick={() => onChange(items.filter((_, n) => n !== index))}>Quitar partida</button></div>
+      <div className="actions central-actions"><ActionButton icon="trash" label="Quitar partida" disabled={items.length === 1} onClick={() => onChange(items.filter((_, n) => n !== index))}/></div>
     </div>)}
     <div className="field-row quotes-add">
       <label className="field">Tarifa de Central<ModernSelect value={rateId} onChange={setRateId} disabled={!usable.length}
         options={[{ value: '', label: rates === null ? 'Leyendo las tarifas…' : usable.length ? 'Elige una tarifa' : 'Central no tiene tarifas' },
           ...usable.map(r => ({ value: r.id, label: `${r.name} · ${euros(r.price)}${r.unit ? ` / ${r.unit}` : ''}` }))]}/></label>
       <div className="actions central-actions">
-        <button type="button" className="button" disabled={!chosen || items.length >= 100} onClick={() => { if (chosen) { onChange([...items, itemFromRate(chosen)]); setRateId(''); } }}>Añadir la tarifa</button>
-        <button type="button" className="button" disabled={items.length >= 100} onClick={() => onChange([...items, emptyItem()])}>Añadir a mano</button>
+        <ActionButton icon="plus" label="Añadir la tarifa" disabled={!chosen || items.length >= 100} onClick={() => { if (chosen) { onChange([...items, itemFromRate(chosen)]); setRateId(''); } }}/>
+        <ActionButton icon="plus" label="Añadir a mano" disabled={items.length >= 100} onClick={() => onChange([...items, emptyItem()])}/>
       </div>
     </div>
   </fieldset>;
@@ -42,8 +43,8 @@ export function QuotePhasesEditor({ phases, onChange }: { phases: PhaseFields[];
       <label className="field quotes-wide">Hito<input value={phase.name} maxLength={200} placeholder="Al aceptar, a la entrega…" onChange={e => onChange(replace(phases, index, { name: e.target.value }))}/></label>
       <label className="field">Porcentaje<input value={phase.percent} inputMode="decimal" maxLength={6} placeholder="50" onChange={e => onChange(replace(phases, index, { percent: e.target.value }))}/></label>
       <label className="field">Fecha<input type="date" value={phase.dueDate} min="2000-01-01" max="2100-12-31" onChange={e => onChange(replace(phases, index, { dueDate: e.target.value }))}/></label>
-      <div className="actions central-actions"><button type="button" className="button" onClick={() => onChange(phases.filter((_, n) => n !== index))}>Quitar hito</button></div>
+      <div className="actions central-actions"><ActionButton icon="trash" label="Quitar hito" onClick={() => onChange(phases.filter((_, n) => n !== index))}/></div>
     </div>)}
-    <div className="actions central-actions"><button type="button" className="button" disabled={phases.length >= 50} onClick={() => onChange([...phases, emptyPhase()])}>Añadir hito</button></div>
+    <div className="actions central-actions"><ActionButton icon="plus" label="Añadir hito" disabled={phases.length >= 50} onClick={() => onChange([...phases, emptyPhase()])}/></div>
   </fieldset>;
 }

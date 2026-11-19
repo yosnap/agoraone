@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ChangeReview, useCentralChange } from './central-change';
+import { ActionButton } from '../ui/action-button';
 
 const MAX = 5000;
 
@@ -14,8 +15,8 @@ export function CentralNote({ target, id, onDone, onCancel }: { target: 'cliente
     <small className="muted">{text.length} de {MAX} caracteres</small>
     {change.error && <p className="error" role="alert">{change.error}</p>}
     <div className="actions central-actions">
-      <button type="button" className="button" onClick={onCancel}>Cancelar</button>
-      <button type="submit" className="button primary" disabled={!text.trim() || change.busy}>{change.busy ? 'Preparando…' : 'Revisar la nota'}</button>
+      <ActionButton icon="close" label="Cancelar" onClick={onCancel}/>
+      <ActionButton icon="check" label="Revisar la nota" tone="primary" busyLabel={change.busy && 'Preparando…'} type="submit" disabled={!text.trim() || change.busy}/>
     </div>
   </form>;
 }

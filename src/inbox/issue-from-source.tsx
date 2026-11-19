@@ -4,6 +4,7 @@ import { getClients } from '../api/clients';
 import { IssueToOrca } from '../orca/issue-to-orca';
 import { useOrcaProjects } from '../orca/orca-projects';
 import { ModernSelect } from '../ui/modern-select';
+import { ActionButton } from '../ui/action-button';
 
 type Target = { repo: string | null; visibility: 'public' | 'private' | 'internal' | null };
 const keyOf = (client: string, project: string) => JSON.stringify([client, project]);
@@ -55,12 +56,12 @@ export function IssueFromSource({ source, client: firstClient, project: firstPro
     return <div className="project-note" role="status">
       <p className="ok-note">Issue creada en {made.repo}. <a href={made.url} target="_blank" rel="noopener noreferrer">Abrir en GitHub</a></p>
       <IssueToOrca repo={made.repo} url={made.url} choices={ready}/>
-      <div className="inbox-actions"><button type="button" className="button" onClick={() => onClose(`Issue creada en ${made.repo}.`)}>Cerrar</button></div>
+      <div className="inbox-actions"><ActionButton icon="close" label="Cerrar" onClick={() => onClose(`Issue creada en ${made.repo}.`)}/></div>
     </div>;
   }
   if (projects && projects.length === 0) return <p className="muted">{centralOn
     ? 'Ningún proyecto de Central tiene repositorio de GitHub.'
-    : 'Tus clientes propios no tienen proyectos: una issue va al repositorio de un proyecto de Central, y Central está apagado en Conectores.'} <button type="button" className="button" onClick={() => onClose()}>Cerrar</button></p>;
+    : 'Tus clientes propios no tienen proyectos: una issue va al repositorio de un proyecto de Central, y Central está apagado en Conectores.'} <ActionButton icon="close" label="Cerrar" onClick={() => onClose()}/></p>;
   return <form className="project-note" aria-label="Crear issue" onSubmit={event => { event.preventDefault(); void create(); }}>
     {projects && <label className="field">Proyecto<ModernSelect value={chosen} onChange={look}
       options={projects.map(p => ({ value: keyOf(p.client, p.project), label: `${p.client} › ${p.project}` }))}/></label>}
@@ -71,7 +72,7 @@ export function IssueFromSource({ source, client: firstClient, project: firstPro
     {error && <small className="dictation-error" role="alert">{error}</small>}
     <div className="inbox-actions">
       <button type="submit" className="button primary" disabled={busy || !target?.repo || !title.trim() || !body.trim()}>{busy ? 'Creando en GitHub…' : target?.visibility === 'public' ? 'Crear la issue pública' : 'Crear la issue'}</button>
-      <button type="button" className="button" disabled={busy} onClick={() => onClose()}>Cancelar</button>
+      <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={() => onClose()}/>
     </div>
   </form>;
 }

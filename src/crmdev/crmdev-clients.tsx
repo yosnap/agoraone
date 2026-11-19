@@ -11,6 +11,7 @@ import { clientStatusLabels, filterOptions, labelOf } from './crmdev-labels';
 import { TicketsTable } from './crmdev-tickets';
 import { changeKey, resetChange, useEditing } from './use-crmdev-change';
 import { readKey, useCrmdevRead, type CrmdevRead } from './use-crmdev-view';
+import { ActionButton } from '../ui/action-button';
 
 /** The key of a client's contact for the list it was opened from; null in discreet mode, so it is never asked. */
 export const contactKey = (id: string, estado: string | undefined, discreet: boolean) => (discreet ? null : readKey(`cliente:${id}`, { estado }));
@@ -41,7 +42,7 @@ export function DirectoryLink({ crmdevId }: { crmdevId: string }) {
     <span>{entry ? (entry.crmdevId === crmdevId ? `En tus clientes como «${entry.name}» (${entry.sources.map(origin => originLabels[origin]).join(', ')}).`
       : `En tus clientes como persona de «${entry.name}», por su empresa.`)
       : 'Aún no está en tus clientes de AgoraOne: se lee cada media hora.'}</span>
-    <span className="actions"><button type="button" className="button" disabled={busy} onClick={() => void refresh()}>{busy ? 'Leyendo…' : 'Actualizar clientes'}</button></span>
+    <span className="actions"><ActionButton icon="refresh" label="Actualizar clientes" busyLabel={busy && 'Leyendo…'} disabled={busy} onClick={() => void refresh()}/></span>
     {error && <p className="error" role="alert">{error}</p>}
   </div>;
 }
@@ -60,10 +61,10 @@ export function ClientRecord({ client, estado, gone = false, readAt, discreet, o
     subtitle={client.company && client.company !== client.name ? client.company : undefined} badges={<span className="chip">De CRMDev</span>}
     actions={<span className="actions"><ReadAgain times={[readAt, tickets.data?.readAt, contact.data?.readAt]}/>
       <OpenInCrmdev page={`clientes/${client.id}`} discreet={discreet}/>
-      <button type="button" className="button" onClick={onBack}>Volver a la lista</button></span>}>
+      <ActionButton icon="back" label="Volver a la lista" onClick={onBack}/></span>}>
     <Said text={said}/>
     {gone && <div className="central-wide"><Gone/></div>}
-    <Block title="Datos" actions={!editing && <button type="button" className="button" onClick={() => { setSaid(''); resetChange(changeKey('cliente', client.id)); setEditing(true); }}>Editar</button>}>
+    <Block title="Datos" actions={!editing && <ActionButton icon="edit" label="Editar" onClick={() => { setSaid(''); resetChange(changeKey('cliente', client.id)); setEditing(true); }}/>}>
       {/* Keyed by id (and once when its mail arrives): a reread after a conflict keeps what was typed and the review. */}
       {editing ? <CrmdevEditClient key={`${client.id}:${contact.data ? 'correo' : ''}`} client={client} list={gone ? {} : { estado }} discreet={discreet}
         email={discreet || !contact.data ? undefined : contact.data.email} onCancel={() => setEditing(false)}
@@ -101,7 +102,7 @@ export function CrmdevClients({ discreet, onOpen }: { discreet: boolean; onOpen:
     <Said text={said}/>
     {creating ? <CrmdevNewClient discreet={discreet} onCancel={() => setCreating(false)} onExisting={existing}
       onDone={text => { setCreating(false); setSaid(text); }}/>
-      : <div className="crmdev-new"><button type="button" className="button" onClick={() => { setSaid(''); resetChange(changeKey('cliente-nuevo')); setCreating(true); }}>Nuevo cliente</button></div>}
+      : <div className="crmdev-new"><ActionButton icon="plus" label="Nuevo cliente" onClick={() => { setSaid(''); resetChange(changeKey('cliente-nuevo')); setCreating(true); }}/></div>}
     {read.failure ? <CrmdevProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/>
       : !read.data ? <Loading label="Leyendo los clientes de CRMDev" lines={4}/>
       : <>
@@ -113,7 +114,7 @@ export function CrmdevClients({ discreet, onOpen }: { discreet: boolean; onOpen:
             <td>{c.company && c.company !== c.name ? c.company : '—'}</td>
             <td><Badge labels={clientStatusLabels} value={c.status}/></td>
             <td className="central-row-actions">{c.id && <span className="actions">
-              <button type="button" className="button" aria-label={`Ver ficha de ${c.name ?? 'cliente sin nombre'}`} onClick={() => open.open(c.id as string, c)}>Ver ficha</button>
+              <ActionButton icon="eye" label="Ver ficha" aria-label={`Ver ficha de ${c.name ?? 'cliente sin nombre'}`} onClick={() => open.open(c.id as string, c)}/>
               <OpenInCrmdev page={`clientes/${c.id}`} discreet={discreet}/></span>}</td>
           </tr>)}</tbody>
         </table>}

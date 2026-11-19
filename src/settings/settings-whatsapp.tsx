@@ -7,6 +7,7 @@ import { META_COST_NOTICE } from '../inbox/chat-reply-text';
 import { ModernSelect } from '../ui/modern-select';
 import { Loading, LoadError } from '../ui/load-state';
 import { WhatsAppRulesCard } from './settings-whatsapp-rules';
+import { ActionButton } from '../ui/action-button';
 
 const statusLabels: Record<ChatAccount['status'], string> = {
   pending: 'Pendiente de leer', ok: 'Conectada', auth: 'Revisa la clave', unreachable: 'Sin conexión', error: 'Error',
@@ -79,7 +80,7 @@ function WhatsAppConnectionCard() {
     <form className="field-row" onSubmit={save}>
       <label className="field">{state.hasKey ? 'Cambiar la clave de API de Zernio' : 'Clave de API de Zernio'}
         <input type="password" autoComplete="off" spellCheck={false} value={key} onChange={event => setKey(event.target.value)} placeholder="Va directa al Llavero"/></label>
-      <button className="button primary" disabled={key.trim().length < 8 || busy !== null}>Guardar</button>
+      <ActionButton icon="save" label="Guardar" tone="primary" type="submit" disabled={key.trim().length < 8 || busy !== null}/>
     </form>
     <div className="actions">
       <button type="button" className="button" disabled={!state.hasKey || busy !== null} onClick={() => void run('test', async () => {
@@ -93,9 +94,9 @@ function WhatsAppConnectionCard() {
       })}>{busy === 'sync' ? 'Leyendo…' : 'Leer ahora'}</button>
       {state.hasKey && (forgetting ? <span className="field-row" role="group" aria-label="Confirmar borrar la clave">
         <small>Se deja de leer WhatsApp; los mensajes ya guardados se conservan.</small>
-        <button type="button" className="button danger" disabled={busy !== null} onClick={() => void run('key', async () => { setForgetting(false); return [await putChatKey(null), 'Clave borrada del Llavero.']; })}>Borrar de verdad</button>
-        <button type="button" className="button" onClick={() => setForgetting(false)}>Cancelar</button></span>
-        : <button type="button" className="button danger" disabled={busy !== null} onClick={() => setForgetting(true)}>Borrar la clave…</button>)}
+        <ActionButton icon="trash" label="Borrar de verdad" tone="danger" disabled={busy !== null} onClick={() => void run('key', async () => { setForgetting(false); return [await putChatKey(null), 'Clave borrada del Llavero.']; })}/>
+        <ActionButton icon="close" label="Cancelar" onClick={() => setForgetting(false)}/></span>
+        : <ActionButton icon="trash" label="Borrar la clave…" tone="danger" disabled={busy !== null} onClick={() => setForgetting(true)}/>)}
     </div>
     {state.lastSync && <small className="muted">Última lectura: {when(state.lastSync.at)}{state.lastSync.status === 'ok' ? ` · ${state.lastSync.added} mensajes nuevos` : ` · ${statusLabels[state.lastSync.status === 'busy' ? 'pending' : state.lastSync.status]}`}</small>}
     {state.accounts.length ? <ul className="mail-accounts">{state.accounts.map(account => <li key={account.id}>

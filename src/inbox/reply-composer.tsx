@@ -3,6 +3,7 @@ import { useAssistantName } from '../assistant/assistant-name';
 import { composeReply, getMailAccounts, getReplyDraft, previewMail, sendMail, type InboxItem, type MailAccount, type MailDraft, type MailPreview } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { ActionButton } from '../ui/action-button';
 
 /** A reply to a received mail: written by hand or drafted by Watson (only for mail the model may read),
  * then the exact preview, and it leaves only with «Enviar» on that preview. Nothing is sent otherwise. */
@@ -31,7 +32,7 @@ export function ReplyComposer({ item, onDone, onCancel }: { item: InboxItem; onD
   const set = (key: keyof MailDraft) => (event: { target: { value: string } }) => { if (draft) { setDraft({ ...draft, [key]: event.target.value }); setPreview(null); } };
   const modelMay = item.confidentiality === 'normal';
   if (!draft) return error ? <div className="reply-composer"><LoadError message={error}/>
-    <div className="inbox-actions"><button type="button" className="button" onClick={onCancel}>Cancelar</button></div></div>
+    <div className="inbox-actions"><ActionButton icon="close" label="Cancelar" onClick={onCancel}/></div></div>
     : <Loading label="Preparando la respuesta" lines={2}/>;
   if (preview) return <div className="reply-composer" aria-label="Vista previa del correo">
     <p className="muted">Esto es exactamente lo que se enviará. Solo sale si pulsas «Enviar».</p>
@@ -50,7 +51,7 @@ export function ReplyComposer({ item, onDone, onCancel }: { item: InboxItem; onD
         const missing = sent.refused?.length ? ` El servidor no lo entregó a: ${sent.refused.join(', ')}.` : '';
         onDone(`Correo enviado a ${preview.draft.to.join(', ')}${sent.savedToSent ? '' : ' (no se pudo guardar la copia en «Enviados»)'}.${missing} La tarjeta pasa a «Hechos».`);
       })}>{busy === 'send' ? 'Enviando…' : 'Enviar'}</button>
-      <button type="button" className="button" disabled={Boolean(busy)} onClick={() => setPreview(null)}>Volver a editar</button>
+      <ActionButton icon="edit" label="Volver a editar" disabled={Boolean(busy)} onClick={() => setPreview(null)}/>
     </div>
   </div>;
   const own = received ?? draft.accountId;

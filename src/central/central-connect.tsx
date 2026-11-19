@@ -3,6 +3,7 @@ import { openJobsTab } from '../jobs/jobs-tab';
 import type { Section } from '../shell/shell-state';
 import { LoadError } from '../ui/load-state';
 import { readAtLabel, type CentralFailure } from './use-central-view';
+import { ActionButton } from '../ui/action-button';
 
 /** Without a connection by address and key: where to connect and where the user's own clients are meanwhile. */
 export function CentralConnect({ onOpen }: { onOpen: (section: Section) => void }) {
@@ -11,8 +12,8 @@ export function CentralConnect({ onOpen }: { onOpen: (section: Section) => void 
     <p>Escribe la dirección de tu Central y una clave creada en sus Ajustes › Apps conectadas. La clave se guarda solo en el almacén de secretos del sistema.</p>
     <p>Mientras tanto, tus clientes propios están en Trabajos › Clientes, y la Bandeja, WhatsApp, las reuniones, Fiscal y Watson los usan igual.</p>
     <div className="actions central-actions">
-      <button type="button" className="button" onClick={() => { openJobsTab('clients'); onOpen('jobs'); }}>Ver mis clientes</button>
-      <button type="button" className="button primary" onClick={() => openConnector('central', onOpen)}>Ir a Conectores › Central</button>
+      <ActionButton icon="eye" label="Ver mis clientes" onClick={() => { openJobsTab('clients'); onOpen('jobs'); }}/>
+      <ActionButton icon="link" label="Ir a Conectores › Central" tone="primary" onClick={() => openConnector('central', onOpen)}/>
     </div>
   </article>;
 }

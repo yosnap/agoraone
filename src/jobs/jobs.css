@@ -9,7 +9,7 @@
 .work-runs { display:flex; flex-direction:column; gap:4px; margin:4px 0 }
 .work-runs summary { cursor:pointer; font-size:12px }
 .work-table { width:100%; border-collapse:collapse; font-size:12px; margin-top:6px }
-.work-table th, .work-table td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--c-dfe3d6); font-variant-numeric:tabular-nums }
+.work-table th, .work-table td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--c-dfe3d6); font-variant-numeric:tabular-nums }
 .work-table .num { text-align:right; white-space:nowrap }
 .work-board { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; align-items:start }
 .work-column { background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:12px; padding:10px; min-width:0 }

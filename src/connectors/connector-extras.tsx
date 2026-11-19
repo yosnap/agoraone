@@ -4,6 +4,7 @@ import { scopeLabels, type CentralScope, type CentralStatus } from '../api/centr
 import { isCrmdevProbe } from '../api/crmdev';
 import type { Section } from '../shell/shell-state';
 import { Loading, LoadError } from '../ui/load-state';
+import { ActionButton } from '../ui/action-button';
 
 // What a connector adds to its card beyond the common skeleton, by id. A new connector without extras adds nothing.
 
@@ -113,7 +114,7 @@ export function BrainMcp() {
     <p>AgoraOne no escribe en la configuración de Hermes: ejecuta tú estas órdenes en tu terminal, cambiando <code>&lt;perfil&gt;</code> por el perfil que quieras.</p>
     {error ? <LoadError message={error}/> : !command ? <Loading label="Preparando la orden" lines={2}/> : <>
       <pre className="code-block">{command}</pre>
-      <div className="actions"><button type="button" className="button" onClick={copy}>{copied ? 'Copiado' : 'Copiar órdenes'}</button>
+      <div className="actions"><ActionButton icon="copy" label="Copiar órdenes" busyLabel={copied && 'Copiado'} onClick={copy}/>
         <small className="muted">Usa el nombre {setup?.name}: así los chats de perfil no piden «Permitir» para estas tres herramientas.</small></div>
     </>}
   </>;
@@ -121,7 +122,7 @@ export function BrainMcp() {
 
 /** Mi fábrica: its panel lives in its own section. */
 export function FabricaLink({ onOpen }: ExtraProps) {
-  return <div className="actions"><button type="button" className="button" onClick={() => onOpen('fabrica')}>Ir a Mi fábrica</button>
+  return <div className="actions"><ActionButton icon="link" label="Ir a Mi fábrica" onClick={() => onOpen('fabrica')}/>
     <small className="muted">AgoraOne solo comprueba si está y si responde en este equipo; no la arranca, detiene ni modifica.</small></div>;
 }
 

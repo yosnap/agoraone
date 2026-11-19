@@ -189,7 +189,7 @@ test('«Guardar» nunca olvida: sin carpeta o archivo no se puede guardar', () =
   assert.equal(canSave(costguard, initialFields(costguard)), false);
   assert.equal(canSave(costguard, { ...initialFields(costguard), dataPath: '/datos.sqlite' }), true);
   assert.equal(canSave(guide, initialFields(guide)), false);
-  assert.match(card(fabrica), /<button class="button primary" disabled="">Guardar/);
+  assert.match(card(fabrica), /<button type="submit" class="button action-button tone-primary" disabled="">.*?<span>Guardar<\/span>/);
 });
 
 test('el interruptor de la tarjeta llama a su módulo con el valor marcado', async () => {

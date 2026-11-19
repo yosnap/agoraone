@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { checkQonto, getQonto, putQonto } from '../api/core';
 import { LoadError } from '../ui/load-state';
+import { ActionButton } from '../ui/action-button';
 
 /** Qonto, read-only: the organisation's login and secret key (the key goes to the Keychain and is never shown). */
 export function QontoSettingsCard() {
@@ -26,12 +27,12 @@ export function QontoSettingsCard() {
       <label className="field">Identificador (login)<input value={login} onChange={event => setLogin(event.target.value)} autoComplete="off" spellCheck={false}/></label>
       <label className="field">{state?.hasKey ? 'Cambiar la clave secreta' : 'Clave secreta'}<input type="password" value={secret} onChange={event => setSecret(event.target.value)}
         autoComplete="off" spellCheck={false} placeholder="Va directa al Llavero"/></label>
-      <div className="field-row"><button className="button primary" disabled={!login.trim() && !state?.login}>Guardar</button>
-        <button type="button" className="button" disabled={!state?.hasKey} onClick={() => void run(async () => { const found = await checkQonto(); return `Conectado con ${found.name ?? 'tu organización'} (${found.accounts} cuentas).`; })}>Probar</button>
+      <div className="field-row"><ActionButton icon="save" label="Guardar" tone="primary" type="submit" disabled={!login.trim() && !state?.login}/>
+        <ActionButton icon="play" label="Probar" disabled={!state?.hasKey} onClick={() => void run(async () => { const found = await checkQonto(); return `Conectado con ${found.name ?? 'tu organización'} (${found.accounts} cuentas).`; })}/>
         {state?.hasKey && (forgetting ? <span className="field-row" role="group" aria-label="Confirmar borrar la clave">
-          <button type="button" className="button danger" onClick={() => void run(async () => { setForgetting(false); setState(await putQonto({ secret: null })); return 'Clave borrada del Llavero.'; })}>Borrar de verdad</button>
-          <button type="button" className="button" onClick={() => setForgetting(false)}>Cancelar</button></span>
-          : <button type="button" className="button danger" onClick={() => setForgetting(true)}>Borrar la clave…</button>)}</div>
+          <ActionButton icon="trash" label="Borrar de verdad" tone="danger" onClick={() => void run(async () => { setForgetting(false); setState(await putQonto({ secret: null })); return 'Clave borrada del Llavero.'; })}/>
+          <ActionButton icon="close" label="Cancelar" onClick={() => setForgetting(false)}/></span>
+          : <ActionButton icon="trash" label="Borrar la clave…" tone="danger" onClick={() => setForgetting(true)}/>)}</div>
     </form>
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;

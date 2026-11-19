@@ -5,6 +5,7 @@ import { CleanupProposals, useCleanupProposals } from '../assistant/cleanup-prop
 import { ChatReplyProposals, useChatReplyProposals } from '../assistant/chat-reply-proposals';
 import { inboxStep } from '../assistant/assistant-labels';
 import '../assistant/assistant.css';
+import { ActionButton } from '../ui/action-button';
 
 type Line = { role: 'user' | 'assistant'; text: string; steps: string[]; failed?: boolean };
 const examples = ['Busca el correo de la factura de Hostinger', 'Mueve a la Papelera la publicidad de hace más de 7 días', '¿Qué me ha pedido Ana esta semana?',
@@ -58,7 +59,7 @@ export function InboxChat({ discreet, onChanged }: { discreet: boolean; onChange
     </div>
     <form className="inbox-chat-form" onSubmit={event => { event.preventDefault(); void send(text); }}>
       <input value={text} onChange={event => setText(event.target.value)} maxLength={2000} placeholder={`Escribe a ${assistant}…`} aria-label={`Mensaje para ${assistant}`}/>
-      <button type="submit" className="button primary" disabled={busy || !text.trim()}>{busy ? 'Enviando…' : 'Enviar'}</button>
+      <ActionButton icon="send" label="Enviar" tone="primary" busyLabel={busy && 'Enviando…'} type="submit" disabled={busy || !text.trim()}/>
     </form>
   </aside>;
 }

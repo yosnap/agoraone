@@ -7,6 +7,7 @@ import { actionLabels } from '../inbox/inbox-labels';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { chatRuleForm, chatRuleFromForm, describeChatRule, emptyChatRuleForm, type ChatRuleForm } from './whatsapp-rules';
+import { ActionButton } from '../ui/action-button';
 
 const actions = (Object.keys(actionLabels) as MailRuleAction[]).map(value => ({ value, label: actionLabels[value] }));
 const levels = [{ value: '', label: 'El de la cuenta' }, ...(['local_only', 'private'] as Level[]).map(value => ({ value, label: levelLabels[value] }))];
@@ -54,7 +55,7 @@ export function WhatsAppRulesCard() {
   const scopeOptions = [{ value: '', label: 'El de la cuenta' }, ...scopes.map(s => ({ value: String(s.id), label: s.name }))];
   return <article className="card" aria-labelledby="whatsapp-rules-title">
     <div className="card-head"><h2 id="whatsapp-rules-title">Reglas de WhatsApp</h2>
-      {editing === null && <button type="button" className="button" onClick={() => open(null)}>Añadir regla</button>}</div>
+      {editing === null && <ActionButton icon="plus" label="Añadir regla" onClick={() => open(null)}/>}</div>
     <p>Mandan sobre la clasificación automática de las conversaciones: la primera que coincide decide. El contacto es un número (con o sin prefijo) o el identificador del participante; las palabras se buscan en toda la conversación, también en lo que escribes tú. La etiqueta se muestra como origen de la conversación. El nivel de una regla solo puede ser más estricto que el de la cuenta.</p>
     {rules === null && !error ? <Loading label="Leyendo las reglas"/> : <ul className="mail-accounts">
       {rules?.length === 0 && <li className="muted">Aún no hay reglas.</li>}
@@ -63,12 +64,12 @@ export function WhatsAppRulesCard() {
           <span className={`chip ${rule.enabled ? 'good' : ''}`}>{rule.label ? `${rule.label} · ` : ''}{actionLabels[rule.action]}{rule.enabled ? '' : ' · desactivada'}</span></div>
         <span className="muted">{describeChatRule(rule, accountName)}{rule.scopeId ? ` → ${scopes.find(s => s.id === rule.scopeId)?.name ?? 'ámbito'}` : ''}{rule.confidentiality ? ` · ${levelLabels[rule.confidentiality]}` : ''}</span>
         <div className="field-row">
-          <button type="button" className="button" disabled={busy || editing !== null} onClick={() => open(rule)}>Editar</button>
+          <ActionButton icon="edit" label="Editar" disabled={busy || editing !== null} onClick={() => open(rule)}/>
           <button type="button" className="button" disabled={busy} onClick={() => void act(() => changeChatRule(rule.id, { enabled: !rule.enabled }), rule.enabled ? 'Regla desactivada.' : 'Regla activada.')}>{rule.enabled ? 'Desactivar' : 'Activar'}</button>
           {removing === rule.id ? <span className="field-row" role="group" aria-label={`Confirmar quitar ${rule.name}`}>
-            <button type="button" className="button danger" disabled={busy} onClick={() => void act(() => deleteChatRule(rule.id), 'Regla quitada.').then(() => setRemoving(null))}>Quitar de verdad</button>
-            <button type="button" className="button" onClick={() => setRemoving(null)}>Cancelar</button></span>
-            : <button type="button" className="button danger" disabled={busy} onClick={() => setRemoving(rule.id)}>Quitar…</button>}
+            <ActionButton icon="trash" label="Quitar de verdad" tone="danger" disabled={busy} onClick={() => void act(() => deleteChatRule(rule.id), 'Regla quitada.').then(() => setRemoving(null))}/>
+            <ActionButton icon="close" label="Cancelar" onClick={() => setRemoving(null)}/></span>
+            : <ActionButton icon="trash" label="Quitar…" tone="danger" disabled={busy} onClick={() => setRemoving(rule.id)}/>}
         </div>
       </li>)}
     </ul>}
@@ -84,7 +85,7 @@ export function WhatsAppRulesCard() {
         <label className="field">Nivel<ModernSelect value={form.confidentiality} options={levels} onChange={value => setForm({ ...form, confidentiality: value })}/></label>
       </div>
       <div className="field-row"><button className="button primary" disabled={busy}>{editing === 'new' ? 'Guardar regla' : 'Guardar cambios'}</button>
-        <button type="button" className="button" onClick={close}>Cancelar</button></div>
+        <ActionButton icon="close" label="Cancelar" onClick={close}/></div>
     </form>}
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error} onRetry={rules === null ? load : undefined}/>}
   </article>;

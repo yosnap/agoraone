@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { getLocalModels, getMeetingSettings, getSummarizers, levelLabels, putMeetingSettings, type Level, type MeetingSettings, type Summarizer } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { ActionButton } from '../ui/action-button';
 
 /** The model on this machine that summarizes meetings marked «solo en este Mac» or private (LM Studio,
  * Ollama or any server with the OpenAI chat API on 127.0.0.1). Normal meetings are summarized by Claude. */
@@ -57,7 +58,7 @@ export function MeetingSettingsCard() {
         ? <label className="field">Modelo<ModernSelect value={state.local_url === url.trim() ? state.local_model ?? '' : ''} onChange={value => void save({ local_url: url.trim(), local_model: value || null })}
             options={[{ value: '', label: 'Elige un modelo' }, ...models.map(m => ({ value: m, label: m }))]}/></label>
         : <p className="fiscal-warning">Ese servidor no tiene ningún modelo de chat que funcione en este equipo (los de la nube de Ollama y los de búsqueda no valen para resumir lo privado). Descarga uno, por ejemplo con <code>ollama pull qwen3:14b</code> (unos 9 GB) o desde LM Studio, y vuelve a buscar.</p>)}
-      {state.local_model && <p className="muted">Se usa {state.local_model} en {state.local_url}. <button type="button" className="button" onClick={() => void save({ local_url: null, local_model: null })}>Quitar</button></p>}
+      {state.local_model && <p className="muted">Se usa {state.local_model} en {state.local_url}. <ActionButton icon="trash" label="Quitar" onClick={() => void save({ local_url: null, local_model: null })}/></p>}
     </>}
     {saved && <p className="ok-note" role="status">{saved}</p>}
     {error && <LoadError message={error}/>}

@@ -13,6 +13,7 @@ import { useOrcaProjects } from '../orca/orca-projects';
 import { moduleOn, modulesRead, useModules } from '../shell/modules';
 import '../calendar/calendar.css';
 import './inbox.css';
+import { ActionButton } from '../ui/action-button';
 
 const tabs: { state: InboxState; label: string }[] = [
   { state: 'pending', label: 'Pendientes' }, { state: 'done', label: 'Hechos' }, { state: 'dismissed', label: 'Descartados' },
@@ -151,21 +152,21 @@ export function InboxView({ discreet }: { discreet: boolean }) {
       <div className="segmented" role="group" aria-label="Estado">{tabs.map(tab =>
         <button key={tab.state} aria-pressed={state === tab.state} onClick={() => show(tab.state)}>{tab.label}{count(tab.state)}</button>)}</div>
       <div className="inbox-actions">
-        <button type="button" className="button" onClick={() => void load()}>Actualizar</button>
-        <button type="button" className="button act-delete" onClick={() => void askAdvertising()}>Eliminar publicidad…</button>
+        <ActionButton icon="refresh" label="Actualizar" onClick={() => void load()}/>
+        <ActionButton icon="trash" label="Eliminar publicidad…" tone="danger" small onClick={() => void askAdvertising()}/>
         {selected.size > 0 && <>
           <button type="button" className="button act-delete" onClick={() => confirm(`Eliminar ${selected.size} ${selected.size === 1 ? 'correo seleccionado' : 'correos seleccionados'}`,
             (items ?? []).filter(item => selected.has(item.id)).map(doomed))}>Eliminar {selected.size} seleccionados…</button>
-          <button type="button" className="button" onClick={() => setSelected(new Set())}>Quitar selección</button></>}
+          <ActionButton icon="close" label="Quitar selección" onClick={() => setSelected(new Set())}/></>}
         <button type="button" className="button" aria-pressed={chat} onClick={() => setChat(!chat)}>{chat ? 'Ocultar chat' : 'Chat de la Bandeja'}</button>
-        {state === 'pending' && pendingTotal > 0 && !clearing && <button type="button" className="button" onClick={() => setClearing(true)}>Archivar todo lo que hay ahora…</button>}
+        {state === 'pending' && pendingTotal > 0 && !clearing && <ActionButton icon="archive" label="Archivar todo lo que hay ahora…" onClick={() => setClearing(true)}/>}
       </div>
     </div>
     {clearing && <div className="card-head inbox-bar" role="group" aria-label="Confirmar archivar todo">
       <p>Las {pendingTotal} tarjetas pendientes{chatCounts?.pending ? `, ${chatCounts.pending} de ellas de WhatsApp,` : ''} pasan a «Hechos» y, desde ahora, la Bandeja solo resume el correo que llegue (tampoco el antiguo de las cuentas que añadas).
         {chatCounts?.pending ? ' Una conversación vuelve a Pendientes cuando recibes algo nuevo.' : ''} No se mueve ni se borra ningún correo ni mensaje.</p>
       <div className="inbox-actions"><button type="button" className="button primary" onClick={() => void clearAll()}>Archivar {pendingTotal} tarjetas</button>
-        <button type="button" className="button" onClick={() => setClearing(false)}>Cancelar</button></div>
+        <ActionButton icon="close" label="Cancelar" onClick={() => setClearing(false)}/></div>
     </div>}
     {deleting && <InboxDelete key={deleting.key} title={deleting.title} messages={deleting.messages} onCancel={() => setDeleting(null)} onDone={deleted}/>}
     <div className={`inbox-layout${chat ? '' : ' alone'}`}><div className="inbox-main">

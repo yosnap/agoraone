@@ -3,6 +3,7 @@ import { getTts, putTts, type TtsQuality, type TtsSettings, type TtsView } from 
 import { tryVoice } from '../assistant/speech';
 import { lastProblem, refreshVoice } from '../assistant/voice-player';
 import { ModernSelect } from '../ui/modern-select';
+import { ActionButton } from '../ui/action-button';
 
 const SAMPLE = 'Hola, soy Watson. Hoy tienes una reunión a las once y tres correos esperando.';
 const spanishMacVoices = () => typeof speechSynthesis === 'undefined' ? [] : speechSynthesis.getVoices().filter(v => v.lang.startsWith('es'));
@@ -51,7 +52,7 @@ export function WatsonVoiceChoice() {
       { value: 'best', label: 'Más natural: tarda el doble en empezar' }]}/></label>}
     {settings.engine !== 'macos' && view.installed && <label className="check"><input type="checkbox" checked={settings.openAtStart}
       onChange={event => void save({ openAtStart: event.target.checked })}/> Abrir VoiceStudio en segundo plano al arrancar AgoraOne</label>}
-    <div className="inbox-actions"><button type="button" className="button" onClick={() => tryVoice(SAMPLE)}>Probar</button></div>
+    <div className="inbox-actions"><ActionButton icon="play" label="Probar" onClick={() => tryVoice(SAMPLE)}/></div>
     <small className="muted" role="status">Ahora habla {now.engine === 'voicestudio' ? `VoiceStudio${voicestudio?.find(v => v.id === now.voice) ? ` con «${voicestudio.find(v => v.id === now.voice)!.name}»` : ''}, en este Mac` : 'macOS'}.
       {now.engine === 'voicestudio' && ' La primera frase tarda uno o dos segundos en sonar; el resto se prepara mientras habla.'}</small>
     {(now.problem || lastProblem) && <small className="dictation-error" role="status">{now.problem || lastProblem}</small>}

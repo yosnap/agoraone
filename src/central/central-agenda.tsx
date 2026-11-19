@@ -4,6 +4,7 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { CentralProblem } from './central-connect';
 import { addDays, agendaDays, agendaRangeProblem, dayHeading, madridDay, timeLabel, useCentralRead, viewKey } from './use-central-view';
+import { ActionButton } from '../ui/action-button';
 
 /** «Agenda de Central»: the events of the Google calendars chosen in Central, between two days of Madrid (at most 62),
  * with the client or project each one is linked to. It is not AgoraOne's own Agenda, which stays as it is. In discreet
@@ -20,7 +21,7 @@ export function CentralAgenda({ discreet, onOpen }: { discreet: boolean; onOpen:
     <form className="field-row central-filters" onSubmit={submit}>
       <label className="field">Desde<input type="date" value={typed.desde} onChange={event => setTyped({ ...typed, desde: event.target.value })} required/></label>
       <label className="field">Hasta<input type="date" value={typed.hasta} onChange={event => setTyped({ ...typed, hasta: event.target.value })} required/></label>
-      <div className="actions central-actions"><button type="submit" className="button" disabled={Boolean(problem)}>Ver</button></div>
+      <div className="actions central-actions"><ActionButton icon="search" label="Ver" type="submit" disabled={Boolean(problem)}/></div>
     </form>
     {problem && <p className="notice" role="status">{problem}</p>}
     {read.failure ? <CentralProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/>

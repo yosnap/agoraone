@@ -4,6 +4,7 @@ import { ApiError } from '../api/client';
 import { composeChat, getChatReply, previewChat, sendChat, type ChatPreview, type ChatReplyDraft, type ChatSummary } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { closedReason, counter, META_COST_NOTICE, READ_NOTICE, UNSURE_NOTICE, windowText } from './chat-reply-text';
+import { ActionButton } from '../ui/action-button';
 
 const levelWords = { private: 'privada', local_only: 'solo de este Mac' } as const;
 
@@ -33,7 +34,7 @@ export function ChatReplyForm({ reply, text, instructions, busy, error, assistan
     <div className="inbox-actions">
       <button type="submit" className="button primary" disabled={Boolean(busy) || Boolean(closed) || !text.trim() || count.over}
         title={closed ?? undefined}>{busy === 'preview' ? 'Preparando…' : 'Vista previa'}</button>
-      <button type="button" className="button" disabled={Boolean(busy)} onClick={onCancel}>Cancelar</button>
+      <ActionButton icon="close" label="Cancelar" disabled={Boolean(busy)} onClick={onCancel}/>
     </div>
   </form>;
 }
@@ -64,7 +65,7 @@ export function ChatReplyPreview({ preview, busy, error, locked, unsure = false,
     <div className="inbox-actions">
       <button type="button" className="button primary" disabled={Boolean(busy) || Boolean(closed) || locked} title={closed ?? undefined}
         onClick={onSend}>{busy === 'send' ? 'Enviando…' : 'Enviar'}</button>
-      <button type="button" className="button" disabled={Boolean(busy)} onClick={onBack}>Volver a editar</button>
+      <ActionButton icon="edit" label="Volver a editar" disabled={Boolean(busy)} onClick={onBack}/>
     </div>
   </div>;
 }
@@ -113,7 +114,7 @@ export function ChatReply({ item, initialText, onDone, onCancel }: {
     } finally { setBusy(''); }
   };
   if (!reply) return error ? <div className="reply-composer"><LoadError message={error}/>
-    <div className="inbox-actions"><button type="button" className="button" onClick={onCancel}>Cancelar</button></div></div>
+    <div className="inbox-actions"><ActionButton icon="close" label="Cancelar" onClick={onCancel}/></div></div>
     : <Loading label="Preparando la respuesta" lines={2}/>;
   const draft = { conversationId: reply.conversationId, text };
   if (preview) return <ChatReplyPreview preview={preview} busy={busy} error={error} locked={locked} unsure={unsure} onBack={() => { setPreview(null); setError(''); }}

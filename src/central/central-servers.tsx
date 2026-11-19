@@ -6,6 +6,7 @@ import { CentralProblem } from './central-connect';
 import { OpenInCentral } from './open-in-central';
 import { Block, RecordLayout } from '../ui/record-layout';
 import { dateLabel, levelTone, useCentralRead, viewKey } from './use-central-view';
+import { ActionButton } from '../ui/action-button';
 
 const pct = (value: number | null | undefined) => (value == null ? '—' : `${Math.round(value)} %`);
 const NONE = 'Sin dato';
@@ -56,7 +57,7 @@ const checkOrder = (ok: boolean | null) => (ok === false ? 0 : ok === null ? 1 :
 /** A server's record: health cards, protection checks, containers, the domains its proxy serves and the projects it hosts. */
 function ServerRecord({ id, discreet, onBack, onOpen }: { id: string; discreet: boolean; onBack: () => void; onOpen: (section: Section) => void }) {
   const read = useCentralRead(`servidor:${id}`, () => getCentralServer(id));
-  const back = <button type="button" className="button" onClick={onBack}>Volver a la lista</button>;
+  const back = <ActionButton icon="back" label="Volver a la lista" onClick={onBack}/>;
   if (read.failure) return <><div className="actions central-actions">{back}</div><CentralProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/></>;
   if (!read.data) return <><div className="actions central-actions">{back}</div><Loading label="Leyendo la ficha del servidor" lines={4}/></>;
   const s = read.data;
@@ -130,7 +131,7 @@ export function CentralServers({ discreet, onOpen }: { discreet: boolean; onOpen
         <td>{s.services ? `${s.services.ok ?? '—'}/${s.services.total ?? '—'}` : '—'}{s.services?.down.length ? <small className="muted"> · caídos: {s.services.down.join(', ')}</small> : null}</td>
         <td>{s.protection ? `${s.protection.done ?? '—'}/${s.protection.total ?? '—'}` : '—'}</td>
         <td>{[...new Set(s.projects.map(p => p.project).filter(Boolean))].join(', ') || '—'}</td>
-        <td className="central-row-actions">{s.id && <span className="actions"><button type="button" className="button" onClick={() => setOpen(s.id)}>Ver ficha</button>
+        <td className="central-row-actions">{s.id && <span className="actions"><ActionButton icon="eye" label="Ver ficha" onClick={() => setOpen(s.id)}/>
           <OpenInCentral page={`servidores/${s.id}`} discreet={discreet}/></span>}</td>
       </tr>)}</tbody>
     </table>

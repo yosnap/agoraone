@@ -6,6 +6,7 @@ import { forgetConnector, saveConnector, switchModule } from './connector-action
 import { canSave, canTest, ConnectorForm, hasSaved, initialFields, typedFor, type Fields } from './connector-forms';
 import { extras } from './connector-extras';
 import { moduleLabel, moduleMeaning } from './module-meaning';
+import { ActionButton } from '../ui/action-button';
 
 // One card per connector, with the same skeleton for all: name and status, what it is, how it connects, the form of
 // its kind, «Probar», «Guardar» and «Olvidar…» (confirmed in place) and the switches of its modules. Notices are told
@@ -35,11 +36,11 @@ type ForgetProps = { confirming: boolean; busy: boolean; text: string; onAsk: ()
 
 /** «Olvidar…» asks first, in place, saying exactly what is forgotten. */
 export function ForgetAction({ confirming, busy, text, onAsk, onConfirm, onCancel }: ForgetProps) {
-  if (!confirming) return <button type="button" className="button danger" disabled={busy} onClick={onAsk}>Olvidar…</button>;
+  if (!confirming) return <ActionButton icon="trash" label="Olvidar…" tone="danger" disabled={busy} onClick={onAsk}/>;
   return <span className="field-row connector-forget" role="group" aria-label="Confirmar olvidar la conexión">
     <small>{text}</small>
-    <button type="button" className="button danger" disabled={busy} onClick={onConfirm}>Olvidar de verdad</button>
-    <button type="button" className="button" onClick={onCancel}>Cancelar</button>
+    <ActionButton icon="trash" label="Olvidar de verdad" tone="danger" disabled={busy} onClick={onConfirm}/>
+    <ActionButton icon="close" label="Cancelar" onClick={onCancel}/>
   </span>;
 }
 
@@ -105,14 +106,14 @@ export function ConnectorCard({ connector, modules, labels, focused = false, onS
   const { notice, storeProblem } = connector.state;
   const Body = extra.Body;
   const actions = <span className="actions connector-actions">
-    <button type="button" className="button" disabled={!canTest(connector, fields) || busy !== null} onClick={test}>{busy === 'test' ? 'Probando…' : 'Probar'}</button>
-    <button className="button primary" disabled={!canSave(connector, fields) || busy !== null}>{busy === 'save' ? 'Guardando…' : 'Guardar'}</button>
+    <ActionButton icon="play" label="Probar" busyLabel={busy === 'test' && 'Probando…'} disabled={!canTest(connector, fields) || busy !== null} onClick={test}/>
+    <ActionButton icon="save" label="Guardar" tone="primary" busyLabel={busy === 'save' && 'Guardando…'} type="submit" disabled={!canSave(connector, fields) || busy !== null}/>
     {hasSaved(connector) && <ForgetAction confirming={forgetting} busy={busy !== null} text={forgetText[connector.kind]}
       onAsk={() => setForgetting(true)} onConfirm={forget} onCancel={() => setForgetting(false)}/>}
   </span>;
   return <article ref={card} tabIndex={-1} className={`card connector-card${ring ? ' focused' : ''}`} aria-labelledby={`connector-${connector.id}`}
     data-connector={connector.id} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setRing(false); }}>
-    <div className="card-head"><h2 id={`connector-${connector.id}`}>{connector.name}</h2><span className={`chip ${tone}`}>{label}</span></div>
+    <div className="card-head"><h2 id={`connector-${connector.id}`}>{connector.name}</h2><span className={`status-badge ${tone === 'warn' ? 'waiting' : tone || 'neutral'}`}>{label}</span></div>
     <p>{connector.description}</p>
     <p className="connector-how"><strong>Cómo se conecta.</strong> {howText[connector.kind]}</p>
     {notice && <p className="notice" role="status">{notice}</p>}

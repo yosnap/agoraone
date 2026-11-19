@@ -8,7 +8,7 @@
 .page.fiscal h2 { margin:36px 0 14px }
 .fiscal-table { overflow-x:auto; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fbfaf3) }
 .fiscal-table table { width:100%; border-collapse:collapse; font-size:12px }
-.fiscal-table th, .fiscal-table td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--c-dfe3d6); vertical-align:top }
+.fiscal-table th, .fiscal-table td { padding:8px 10px; text-align:left; border-bottom:1px solid var(--c-dfe3d6) }
 .fiscal-table th { font-weight:600; color:var(--c-355a50) }
 .fiscal-table .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap }
 .fiscal-table tr:last-child td { border-bottom:0 }

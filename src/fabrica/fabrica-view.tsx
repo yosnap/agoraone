@@ -8,6 +8,7 @@ import { Loading, LoadError } from '../ui/load-state';
 import { PANEL_PAGES, canStart, fabricaState, freshFabrica, onMac, readFabrica, stateLabels, stateText, useFabricaRead, waitUntilRunning,
   type FabricaState } from './fabrica-state';
 import './fabrica.css';
+import { ActionButton } from '../ui/action-button';
 
 type Said = { ok: boolean; text: string; browser?: boolean };
 
@@ -38,8 +39,8 @@ function OpenInFabrica({ page, label, checkFirst = false }: { page: FabricaPage;
 export function OpenButtons({ label, busy, said, onOpen }: { label: string; busy: boolean; said: Said | null; onOpen: (inBrowser: boolean) => void }) {
   return <div className="fabrica-open">
     <div className="actions fabrica-actions">
-      <button type="button" className="button" disabled={busy} onClick={() => onOpen(false)}>{busy ? 'Abriendo…' : label}</button>
-      {said?.browser && <button type="button" className="button" disabled={busy} onClick={() => onOpen(true)}>Abrir en el navegador</button>}
+      <ActionButton icon="external" label={label} busyLabel={busy && 'Abriendo…'} disabled={busy} onClick={() => onOpen(false)}/>
+      {said?.browser && <ActionButton icon="external" label="Abrir en el navegador" disabled={busy} onClick={() => onOpen(true)}/>}
     </div>
     {said && <p className={said.ok ? 'ok-note' : 'error'} role="status">{said.text}</p>}
   </div>;
@@ -54,13 +55,13 @@ export function FabricaPanel({ state, discreet, mac, starting, started, onStart,
   return <div className="fabrica-panel">
     <article className={`card fabrica-state ${state}`}>
       <div className="fabrica-state-head">
-        <div><span className="fabrica-badge">{stateLabels[state]}</span><p>{stateText(state, mac, discreet)}</p></div>
+        <div><span className={`status-badge fabrica-badge ${state === 'running' ? 'good' : state === 'stopped' ? 'paused' : 'bad'}`}>{stateLabels[state]}</span><p>{stateText(state, mac, discreet)}</p></div>
         <div className="fabrica-state-actions">
           {canStart(state, mac) && <div className="actions fabrica-actions">
-            <button type="button" className="button primary" disabled={starting} onClick={onStart}>{starting ? 'Arrancando…' : 'Arrancar la fábrica'}</button></div>}
+            <ActionButton icon="power" label="Arrancar la fábrica" tone="primary" busyLabel={starting && 'Arrancando…'} disabled={starting} onClick={onStart}/></div>}
           {usable && !discreet && <OpenInFabrica page="" label="Abrir la fábrica" checkFirst={state === 'stopped'}/>}
           {(state === 'missing' || state === 'wrong') && <div className="actions fabrica-actions">
-            <button type="button" className="button primary" onClick={() => openConnector('fabrica', onOpen)}>Ir a Conectores</button></div>}
+            <ActionButton icon="link" label="Ir a Conectores" tone="primary" onClick={() => openConnector('fabrica', onOpen)}/></div>}
         </div>
       </div>
       {started && <p className={started.ok ? 'ok-note' : 'error'} role="status">{started.text}</p>}
@@ -100,7 +101,7 @@ export function FabricaView({ discreet, onOpen }: { discreet: boolean; onOpen: (
     <div className="eyebrow">MI FÁBRICA{discreet ? ' · MODO DISCRETO' : ''}</div>
     <div className="fabrica-head">
       <h1 id="fabrica-title">Mi fábrica</h1>
-      <div className="actions fabrica-actions"><button type="button" className="button" disabled={read.loading} onClick={read.reload}>Volver a comprobar</button></div>
+      <div className="actions fabrica-actions"><ActionButton icon="refresh" label="Volver a comprobar" disabled={read.loading} onClick={read.reload}/></div>
     </div>
     <p className="page-lead">El panel de tu fábrica de contenido tal cual, con su contraseña: aprobar o rechazar corridas, vigilar a la competencia, guardar ideas y cambiar sus ajustes.</p>
     {read.failure ? <>

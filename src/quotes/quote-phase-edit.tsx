@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { phaseStatusLabels, type PhaseStatus, type QuotePhase } from '../api/quotes';
 import { ModernSelect } from '../ui/modern-select';
 import { ChangeReview, useCentralChange } from '../central/central-change';
+import { ActionButton } from '../ui/action-button';
 
 /** The state and due date of a payment milestone of a quote in Central, changed after seeing exactly what changes. */
 export function QuotePhaseEdit({ quoteId, phase, onDone, onCancel, onReview }: {
@@ -26,8 +27,8 @@ export function QuotePhaseEdit({ quoteId, phase, onDone, onCancel, onReview }: {
     </div>
     {change.error && <p className="error" role="alert">{change.error}</p>}
     <div className="actions central-actions">
-      <button type="button" className="button" onClick={onCancel}>Cancelar</button>
-      <button type="submit" className="button primary" disabled={!Object.keys(changes).length || change.busy}>{change.busy ? 'Preparando…' : 'Revisar el cambio'}</button>
+      <ActionButton icon="close" label="Cancelar" onClick={onCancel}/>
+      <ActionButton icon="check" label="Revisar el cambio" tone="primary" busyLabel={change.busy && 'Preparando…'} type="submit" disabled={!Object.keys(changes).length || change.busy}/>
     </div>
   </form>;
 }

@@ -3,6 +3,7 @@ import { ApiError, createProfileSkill, getHermesCatalog } from '../api/client';
 import type { FiscalFolder } from '../api/core';
 import { LoadError } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { ActionButton } from '../ui/action-button';
 
 const CATEGORY = 'agoraone';
 const NAME = 'guardar-facturas';
@@ -69,8 +70,8 @@ export function BotInbox({ folders, inbox }: { folders: FiscalFolder[]; inbox: s
         <p className="muted">La skill incluye la ruta de la carpeta y, como cualquier skill, la lee el modelo que use ese perfil.</p>
         {error && <LoadError message={error}/>}
         <div className="field-row">
-          <button type="button" className="button primary" disabled={busy || !profileId || !folder} onClick={() => void create()}>{busy ? 'Creando…' : 'Crear la skill'}</button>
-          <button type="button" className="button" disabled={busy} onClick={() => setOpen(false)}>Cancelar</button>
+          <ActionButton icon="plus" label="Crear la skill" tone="primary" busyLabel={busy && 'Creando…'} disabled={busy || !profileId || !folder} onClick={() => void create()}/>
+          <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={() => setOpen(false)}/>
         </div>
       </div>}
     {done && <p className="ok-note" role="status">{done}</p>}

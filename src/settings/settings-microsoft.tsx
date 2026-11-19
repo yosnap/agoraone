@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { getMicrosoftClient, getMicrosoftSignIn, putMicrosoftClient, startMicrosoftSignIn, type MicrosoftSignIn } from '../api/core';
 import { LoadError } from '../ui/load-state';
+import { ActionButton } from '../ui/action-button';
 
 /** The user's own Microsoft app registration (its id is public, not a secret), with the steps to create it. */
 export function MicrosoftClientField() {
@@ -19,7 +20,7 @@ export function MicrosoftClientField() {
   return <div className="mail-microsoft">
     <strong>Aplicación de Microsoft</strong>
     {clientId && !editing ? <p className="muted">Registrada: <code>{clientId}</code> <button type="button" className="button" onClick={() => setEditing(true)}>Cambiar…</button></p> : <>
-      {clientId && <p className="muted">Si cambias el identificador, tendrás que volver a conectar todas las cuentas de Microsoft. <button type="button" className="button" onClick={() => { setEditing(false); setDraft(''); }}>Cancelar</button></p>}
+      {clientId && <p className="muted">Si cambias el identificador, tendrás que volver a conectar todas las cuentas de Microsoft. <ActionButton icon="close" label="Cancelar" onClick={() => { setEditing(false); setDraft(''); }}/></p>}
       <p className="muted">Microsoft solo deja leer el correo a aplicaciones registradas. Se hace una vez y es gratis:</p>
       <ol className="mail-steps">
         <li>Entra en <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noreferrer">Microsoft Entra › Registros de aplicaciones</a> con tu cuenta de Microsoft y pulsa «Nuevo registro».</li>
@@ -30,7 +31,7 @@ export function MicrosoftClientField() {
       </ol>
       <form className="field-row" onSubmit={event => { event.preventDefault(); void save(draft.trim()); }}>
         <label className="field">Id. de aplicación (cliente)<input value={draft} onChange={event => setDraft(event.target.value)} placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" spellCheck={false} autoComplete="off"/></label>
-        <button className="button primary" disabled={draft.trim().length < 36}>Guardar</button>
+        <ActionButton icon="save" label="Guardar" tone="primary" type="submit" disabled={draft.trim().length < 36}/>
       </form>
     </>}
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}

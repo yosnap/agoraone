@@ -8,6 +8,7 @@ import { CrmdevEditTicket } from './crmdev-edit-ticket';
 import { categoryLabels, dayLabel, filterOptions, labelOf, priorityLabels, ticketStatusLabels } from './crmdev-labels';
 import { changeKey, resetChange, useEditing } from './use-crmdev-change';
 import { namesOf, readKey, useCrmdevRead } from './use-crmdev-view';
+import { ActionButton } from '../ui/action-button';
 
 /** What the screen filters itself, over the tickets that came: CRMDev's API filters tickets only by state and client. */
 export type ScreenFilters = { prioridad?: string; proyecto?: string };
@@ -33,7 +34,7 @@ export function TicketsTable({ tickets, discreet, withClient = true, onEdit }: {
       <td>{t.project ?? '—'}</td>
       <td className="central-date">{dayLabel(t.createdAt)}</td>
       <td className="central-row-actions">{t.id && <span className="actions">
-        {onEdit && <button type="button" className="button" aria-label={`Editar el ticket ${t.title ?? ''}`} onClick={() => onEdit(t.id as string)}>Editar</button>}
+        {onEdit && <ActionButton icon="edit" label="Editar" aria-label={`Editar el ticket ${t.title ?? ''}`} onClick={() => onEdit(t.id as string)}/>}
         <OpenInCrmdev page={`tickets/${t.id}`} discreet={discreet}/></span>}</td>
     </tr>)}</tbody>
   </table>;

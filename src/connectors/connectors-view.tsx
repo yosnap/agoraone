@@ -6,6 +6,7 @@ import { Loading, LoadError } from '../ui/load-state';
 import { ConnectorCard } from './connector-card';
 import { takeConnectorLink } from './open-connector';
 import './connectors.css';
+import { ActionButton } from '../ui/action-button';
 
 /** Conectores: the only place where an external module is connected, one card per connector of `GET /connectors`.
  * Always shown (it is not a module); each connector keeps the switch of its own modules. */
@@ -34,7 +35,7 @@ export function ConnectorsPage({ found, error, focused, modules, labels, onReloa
     <div className="eyebrow">CONECTORES</div>
     <h1 id="connectors-title">Conectores</h1>
     <p className="page-lead">Tus otras herramientas, conectadas a AgoraOne. Cada una tiene aquí su conexión, «Probar», «Guardar», «Olvidar» y el interruptor de sus módulos. Las direcciones, rutas y puertos se guardan en este equipo y las claves, solo en el almacén de secretos del sistema.</p>
-    <div className="actions page-actions"><button type="button" className="button" onClick={onReload}>Comprobar de nuevo</button></div>
+    <div className="actions page-actions"><ActionButton icon="refresh" label="Comprobar de nuevo" onClick={onReload}/></div>
     {error ? <LoadError message={error} onRetry={onReload}/> : !found ? <Loading label="Leyendo los conectores"/> : <div className="connectors-list">
       {found.map(connector => <ConnectorCard key={connector.id} connector={connector} modules={modules} labels={labels}
         focused={focused === connector.id} onSaved={onSaved} onOpen={onOpen}/>)}

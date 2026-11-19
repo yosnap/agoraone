@@ -8,6 +8,7 @@ import { CrmdevEditTask, CrmdevNewTask } from './crmdev-edit-task';
 import { dayLabel, filterOptions, priorityLabels, taskStatusLabels } from './crmdev-labels';
 import { changeKey, resetChange, useEditing } from './use-crmdev-change';
 import { readKey, useCrmdevRead } from './use-crmdev-view';
+import { ActionButton } from '../ui/action-button';
 
 /** Some tasks: title (and its description), state, priority, date, assignee's name only and, unless they all belong to
  * one project, the project; with `onEdit`, an «Editar» button on each. In discreet mode neither descriptions nor the
@@ -26,8 +27,8 @@ export function TasksTable({ tasks, discreet, withProject = true, onEdit }: {
       <td className="central-date">{dayLabel(t.dueDate)}</td>
       {!discreet && <td>{t.assignee?.name ?? '—'}</td>}
       {withProject && <td>{t.project ?? '—'}</td>}
-      {onEdit && <td className="central-row-actions">{t.id && <button type="button" className="button" aria-label={`Editar la tarea ${t.title ?? ''}`}
-        onClick={() => onEdit(t.id as string)}>Editar</button>}</td>}
+      {onEdit && <td className="central-row-actions">{t.id && <ActionButton icon="edit" label="Editar" aria-label={`Editar la tarea ${t.title ?? ''}`}
+        onClick={() => onEdit(t.id as string)}/>}</td>}
     </tr>)}</tbody>
   </table>;
 }
@@ -54,7 +55,7 @@ export function EditableTasks({ tasks, list, discreet, withProject = true, proje
       onDone={done} onCancel={close}/>
       // Keyed by id: a reread (after a conflict, say) never remounts it, so what was typed and the review stay.
       : task ? <CrmdevEditTask key={task.id} task={task} list={editing.gone ? {} : list} gone={editing.gone} discreet={discreet} onDone={done} onCancel={close}/>
-      : <div className="crmdev-new"><button type="button" className="button" onClick={create}>Nueva tarea</button></div>}
+      : <div className="crmdev-new"><ActionButton icon="plus" label="Nueva tarea" onClick={create}/></div>}
     <TasksTable tasks={tasks} discreet={discreet} withProject={withProject} onEdit={open}/>
   </>;
 }

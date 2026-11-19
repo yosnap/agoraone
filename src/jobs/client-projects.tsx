@@ -6,6 +6,7 @@ import { OrcaLaunch } from '../orca/orca-launch';
 import { useOrcaState } from '../orca/orca-projects';
 import { projectKey } from './project-key';
 import { count } from './work-format';
+import { ActionButton } from '../ui/action-button';
 
 type Period = '24h' | '7d' | '30d';
 const statuses: Record<string, string> = { ACTIVE: 'activo', MAINTENANCE: 'mantenimiento', DORMANT: 'parado', ARCHIVED: 'archivado' };
@@ -59,7 +60,7 @@ export function ClientProjectsSection({ period, discreet }: { period: Period; di
             <td>{!usable ? <span className="muted">—</span> : project.ambiguous ? <span className="muted" title="Otro proyecto se llama igual: no se puede saber de cuál es la carpeta">nombre repetido</span> : project.usage ? (project.usage[period].tokens ? `${count(project.usage[period].tokens)} tokens · ${project.usage[period].turns === 1 ? '1 turno' : `${project.usage[period].turns} turnos`}` : '0')
               : <span className="muted">sin carpeta</span>}</td>
             <td>{fromHermes ? `${count(fromHermes)} tokens` : <span className="muted">{project.ambiguous ? 'nombre repetido' : '—'}</span>}</td>
-            {orcaProjects.length > 0 && <td>{ready ? <button type="button" className="button" disabled={orca === key} onClick={() => setOrca(key)}>Abrir en Orca…</button>
+            {orcaProjects.length > 0 && <td>{ready ? <ActionButton icon="external" label="Abrir en Orca…" disabled={orca === key} onClick={() => setOrca(key)}/>
               : <span className="muted" title="Sin repositorio de GitHub en Central, o ese repositorio no está en Orca">—</span>}</td>}
           </tr>
           {orca === key && orcaProjects.length > 0 && <tr><td colSpan={5}><OrcaLaunch choices={orcaProjects.filter(p => p.client === client.name && p.project === project.name)} client={client.name} project={project.name} source={{ kind: 'project' }}

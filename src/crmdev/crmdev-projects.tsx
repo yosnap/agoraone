@@ -10,6 +10,7 @@ import { dayLabel, filterOptions, labelOf, minutesLabel, projectStatusLabels, pr
 import { EditableTasks } from './crmdev-tasks';
 import { changeKey, resetChange, useEditing } from './use-crmdev-change';
 import { readKey, useCrmdevRead, type CrmdevRead } from './use-crmdev-view';
+import { ActionButton } from '../ui/action-button';
 
 const progressLabel = (progress: number | null) => (progress == null ? '—' : `${progress} %`);
 
@@ -63,10 +64,10 @@ export function ProjectRecord({ project, list = {}, gone = false, readAt, discre
   return <RecordLayout titleId="crmdev-project-title" title={project.name ?? 'Proyecto sin nombre'} badges={<span className="chip">De CRMDev</span>}
     actions={<span className="actions"><ReadAgain times={[readAt, tasks.data?.readAt, hours.data?.readAt]}/>
       <OpenInCrmdev page={`proyectos/${project.id}`} discreet={discreet}/>
-      <button type="button" className="button" onClick={onBack}>Volver a la lista</button></span>}>
+      <ActionButton icon="back" label="Volver a la lista" onClick={onBack}/></span>}>
     <Said text={said}/>
     {gone && <div className="central-wide"><Gone/></div>}
-    <Block title="Estado" actions={!editing && <button type="button" className="button" onClick={() => { setSaid(''); resetChange(changeKey('proyecto', project.id)); setEditing(true); }}>Editar</button>}>
+    <Block title="Estado" actions={!editing && <ActionButton icon="edit" label="Editar" onClick={() => { setSaid(''); resetChange(changeKey('proyecto', project.id)); setEditing(true); }}/>}>
       {editing ? <CrmdevEditProject key={project.id} project={project} list={gone ? {} : list} onCancel={() => setEditing(false)}
         onDone={text => { setEditing(false); setSaid(text); }}/>
         : <Facts items={[['Estado', labelOf(projectStatusLabels, project.status)], ['Progreso', progressLabel(project.progress)],
@@ -110,7 +111,7 @@ export function CrmdevProjects({ discreet, onOpen }: { discreet: boolean; onOpen
             <td>{labelOf(projectTypeLabels, p.type)}</td>
             <td className="central-date">{dayLabel(p.deadline)}</td>
             <td className="central-row-actions">{p.id && <span className="actions">
-              <button type="button" className="button" aria-label={`Ver ficha de ${p.name ?? 'proyecto sin nombre'}`} onClick={() => open.open(p.id as string, p)}>Ver ficha</button>
+              <ActionButton icon="eye" label="Ver ficha" aria-label={`Ver ficha de ${p.name ?? 'proyecto sin nombre'}`} onClick={() => open.open(p.id as string, p)}/>
               <OpenInCrmdev page={`proyectos/${p.id}`} discreet={discreet}/></span>}</td>
           </tr>)}</tbody>
         </table>}
