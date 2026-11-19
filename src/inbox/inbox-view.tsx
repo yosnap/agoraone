@@ -4,6 +4,7 @@ import { archiveAllInbox, createMailRule, decideChat, decideInbox, getChatSettin
 import { LoadError, Loading } from '../ui/load-state';
 import { sender, type CardAction } from './inbox-labels';
 import { InboxChat } from './inbox-chat';
+import { SourceSwitch } from './inbox-tools';
 import { InboxDelete, type Doomed } from './inbox-delete';
 import { InboxTools, readView } from './inbox-tools';
 import { arrange, cardKey, type Card, type View } from './inbox-cards';
@@ -171,10 +172,14 @@ export function InboxView({ discreet }: { discreet: boolean }) {
     {deleting && <InboxDelete key={deleting.key} title={deleting.title} messages={deleting.messages} onCancel={() => setDeleting(null)} onDone={deleted}/>}
     <div className={`inbox-layout${chat ? '' : ' alone'}`}><div className="inbox-main">
     <InboxTools view={view} onChange={setView} chat={withChat} kinds={[...new Set(cards.map(card => card.item.kind))]}/>
+    {(withChat || scopes.length > 1) && <div className="inbox-filters-row">
+    {withChat && <SourceSwitch value={view.source} onChange={source => setView({ ...view, source })}
+      counts={{ all: cards.length, mail: cards.filter(card => card.source === 'mail').length, chat: cards.filter(card => card.source === 'chat').length }}/>}
     {scopes.length > 1 && <div className="segmented inbox-scopes" role="group" aria-label="Ámbito">
       <button type="button" aria-pressed={shownScope === ALL} onClick={() => setScopeTab(ALL)}>Todas · {shown.length}</button>
       {scopes.map(scope => <button key={scope} type="button" aria-pressed={shownScope === scope} onClick={() => setScopeTab(scope)}>
         <span className="scope-dot" style={{ background: colorOf(scope) }} aria-hidden="true"/>{scope} · {groups.get(scope)!.length}</button>)}
+    </div>}
     </div>}
     {counts?.since && <p className="muted">Bandeja desde el {new Date(counts.since).toLocaleString('es-ES', { dateStyle: 'long', timeStyle: 'short' })}: lo anterior no se resume.</p>}
     {counts && counts.unread > 0 && <p className="muted" role="status">{counts.unread} correos recientes esperan su resumen; se leen en segundo plano.</p>}

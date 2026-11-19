@@ -2,7 +2,7 @@ import type { SVGProps } from 'react';
 
 /** The icons of the standard actions, drawn inline (no icon package): 24×24 strokes in the text colour. */
 export type ActionIconName = 'pause' | 'play' | 'edit' | 'trash' | 'eye' | 'file' | 'external' | 'refresh' | 'plus' | 'save' | 'check'
-  | 'send' | 'back' | 'close' | 'archive' | 'download' | 'upload' | 'link' | 'copy' | 'search' | 'filter' | 'mail' | 'settings' | 'power';
+  | 'send' | 'back' | 'close' | 'archive' | 'download' | 'upload' | 'link' | 'copy' | 'search' | 'filter' | 'mail' | 'settings' | 'power' | 'whatsapp';
 
 const PATHS: Record<ActionIconName, string[]> = {
   pause: ['M8 5v14', 'M16 5v14'],
@@ -29,6 +29,7 @@ const PATHS: Record<ActionIconName, string[]> = {
   mail: ['M3 6h18v12H3z', 'M3 7l9 6 9-6'],
   settings: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19 12l2-1-1-3-2.2.2-1.4-1.4L16.6 5 13.6 4 12.6 6h-1.2l-1-2-3 1 .2 2.2-1.4 1.4L4 8.4l-1 3 2 1v1.2l-2 1 1 3 2.2-.2 1.4 1.4-.2 2.2 3 1 1-2h1.2l1 2 3-1-.2-2.2 1.4-1.4 2.2.2 1-3-2-1z'],
   power: ['M12 3v9', 'M6.3 6.3a8 8 0 1 0 11.4 0'],
+  whatsapp: ['M3.5 20.5l1.3-4.1A8.5 8.5 0 1 1 8 19.5z', 'M9 8.2c.3 3.4 3.3 6.4 6.8 6.8l1.2-1.6-2.2-1.1-1 1a4.3 4.3 0 0 1-2.6-2.6l1-1-1.1-2.2z'],
 };
 
 /** One action icon; decorative (hidden from screen readers), the button around it carries the name. */

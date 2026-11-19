@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SourceIcon } from './inbox-tools';
 import { getChatMessages, type ChatMessage, type ChatSummary, type InboxState, type OrcaProject } from '../api/core';
 import { EventForm } from '../calendar/event-form';
 import { OrcaLaunch } from '../orca/orca-launch';
@@ -42,7 +43,7 @@ export function ChatCard({ item, discreet, isOpen, show, orcaProjects, onDecide,
     '', `(Conversación de WhatsApp con ${name}${item.lastIncomingAt ? ` del ${new Date(item.lastIncomingAt).toLocaleDateString('es-ES')}` : ''}.)`].join('\n').trim();
   return <li className={`card inbox-card chat-card${(isOpen('noting') || isOpen('issue') || isOpen('replying')) && !discreet ? ' wide' : ''}`}>
     <div className="card-head">
-      <div className="inbox-chips"><span className="chip source-whatsapp">WhatsApp</span>
+      <div className="inbox-chips"><span className="chip source-whatsapp"><SourceIcon source="chat"/>WhatsApp</span>
         {item.label && <span className="chip">{item.label}</span>}
         <span className={`chip kind-${item.kind}`}>{kindLabels[item.kind]}</span>
         {item.source === 'rule' && item.ruleName && <span className="chip">Regla: {item.ruleName}</span>}

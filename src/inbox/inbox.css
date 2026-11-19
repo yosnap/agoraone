@@ -119,3 +119,15 @@
 .chat-reply-closed { margin:0; padding:9px 11px; font-size:12px; border-radius:8px; background:var(--c-f3e6c4); color:var(--c-7a5717); border:1px solid var(--c-f3e6c4) }
 .chat-reply-count { align-self:flex-end; font-size:11px; color:var(--c-6f8379) }
 .chat-reply-count.over { color:var(--c-7a5717); font-weight:600 }
+
+.inbox-filters-row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:4px 0 12px }
+.inbox-filters-row .inbox-scopes { margin:0 }
+.inbox-sources button, .chip.source-whatsapp, .chip.source-mail { display:inline-flex; align-items:center; gap:6px }
+.source-icon-chat { color:#1f8f4e }
+.source-icon-mail { color:#2f6db3 }
+.chip.source-mail { background:#dbe8f6; color:#21466f }
+:root[data-theme="dark"] .chip.source-mail { background:#1c2f45; color:#bcd5f2 }
+:root[data-theme="dark"] .source-icon-chat { color:#7fd6a0 }
+:root[data-theme="dark"] .source-icon-mail { color:#9cc2ee }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .chip.source-mail { background:#1c2f45; color:#bcd5f2 }
+  :root:not([data-theme="light"]) .source-icon-chat { color:#7fd6a0 } :root:not([data-theme="light"]) .source-icon-mail { color:#9cc2ee } }
