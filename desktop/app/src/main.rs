@@ -131,7 +131,7 @@ fn notify_loop(app: AppHandle, link: agora_server::core::CoreLink) {
 
 /// Only AgoraOne itself loads inside the window.
 fn own(url: &Url) -> bool {
-    url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(PORT)
+    url.scheme() == "http" && matches!(url.host_str(), Some("localhost" | "127.0.0.1")) && url.port() == Some(PORT)
 }
 
 /// ⌃⌥W from any app (user's choice, 15/11/2026): AgoraOne comes to the front and Watson starts listening.
