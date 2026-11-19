@@ -213,6 +213,7 @@ _cache: dict[tuple, tuple[float, object, float]] = {}  # key → (when on _clock
 _flights: dict[tuple, threading.Lock] = {}  # one reading at a time per cache key: the second waits for the first
 _busy_until: dict[tuple, float] = {}  # per connection: CRMDev asked to wait until then
 _generation = 0  # bumped when the cache is emptied: a reading begun before never fills it afterwards
+_key_known: tuple[object, bool] | None = None  # (the secret store asked, whether it holds the key), until clear_cache
 _cache_lock = threading.Lock()
 
 
@@ -221,11 +222,12 @@ def _clock() -> float:
 
 
 def clear_cache() -> None:
-    """Forgets every reading and every «wait» (on saving or forgetting the connection)."""
-    global _generation
+    """Forgets every reading, every «wait» and whether the key is there (on saving or forgetting the connection)."""
+    global _generation, _key_known
     with _cache_lock:
         _cache.clear()
         _busy_until.clear()
+        _key_known = None
         _generation += 1
 
 
@@ -382,6 +384,26 @@ def probe(target: Connection) -> dict:
 
 def connection_of(connection, secrets) -> Connection | None:
     return web_api.connection_of(SPEC, connection, secrets)
+
+
+def has_key(secrets) -> bool:
+    """Whether the secret store holds the key, asked once and remembered until the connection is saved or forgotten
+    in Conectores (`clear_cache`), so a screen read often (the directory of clients) does not open the store each
+    time. A key removed by hand from the store is noticed on the next save or restart; every request to CRMDev still
+    reads the key itself (`connection_of`). A store that fails is not remembered: it may work on the next ask."""
+    global _key_known
+    with _cache_lock:
+        known, generation = _key_known, _generation
+    if known is not None and known[0] is secrets:
+        return known[1]
+    try:
+        present = web_api.read_key(SPEC, secrets) is not None
+    except WebApiError:
+        return False
+    with _cache_lock:
+        if _generation == generation:  # saved or forgotten meanwhile: what was read may be old
+            _key_known = (secrets, present)
+    return present
 
 
 def saved_url(connection) -> str | None:

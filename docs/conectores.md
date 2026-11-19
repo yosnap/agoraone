@@ -1,0 +1,225 @@
+# Conectores (1.7)
+
+«Conectores» es el único sitio donde se conecta cada módulo externo de AgoraOne: Central, CRMDev, Mi fábrica,
+CostGuard y el MCP del cerebro. Decisión del usuario del 19/11/2026 (`AGENTS.md`). La sección se ve siempre: ya no
+hay un módulo «Conectores» que se pueda apagar, y cada conector conserva el interruptor de sus propios módulos.
+
+WhatsApp (Zernio), Jev, Qonto y las cuentas de correo no son conectores: siguen en sus pestañas de Ajustes.
+
+## Qué es un conector
+
+Cada conector es una entrada del registro del núcleo (`connectors.REGISTRY`) con un tipo, y cada tipo tiene un
+adaptador que responde siempre con el mismo estado (`GET /connectors`):
+
+| Tipo | Cómo se conecta | Conectores |
+|---|---|---|
+| `web_api` | Dirección y clave. La clave va solo al almacén de secretos del sistema (Llavero en macOS), con una cuenta propia por conector, y nunca sale en respuestas, errores, registros ni la base. | Central, CRMDev |
+| `local_port` | Una web de este equipo en un puerto de `127.0.0.1`. | Mi fábrica |
+| `local_file` | Un archivo de datos de este equipo, leído en solo lectura. | CostGuard |
+| `guide` | Nada que conectar: la tarjeta enseña los pasos para hacerlo a mano. | MCP del cerebro |
+
+Lo que llega de un conector es dato: nunca se interpreta como instrucciones ni dispara ninguna acción.
+
+## La tarjeta
+
+Todas las tarjetas tienen el mismo esqueleto:
+
+- nombre, estado («Sin configurar», «Dirección y clave guardadas», «En marcha · responde», «No responde», «Hay que
+  volver a conectarlo»…) y qué es;
+- cómo se conecta y el formulario de su tipo;
+- **Probar**: prueba con lo escrito o, si falta, con lo guardado. No guarda nada;
+- **Guardar**: un campo vacío no cambia lo guardado. Una dirección de otro servidor, puerto o esquema exige volver
+  a escribir la clave, para que la guardada nunca viaje a un servidor nuevo;
+- **Olvidar…**, con confirmación: en una web API borra solo la clave y conserva la dirección y lo ya leído; en uno
+  local olvida su carpeta, puerto o archivo sin tocar nada del equipo;
+- los interruptores de sus módulos (Central y Presupuestos en la de Central, CRMDev en la suya, Mi fábrica en la
+  suya).
+
+Conectar, probar y olvidar funcionan con cualquier módulo apagado. Ajustes › Módulos solo lista los módulos internos
+y lleva a Conectores para el resto ([instalacion-modulos.md](instalacion-modulos.md)).
+
+## Central
+
+Central es una app aparte del usuario y su código no se trae a AgoraOne.
+
+- **Conexión**: solo por su API web (`/api/v1/*`), con su dirección y una clave que se crea en Ajustes › Apps
+  conectadas de Central. Fuera de este equipo solo se admite https, sin seguir redirecciones. El modo antiguo por
+  carpeta (con bun y stdio) está retirado.
+- **Permisos de la clave**: tras «Probar», la tarjeta enseña la versión de Central y lo que permite la clave:
+  - `lectura`: clientes, proyectos, webs, servidores y agenda;
+  - `presupuestos`: ver y crear presupuestos en borrador;
+  - `escritura`: cambiar clientes, sus notas y el estado y la fase de un proyecto, viendo antes el cambio exacto.
+- **Módulos**: «Central» (la sección y la lectura de sus clientes cada 30 minutos) y «Presupuestos» (la sección y
+  los borradores de Watson, que solo necesitan el permiso `presupuestos`). Se encienden y apagan por separado en la
+  tarjeta. Presupuestos y lo que Watson propone están en [watson-actua.md](watson-actua.md).
+- **Quien solo tenía la carpeta**: conserva la instantánea ya leída, que siguen usando la Bandeja, WhatsApp,
+  Reuniones, Fiscal y Watson, y la tarjeta dice «Ahora Central se conecta con su dirección y una clave de acceso».
+  Al guardar una conexión completa, el ajuste antiguo de la carpeta se borra; la instantánea se queda.
+- Su web se abre en una ventana propia de la app de escritorio, nunca en un marco.
+
+La API de Central está documentada en su propio repositorio (`docs/API.md`).
+
+## CRMDev
+
+CRMDev es el CRM de proyectos, tareas, tickets y clientes de la organización del usuario, otra app aparte.
+
+### Conexión
+
+- Dirección (por ejemplo `https://crm.example.com`) y una **clave de organización** `crm_…`, que crea un propietario o
+  un administrador en Ajustes › API Keys de CRMDev. Se guarda solo en el Llavero.
+- Por qué esta clave: es la que da acceso a las listas de proyectos, tareas, tickets y clientes de toda la
+  organización por `/api/mcp/rest`. Las claves por proyecto no ven la lista de proyectos ni la de clientes.
+- La clave tiene los permisos completos de quien la creó, también los de borrar. Por eso el núcleo solo deja salir
+  una **lista cerrada** de herramientas. Lecturas: `list_projects`, `list_tasks`, `list_clients`, `list_tickets`,
+  `list_members` y `get_project_time_report`. Escrituras: las de [Escrituras](#escrituras). Ninguna `delete_*` está
+  en la lista, y hay una prueba que las recorre todas y comprueba que no sale ninguna petición. El transporte
+  vuelve a comprobar cada petición antes de enviarla.
+- «Probar» pregunta a CRMDev qué herramientas ofrece, sin ejecutar ninguna, y enseña «Conectado: organización» con
+  las que usará AgoraOne. Un 403 explica que el plan de CRMDev no incluye la API (módulo MCP).
+- **Límite de peticiones**: CRMDev no deja hacer muchas seguidas. Cada lista se guarda 60 s en memoria y, si CRMDev
+  pide esperar (429), AgoraOne lo dice y respeta la espera sin reintentar por su cuenta.
+- **Sin paginación**: CRMDev no tiene páginas, así que las listas son las 100 más recientes y la pantalla lo dice.
+  Para el directorio de clientes se piden hasta 1000.
+- Módulo «CRMDev»: mientras el usuario no lo toque, está encendido si hay una dirección guardada. Apagado, sale del
+  menú, sus rutas responden 404 sin pedir nada, no hay lectura en segundo plano y su ventana se cierra.
+
+### Vistas
+
+La sección «CRMDev» del menú tiene cuatro pestañas a todo el ancho, con filtros y fichas:
+
+- **Proyectos**: nombre, estado, progreso, tipo y fecha límite. La ficha suma las horas (total de CRMDev, por
+  persona y por tarea) y lista sus tareas.
+- **Tareas**: título, descripción, estado, prioridad, fecha, persona asignada (solo su nombre) y proyecto.
+- **Tickets**: título, descripción, estado, prioridad, categoría, quién lo abrió, cliente, proyecto y fecha. Si el
+  plan de CRMDev no tiene el módulo de soporte, se dice.
+- **Clientes**: nombre, empresa y estado. Solo la ficha trae el correo, y sus tickets.
+
+Todo se pinta como texto: sin HTML, sin Markdown y sin enlaces creados a partir de lo que llega.
+
+### Ventana «Abrir en CRMDev»
+
+«Abrir CRMDev», «Abrir en CRMDev» (proyectos, clientes y tickets) y «Abrir las tareas en CRMDev» abren su web en
+una ventana propia de la app de escritorio, nunca en un marco. Solo se abre lo que pide el usuario, de una lista
+cerrada de páginas (`panel`, `proyectos`, `tareas`, `clientes`, `soporte` y la ficha de un proyecto, un cliente o un
+ticket), con la dirección guardada.
+
+- Solo carga el origen de la dirección guardada (https, o http solo en `localhost`; nunca `127.0.0.1`, `::1` ni un
+  puerto de AgoraOne). Los enlaces a otros sitios no se siguen dentro: AgoraOne avisa y los abre en el navegador.
+- Tiene su propio almacén de sesión, distinto del de AgoraOne, Central y Mi fábrica. La clave de la API nunca llega
+  a la ventana: se entra con el inicio de sesión de CRMDev.
+- **Passkeys**: pueden no funcionar en el visor web de la app (WebKitGTK en Linux y algunas versiones de macOS). En
+  la ventana se entra con el código por correo o con la contraseña, y siempre está «Abrir en el navegador».
+- **Entrar con GitHub** no funciona dentro de la ventana, porque la vuelta de GitHub llega al navegador. El aviso
+  lo explica y ofrece abrir CRMDev en el navegador.
+- **Sin descargas** (decisión del usuario, 19/11/2026): la ventana nunca descarga. Una descarga o una exportación
+  (también `blob:` o `data:`) se avisa en AgoraOne con «Abrir en el navegador» en la misma página.
+- **Ticket o Soporte sin sesión**: tras entrar, CRMDev lleva a su panel en vez de a la página pedida, y hay que
+  volver a pulsar el botón. AgoraOne lo avisa. Es una limitación de CRMDev, apuntada como mejora suya.
+- Sin la app de escritorio (AgoraOne en el navegador) se ofrece «Abrir en el navegador».
+
+### Escrituras
+
+Decisión del usuario del 19/11/2026: crear y cambiar en CRMDev solo tras ver el cambio exacto y pulsar «Guardar en
+CRMDev». **Nunca se borra nada.**
+
+- Qué se puede hacer: «Nueva tarea» (pestaña Tareas y ficha de proyecto), «Editar» en tareas, tickets, la ficha de
+  proyecto y la de cliente, «Nuevo cliente» y «Crear en CRMDev» para un cliente sin ubicar. Son las herramientas
+  `create_task`, `update_task`, `update_project`, `create_client`, `update_client` y `update_ticket`. No se crean
+  proyectos ni tickets, y no se tocan las notas del cliente ni la descripción del proyecto.
+- Cada formulario pide antes «Revisar el cambio», que enseña las filas antes y después. La herramienta la elige el
+  núcleo según la clase de cambio, nunca la pantalla. La ficha de confirmación sirve una vez y caduca a los 15
+  minutos.
+- Al confirmar se vuelve a leer la ficha. Si algo de lo enseñado cambió entretanto, se avisa y no se envía; si
+  CRMDev ya tiene el valor nuevo, no se envía nada y se da por hecho.
+- Un cliente nuevo busca antes duplicados por nombre o correo entre los 100 más recientes y ofrece «Ver el
+  existente».
+- Un alta que no recibió respuesta puede haberse creado: durante 24 h, repetirla pide revisarlo en CRMDev y solo
+  sale con «Crear de todos modos».
+- Cada cambio queda en el registro de acciones, solo con los nombres de los campos.
+- Watson no tiene herramientas de CRMDev.
+
+La API de CRMDev está documentada en su propio repositorio (`docs/api/`).
+
+## Directorio de clientes
+
+El directorio (Trabajos › Clientes) tiene tres fuentes, que se usan a la vez cuando sus conectores están activos:
+Central, CRMDev y los clientes manuales guardados en AgoraOne. De ahí leen la Bandeja, WhatsApp, Reuniones, Fiscal
+y Watson.
+
+- **Sin duplicar**: cada entrada reúne como mucho un cliente de cada fuente. Se unen por un enlace del usuario
+  («Enlazar»), por NIF de Central, por correo exacto único o por nombre exacto único. Las personas de CRMDev cuya
+  empresa coincide con un único cliente van con él como contactos. Lo que solo se parece queda como sugerencia, que
+  el usuario enlaza o marca como «Son distintos» (y lo puede deshacer).
+- **Quién manda**: si un cliente está en los dos CRM, Central manda en lo fiscal y de contacto, y CRMDev aporta su
+  estado comercial y sus tickets. La ficha enseña las diferencias y nada se sincroniza entre ellos.
+- **Sin ubicar**: los clientes manuales que no están en ningún CRM conectado salen como «sin ubicar» (filtro propio
+  y tarjeta en el Resumen), para hacerles seguimiento. Desde su ficha, «Crear en Central» o «Crear en CRMDev»
+  enseñan el cambio exacto y, al confirmarlo, lo crean y lo enlazan. A CRMDev nunca se envía el NIF.
+- **Fichas del vault sin cliente**: las notas `Clientes/<Nombre>.md` o las de `Clientes/<Nombre>/` de un vault cuyo
+  nombre no está en el directorio. Se detectan en solo lectura, por la carpeta y el nombre del archivo del índice
+  del cerebro, nunca por su texto, y se ofrece «Crear cliente manual…» con confirmación.
+- **Instantánea de CRMDev**: sus clientes (id, nombre, empresa, correo, estado y dominio) se guardan en la base del
+  núcleo cada 30 minutos con el módulo encendido, y con «Actualizar CRMDev». Solo se usa con el módulo encendido y
+  la dirección guardada. Al apagar el módulo o desconectar, la instantánea **se conserva sin usarse** hasta que se
+  vuelva a encender, igual que la de Central, y los enlaces del usuario tampoco se borran. Olvidar solo la clave
+  sigue usando lo ya leído; «Crear en CRMDev» desaparece porque necesita la clave.
+- Watson ve el nombre, el estado de CRMDev y si está sin ubicar, nunca el correo, el teléfono, el NIF ni los nombres
+  de los contactos.
+
+## Modo discreto
+
+- Cierra las ventanas de Central, CRMDev y Mi fábrica, y los botones de abrirlas desaparecen.
+- En CRMDev oculta el correo del cliente (ni siquiera se pide), quién abrió cada ticket en la lista, las
+  descripciones y los campos de contacto de los formularios.
+- En el directorio se ven los nombres de los clientes, pero no su contacto, su NIF, los nombres de sus contactos de
+  CRMDev ni las fichas reservadas del vault.
+
+## Mi fábrica, CostGuard y el MCP del cerebro
+
+- **Mi fábrica** (`local_port`): su carpeta y su puerto se indican en su tarjeta, que también tiene el interruptor
+  del módulo. Su panel se usa tal cual en una ventana propia: [mi-fabrica.md](mi-fabrica.md).
+- **CostGuard** (`local_file`): la ruta de su base de datos, leída en solo lectura. La tarjeta enseña el consumo de
+  tokens por agente.
+- **MCP del cerebro** (`guide`): las órdenes para dar a un perfil de Hermes las herramientas del cerebro en solo
+  lectura: [mcp-cerebro.md](mcp-cerebro.md).
+
+## Añadir un conector
+
+Pasos para un conector nuevo de web API (por ejemplo, uno de SEO). No hace falta tocar la pantalla de Conectores:
+la tarjeta sale sola del registro.
+
+1. **Especificación web** en un módulo propio del núcleo (`core/agora_core/seo_api.py`): un
+   `web_api.WebApiSpec` con la cuenta del secreto, la fila de `setting`, el patrón de la clave, dónde se crea, la
+   dirección de ejemplo, el prefijo de la API y sus permisos. `web_api.py` ya pone la URL validada, el origen fijo,
+   la ausencia de redirecciones, la clave solo en `Authorization` y borrada de los errores, y el tope de tamaño.
+2. **`probe`**: una función que recibe una `web_api.Connection` y pregunta al servicio sin cambiar nada. Devuelve su
+   versión y sus permisos (`{version, scopes, …}`).
+3. **Registro**: una entrada `Connector(...)` en `connectors.REGISTRY` con tipo `web_api`, sus módulos, sus vistas,
+   su ventana (o `None`), sus permisos y `WebApiAdapter(spec, probe, …)`. Si guarda una caché, se vacía con
+   `after_save` y `after_forget`.
+4. **Módulo**: su nombre en `modules.MODULES` (y, si debe seguir a su conexión, como `FOLLOW_CRMDEV`) y en
+   `ModuleName` de `src/api/core.ts`. Qué hace apagarlo, en `src/connectors/module-meaning.ts`. Lo que necesite
+   textos propios en la tarjeta va en `src/connectors/connector-extras.tsx`.
+5. **Vistas** (si tiene): sus rutas en el núcleo, que responden 404 con el módulo apagado y 409 sin conexión, y su
+   sección en `src/shell/shell-state.ts` (`Section`, `sections`, `sectionModule` y el enlace `?seccion=`).
+6. **Ventana** (si tiene web): en la app de escritorio, un `Spec` de `addon_window.rs` de unas 30 líneas
+   (`desktop/app/src/seo_window.rs`, como `crmdev_window.rs`, con su etiqueta, su almacén propio, `remote_origin` y
+   sin descargas), arrancado en `main.rs`. En el núcleo, sus páginas con `connector_window.window_router`, como
+   `routes_crmdev_window.py`, y su etiqueta en `KNOWN_WINDOWS` de `src/shell/modules.ts`. La ruta
+   `/internal/{etiqueta}/window/next` se añade a las rutas internas de `desktop/server/tests/foundation.rs`.
+7. **Pruebas**: claves que no se filtran, el módulo apagado sin peticiones y la lista cerrada si el servicio tiene
+   herramientas que borran.
+
+## Código y pruebas
+
+Núcleo: `connectors.py`, `routes_connectors.py`, `web_api.py`, `central.py`, `central_api.py`, `crmdev_api.py`,
+`crmdev_sync.py`, `crmdev_write.py`, `crmdev_values.py`, `confirmed_change.py`, `routes_crmdev.py`,
+`routes_crmdev_write.py`, `connector_window.py`, `routes_crmdev_window.py`, `clients.py`, `client_sources.py`,
+`client_cards.py` y `routes_clients.py`, con la migración `0034_client_link.sql`. App de escritorio:
+`desktop/app/src/addon_window.rs`, `central_window.rs` y `crmdev_window.rs`. Interfaz: `src/connectors/`,
+`src/crmdev/` y los archivos `client-*` y `clients-*` de `src/jobs/`.
+
+Pruebas: `core/tests/test_connectors.py`, `test_web_api.py`, `test_crmdev_api.py`, `test_crmdev_routes.py`,
+`test_crmdev_write.py`, `test_crmdev_window.py`, `test_clients_crmdev.py`, `test_client_sources.py` y
+`test_central_*.py`; `src/connectors/*.test.ts`, `src/crmdev/*.test.ts` y `src/jobs/clients-directory.test.ts`; y
+`cargo test --manifest-path desktop/Cargo.toml`.

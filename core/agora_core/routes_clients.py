@@ -82,7 +82,9 @@ def clients_router(settings: Settings, secrets=None, crmdev_health: crmdev_sync.
             on = modules.state(connection)
             crmdev_read = crmdev_sync.stored(connection)
             # «Crear en CRMDev» needs the key too; the clients already read are used with the URL saved, as Central's.
-            connected = secrets is not None and on["crmdev"] and crmdev_api.connection_of(connection, secrets) is not None
+            # Whether the key is there is remembered until the connection is saved or forgotten (no store read per call).
+            connected = (secrets is not None and on["crmdev"] and crmdev_api.saved_url(connection) is not None
+                         and crmdev_api.has_key(secrets))
             return {"clients": [clients.public(e) for e in entries], "suggestions": suggestions, "distinctPairs": clients.remote_pairs(connection),
                     "unplacedCount": sum(1 for e in entries if e["unplaced"]),
                     "central": {"on": on["central"], "read": central.stored(connection) is not None},

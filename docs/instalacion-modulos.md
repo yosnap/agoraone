@@ -1,4 +1,4 @@
-# Instalación, diagnóstico y módulos (1.6)
+# Instalación, diagnóstico y módulos (1.6; módulos al día en 1.7)
 
 Plan: `plans/261115-2032-instalador-modulos/plan.md`. Corresponde a las entradas C-01 y C-02 del backlog.
 
@@ -12,7 +12,8 @@ Las piezas se reparten en tres grupos:
 
 - **Necesarias para algún módulo:** Obsidian, Claude Code, whisper.cpp y su modelo, y ffmpeg.
 - **Opcionales:** Hermes, la clave de Anthropic, el audio del sistema, Ollama, LM Studio, la carpeta de música,
-  «Oye Watson» y Homebrew.
+  «Oye Watson», Homebrew, «WhatsApp (Zernio)» (la clave de Zernio guardada en el Llavero desde Ajustes › WhatsApp;
+  ver [whatsapp.md](whatsapp.md)), «Jev (TypeSafe)» y Orca.
 - **Compatibilidad, para más adelante:** Codex, Gemini CLI, OpenCode y Cursor.
 
 Comprobarlo no cambia nada: solo mira rutas, programas en el PATH y servidores locales
@@ -34,27 +35,28 @@ pantalla, y nunca se toca Hermes (`core/agora_core/installer.py`).
 
 ## Módulos
 
-En Ajustes › Instalación › Módulos se pueden apagar:
+Hay dos clases de módulos:
 
-- Correo
-- Agenda
-- Fiscal
-- Trabajos
-- Reuniones
-- Voz
-- Música
-- Oficina 3D
-- Conectores
+- **Internos**, que se apagan en Ajustes › Instalación › Módulos: Correo, Agenda, Fiscal, Trabajos, Reuniones,
+  Voz, Música, Oficina 3D, Orca, WhatsApp ([whatsapp.md](whatsapp.md)) y Jev ([jev.md](jev.md)).
+- **De un conector**, que se encienden y apagan en su tarjeta de Conectores: Central y Presupuestos, CRMDev y Mi
+  fábrica ([conectores.md](conectores.md)). Ajustes › Módulos los nombra y lleva a Conectores con «Ir a
+  Conectores».
+
+«Conectores» ya no es un módulo que se pueda apagar: la sección se ve siempre, y un ajuste antiguo que lo apagaba
+se ignora y se borra en el siguiente guardado.
 
 Un módulo apagado:
 
 - desaparece de la barra lateral y del Cerebro;
 - para su trabajo en segundo plano. Un supervisor arranca o detiene la lectura del correo y sus resúmenes con
-  Correo, y Central con Trabajos;
-- deja a Watson sin sus herramientas (Bandeja, reglas, agenda, trabajos y clientes).
+  Correo, la de WhatsApp con WhatsApp, la de Central con Central y la de los clientes de CRMDev con CRMDev;
+- deja a Watson sin sus herramientas (Bandeja, reglas, agenda, trabajos, presupuestos, reuniones, Orca y respuestas
+  de WhatsApp). La Bandeja de Watson solo se oculta con Correo y WhatsApp apagados a la vez.
 
-Sus datos se conservan para cuando se vuelva a encender. Todos están encendidos por defecto
-(`core/agora_core/modules.py`).
+Sus datos se conservan para cuando se vuelva a encender. Están encendidos por defecto, salvo los de un conector, que
+siguen a su conexión mientras el usuario no los toque: Central y Presupuestos, si hay una fuente de Central; CRMDev,
+si hay una dirección guardada; Mi fábrica, si su carpeta está registrada (`core/agora_core/modules.py`).
 
 ## Primer arranque
 

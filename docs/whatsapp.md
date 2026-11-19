@@ -43,8 +43,8 @@ Meta corta la conexión si la app del móvil no se abre en 14 días.
 - Lo normal lo resume Claude Haiku (últimos 30 mensajes, como mucho 4000 caracteres, como dato delimitado). Lo
   «solo en este Mac» y lo privado se clasifican con palabras clave locales, sin resumen. Los mensajes no
   disponibles no se envían. El correo y WhatsApp comparten el límite de 40 llamadas por hora.
-- Una conversación se marca como de cliente cuando su número es el de un cliente del directorio (Central, CRMDev o
-  los clientes propios); lo privado nunca.
+- Una conversación se marca como de cliente cuando su número es el de un cliente del directorio. Los teléfonos salen
+  de Central y de los clientes propios (CRMDev no los da); lo privado nunca.
 - `GET /chat/summaries` nunca devuelve el texto de los mensajes; lo privado, sin nombre ni número.
 
 ## Bandeja (1.7.0-alpha.74)
@@ -133,9 +133,22 @@ Meta corta la conexión si la app del móvil no se abre en 14 días.
   fecha, con distintivo «WhatsApp», contacto, hora, clase, resumen y lo que piden, y el mismo tope que el correo. En
   modo discreto solo lo normal y sin resumen ni peticiones. Con el módulo apagado no se pide nada.
 
-Código: `core/agora_core/zernio.py`, `chat_sync.py`, `routes_chat.py`, `chat_rules.py`, `chat_inbox.py`,
-`chat_summarizer.py`, `chat_send.py`, `routes_chat_send.py`, `brain_chat.py`, migraciones `0030_chat.sql`, `0031_chat_summary.sql` y `0035_chat_announced.sql`, `src/settings/settings-whatsapp.tsx`,
-`settings-whatsapp-rules.tsx`, `src/inbox/chat-card.tsx`, `chat-reply.tsx`, `chat-reply-text.ts`, `inbox-cards.ts`, `src/assistant/chat-reply-proposals.tsx` y `src/home/home-parts.tsx`.
-Pruebas: `core/tests/test_zernio.py`, `test_chat_sync.py`, `test_chat_inbox.py`, `test_chat_bandeja.py`, `test_chat_send.py`, `test_brain_chat.py`,
-`src/inbox/inbox-cards.test.ts`, `chat-reply.test.ts`, `card-actions.test.ts`, `src/home/received.test.ts` y
-`scripts/verify-inbox.mjs` (con datos de ejemplo; `VERIFY_LIVE=1` añade la lectura de la app en marcha).
+## Límites y lo que falta comprobar
+- WhatsApp no es un conector: se conecta en Ajustes › WhatsApp, no en [Conectores](conectores.md).
+- Los grupos, los mensajes temporales y los de ver una vez no llegan; de los adjuntos solo se sabe el tipo.
+- Solo se responde con texto y dentro de la ventana de 24 h: nada de adjuntos ni plantillas.
+- Queda por comprobar en el recorrido real con el móvil que leer desde AgoraOne no marca nada como leído.
+
+Código:
+- Núcleo: `core/agora_core/zernio.py`, `chat_sync.py`, `routes_chat.py`, `chat_rules.py`, `chat_inbox.py`,
+  `chat_summarizer.py`, `chat_send.py`, `routes_chat_send.py`, `brain_chat.py`, y las acciones compartidas con el
+  correo (`issue_handoff.py`, `orca_launch.py`, `routes_inbox.py`); migraciones `0030_chat.sql`,
+  `0031_chat_summary.sql` y `0035_chat_announced.sql`.
+- Interfaz: `src/settings/settings-whatsapp.tsx`, `settings-whatsapp-rules.tsx`, `src/inbox/chat-card.tsx`,
+  `chat-reply.tsx`, `chat-reply-text.ts`, `inbox-cards.ts`, `inbox-tools.tsx` (filtro «Fuente»),
+  `src/assistant/chat-reply-proposals.tsx`, `announce-note.ts`, `src/home/home-data.ts` y `home-parts.tsx`.
+
+Pruebas: `core/tests/test_zernio.py`, `test_chat_sync.py`, `test_chat_inbox.py`, `test_chat_bandeja.py`,
+`test_chat_send.py`, `test_brain_chat.py`, `src/inbox/inbox-cards.test.ts`, `chat-reply.test.ts`,
+`card-actions.test.ts`, `src/home/received.test.ts`, `home-data.test.ts` y `scripts/verify-inbox.mjs` (con datos
+de ejemplo; `VERIFY_LIVE=1` añade la lectura de la app en marcha).

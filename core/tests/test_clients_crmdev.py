@@ -269,6 +269,47 @@ def test_con_las_fuentes_apagadas_nadie_esta_sin_ubicar_y_los_enlaces_se_conserv
         connection.close()
 
 
+class CountingSecrets(MemorySecrets):
+    """Counts how many times the store is asked for CRMDev's key."""
+
+    def __init__(self):
+        super().__init__()
+        self.asked = 0
+
+    def get(self, account):
+        self.asked += account == crmdev_api.SECRET
+        return super().get(account)
+
+
+def test_el_directorio_no_abre_el_almacen_en_cada_lectura(tmp_path, fake):  # noqa: F811
+    secrets = CountingSecrets()
+    settings, app = app_with(tmp_path, secrets)
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        assert client.put("/connectors/crmdev", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
+        set_modules(settings, crmdev=True)
+        asked = secrets.asked
+        assert all(directory(client)["crmdev"]["connected"] for _ in range(3))
+        assert secrets.asked - asked <= 1, "se pregunta al almacén una vez y se recuerda"
+        assert client.delete("/connectors/crmdev", headers=HEADERS).status_code == 200
+        assert directory(client)["crmdev"]["connected"] is False, "olvidar la clave se nota en la siguiente lectura"
+        assert client.put("/connectors/crmdev", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
+        assert directory(client)["crmdev"]["connected"] is True, "guardarla otra vez también"
+        asked = secrets.asked
+        directory(client)
+        assert secrets.asked == asked
+
+
+def test_un_almacen_que_falla_no_se_recuerda():
+    class Broken(MemorySecrets):
+        def get(self, account):
+            raise OSError("sin almacén")
+
+    working = MemorySecrets()
+    working.put(crmdev_api.SECRET, KEY)
+    assert crmdev_api.has_key(Broken()) is False
+    assert crmdev_api.has_key(working) is True, "el fallo anterior no queda recordado y otro almacén se pregunta"
+
+
 def test_aislamiento_con_el_modulo_apagado(setup, fake):  # noqa: F811
     client, settings = setup
     read_crmdev(client)
