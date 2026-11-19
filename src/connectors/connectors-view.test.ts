@@ -5,12 +5,13 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { Connector, ModuleName } from '../api/core';
 import { menu, sectionModule } from '../shell/shell-state';
-import { ConnectorCard, ForgetAction, switchModule } from './connector-card';
+import { ConnectorCard, ForgetAction, ModuleSwitches } from './connector-card';
+import { forgetConnector, saveConnector, switchModule, type ActionDeps } from './connector-actions';
 import { canSave, changesFor, hasSaved, initialFields, typedFor } from './connector-forms';
 import { ConnectorsPage } from './connectors-view';
-import { connectorFromLink } from './open-connector';
-import { ModulesList, connectorModules, joinNames } from '../settings/settings-modules';
-import { movedTabs, resolveTab } from '../settings/settings-view';
+import { connectorFromLink, takeConnectorLink } from './open-connector';
+import { ModulesList, joinNames } from '../settings/settings-modules';
+import { leaveMovedTab, movedTabs, resolveTab } from '../settings/settings-view';
 
 const MOVED = 'Ahora Central se conecta con su dirección y una clave de acceso: créala en Ajustes › Apps conectadas de Central.';
 const base = { views: [], window: null, scopes: [], hint: null };
@@ -124,9 +125,8 @@ test('Ajustes ya no tiene la pestaña Central: ?pestana=central lleva a Conector
 });
 
 test('Ajustes › Módulos solo tiene los internos y lleva a Conectores para el resto', () => {
-  const external = connectorModules([central(), fabrica, { modules: { crmdev: true } }]);
-  assert.deepEqual([...external], ['central', 'presupuestos', 'fabrica', 'crmdev']);
-  const html = renderToStaticMarkup(createElement(ModulesList, { modules: {}, labels: { ...labels, crmdev: 'CRMDev' } as typeof labels, external, onChange: noop, onConnectors: noop }));
+  const owners = { central: 'central', presupuestos: 'central', fabrica: 'fabrica', crmdev: 'crmdev' };
+  const html = renderToStaticMarkup(createElement(ModulesList, { modules: {}, labels: { ...labels, crmdev: 'CRMDev' } as typeof labels, owners, onChange: noop, onConnectors: noop }));
   for (const name of ['Central', 'Presupuestos', 'Mi fábrica', 'CRMDev']) assert.doesNotMatch(html, new RegExp(`> ${name}</label>`), name);
   assert.match(html, /Correo y Bandeja<\/label>/);
   assert.match(html, /Central, Presupuestos, Mi fábrica y CRMDev se encienden y apagan en su tarjeta de Conectores\./);
@@ -136,7 +136,113 @@ test('Ajustes › Módulos solo tiene los internos y lleva a Conectores para el 
   assert.equal(joinNames(['Central', 'Presupuestos']), 'Central y Presupuestos');
 });
 
+test('sin saber a qué conector pertenece cada módulo, Ajustes › Módulos los lista todos con su significado', () => {
+  const html = renderToStaticMarkup(createElement(ModulesList, { modules: {}, labels: {}, owners: null, onChange: noop }));
+  assert.match(html, /> Central<\/label>/, 'nombre legible sin etiquetas');
+  assert.match(html, /Apagado: Watson no propone presupuestos/);
+  assert.match(html, /Apagado: oculta Mi fábrica/);
+  assert.doesNotMatch(html, /tarjeta de Conectores/);
+  assert.doesNotMatch(html, /Apagado: <\/small>|<small class="muted"><\/small>/, 'ningún «Apagado:» vacío');
+});
+
 test('Conectores sigue en el menú aunque un estado antiguo traiga «conectores: false»', () => {
   assert.ok(menu.some(item => item.id === 'connectors'));
   assert.equal(sectionModule.connectors, undefined, 'Conectores no depende de ningún módulo');
+});
+
+const fakeDeps = () => {
+  const calls: string[] = [];
+  const deps: ActionDeps = {
+    put: async (id, changes) => { calls.push(`put ${id} ${JSON.stringify(changes)}`); return central({ url: 'https://central.example.com', hasKey: true }, 'saved'); },
+    remove: async id => { calls.push(`delete ${id}`); return central({ url: 'https://central.example.com', hasKey: false }); },
+    refresh: async () => { calls.push('refresh'); },
+    windows: { central: async () => { calls.push('window central'); }, fabrica: async () => { calls.push('window fabrica'); } },
+  };
+  return { calls, deps };
+};
+
+test('«Guardar» manda el formulario, relee los módulos, mira la ventana y la clave no vuelve', async () => {
+  const { calls, deps } = fakeDeps();
+  const typed = { ...initialFields(central()), url: 'https://central.example.com', key: 'cen_secreta_1234567890' };
+  const done = await saveConnector(central(), typed, deps);
+  assert.deepEqual(calls, ['put central {"url":"https://central.example.com","key":"cen_secreta_1234567890"}', 'refresh', 'window central']);
+  assert.equal(done.note, 'Guardado; la clave está en el almacén de secretos del sistema.');
+  assert.equal(initialFields(done.next).key, '');
+  assert.doesNotMatch(card(done.next), /cen_secreta/);
+  const local = await saveConnector({ ...costguard }, { ...initialFields(costguard), dataPath: '/datos/costguard.sqlite' }, fakeDeps().deps);
+  assert.equal(local.note, 'Guardado.');
+});
+
+test('«Olvidar de verdad» borra, relee los módulos y mira la ventana', async () => {
+  const { calls, deps } = fakeDeps();
+  const done = await forgetConnector(central({ url: 'https://central.example.com', hasKey: true }, 'saved'), deps);
+  assert.deepEqual(calls, ['delete central', 'refresh', 'window central']);
+  assert.equal(done.note, 'Clave borrada del almacén de secretos.');
+  const other = fakeDeps();
+  await forgetConnector({ ...costguard, state: { ...costguard.state, configured: { dataPath: '/x' } } }, other.deps);
+  assert.deepEqual(other.calls, ['delete costguard', 'refresh'], 'sin ventana propia no se mira ninguna');
+});
+
+test('«Guardar» nunca olvida: sin carpeta o archivo no se puede guardar', () => {
+  assert.equal(canSave(fabrica, { ...initialFields(fabrica), path: '', port: '9001' }), false);
+  assert.equal(canSave(fabrica, { ...initialFields(fabrica), path: '/ruta/fabrica' }), true);
+  assert.equal(canSave(costguard, initialFields(costguard)), false);
+  assert.equal(canSave(costguard, { ...initialFields(costguard), dataPath: '/datos.sqlite' }), true);
+  assert.equal(canSave(guide, initialFields(guide)), false);
+  assert.match(card(fabrica), /<button class="button primary" disabled="">Guardar/);
+});
+
+test('el interruptor de la tarjeta llama a su módulo con el valor marcado', async () => {
+  const toggled: [string, boolean][] = [];
+  const tree = ModuleSwitches({ connector: central(), modules: {}, labels: {}, onToggle: (name, value) => toggled.push([name, value]) });
+  const inputs: { props: { onChange: (event: { target: { checked: boolean } }) => void } }[] = [];
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    const element = node as { type?: unknown; props?: { children?: unknown; onChange?: unknown } };
+    if (element.type === 'input') inputs.push(element as never);
+    walk(element.props?.children);
+  };
+  walk(tree);
+  assert.equal(inputs.length, 2);
+  inputs[1].props.onChange({ target: { checked: true } });
+  inputs[0].props.onChange({ target: { checked: false } });
+  assert.deepEqual(toggled, [['presupuestos', true], ['central', false]]);
+  const calls: [ModuleName, boolean][] = [];
+  await switchModule('presupuestos', true, async (name, value) => { calls.push([name, value]); });
+  assert.deepEqual(calls, [['presupuestos', true]]);
+  const html = renderToStaticMarkup(tree);
+  assert.match(html, /> Central<\/label>/, 'el nombre del conector mientras no llegan las etiquetas');
+  assert.match(html, /> Presupuestos<\/label>/);
+});
+
+const withWindow = async (search: string, work: (replaced: string[]) => void | Promise<void>) => {
+  const replaced: string[] = [];
+  const href = `http://127.0.0.1:5173/${search}`;
+  const fake = { location: { search, href }, history: { state: null, replaceState: (_s: unknown, _t: string, url: URL) => { replaced.push(url.search); } } };
+  (globalThis as { window?: unknown }).window = fake;
+  try { await work(replaced); } finally { delete (globalThis as { window?: unknown }).window; }
+};
+
+test('una pestaña antigua lleva a Conectores › Central y este navegador la olvida', async () => {
+  await withWindow('?seccion=ajustes&pestana=central', replaced => {
+    const stored: [string, string][] = [];
+    const opened: string[] = [];
+    leaveMovedTab('central', section => opened.push(section), { setItem: (key, value) => { stored.push([key, value]); } });
+    assert.deepEqual(stored, [['agora.settings.tab', 'general']]);
+    assert.deepEqual(opened, ['connectors']);
+    assert.deepEqual(replaced, ['?conector=central'], 'sin la sección ni la pestaña antiguas');
+  });
+});
+
+test('?conector= se lee una vez, se quita del enlace y esa tarjeta lleva el foco', async () => {
+  await withWindow('?conector=central', replaced => {
+    assert.equal(takeConnectorLink(), 'central');
+    assert.deepEqual(replaced, ['']);
+  });
+  const html = renderToStaticMarkup(createElement(ConnectorsPage,
+    { found: all, error: '', focused: 'central', modules: {}, labels, onReload: noop, onSaved: noop, onOpen: noop }));
+  assert.equal(html.match(/connector-card focused/g)?.length, 1);
+  assert.match(cardOf(html, 'central'), /^data-connector="central"/);
+  assert.match(html, /<article tabindex="-1" class="card connector-card focused"[^>]*data-connector="central"/);
 });

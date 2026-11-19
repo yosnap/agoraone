@@ -35,9 +35,13 @@ export function hasSaved(connector: Pick<Connector, 'kind' | 'state'>): boolean 
   return false;
 }
 
+/** «Guardar» never forgets: an empty folder or data file would leave the connector unconfigured (and a module that
+ * follows it off), which only «Olvidar…» does, after confirming. */
 export function canSave(connector: Pick<Connector, 'kind' | 'state'>, fields: Fields): boolean {
   if (connector.kind === 'web_api') return fields.url.trim().length > 0 && (connector.state.configured.hasKey === true || fields.key.trim().length > 0);
-  return connector.kind !== 'guide';
+  if (connector.kind === 'local_port') return fields.path.trim().length > 0;
+  if (connector.kind === 'local_file') return fields.dataPath.trim().length > 0;
+  return false;
 }
 
 export function canTest(connector: Pick<Connector, 'kind' | 'state'>, fields: Fields): boolean {

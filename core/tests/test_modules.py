@@ -106,3 +106,33 @@ def test_put_modules_con_conectores_no_cambia_nada(tmp_path):
     row = c.execute("SELECT value FROM setting WHERE key = 'modules'").fetchone()
     assert row is None or "conectores" not in json.loads(row["value"])
     c.close()
+
+
+def test_un_modulo_desconocido_que_no_esta_retirado_se_conserva(tmp_path):
+    """A module of a newer version (or after a revert) keeps what the user set; only the retired ones are dropped."""
+    import json
+
+    c = connect(tmp_path / DB_NAME)
+    migrate(c)
+    c.execute("INSERT INTO setting (key, value) VALUES ('modules', ?)", (json.dumps({"crmdev": False, "conectores": False}),))
+    modules.save(c, {"correo": True})
+    saved = json.loads(c.execute("SELECT value FROM setting WHERE key = 'modules'").fetchone()["value"])
+    assert saved == {"crmdev": False, "correo": True}
+    assert "crmdev" not in modules.state(c), "lo que esta versión no conoce no se enseña"
+    c.close()
+
+
+def test_modules_dice_que_conector_tiene_cada_interruptor(tmp_path):
+    from fastapi.testclient import TestClient
+    from test_assistant import MemorySecrets
+    from test_central_api import HEADERS, app_with
+
+    from agora_core import connectors
+
+    settings, app = app_with(tmp_path, MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        owners = client.get("/modules", headers=HEADERS).json()["owners"]
+        assert owners == {"central": "central", "presupuestos": "central", "fabrica": "fabrica"}
+        assert set(owners) <= set(modules.MODULES), "solo módulos que existen"
+        assert client.put("/modules", json={"modules": {"correo": True}}, headers=HEADERS).json()["owners"] == owners
+    assert owners == connectors.module_owners()

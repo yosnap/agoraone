@@ -16,6 +16,9 @@ MODULES = {
     "whatsapp": "WhatsApp", "jev": "Jev (decisiones)", "presupuestos": "Presupuestos", "central": "Central",
     "fabrica": "Mi fábrica",
 }
+# Modules that no longer exist: dropped from the saved row the next time anything is saved. Any other unknown name is
+# kept, so a newer module's setting survives a run of an older core (or a revert).
+RETIRED = frozenset({"conectores"})
 # Modules split from «trabajos» (which used to cover Central and its quotes): until the user sets them, they are on
 # when a source of Central exists (a connection, a snapshot already read or the old folder setting) and off when
 # there is none, so nobody loses what already worked and nobody without Central sees them appear.
@@ -60,13 +63,13 @@ def apply(connection: sqlite3.Connection) -> dict[str, bool]:
 
 
 def save(connection: sqlite3.Connection, changes: dict) -> dict[str, bool]:
-    """Keeps only what the user set: a module never touched keeps following its default."""
-    row = connection.execute("SELECT value FROM setting WHERE key = ?", (SETTING,)).fetchone()
-    saved = json.loads(row["value"]) if row else {}
-    # A module that no longer exists (such as the old «conectores») is dropped the next time anything is saved.
-    saved = {name: value for name, value in saved.items() if name in MODULES}
-    saved.update({name: bool(value) for name, value in changes.items() if name in MODULES})
+    """Keeps only what the user set: a module never touched keeps following its default. Read and written in one
+    transaction, so two switches pressed at once do not lose either change."""
     with transaction(connection):
+        row = connection.execute("SELECT value FROM setting WHERE key = ?", (SETTING,)).fetchone()
+        saved = json.loads(row["value"]) if row else {}
+        saved = {name: value for name, value in saved.items() if name not in RETIRED}
+        saved.update({name: bool(value) for name, value in changes.items() if name in MODULES})
         connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", (SETTING, json.dumps(saved)))
     return apply(connection)
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ApiError } from '../api/client';
+import { openConnector } from '../connectors/open-connector';
 import { openFabricaInBrowser, openFabricaWindow, startFabrica, type FabricaPage } from '../api/fabrica';
 import type { Section } from '../shell/shell-state';
 import { failureText } from '../shell/window-link-notice';
@@ -59,7 +60,7 @@ export function FabricaPanel({ state, discreet, mac, starting, started, onStart,
             <button type="button" className="button primary" disabled={starting} onClick={onStart}>{starting ? 'Arrancando…' : 'Arrancar la fábrica'}</button></div>}
           {usable && !discreet && <OpenInFabrica page="" label="Abrir la fábrica" checkFirst={state === 'stopped'}/>}
           {(state === 'missing' || state === 'wrong') && <div className="actions fabrica-actions">
-            <button type="button" className="button primary" onClick={() => onOpen('connectors')}>Ir a Conectores</button></div>}
+            <button type="button" className="button primary" onClick={() => openConnector('fabrica', onOpen)}>Ir a Conectores</button></div>}
         </div>
       </div>
       {started && <p className={started.ok ? 'ok-note' : 'error'} role="status">{started.text}</p>}

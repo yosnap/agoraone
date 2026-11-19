@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { deleteConnector, putConnector, testConnector, type Connector, type ConnectorKind, type ConnectorStatus, type ModuleName } from '../api/core';
-import { checkCentralWindow } from '../api/central';
-import { checkFabricaWindow } from '../api/fabrica';
-import { refreshModules, setModule } from '../shell/modules';
+import { testConnector, type Connector, type ConnectorKind, type ConnectorStatus, type ModuleName } from '../api/core';
 import type { Section } from '../shell/shell-state';
 import { LoadError } from '../ui/load-state';
-import { canSave, canTest, changesFor, ConnectorForm, hasSaved, initialFields, typedFor, type Fields } from './connector-forms';
+import { forgetConnector, saveConnector, switchModule } from './connector-actions';
+import { canSave, canTest, ConnectorForm, hasSaved, initialFields, typedFor, type Fields } from './connector-forms';
 import { extras } from './connector-extras';
+import { moduleLabel, moduleMeaning } from './module-meaning';
 
 // One card per connector, with the same skeleton for all: name and status, what it is, how it connects, the form of
 // its kind, «Probar», «Guardar» and «Olvidar…» (confirmed in place) and the switches of its modules. Notices are told
@@ -32,19 +31,6 @@ const forgetText: Record<ConnectorKind, string> = {
   guide: '',
 };
 
-/** What turning off each module of a connector does. */
-export const moduleMeaning: Partial<Record<ModuleName, string>> = {
-  central: 'deja de leer Central y no usa sus clientes; la conexión se conserva',
-  presupuestos: 'Watson no propone presupuestos ni se crean en Central',
-  fabrica: 'oculta Mi fábrica y cierra su ventana; la fábrica sigue funcionando por su cuenta',
-};
-
-// A changed connection makes the desktop app look again whether its window may stay open.
-const windowCheck: Record<string, () => Promise<unknown>> = { central: checkCentralWindow, fabrica: checkFabricaWindow };
-
-/** Turns a connector's module on or off (the shared module state publishes the change to the whole screen). */
-export const switchModule = (name: ModuleName, value: boolean, set: typeof setModule = setModule) => set(name, value);
-
 type ForgetProps = { confirming: boolean; busy: boolean; text: string; onAsk: () => void; onConfirm: () => void; onCancel: () => void };
 
 /** «Olvidar…» asks first, in place, saying exactly what is forgotten. */
@@ -55,6 +41,24 @@ export function ForgetAction({ confirming, busy, text, onAsk, onConfirm, onCance
     <button type="button" className="button danger" disabled={busy} onClick={onConfirm}>Olvidar de verdad</button>
     <button type="button" className="button" onClick={onCancel}>Cancelar</button>
   </span>;
+}
+
+type SwitchesProps = {
+  connector: Connector; modules: Partial<Record<ModuleName, boolean>>; labels: Partial<Record<ModuleName, string>>;
+  onToggle: (name: ModuleName, value: boolean) => void;
+};
+
+/** The switches of the connector's modules, with what turning each one off does. Labels have a readable fallback
+ * (the connector's name for its own module) until the core's arrive. */
+export function ModuleSwitches({ connector, modules, labels, onToggle }: SwitchesProps) {
+  const switches = Object.keys(connector.modules) as ModuleName[];
+  if (!switches.length) return null;
+  return <ul className="install-list connector-modules" aria-label={`Módulos de ${connector.name}`}>{switches.map(name =>
+    <li key={name} className="install-row">
+      <label className="check"><input type="checkbox" checked={(modules[name] ?? connector.modules[name]) !== false}
+        onChange={event => onToggle(name, event.target.checked)}/> {moduleLabel(name, labels, name === connector.id ? connector.name : undefined)}</label>
+      <small className="muted">Apagado: {moduleMeaning[name] ?? 'desaparece de la pantalla y deja de trabajar en segundo plano'}.</small>
+    </li>)}</ul>;
 }
 
 type CardProps = {
@@ -69,44 +73,36 @@ export function ConnectorCard({ connector, modules, labels, focused = false, onS
   const [tested, setTested] = useState<unknown>(null);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
+  const [ring, setRing] = useState(focused);
   const card = useRef<HTMLElement>(null);
   useEffect(() => { if (focused) { card.current?.scrollIntoView({ block: 'start' }); card.current?.focus(); } }, [focused]);
+  // What is saved changed (another card, «Comprobar de nuevo», a save): the form shows it again.
+  const saved = JSON.stringify(connector.state.configured);
+  useEffect(() => { setFields(initialFields(connector)); }, [saved]);  // only when the saved settings change
   const extra = extras[connector.id] ?? {};
-  const set = (changes: Partial<Fields>) => setFields(current => ({ ...current, ...changes }));
+  // A «Probar» result belongs to what was typed then: any change makes it stale.
+  const set = (changes: Partial<Fields>) => { setTested(null); setFields(current => ({ ...current, ...changes })); };
   const run = async (name: 'save' | 'test' | 'forget', work: () => Promise<string>) => {
     setBusy(name); setError(''); setNote('');
     try { setNote(await work()); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo completar.'); }
     finally { setBusy(null); }
   };
-  const changed = (next: Connector) => {
-    onSaved(next); setFields(initialFields(next));  // the typed key never stays on screen
-    void refreshModules().catch(() => undefined);
-    if (connector.window) void windowCheck[connector.window]?.().catch(() => undefined);
-  };
-  const save = () => void run('save', async () => {
-    const withKey = fields.key.trim().length > 0;
-    changed(await putConnector(connector.id, changesFor(connector.kind, fields)));
-    return withKey ? 'Guardado; la clave está en el almacén de secretos del sistema.' : 'Guardado.';
-  });
+  const changed = (next: Connector) => { setTested(null); onSaved(next); setFields(initialFields(next)); };  // the typed key never stays on screen
+  const save = () => void run('save', async () => { const done = await saveConnector(connector, fields); changed(done.next); return done.note; });
   const test = () => void run('test', async () => {
     const found = await testConnector<{ version?: string | null; runtime?: string | null; status?: ConnectorStatus }>(connector.id, typedFor(connector.kind, fields));
     setTested(found);
     if (found.status) return `Con estos datos: ${statusText[found.status]?.[0] ?? found.status}.`;
     return `${connector.name}${found.version ? ` ${found.version}` : ''} responde${found.runtime === 'local' ? ' (en este equipo)' : ''}.`;
   });
-  const forget = () => void run('forget', async () => {
-    setForgetting(false); setTested(null);
-    changed(await deleteConnector(connector.id));
-    return connector.kind === 'web_api' ? 'Clave borrada del almacén de secretos.' : 'Conexión olvidada.';
-  });
+  const forget = () => void run('forget', async () => { setForgetting(false); const done = await forgetConnector(connector); changed(done.next); return done.note; });
   const toggle = (name: ModuleName, value: boolean) => {
     setError('');
     switchModule(name, value).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'));
   };
   const [label, tone] = statusText[connector.state.status] ?? [connector.state.status, ''];
   const { notice, storeProblem } = connector.state;
-  const switches = Object.keys(connector.modules) as ModuleName[];
   const Body = extra.Body;
   const actions = <span className="actions connector-actions">
     <button type="button" className="button" disabled={!canTest(connector, fields) || busy !== null} onClick={test}>{busy === 'test' ? 'Probando…' : 'Probar'}</button>
@@ -114,8 +110,8 @@ export function ConnectorCard({ connector, modules, labels, focused = false, onS
     {hasSaved(connector) && <ForgetAction confirming={forgetting} busy={busy !== null} text={forgetText[connector.kind]}
       onAsk={() => setForgetting(true)} onConfirm={forget} onCancel={() => setForgetting(false)}/>}
   </span>;
-  return <article ref={card} tabIndex={-1} className={`card connector-card${focused ? ' focused' : ''}`} aria-labelledby={`connector-${connector.id}`}
-    data-connector={connector.id}>
+  return <article ref={card} tabIndex={-1} className={`card connector-card${ring ? ' focused' : ''}`} aria-labelledby={`connector-${connector.id}`}
+    data-connector={connector.id} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setRing(false); }}>
     <div className="card-head"><h2 id={`connector-${connector.id}`}>{connector.name}</h2><span className={`chip ${tone}`}>{label}</span></div>
     <p>{connector.description}</p>
     <p className="connector-how"><strong>Cómo se conecta.</strong> {howText[connector.kind]}</p>
@@ -123,11 +119,7 @@ export function ConnectorCard({ connector, modules, labels, focused = false, onS
     {storeProblem && <p className="fiscal-warning" role="alert">{storeProblem}</p>}
     <ConnectorForm connector={connector} fields={fields} set={set} keyPlaceholder={extra.keyPlaceholder} actions={actions} onSubmit={save}/>
     {Body && <Body connector={connector} tested={tested} onOpen={onOpen}/>}
-    {switches.length > 0 && <ul className="install-list connector-modules" aria-label={`Módulos de ${connector.name}`}>{switches.map(name =>
-      <li key={name} className="install-row">
-        <label className="check"><input type="checkbox" checked={(modules[name] ?? connector.modules[name]) !== false} onChange={event => toggle(name, event.target.checked)}/> {labels[name] ?? name}</label>
-        <small className="muted">Apagado: {moduleMeaning[name] ?? 'desaparece de la pantalla y deja de trabajar en segundo plano'}.</small>
-      </li>)}</ul>}
+    <ModuleSwitches connector={connector} modules={modules} labels={labels} onToggle={toggle}/>
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;
 }

@@ -52,6 +52,16 @@ export function resolveTab(linked: string | null, stored: string | null): { tab:
   return { tab: 'general', connector: null };
 }
 
+/** Leaves a tab that moved to Conectores: this browser forgets it (back to General) and Conectores opens on its card. */
+export function leaveMovedTab(connector: string, onOpen: (section: Section) => void, storage: Pick<Storage, 'setItem'> | null = safeStorage()) {
+  try { storage?.setItem(STORED, 'general'); } catch { /* no storage */ }
+  openConnector(connector, onOpen);
+}
+
+function safeStorage(): Storage | null {
+  try { return typeof localStorage === 'undefined' ? null : localStorage; } catch { return null; }
+}
+
 function firstTab(): { tab: string; connector: string | null } {
   let stored: string | null = null;
   try { stored = localStorage.getItem(STORED); } catch { /* no storage */ }
@@ -62,11 +72,7 @@ function firstTab(): { tab: string; connector: string | null } {
 export function SettingsView({ onOpen }: { onOpen: (section: Section) => void }) {
   const [start] = useState(firstTab);
   const [tab, setTab] = useState(start.tab);
-  useEffect(() => {
-    if (!start.connector) return;
-    try { localStorage.setItem(STORED, 'general'); } catch { /* no storage */ }
-    openConnector(start.connector, onOpen);
-  }, [start, onOpen]);
+  useEffect(() => { if (start.connector) leaveMovedTab(start.connector, onOpen); }, [start, onOpen]);
   const buttons = useRef<Record<string, HTMLButtonElement | null>>({});
   const choose = (id: string, focus = false) => {
     setTab(id);

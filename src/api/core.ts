@@ -558,8 +558,10 @@ export const getInstallJob = () => core<{ job: InstallJob | null }>('/doctor/ins
 export const installPiece = (id: string) => core<{ job: InstallJob }>('/doctor/install', { id });
 /** Modules (1.6): which are on; one off disappears, stops its background work and Watson loses its tools. */
 export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'orca' | 'whatsapp' | 'jev' | 'presupuestos' | 'central' | 'fabrica';
-export const getModules = () => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules');
-export const putModules = (modules: Partial<Record<ModuleName, boolean>>) => core<{ modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string> }>('/modules', { modules }, 'PUT');
+/** `owners`: the connector whose card in Conectores holds the module's switch (absent in an older core). */
+export type ModulesState = { modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string>; owners?: Partial<Record<ModuleName, string>> };
+export const getModules = () => core<ModulesState>('/modules');
+export const putModules = (modules: Partial<Record<ModuleName, boolean>>) => core<ModulesState>('/modules', { modules }, 'PUT');
 export const getFirstRun = () => core<{ done: boolean }>('/setup/first-run');
 export const putFirstRun = (done: boolean) => core<{ done: boolean }>('/setup/first-run', { done }, 'PUT');
 /** The vault's review (1.7): what makes things hard to find; changes nothing. */
