@@ -254,6 +254,29 @@ def assistant_router(
             return JSONResponse({"error": str(error) if isinstance(error, central.CentralError) else "Central no pudo crear el presupuesto."}, status_code=422)
         return {"created": made}
 
+    @router.post("/proposals/{proposal_id}/chat-reply")
+    async def open_chat_reply(proposal_id: str, request: Request):
+        """Hands the screen the WhatsApp reply Watson proposed, once, for its owner, to open the reply composer with it.
+        Sends nothing: a WhatsApp only leaves from `/chat/send`, with the seal of the preview the user saw."""
+        from . import brain_chat, chat_inbox
+        owner = owner_of(request)
+        found = proposals.get(proposal_id)
+        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "chatReply" not in found:
+            return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        proposals.pop(proposal_id, None)  # taken before any wait: a double click opens it once
+        reply = found["chatReply"]
+
+        def check():
+            with database() as connection:
+                brain_chat.still_normal(connection, reply["conversationId"])
+        try:
+            await run_in_threadpool(check)
+        except chat_inbox.ChatGone as error:
+            return JSONResponse({"error": str(error)}, status_code=404)
+        except brain_chat.ChatProposalError as error:
+            return JSONResponse({"error": str(error)}, status_code=409)
+        return {"conversationId": reply["conversationId"], "text": reply["text"]}
+
     @router.post("/proposals/{proposal_id}/issue", status_code=201)
     async def create_issue(proposal_id: str, request: Request):
         """Creates on GitHub, with the user's own `gh`, the very issue Watson proposed, once, for its owner."""

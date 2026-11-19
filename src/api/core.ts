@@ -97,7 +97,7 @@ export type AssistantEvent =
   | { kind: 'delta'; text: string }
   | { kind: 'tool'; tool: 'search'; query: string; found: string[] }
   | { kind: 'tool'; tool: 'read'; id: string; title: string; n: number }
-  | { kind: 'tool'; tool: 'inbox'; filter: string; count: number }
+  | { kind: 'tool'; tool: 'inbox'; filter: string; count: number; chats?: number }
   | { kind: 'tool'; tool: 'clients'; filter: string; count: number }
   | { kind: 'tool'; tool: 'rule_proposal'; id: string; rule: ProposedRule }
   | { kind: 'tool'; tool: 'cleanup_proposal'; id: string; action: 'archive' | 'trash'; messages: CleanupMessage[] }
@@ -109,6 +109,7 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'meetings'; query: string; count: number }
   | { kind: 'tool'; tool: 'issue_proposal'; id: string; issue: ProposedIssue }
   | { kind: 'tool'; tool: 'orca_proposal'; proposal: OrcaProposal }
+  | { kind: 'tool'; tool: 'chat_reply_proposal'; id: string; reply: ProposedChatReply }
   | { kind: 'tool'; tool: 'meeting'; title: string; part: number }
   | { kind: 'tool'; tool: 'agenda' | 'day' | 'projects'; [key: string]: unknown }
   | { kind: 'done'; engine: string; model: string };
@@ -237,7 +238,7 @@ export type ChatSummary = {
   client: { name: string; projects: string[] } | null;
   /** How many attachments of each kind («image», «audio»…) the messages the summary covers bring; never their link. */
   attachments: Record<string, number>;
-  scope: { id: number; name: string; color: string | null } | null; lastIncomingAt: string | null; updatedAt: string;
+  scope: { id: number; name: string; color: string | null } | null; lastIncomingAt: string | null; updatedAt: string; announcedAt?: string | null;
 };
 export const getChatSummaries = (state: InboxState = 'pending') =>
   core<{ items: ChatSummary[]; counts: Record<InboxState | 'quiet', number>; problem: string | null }>(`/chat/summaries?state=${state}`);
@@ -259,6 +260,10 @@ export const composeChat = (id: number, instructions: string) => core<{ text: st
 export const previewChat = (draft: ChatDraft) => core<ChatPreview>('/chat/drafts/preview', draft);
 /** Sends exactly the sealed preview, once; a second press with the same seal is refused. */
 export const sendChat = (draft: ChatDraft, digest: string) => core<{ sent: boolean; messageId: string | null }>('/chat/send', { draft, digest });
+/** A WhatsApp reply Watson proposed (only for a normal conversation with the window open); it never sends. */
+export type ProposedChatReply = { conversationId: number; contact: string; summary: string | null; text: string; window: ChatWindow };
+/** Takes Watson's proposal, once, to open the reply composer with its text; the core sends nothing here. */
+export const openChatReplyProposal = (id: string) => core<{ conversationId: number; text: string }>(`/assistant/proposals/${encodeURIComponent(id)}/chat-reply`, {});
 export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error' | 'cancelled'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
 export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail/microsoft');
 export const putMicrosoftClient = (clientId: string | null) => core<{ clientId: string | null }>('/mail/microsoft', { clientId }, 'PUT');
@@ -294,8 +299,9 @@ export const moveInboxMail = (ids: number[], action: 'trash' | 'archive') =>
   core<{ moved: number; problems: string[]; counts: InboxCounts }>('/mail/inbox/move', { ids, action });
 /** The advertising still in the accounts' inboxes (it never gets a card), to review before «Eliminar publicidad». */
 export const getInboxAdvertising = () => core<{ messages: CleanupMessage[] }>('/mail/inbox/advertising');
-/** The cards the assistant announces now; the core hands each one out only once. */
-export const claimAnnouncements = () => core<{ items: InboxItem[] }>('/mail/inbox/announce', {});
+/** What the assistant announces now, mail and WhatsApp, each with its channel; the core hands each one out only once. */
+export type Announcement = (InboxItem & { channel: 'mail' }) | (ChatSummary & { channel: 'chat' });
+export const claimAnnouncements = () => core<{ items: Announcement[] }>('/mail/inbox/announce', {});
 export type InvoiceFields = { supplier: string; taxId?: string | null; issuedOn: string; total: string; currency: string; base?: string | null; vat?: string | null; notes?: string | null };
 export type InvoiceSource = { kind: 'attachment'; part: number; name?: string } | { kind: 'link'; url: string };
 export type InvoicePrepared = {
