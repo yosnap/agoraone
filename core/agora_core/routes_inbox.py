@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import mail_inbox, mail_rules
+from . import chat_inbox, mail_inbox, mail_rules, modules
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -108,8 +108,13 @@ def inbox_router(settings: Settings, health, secrets=None) -> APIRouter:
 
     @router.post("/mail/inbox/archive-all")
     async def archive_all():
-        archived = await db(mail_inbox.archive_all)
-        return {"archived": archived, "counts": await db(mail_inbox.counts)}
+        def work(connection):
+            mail = mail_inbox.archive_all(connection)
+            # WhatsApp's pending conversations go to «Hechos» too (user's decision, 19/11/2026), when its cards are shown.
+            chats = chat_inbox.archive_all(connection) if modules.state(connection)["whatsapp"] else 0
+            return mail, chats
+        archived, chats = await db(work)
+        return {"archived": archived, "chats": chats, "counts": await db(mail_inbox.counts)}
 
     @router.get("/mail/inbox/advertising")
     async def advertising():

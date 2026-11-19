@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import calendar_edit, calendar_store, mail_inbox
+from . import calendar_edit, calendar_store, chat_inbox, mail_inbox
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -34,6 +34,7 @@ class EventIn(BaseModel):
     notes: Annotated[str, Field(max_length=4000)] | None = None
     overlapOk: StrictBool = False  # the user saw the clashes and still wants it
     inboxId: StrictInt | None = None  # the Bandeja card it comes from, marked done once created
+    chatId: StrictInt | None = None  # or the WhatsApp conversation's card (never both)
 
 
 class EventChange(BaseModel):
@@ -54,6 +55,7 @@ class ReminderIn(BaseModel):
     due: datetime | None = None
     notes: Annotated[str, Field(max_length=4000)] | None = None
     inboxId: StrictInt | None = None
+    chatId: StrictInt | None = None
 
 
 def calendar_router(settings: Settings) -> APIRouter:
@@ -136,14 +138,31 @@ def calendar_router(settings: Settings) -> APIRouter:
             return {"events": [], "reminders": [], "overlaps": [], "problem": str(error)}
         return {**found, "from": start.isoformat(), "to": end.isoformat(), "problem": None}
 
-    def done(inbox_id: int | None) -> None:
+    def origin_problem(body) -> str | None:
+        """A card is one mail or one conversation, never both (their ids are different spaces); a conversation must
+        still be in the Bandeja before anything is created."""
+        if body.inboxId is not None and body.chatId is not None:
+            return "El evento sale de un correo o de una conversación, no de los dos."
+        if body.chatId is None:
+            return None
+        try:
+            with database() as connection:
+                chat_inbox.level_of(connection, body.chatId)
+        except chat_inbox.ChatGone as error:
+            return str(error)
+        return None
+
+    def done(body) -> None:
         """Marks the Bandeja card done; the event already exists, so a failure here must not look like the
         creation failed (trying again would create it twice)."""
-        if inbox_id is None:
+        if body.inboxId is None and body.chatId is None:
             return
         try:
             with database() as connection:
-                mail_inbox.decide(connection, inbox_id, "done")
+                if body.chatId is not None:
+                    chat_inbox.decide(connection, body.chatId, "done")
+                else:
+                    mail_inbox.decide(connection, body.inboxId, "done")
         except Exception:  # noqa: BLE001
             pass
 
@@ -155,6 +174,8 @@ def calendar_router(settings: Settings) -> APIRouter:
         if body.end <= body.start and not body.allDay:
             return refuse("El evento tiene que terminar después de empezar.")
         start, end = body.start.astimezone(), (body.end if body.end > body.start else body.start + timedelta(days=1)).astimezone()
+        if problem := await run_in_threadpool(origin_problem, body):
+            return refuse(problem)
 
         def check_and_create():
             with database() as connection:  # a clash never names an event of a hidden calendar
@@ -163,7 +184,7 @@ def calendar_router(settings: Settings) -> APIRouter:
             if clash and not body.overlapOk:
                 return None, clash
             made = store.create_event(body.calendarId, body.title.strip(), start, end, body.allDay, body.location, body.notes)
-            done(body.inboxId)
+            done(body)
             return made, clash
         try:
             made, clash = await run_in_threadpool(check_and_create)
@@ -226,10 +247,12 @@ def calendar_router(settings: Settings) -> APIRouter:
         store = calendar_store.shared()
         if store.status()["reminders"] != "granted":
             return refuse("AgoraOne aún no tiene permiso para Recordatorios: dáselo en Ajustes › Calendarios.", 409)
+        if problem := await run_in_threadpool(origin_problem, body):
+            return refuse(problem)
 
         def create():
             made = store.create_reminder(body.calendarId, body.title.strip(), body.due.astimezone() if body.due else None, body.notes)
-            done(body.inboxId)
+            done(body)
             return made
         try:
             return {"id": await run_in_threadpool(create)}

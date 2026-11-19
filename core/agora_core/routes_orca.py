@@ -4,13 +4,14 @@ which only runs a preview the same owner saw, once, within 15 minutes."""
 import re
 import secrets
 import time
+from typing import Literal
 
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictInt
 
-from . import github_issues, modules, orca_launch, repo_notes
+from . import chat_inbox, github_issues, modules, orca_launch, repo_notes
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -40,13 +41,35 @@ class LaunchConfirm(BaseModel):
     id: str
 
 
+class NoteOrigin(BaseModel):
+    kind: Literal["mail", "chat"]
+    id: StrictInt
+
+
 class RepoNote(BaseModel):
     client: str
     project: str
     folder: str
     title: str
     content: str
-    inboxId: int
+    inboxId: StrictInt | None = None  # a mail's card, as before
+    source: NoteOrigin | None = None  # a mail's or a WhatsApp conversation's card
+
+
+def origin_problem(connection, body: RepoNote) -> str | None:
+    """Why the card's note may not go to a repository (only what is `normal` may), or None. Exactly one origin."""
+    if (body.inboxId is None) == (body.source is None):
+        return "Falta de dónde sale la nota."
+    kind, ident = ("mail", body.inboxId) if body.source is None else (body.source.kind, body.source.id)
+    if kind == "chat":
+        try:
+            level = chat_inbox.level_of(connection, ident)
+        except chat_inbox.ChatGone as error:
+            return str(error)
+        return None if level == "normal" else "Esa conversación es privada o «solo en este Mac»: su nota no va a un repositorio."
+    if repo_notes.mail_level(connection, ident) != "normal":
+        return "Ese correo es privado o «solo en este Mac»: su nota no va a un repositorio."
+    return None
 
 
 def orca_router(settings: Settings) -> APIRouter:
@@ -110,8 +133,8 @@ def orca_router(settings: Settings) -> APIRouter:
             try:
                 if not modules.state(connection)["orca"]:
                     raise repo_notes.RepoNoteError("El módulo Orca está apagado en Ajustes.")
-                if repo_notes.mail_level(connection, body.inboxId) != "normal":
-                    raise repo_notes.RepoNoteError("Ese correo es privado o «solo en este Mac»: su nota no va a un repositorio.")
+                if problem := origin_problem(connection, body):
+                    raise repo_notes.RepoNoteError(problem)
                 repo, root = repo_notes.local_root(connection, body.client, body.project)
             finally:
                 connection.close()

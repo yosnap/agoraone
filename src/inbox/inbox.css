@@ -102,3 +102,17 @@
 .issue-sessions { display:flex; flex-direction:column; gap:4px; border:1px solid var(--c-dfe3d6); border-radius:9px; padding:8px 12px; margin:0 }
 .issue-sessions legend { font-size:13px; padding:0 4px }
 .issue-sessions .check { font-size:13px }
+
+/* WhatsApp's cards (1.7): a badge of their own and the latest messages as plain text, with whole borders (no side stripes). */
+.chip.source-whatsapp { background:#d4f0dc; color:#1c5a33 }
+:root[data-theme="dark"] .chip.source-whatsapp { background:#173d26; color:#b4e6c4 }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .chip.source-whatsapp { background:#173d26; color:#b4e6c4 } }
+.chat-messages { border:1px solid var(--c-dfe3d6); border-radius:12px; padding:10px; background:var(--c-fbfaf3); max-height:360px; overflow:auto }
+.chat-messages ol { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px }
+.chat-message { display:flex; flex-direction:column; gap:2px; max-width:88% }
+.chat-message p { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.45; padding:7px 10px; border-radius:10px;
+  background:var(--c-fffffa); border:1px solid var(--c-dfe3d6) }
+.chat-message p.muted { background:none; border:none; padding:0 10px; font-size:12px }
+.chat-message.outgoing { align-self:flex-end; text-align:right }
+.chat-message.outgoing p:not(.muted) { background:var(--c-dcebdc); color:var(--c-24563a); border-color:var(--c-dcebdc) }
+.chat-message > .muted { font-size:11px }

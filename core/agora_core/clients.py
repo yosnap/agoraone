@@ -568,6 +568,14 @@ def for_model(entry: dict) -> dict:
             **({"sin_ubicar": True} if entry.get("unplaced") else {})}
 
 
+def brief(entry: dict | None) -> dict | None:
+    """What a Bandeja card shows of a client: its name and up to five active or maintenance projects; never its
+    address, phone or tax id."""
+    if not entry:
+        return None
+    return {"name": entry["name"], "projects": [p["name"] for p in entry["projects"] if p.get("status") in ("ACTIVE", "MAINTENANCE")][:5]}
+
+
 def _one(found: list[dict]) -> dict | None:
     return found[0] if len(found) == 1 else None
 

@@ -212,13 +212,12 @@ def summaries(connection: sqlite3.Connection, state: str = "pending", limit: int
             FROM chat_summary s JOIN chat_conversation c ON c.id = s.conversation_id JOIN chat_account a ON a.id = c.account_id
             LEFT JOIN chat_rule r ON r.id = s.rule_id LEFT JOIN scope sc ON sc.id = COALESCE(r.scope_id, a.scope_id)
             WHERE s.state = ? ORDER BY last_in DESC LIMIT ?""", (state, limit)).fetchall()
-    from .clients import directory, find
+    from .clients import brief, directory, find
 
     known = directory(connection) if rows else []
 
     def client(row) -> dict | None:
-        found = None if row["level"] == "private" else find(known, phone=row["participant_phone"])
-        return {"name": found["name"]} if found else None
+        return None if row["level"] == "private" else brief(find(known, phone=row["participant_phone"]))
     return [{
         "id": row["conversation_id"], "kind": row["kind"], "source": row["source"], "ruleId": row["rule_id"], "ruleName": row["rule_name"],
         "label": row["label"], "confidentiality": row["level"], "state": row["state"],
@@ -228,6 +227,7 @@ def summaries(connection: sqlite3.Connection, state: str = "pending", limit: int
         "client": client(row),
         "account": {"id": row["account_id"], "phone": row["account_phone"], "label": row["account_label"]},
         "scope": {"id": row["scope_id"], "name": row["scope_name"], "color": row["scope_color"]} if row["scope_id"] else None,
+        "attachments": attachment_counts(connection, row["conversation_id"]),
         "lastIncomingAt": row["last_in"], "updatedAt": row["updated_at"],
     } for row in rows]
 
@@ -245,6 +245,105 @@ def decide(connection: sqlite3.Connection, conversation_id: int, state: str) -> 
         return connection.execute(
             "UPDATE chat_summary SET state = ?, decided_at = ? WHERE conversation_id = ? AND state != 'quiet'",
             (state, None if state == "pending" else now(), conversation_id)).rowcount > 0
+
+
+def _kinds(raw: str | None) -> list[str]:
+    """The kinds of a message's attachments («image», «audio»…), never their link (which is not kept anyway)."""
+    try:
+        found = json.loads(raw or "[]")
+    except ValueError:
+        return []
+    return [_plain(str(a.get("type") or "file"))[:20] or "file" for a in found if isinstance(a, dict)] if isinstance(found, list) else []
+
+
+def attachment_counts(connection: sqlite3.Connection, conversation_id: int) -> dict[str, int]:
+    """How many attachments of each kind the messages the summary covers bring (the classifier's window)."""
+    counted: dict[str, int] = {}
+    for message in window(connection, conversation_id):
+        for kind in _kinds(message["attachments"]):
+            counted[kind] = counted.get(kind, 0) + 1
+    return counted
+
+
+class ChatGone(LookupError):
+    pass
+
+
+GONE = "Esa conversación ya no está en la Bandeja."
+
+
+def level_of(connection: sqlite3.Connection, conversation_id: int) -> str:
+    """The level that counts now for a conversation in the Bandeja (the strictest of its own, its account's and its
+    rule's). The only check every action from a WhatsApp card goes through; ChatGone when it is not in the Bandeja."""
+    try:
+        ident = int(conversation_id)
+    except (TypeError, ValueError) as error:
+        raise ChatGone(GONE) from error
+    row = connection.execute(
+        f"""SELECT {_LEVEL} AS level FROM chat_summary s JOIN chat_conversation c ON c.id = s.conversation_id
+            JOIN chat_account a ON a.id = c.account_id LEFT JOIN chat_rule r ON r.id = s.rule_id
+            WHERE s.conversation_id = ? AND s.state != 'quiet'""", (ident,)).fetchone()
+    if row is None:
+        raise ChatGone(GONE)
+    return row["level"]
+
+
+SHOWN = 10  # latest messages a card shows
+
+
+def messages(connection: sqlite3.Connection, conversation_id: int, limit: int = SHOWN) -> list[dict]:
+    """The latest messages of a conversation in the Bandeja, oldest first, read from AgoraOne's own database (never
+    from Zernio, so opening a card cannot mark anything as read): the direction, the time, the text as plain data,
+    whether WhatsApp did not deliver it and the kinds of its attachments. No sender's name or number: the card
+    already says who it is with (and a private one says nobody)."""
+    level_of(connection, conversation_id)
+    rows = connection.execute(
+        f"""SELECT id, direction, body, unsupported, attachments, {_MOMENT.format('m')} AS at FROM chat_message m
+            WHERE conversation_id = ? ORDER BY at DESC, id DESC LIMIT ?""", (int(conversation_id), max(1, min(limit, 50)))).fetchall()
+    return [{"id": row["id"], "direction": row["direction"], "at": row["at"],
+             "text": None if row["unsupported"] else (row["body"] or "")[:BODY_CHARS * 4] or None,
+             "unsupported": bool(row["unsupported"]), "attachments": _kinds(row["attachments"])} for row in rows[::-1]]
+
+
+_PHONE = re.compile(r"\+?\d[\d\s().-]{7,}\d")
+
+
+def _no_phones(text: str) -> str:
+    """Blanks what reads as a phone number (nine digits or more), keeping dates («2026-11-20 10:00»)."""
+    def blank(found: re.Match) -> str:
+        value = found[0]
+        if re.match(r"\d{4}-\d{2}-\d{2}", value) or sum(c.isdigit() for c in value) < 9:
+            return value
+        return "[número]"
+    return _PHONE.sub(blank, text)
+
+
+def handoff_text(connection: sqlite3.Connection, conversation_id: int) -> tuple[str, str]:
+    """(the participant's name, the conversation as it goes to an agent as data): the classifier's window, with
+    «mensaje no disponible» for what WhatsApp did not deliver, attachments only by their kind and every phone-like
+    number blanked. Never the participant's number nor any link."""
+    row = connection.execute("SELECT participant_name FROM chat_conversation WHERE id = ?", (int(conversation_id),)).fetchone()
+    name = _no_phones(_plain(row["participant_name"] if row else "") or "Contacto")[:120]
+    lines = []
+    for message in window(connection, int(conversation_id)):
+        who = "Yo" if message["direction"] == "outgoing" else name
+        if message["unsupported"]:
+            text = "[mensaje no disponible]"
+        else:
+            text = " ".join((message["body"] or "")[:BODY_CHARS].split())
+            kinds = _kinds(message["attachments"])
+            if kinds:
+                text = f"{text} [adjunto: {', '.join(sorted(set(kinds)))}]".strip()
+            text = text or "[sin texto]"
+        lines.append(f"[{(message['at'] or '')[:16]}] {who}: {_no_phones(text)}")
+    return name, "\n".join(lines)
+
+
+def archive_all(connection: sqlite3.Connection) -> int:
+    """«Archivar todo lo que hay ahora»: every pending conversation goes to «done» (user's decision, 19/11/2026); one
+    opens again by itself when something new is received. Nothing changes in WhatsApp or Zernio."""
+    with transaction(connection):
+        return connection.execute("UPDATE chat_summary SET state = 'done', decided_at = ? WHERE state = 'pending'", (now(),)).rowcount
 
 
 # ---- Jev (TypeSafe), in shadow: the same questions as mail (English, kinds one to one with KINDS) about the window the

@@ -82,7 +82,8 @@ export function OrcaLaunch({ choices, client, project: first, source, task: init
     <label className="field">Encargo para el agente<textarea value={task} rows={5} maxLength={4000} required placeholder="Qué quieres que haga en el repositorio"
       onChange={event => setTask(event.target.value)}/></label>
     </fieldset>
-    {(source.kind === 'mail' || source.kind === 'note') && <p className="muted">{source.kind === 'mail' ? 'El correo' : 'La nota (sin las líneas que parecen claves)'} irá debajo del encargo, marcado como datos: el agente no seguirá instrucciones que vengan dentro.</p>}
+    {(source.kind === 'mail' || source.kind === 'note' || source.kind === 'chat') && <p className="muted">{{ mail: 'El correo', note: 'La nota (sin las líneas que parecen claves)',
+      chat: 'La conversación de WhatsApp (sus últimos mensajes, sin números de teléfono ni enlaces)' }[source.kind]} irá debajo del encargo, marcado como datos: el agente no seguirá instrucciones que vengan dentro.</p>}
     {source.kind === 'issue' && <p className="muted">El agente leerá la issue con tu GitHub CLI y el espacio quedará enlazado a ella.</p>}
     {error && <LoadError message={error}/>}
     <div className="orca-actions">

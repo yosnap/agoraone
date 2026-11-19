@@ -42,13 +42,35 @@ Meta corta la conexión si la app del móvil no se abre en 14 días.
 - Lo normal lo resume Claude Haiku (últimos 30 mensajes, como mucho 4000 caracteres, como dato delimitado). Lo
   «solo en este Mac» y lo privado se clasifican con palabras clave locales, sin resumen. Los mensajes no
   disponibles no se envían. El correo y WhatsApp comparten el límite de 40 llamadas por hora.
-- Central no guarda teléfonos de clientes, así que una conversación no se marca como de cliente.
+- Una conversación se marca como de cliente cuando su número es el de un cliente del directorio (Central, CRMDev o
+  los clientes propios); lo privado nunca.
 - `GET /chat/summaries` nunca devuelve el texto de los mensajes; lo privado, sin nombre ni número.
 
+## Bandeja (1.7.0-alpha.74)
+- Las conversaciones pendientes, hechas y descartadas salen en la Bandeja junto al correo, en la misma lista, con
+  el distintivo «WhatsApp» y la etiqueta de la regla si la tiene. Las pestañas suman las dos fuentes; el filtro
+  «Fuente» (Todas, Correo, WhatsApp) solo aparece con el módulo encendido y una clave guardada. El buscador mira el
+  nombre, la etiqueta y el resumen, nunca el número.
+- «Hecho», «Descartar» y «Volver a Pendientes»; una conversación vuelve sola cuando recibes algo nuevo.
+  «Archivar todo lo que hay ahora» pasa también las conversaciones pendientes a «Hechos» (decisión del usuario,
+  19/11/2026).
+- «Ver mensajes» enseña los últimos 10 mensajes tal como los guarda AgoraOne, como texto plano: no pide nada a
+  Zernio y no puede marcar nada como leído. Lo no entregado sale como «Mensaje no disponible» y los adjuntos solo
+  por su tipo.
+- Acciones, con los mismos formularios que el correo: «Añadir a la nota del proyecto» (si hay cliente), «Crear
+  evento…» (si hay fechas o es una cita; la conversación pasa a «Hechos»), y solo de lo normal «Crear issue…»,
+  «Llevar a Orca…» y la nota en el repositorio. La nota lista los adjuntos por tipo y número, sin descargarlos.
+  Orca recibe los últimos mensajes como datos delimitados, sin números de teléfono ni enlaces. El núcleo vuelve a
+  comprobar el nivel en cada acción (`chat_inbox.level_of`).
+- El cliente sale del directorio unificado por el número, con sus proyectos activos; lo privado, sin cliente.
+- Modo discreto: se ven el distintivo, la clase y el nombre; se ocultan el número, el resumen y los mensajes.
+- En WhatsApp no se borra, archiva ni cambia nada. Responder llega en la fase siguiente.
+
 ## Pendiente
-Tarjetas en la Bandeja, responder con vista previa y Watson: ver el plan
-`plans/261118-0155-whatsapp-zernio-e-instinct/plan.md`.
+Responder con vista previa y Watson: ver el plan `plans/261118-0155-whatsapp-zernio-e-instinct/plan.md`.
 
 Código: `core/agora_core/zernio.py`, `chat_sync.py`, `routes_chat.py`, `chat_rules.py`, `chat_inbox.py`,
-`chat_summarizer.py`, migraciones `0030_chat.sql` y `0031_chat_summary.sql`, `src/settings/settings-whatsapp.tsx`
-y `settings-whatsapp-rules.tsx`. Pruebas: `core/tests/test_zernio.py`, `test_chat_sync.py`, `test_chat_inbox.py`.
+`chat_summarizer.py`, migraciones `0030_chat.sql` y `0031_chat_summary.sql`, `src/settings/settings-whatsapp.tsx`,
+`settings-whatsapp-rules.tsx`, `src/inbox/chat-card.tsx` e `inbox-cards.ts`. Pruebas: `core/tests/test_zernio.py`,
+`test_chat_sync.py`, `test_chat_inbox.py`, `test_chat_bandeja.py`, `src/inbox/inbox-cards.test.ts` y
+`scripts/verify-inbox.mjs`.

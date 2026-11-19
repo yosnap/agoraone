@@ -196,15 +196,10 @@ def _suggestion(row: sqlite3.Row) -> dict | None:
 
 
 def _client(clients: list[dict], address: str | None) -> dict | None:
-    """The sender's client in the directory (Central's and the user's own), with its active projects: only the
-    name and project names, never its address, phone or tax id."""
-    from .clients import find
+    """The sender's client in the directory (Central's and the user's own), with its active projects."""
+    from .clients import brief, find
 
-    found = find(clients, address=address)
-    if not found:
-        return None
-    active = [p["name"] for p in found["projects"] if p.get("status") in ("ACTIVE", "MAINTENANCE")][:5]
-    return {"name": found["name"], "projects": active}
+    return brief(find(clients, address=address))
 
 
 def _item(row: sqlite3.Row, clients: list[dict] | None = None) -> dict:

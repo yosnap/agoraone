@@ -88,4 +88,59 @@ assert.deepEqual(decided, ['dismissed'], '«no» descarta el aviso sin pasar por
 if (shots) await page.screenshot({ path: `${shots}/announcement.png` });
 assert.deepEqual(errors, [], 'sin errores JS');
 console.log('tarjeta de ejemplo y aviso de Watson: correctos');
+
+// WhatsApp's cards with sample data (no real conversation, nothing written): both sources in one list, the source
+// filter, the latest messages read from the core only (never from Zernio nor any address outside loopback) and the
+// discreet mode hiding the number, the summary and the messages.
+const chatSample = { id: 1, kind: 'client', source: 'model', ruleId: null, ruleName: null, label: 'Instinct', confidentiality: 'normal', state: 'pending',
+  summary: 'Quiere mover la cita al lunes.', details: { asks: ['Mover la cita al lunes'], dates: ['2026-11-24'] },
+  participant: { name: 'Contacto de ejemplo', phone: '+34 600 000 000' }, account: { id: 1, phone: '+34 600 999 999', label: 'Mi número' },
+  client: null, attachments: { image: 1 }, scope: { id: 1, name: 'Ejemplo', color: null }, lastIncomingAt: '2026-11-19T08:00:00Z', updatedAt: '2026-11-19T08:00:00Z' };
+const chatPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const chatErrors = [], outside = [], chatCalls = [];
+chatPage.on('pageerror', e => chatErrors.push(e.message));
+chatPage.on('request', r => {
+  const url = new URL(r.url());
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !url.protocol.startsWith('data')) outside.push(url.hostname);
+  if (url.pathname.includes('/api/core/chat/')) chatCalls.push(`${r.method()} ${url.pathname}`);
+});
+await chatPage.route('**/api/core/modules', async route => {
+  const response = await route.fetch();
+  const json = await response.json();
+  return route.fulfill({ response, json: { ...json, modules: { ...json.modules, whatsapp: true } } });
+});
+await chatPage.route('**/api/core/mail/inbox?state=pending', route => route.fulfill({ json: { items: [sample], counts: { pending: 1, done: 0, dismissed: 0, unread: 0 }, problem: null } }));
+await chatPage.route('**/api/core/chat/settings', route => route.fulfill({ json: { hasKey: true, accounts: [], lastSync: null } }));
+await chatPage.route('**/api/core/chat/summaries?state=pending', route => route.fulfill({ json: { items: [chatSample], counts: { pending: 1, done: 0, dismissed: 0, quiet: 0 }, problem: null } }));
+await chatPage.route('**/api/core/chat/summaries/1/messages', route => route.fulfill({ json: { messages: [
+  { id: 1, direction: 'incoming', at: '2026-11-19T07:59:00Z', text: '<b>¿Podemos</b> moverla al lunes?', unsupported: false, attachments: [] },
+  { id: 2, direction: 'incoming', at: '2026-11-19T08:00:00Z', text: null, unsupported: false, attachments: ['image'] },
+  { id: 3, direction: 'outgoing', at: '2026-11-19T08:01:00Z', text: null, unsupported: true, attachments: [] }] } }));
+await chatPage.goto(appUrl(5173, 'bandeja'));
+const chatCard = chatPage.locator('.chat-card');
+await chatCard.waitFor({ timeout: 60_000 });
+assert.equal(await chatPage.locator('.inbox-card').count(), 2, 'correo y WhatsApp en la misma lista');
+assert.ok(await chatCard.getByText('WhatsApp', { exact: true }).count(), 'distintivo de WhatsApp');
+assert.ok(await chatCard.getByText('Instinct', { exact: true }).count(), 'etiqueta de la regla');
+assert.match(await chatPage.getByRole('button', { name: /^Pendientes/ }).innerText(), /· 2/, 'las pestañas suman las dos fuentes');
+await chatPage.locator('.inbox-tools label.field', { hasText: 'Fuente' }).locator('.modern-select button').first().click();
+await chatPage.getByRole('option', { name: 'WhatsApp' }).click();
+assert.equal(await chatPage.locator('.inbox-card').count(), 1, 'el filtro deja solo WhatsApp');
+assert.equal(await chatPage.locator('.page select').count(), 0, 'ningún select nativo');
+const before = chatCalls.length;
+await chatCard.getByRole('button', { name: 'Ver mensajes' }).click();
+await chatCard.locator('.chat-message').first().waitFor();
+assert.deepEqual(chatCalls.slice(before), ['GET /api/core/chat/summaries/1/messages'], 'abrir los mensajes solo lee el núcleo');
+assert.ok(await chatCard.getByText('<b>¿Podemos</b> moverla al lunes?').count(), 'el texto sale tal cual, sin interpretar marcado');
+assert.ok(await chatCard.getByText('Mensaje no disponible').count() && await chatCard.getByText('imagen', { exact: true }).count());
+assert.equal(await chatCard.locator('.chat-messages a').count(), 0, 'sin enlaces');
+if (shots) await chatPage.screenshot({ path: `${shots}/inbox-whatsapp.png` });
+await chatPage.getByRole('button', { name: /discreto/i }).first().click();
+await chatCard.getByText('Resumen y mensajes ocultos en modo discreto.').waitFor();
+assert.equal(await chatCard.getByText(/600 000 000|Quiere mover|moverla al lunes/).count(), 0, 'el discreto oculta número, resumen y mensajes');
+assert.ok(await chatCard.getByText('Contacto de ejemplo').count(), 'el nombre se ve, como el remitente de un correo');
+await chatPage.getByRole('button', { name: /discreto/i }).first().click();
+assert.deepEqual(outside, [], 'ninguna petición fuera de loopback');
+assert.deepEqual(chatErrors, [], 'sin errores JS');
+console.log('tarjetas de WhatsApp de ejemplo, filtro, mensajes y modo discreto: correctos');
 await browser.close();

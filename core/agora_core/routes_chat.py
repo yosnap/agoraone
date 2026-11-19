@@ -1,5 +1,6 @@
 """HTTP routes of WhatsApp (through Zernio), read-only: the key in the Keychain, a test, «Leer ahora», each
-account's scope, confidentiality and days back, the user's rules and the classified conversations. The key is never
+account's scope, confidentiality and days back, the user's rules, the classified conversations with the user's
+decision on each and their latest messages as AgoraOne keeps them (never asked to Zernio). The key is never
 returned: only whether there is one. No route acts on what a message says."""
 
 import sqlite3
@@ -10,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import chat_inbox, chat_rules, chat_sync, zernio
+from . import chat_inbox, chat_rules, chat_sync, modules, zernio
 from .db import DB_NAME, connect, transaction
 from .settings import Settings
 
@@ -32,6 +33,13 @@ def key_problem(key: object) -> str | None:
     if not 8 <= len(key) <= 500 or not key.isascii() or not key.isprintable() or any(c.isspace() for c in key):
         return "La clave de API de Zernio no parece válida: cópiala entera desde su panel, sin espacios."
     return None
+
+
+class Decision(BaseModel):
+    state: Literal["pending", "done", "dismissed"]
+
+
+OFF = "El módulo WhatsApp está apagado en Ajustes."
 
 
 class AccountChange(BaseModel):
@@ -188,10 +196,47 @@ def chat_router(settings: Settings, secrets, health=None) -> APIRouter:
             return JSONResponse({"error": "Esa regla no existe."}, status_code=404)
         return await rules()
 
+    def module_on(connection: sqlite3.Connection) -> bool:
+        return modules.state(connection)["whatsapp"]
+
     @router.get("/chat/summaries")
     async def summaries(state: Literal["pending", "done", "dismissed"] = "pending", limit: int = 100):
         limit = max(1, min(limit, 300))
-        items, counted = await db(lambda c: (chat_inbox.summaries(c, state, limit), chat_inbox.counts(c)))
-        return {"items": items, "counts": counted, "problem": health.problem if health else None}
+
+        def work(connection):
+            if not module_on(connection):  # off: no cards (and nothing read for them)
+                return [], {name: 0 for name in ("pending", "done", "dismissed", "quiet")}, False
+            return chat_inbox.summaries(connection, state, limit), chat_inbox.counts(connection), True
+        items, counted, on = await db(work)
+        return {"items": items, "counts": counted, "problem": (health.problem if health else None) if on else None}
+
+    @router.put("/chat/summaries/{conversation_id}")
+    async def decide(conversation_id: int, body: Decision):
+        """The user's «Hecho», «Descartar» or «Volver a Pendientes»; nothing changes in WhatsApp or Zernio."""
+        def work(connection):
+            if not module_on(connection):
+                return None
+            return chat_inbox.decide(connection, conversation_id, body.state)
+        found = await db(work)
+        if found is None:
+            return JSONResponse({"error": OFF}, status_code=409)
+        if not found:
+            return JSONResponse({"error": chat_inbox.GONE}, status_code=404)
+        return {"ok": True}
+
+    @router.get("/chat/summaries/{conversation_id}/messages")
+    async def messages(conversation_id: int):
+        """The latest messages of a card, from AgoraOne's database only: no request to Zernio, nothing marked read."""
+        def work(connection):
+            if not module_on(connection):
+                return None
+            return chat_inbox.messages(connection, conversation_id)
+        try:
+            found = await db(work)
+        except chat_inbox.ChatGone as error:
+            return JSONResponse({"error": str(error)}, status_code=404)
+        if found is None:
+            return JSONResponse({"error": OFF}, status_code=409)
+        return {"messages": found}
 
     return router

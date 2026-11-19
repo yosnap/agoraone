@@ -12,8 +12,8 @@ export const hourMinute = (iso: string) => new Date(iso).toLocaleTimeString('es-
 
 /** A new event or reminder, created only when the user presses the button; if the event overlaps others,
  * they are listed and it is created only with a second, explicit yes. Nothing is ever deleted. */
-export function EventForm({ initial, inboxId, discreet = false, onDone, onCancel }: {
-  initial?: { title?: string; start?: Date; notes?: string }; inboxId?: number; discreet?: boolean; onDone: (note: string) => void; onCancel: () => void;
+export function EventForm({ initial, inboxId, chatId, discreet = false, onDone, onCancel }: {
+  initial?: { title?: string; start?: Date; notes?: string }; inboxId?: number; chatId?: number; discreet?: boolean; onDone: (note: string) => void; onCancel: () => void;
 }) {
   const start = initial?.start ?? new Date(Math.ceil(Date.now() / 1800000) * 1800000);
   const [kind, setKind] = useState<'event' | 'reminder'>('event');
@@ -36,11 +36,11 @@ export function EventForm({ initial, inboxId, discreet = false, onDone, onCancel
     try {
       const calendar = calendarId && options.some(c => c.id === calendarId) ? calendarId : null;
       if (kind === 'reminder') {
-        await createReminder({ calendarId: calendar, title: form.title.trim(), due: form.start ? new Date(form.start).toISOString() : null, notes: form.notes || null, inboxId: inboxId ?? null });
+        await createReminder({ calendarId: calendar, title: form.title.trim(), due: form.start ? new Date(form.start).toISOString() : null, notes: form.notes || null, inboxId: inboxId ?? null, chatId: chatId ?? null });
         onDone(`Recordatorio «${form.title.trim()}» creado.`);
       } else {
         const made = await createEvent({ calendarId: calendar, title: form.title.trim(), start: new Date(form.start).toISOString(), end: new Date(form.end).toISOString(),
-          allDay: form.allDay, location: form.location || null, notes: form.notes || null, overlapOk, inboxId: inboxId ?? null });
+          allDay: form.allDay, location: form.location || null, notes: form.notes || null, overlapOk, inboxId: inboxId ?? null, chatId: chatId ?? null });
         onDone(`Evento «${form.title.trim()}» creado${made.clashes ? `; se solapa con ${made.clashes}` : ''}.`);
       }
     } catch (failure) {
