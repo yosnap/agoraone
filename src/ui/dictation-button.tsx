@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { transcribeVoice } from '../api/core';
 import { useListenRequests } from '../assistant/listen';
+import { moduleOn, useModules } from '../shell/modules';
 
 const LIMIT_MS = 60_000;
 const MAX_BYTES = 1024 * 1024; // what the server lets through
@@ -92,6 +93,8 @@ export function DictationButton({ onText, disabled, onPhase, big = false }: {
     window.setTimeout(() => { if (phase.current === 'recording') stop(); else if (phase.current === 'idle' && !disabled) void start(); }, 0);
   }
   const recording = state === 'recording';
+  const modules = useModules();
+  if (!moduleOn(modules, 'voz')) return null;
   return <span className="dictation" ref={attach}>
     <button type="button" className={`button dictation-button${recording ? ' recording' : ''}${big ? ' big' : ''}`} aria-label="Hablar y enviar"
       disabled={!recording && (disabled || state === 'starting')} aria-pressed={recording} aria-busy={state === 'transcribing'} onClick={press}

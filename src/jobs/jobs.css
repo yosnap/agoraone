@@ -1,4 +1,4 @@
-.jobs { max-width:1100px }
+.jobs > * { max-width:1100px }
 .jobs h2 { margin:24px 0 10px; font-size:15px }
 .jobs-filter { min-width:200px }
 .work-totals { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin:12px 0 0 }

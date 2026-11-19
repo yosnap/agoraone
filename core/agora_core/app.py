@@ -39,6 +39,8 @@ from .routes_voice import voice_router
 from .routes_meetings import meetings_router
 from .routes_music import music_router
 from .routes_apps import apps_router
+from .routes_doctor import doctor_router
+from . import modules
 from .meetings import Recorder
 from .meeting_notes import Worker
 from .routes_calendar import calendar_router
@@ -94,6 +96,7 @@ def create_app(
         try:
             migrate(database, backup_first=lambda: create_backup(settings.data_dir, store, "premigration"))
             recorder.recover(database)
+            modules.apply(database)
             meeting_worker.recover(database)
         finally:
             database.close()
@@ -106,11 +109,13 @@ def create_app(
             extract_engines = lambda: [ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)]  # noqa: E731
             threading.Thread(target=entity_worker, args=(settings, extract_engines, stop, extract_health), daemon=True).start()
             # New mail of the connected accounts, read-only (user's decision, 14/11/2026).
-            threading.Thread(target=mail_worker, args=(settings, secrets, stop), daemon=True).start()
+            # Mail and its summaries only while «Correo» is on; Central only while «Trabajos» is (1.6).
+            database_now = lambda: connect(settings.data_dir / DB_NAME)  # noqa: E731
+            threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: mail_worker(settings, secrets, own), stop), daemon=True).start()
             # Kinds and summaries of new mail: rules first, then Claude Haiku for what may leave this Mac.
-            threading.Thread(target=summary_worker, args=(settings, extract_engines, stop, summary_health), daemon=True).start()
+            threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: summary_worker(settings, extract_engines, own, summary_health), stop), daemon=True).start()
             # Clients and servers from Central, read-only, every half hour (user's decision, 14/11/2026).
-            threading.Thread(target=central_worker, args=(settings, stop, central_health), daemon=True).start()
+            threading.Thread(target=modules.gated, args=("trabajos", database_now, lambda own: central_worker(settings, own, central_health), stop), daemon=True).start()
         try:
             yield
         finally:
@@ -198,4 +203,5 @@ def create_app(
     app.include_router(meetings_router(settings, recorder, meeting_worker))
     app.include_router(music_router(settings))
     app.include_router(apps_router(settings))
+    app.include_router(doctor_router(settings, secrets))
     return app
