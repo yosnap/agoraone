@@ -31,6 +31,7 @@ const AgentsView = lazy(() => import('../agents/agents-view').then(module => ({ 
 const MeetingsView = lazy(() => import('../meetings/meetings-view').then(module => ({ default: module.MeetingsView })));
 const QuotesView = lazy(() => import('../quotes/quotes-view').then(module => ({ default: module.QuotesView })));
 const CentralView = lazy(() => import('../central/central-view').then(module => ({ default: module.CentralView })));
+const CrmdevView = lazy(() => import('../crmdev/crmdev-view').then(module => ({ default: module.CrmdevView })));
 const FabricaView = lazy(() => import('../fabrica/fabrica-view').then(module => ({ default: module.FabricaView })));
 const SettingsView = lazy(() => import('../settings/settings-view').then(module => ({ default: module.SettingsView })));
 
@@ -95,6 +96,7 @@ export function Shell() {
           : section === 'agents' ? <AgentsView discreet={discreet} onOpen={go}/>
           : section === 'quotes' ? <QuotesView discreet={discreet} onOpen={go}/>
           : section === 'central' ? <CentralView discreet={discreet} onOpen={go}/>
+          : section === 'crmdev' ? <CrmdevView discreet={discreet} onOpen={go}/>
           : section === 'fabrica' ? <FabricaView discreet={discreet} onOpen={go}/>
           : <PendingView section={section}/>}
       </Suspense></main>}

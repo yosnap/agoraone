@@ -9,7 +9,7 @@ import { NotesList, WebsitesTable } from './central-clients';
 import { useWritePermissions } from './central-change';
 import { CentralEditProject } from './central-edit-project';
 import { CentralNote } from './central-note';
-import { Block, Facts, RecordLayout } from './central-record';
+import { Block, Facts, RecordLayout } from '../ui/record-layout';
 import { dateLabel, forgetCentral, useCentralRead, useCentralReadings, viewKey } from './use-central-view';
 
 const ALL = '';

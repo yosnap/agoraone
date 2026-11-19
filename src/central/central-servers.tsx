@@ -4,7 +4,7 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { CentralProblem } from './central-connect';
 import { OpenInCentral } from './open-in-central';
-import { Block, RecordLayout } from './central-record';
+import { Block, RecordLayout } from '../ui/record-layout';
 import { dateLabel, levelTone, useCentralRead, viewKey } from './use-central-view';
 
 const pct = (value: number | null | undefined) => (value == null ? '—' : `${Math.round(value)} %`);

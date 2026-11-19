@@ -8,9 +8,10 @@ import { PANEL_PAGES, canStart, fabricaState, freshFabrica, readFabrica, stateLa
 const addon = (status: ConnectorStatus): Connector => ({ id: 'fabrica', name: 'Mi fábrica', description: '', kind: 'local_port', modules: { fabrica: true }, views: ['fabrica'],
   window: 'fabrica', scopes: [], hint: null, state: { status, configured: { path: '/x', port: 8742 }, notice: null, storeProblem: null } });
 
-test('«Mi fábrica» va en el menú justo antes de Presupuestos y sigue a su módulo', () => {
+test('«Mi fábrica» va en el menú justo antes de CRMDev y Presupuestos, y sigue a su módulo', () => {
   const ids = menu.map(item => item.id);
-  assert.equal(ids[ids.indexOf('quotes') - 1], 'fabrica');
+  assert.equal(ids[ids.indexOf('quotes') - 2], 'fabrica');
+  assert.equal(ids[ids.indexOf('quotes') - 1], 'crmdev', 'CRMDev va entre Mi fábrica y Presupuestos');
   assert.equal(menu.find(item => item.id === 'fabrica')?.label, 'Mi fábrica');
   assert.equal(menu.at(-1)?.id, 'central', 'Central sigue la última');
   assert.equal(sectionModule.fabrica, 'fabrica');

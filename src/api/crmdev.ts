@@ -38,3 +38,8 @@ export function getCrmdevView<V extends CrmdevViewName>(view: V, filters: Crmdev
 }
 
 export const getCrmdevHours = (projectId: string) => core<CrmdevHours>(`/crmdev/proyectos/${encodeURIComponent(projectId)}/horas`);
+
+/** A client's record with its address, from the same list of the 100 most recent (CRMDev has no read by id). Hidden,
+ * and not asked, in discreet mode. */
+export type CrmdevClientRecord = CrmdevClient & { email: string | null };
+export const getCrmdevClient = (clientId: string) => core<CrmdevClientRecord>(`/crmdev/clientes/${encodeURIComponent(clientId)}`);

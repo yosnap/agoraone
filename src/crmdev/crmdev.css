@@ -1,0 +1,7 @@
+/* The «CRMDev» section. It reuses Central's layout (tabs, filters, tables, records); only what is its own is here. No
+   side accent stripe anywhere. CRMDev's text keeps its line breaks and wraps, never as HTML. */
+.crmdev-title { min-width:16ch; max-width:60ch }
+.crmdev-title strong { overflow-wrap:anywhere }
+.crmdev-text { display:block; margin-top:4px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--c-44675e) }
+.crmdev-order { margin:0 }
+.crmdev-problem .actions { flex:none; justify-content:flex-end }

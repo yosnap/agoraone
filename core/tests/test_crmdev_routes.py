@@ -192,3 +192,23 @@ def test_probar_con_429_responde_429(tmp_path, monkeypatch):
         connected(client)
         tested = client.post("/connectors/crmdev/test", headers=HEADERS)
         assert tested.status_code == 429 and tested.json()["status"] == "busy"
+
+
+def test_ficha_de_cliente_con_su_correo_desde_la_misma_lista(tmp_path, fake):
+    settings, app = app_with(tmp_path, MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        connected(client)
+        listed = client.get("/crmdev/views/clientes", headers=HEADERS)
+        assert "info@cliente.example" not in listed.text, "la lista nunca lleva el correo"
+        record = client.get("/crmdev/clientes/c1", headers=HEADERS)
+        assert record.status_code == 200
+        assert record.json() == {"id": "c1", "name": "Cliente Uno", "company": "Uno SL", "status": "CUSTOMER", "email": "info@cliente.example"}
+        assert fake.tools() == ["list_clients"], "la ficha usa la lista ya leída, sin otra petición"
+        missing = client.get("/crmdev/clientes/c9", headers=HEADERS)
+        assert missing.status_code == 404 and missing.json()["status"] == "not_found"
+        for path in ("/crmdev/clientes/a%2Fb", "/crmdev/clientes/c1?x=1", "/crmdev/clientes/" + "a" * 65):
+            assert client.get(path, headers=HEADERS).status_code == 422, path
+        assert fake.tools() == ["list_clients"]
+        client.put("/modules", json={"modules": {"crmdev": False}}, headers=HEADERS)
+        off = client.get("/crmdev/clientes/c1", headers=HEADERS)
+        assert off.status_code == 404 and off.json()["status"] == "off"

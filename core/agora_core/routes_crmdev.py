@@ -1,6 +1,7 @@
 """HTTP routes of the «CRMDev» section, read live from CRMDev's REST API with the saved connection, read-only:
 `GET /crmdev/views/{view}` (proyectos, tareas, tickets, clientes and miembros, with the filters `estado`, `proyecto`
-for tasks and `cliente` for tickets) and `GET /crmdev/proyectos/{id}/horas`. Each view maps to one tool of the
+for tasks and `cliente` for tickets), `GET /crmdev/proyectos/{id}/horas` and `GET /crmdev/clientes/{id}` (a client's record
+with its address, taken from the same list, since CRMDev has no read by id). Each view maps to one tool of the
 closed list in `crmdev_api`, which checks the arguments before anything leaves; lists are the 100 most recent
 (members: the 100 who joined first, the order CRMDev gives them).
 
@@ -22,6 +23,8 @@ OFF = "El módulo CRMDev está apagado."
 NOT_CONNECTED = "Conecta CRMDev en Conectores › CRMDev."
 NO_VIEW = "Esa vista de CRMDev no existe."
 BAD_FILTER = "Ese filtro no existe en esta vista de CRMDev."
+BAD_ID = "El identificador no es válido."
+NO_CLIENT = "Ese cliente no está entre los 100 más recientes de CRMDev: míralo en CRMDev."
 STATUS_CODES = {"forbidden": 403, "not_found": 404, "invalid": 422, "busy": 429, "config": 409}
 # view → (tool, its shape, the filters it takes: query name → argument of the tool)
 VIEWS = {
@@ -88,8 +91,23 @@ def crmdev_router(settings: Settings, secrets) -> APIRouter:
     @router.get("/crmdev/proyectos/{project:path}/horas")
     async def hours(project: str, request: Request):
         if not crmdev_api.ID.fullmatch(project) or request.query_params:
-            return problem(422, "El identificador no es válido.", "invalid")
+            return problem(422, BAD_ID, "invalid")
         return await answer("get_project_time_report", {"projectId": project}, crmdev_shapes.shape_hours)
+
+    # The only answer with a client's address: its record, which the screen hides (and does not ask) in discreet mode.
+    # Same tool and arguments as the list of clients, so it shares its cache instead of asking CRMDev again.
+    @router.get("/crmdev/clientes/{client:path}")
+    async def client_record(client: str, request: Request):
+        if not crmdev_api.ID.fullmatch(client) or request.query_params:
+            return problem(422, BAD_ID, "invalid")
+
+        def record(data: object):
+            found = [row for row in crmdev_shapes.shape_list(lambda row: row, data) if row.get("id") == client]
+            if not found:
+                return problem(404, NO_CLIENT, "not_found")
+            return crmdev_shapes.shape_client(found[0], contact=True)
+
+        return await answer("list_clients", {"limit": crmdev_api.MAX_ROWS}, record)
 
     return router
 
