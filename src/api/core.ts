@@ -33,10 +33,22 @@ export type Backup = { name: string; kind: string; created: string; bytes: numbe
 export const getBackups = () => core<{ backups: Backup[]; recoveryKeyPending: boolean }>('/backups');
 export const createBackup = () => core<{ name: string; kind: string }>('/backups', {});
 
-export type AddonStatus = 'not_configured' | 'not_found' | 'unreadable' | 'detected' | 'responding' | 'recording';
-export type Addon = { id: 'costguard' | 'fabrica'; name: string; description: string; offers: string[]; status: AddonStatus; configured: { path?: string | null; dataPath?: string | null; port?: number | null } };
-export const getAddons = () => core<{ addons: Addon[] }>('/addons');
-export const putAddon = (id: Addon['id'], changes: Addon['configured']) => core<{ addons: Addon[] }>(`/addons/${id}`, changes, 'PUT');
+/** The connectors (/connectors): every external module described the same way. A key is never answered, only `hasKey`. */
+export type ConnectorStatus = 'not_configured' | 'legacy' | 'saved' | 'responding' | 'failing' | 'detected' | 'recording' | 'not_found' | 'unreadable' | 'guide';
+export type ConnectorKind = 'web_api' | 'local_port' | 'local_file' | 'guide';
+export type ConnectorSettings = { url?: string | null; hasKey?: boolean; port?: number | null; path?: string | null; dataPath?: string | null };
+export type ConnectorState = { status: ConnectorStatus; configured: ConnectorSettings; notice: string | null; storeProblem: string | null };
+export type Connector = { id: string; name: string; description: string; kind: ConnectorKind; modules: Record<string, boolean>; views: string[];
+  window: string | null; scopes: string[]; hint: string | null; state: ConnectorState };
+/** What a connector saves: a null forgets that setting; without `key`, a web API keeps the saved one. */
+export type ConnectorChanges = { url?: string | null; key?: string | null; port?: number | null; path?: string | null; dataPath?: string | null };
+const connectorPath = (id: string) => `/connectors/${encodeURIComponent(id)}`;
+export const getConnectors = () => core<{ connectors: Connector[] }>('/connectors');
+export const putConnector = (id: string, changes: ConnectorChanges) => core<Connector>(connectorPath(id), changes, 'PUT');
+/** Tries what is typed (not saved) or, when missing, what is saved; the answer depends on the connector's kind. */
+export const testConnector = <T>(id: string, typed: ConnectorChanges) => core<T>(`${connectorPath(id)}/test`, typed, 'POST');
+/** Forgets the key or the local setting; never what was read. */
+export const deleteConnector = (id: string) => core<Connector>(connectorPath(id), undefined, 'DELETE');
 export type AgentUsage = { agent: string; input: number; output: number; cacheRead: number; cacheWrite: number; turns: number };
 export const getCostguardUsage = (hours: number) => core<{ hours: number; agents: AgentUsage[]; turns: number }>(`/addons/costguard/usage?hours=${hours}`);
 export type BrainMcpSetup = { name: string; command: string | null; args: string[]; env: Record<string, string> };

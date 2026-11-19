@@ -1,7 +1,8 @@
 import { request } from './client';
+import { deleteConnector, getConnectors, putConnector, testConnector, type Connector } from './core';
 
-// Central's connection, through the core (/api/core/central/connection*): the key goes to the system's secret
-// store and is never answered back; the screen only learns whether there is one.
+// Central's connection, through the core's connector «central» (/api/core/connectors/central): the key goes to the
+// system's secret store and is never answered back; the screen only learns whether there is one.
 const core = <T>(path: string, body?: unknown, method?: string) => request<T>(`/core${path}`, body, method);
 
 export type CentralScope = 'lectura' | 'presupuestos' | 'escritura';
@@ -13,14 +14,27 @@ export type CentralStatus = { version: string | null; api: string | null; scopes
 
 export const scopeLabels: Record<CentralScope, string> = { lectura: 'Lectura', presupuestos: 'Presupuestos', escritura: 'Escritura' };
 
-export const getCentralConnection = () => core<CentralConnection>('/central/connection');
+const SUGGESTED_URL = 'https://central.example.com';
+
+/** Central's connector, in the shape Settings › Central and the «Central» section read. */
+export function centralConnection(connector: Connector): CentralConnection {
+  const { status, configured, storeProblem } = connector.state;
+  return { url: configured.url ?? null, hasKey: configured.hasKey === true, storeProblem, legacy: status === 'legacy',
+    transport: status === 'saved' ? 'http' : null, suggestedUrl: connector.hint ?? SUGGESTED_URL };
+}
+
+export const getCentralConnection = () => getConnectors().then(found => {
+  const connector = found.connectors.find(item => item.id === 'central');
+  if (!connector) throw new Error('AgoraOne no conoce el conector de Central.');
+  return centralConnection(connector);
+});
 /** Saves the URL and, when given, a new key (without it, the saved key stays). */
-export const putCentralConnection = (url: string, key?: string) => core<CentralConnection>('/central/connection', key ? { url, key } : { url }, 'PUT');
+export const putCentralConnection = (url: string, key?: string) => putConnector('central', key ? { url, key } : { url }).then(centralConnection);
 /** Forgets the key from the secret store; the URL stays, it is not secret. */
-export const deleteCentralConnection = () => core<CentralConnection>('/central/connection', undefined, 'DELETE');
+export const deleteCentralConnection = () => deleteConnector('central').then(centralConnection);
 /** Asks Central's `estado` with what is typed (not saved yet) or, when empty, with what is saved. */
 export const testCentralConnection = (url?: string, key?: string) =>
-  core<CentralStatus>('/central/connection/test', { ...(url ? { url } : {}), ...(key ? { key } : {}) });
+  testConnector<CentralStatus>('central', { ...(url ? { url } : {}), ...(key ? { key } : {}) });
 
 // The «Central» section, read live through the core (/api/core/central/views/*): the core picks the fixed path of
 // Central's API for each view and copies only what is shown here (no paths, IPs nor tokens). Contact comes only in

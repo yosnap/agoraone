@@ -152,7 +152,7 @@ def fake(monkeypatch):
 def client(tmp_path, fake):
     settings, app = app_with(tmp_path, MemorySecrets())
     with TestClient(app, base_url=f"http://{settings.authority}") as test_client:
-        assert test_client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
+        assert test_client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
         yield test_client
 
 
@@ -238,7 +238,7 @@ def test_modulo_apagado_responde_404_sin_pedir_nada(client, fake):
 
 
 def test_sin_conexion_http_pide_conectar(client, fake):
-    client.delete("/central/connection", headers=HEADERS)
+    client.delete("/connectors/central", headers=HEADERS)
     client.put("/modules", json={"modules": {"central": True}}, headers=HEADERS)
     answer = client.get("/central/views/resumen", headers=HEADERS)
     assert answer.status_code == 409 and answer.json()["status"] == "not_connected"

@@ -135,7 +135,7 @@ def fake(monkeypatch):
 def client(tmp_path, fake):
     settings, app = app_with(tmp_path, MemorySecrets())
     with TestClient(app, base_url=f"http://{settings.authority}") as test_client:
-        assert test_client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
+        assert test_client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
         test_client.put("/modules", json={"modules": {"central": True, "presupuestos": True}}, headers=HEADERS)
         yield test_client
 
@@ -392,7 +392,7 @@ def test_la_version_de_edicion_del_proyecto_y_su_version_de_software(client, fak
 def test_si_cambia_la_conexion_no_se_envia_a_otra_central(client, fake):
     token = preview(client, kind="proyecto", id=P1, revision=fake.project_version(), changes={"phase": "Entrega"}).json()["token"]
     other = "cen_" + "Zz9_-" * 8 + "abc"
-    assert client.put("/central/connection", json={"url": URL, "key": other}, headers=HEADERS).status_code == 200
+    assert client.put("/connectors/central", json={"url": URL, "key": other}, headers=HEADERS).status_code == 200
     answer = confirm(client, token)
     assert answer.status_code == 409 and answer.json()["status"] == "expired" and fake.writes() == []
 

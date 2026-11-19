@@ -1,8 +1,8 @@
 """Add-ons: other projects of the user that AgoraOne connects to without changing them.
 
-Manifests are generic (this repository is public): how each add-on is recognised, what it offers and how
-to tell it is running. Where it lives on this Mac (paths, ports) is the user's own setting, stored in the
-core's database. Nothing here starts, stops or writes to an add-on; the one exception, starting Mi fábrica's own
+Manifests are generic (this repository is public): how each add-on is recognised and how to tell it is
+running; its card is a connector (`connectors.py`). Where it lives on this Mac (paths, ports) is the user's own
+setting, stored in the core's database. Nothing here starts, stops or writes to an add-on; the one exception, starting Mi fábrica's own
 launchd service on macOS at the user's request, lives in `fabrica_service.py`.
 """
 
@@ -20,16 +20,14 @@ class Manifest:
     id: str
     name: str
     description: str
-    offers: list[str]
     defaults: dict = field(default_factory=dict)
 
 
 MANIFESTS = {m.id: m for m in [
     Manifest("costguard", "CostGuard", "Mide el gasto de tokens de los agentes (Claude Code, Codex, OpenCode, pi).",
-             ["Consumo de tokens de las últimas 5 y 24 horas, en solo lectura"],
              {"dataPath": str(Path.home() / "Library" / "Application Support" / "CostGuard" / "consumo.sqlite")}),
     Manifest("fabrica", "Mi fábrica", "Fábrica de contenido: investiga, produce, espera aprobación, publica y mide.",
-             ["Panel local", "Nutrirse del cerebro por MCP"], {"port": 8742}),
+             {"port": 8742}),
 ]}
 
 
@@ -138,17 +136,6 @@ def status(addon: str, settings: dict) -> str:
         return "responding" if _healthy(settings.get("port"), "/salud") else "detected"
     except Exception:  # noqa: BLE001 - one add-on in a bad state must not break the whole registry
         return "unreadable"
-
-
-def describe(connection: sqlite3.Connection) -> list[dict]:
-    found = []
-    for manifest in MANIFESTS.values():
-        settings = config(connection, manifest.id)
-        found.append({
-            "id": manifest.id, "name": manifest.name, "description": manifest.description, "offers": manifest.offers,
-            "status": status(manifest.id, settings), "configured": settings,
-        })
-    return found
 
 
 def _open_costguard(database: Path) -> sqlite3.Connection:
