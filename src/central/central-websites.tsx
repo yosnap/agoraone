@@ -63,7 +63,7 @@ export function CentralWebsites({ discreet, onOpen }: { discreet: boolean; onOpe
       : !websites.length ? <p className={filters.status === 'down' ? 'ok-note' : 'muted'} role="status">
         {filters.status === 'down' ? 'Ninguna web caída con estos filtros en la última comprobación.' : 'Ninguna web coincide con estos filtros.'}</p>
       : <>
-        <p className="muted">{filtered ? `${websites.length} de ${all.length} webs` : `${websites.length} webs`} · {down} caídas en la última comprobación</p>
+        <p className="muted">{filtered ? `${websites.length} de ${all.length} webs` : `${websites.length} webs`} · {down} {down === 1 ? 'caída' : 'caídas'} en la última comprobación</p>
         <table className="data-table central-table">
           <thead><tr><th>Web</th><th>Tipo</th><th>Cliente</th><th>Estado</th><th className="num">Código</th><th className="num">Tiempo</th><th>Última</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
           <tbody>{websites.map((w, index) => <tr key={w.id ?? index}>
