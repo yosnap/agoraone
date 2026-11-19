@@ -4,6 +4,14 @@ import { request } from './client';
 // system's secret store) and each view maps to one tool of a closed list in the core, read-only. Everything here is
 // data from CRMDev: shown as text, never acted upon. Lists carry no assignee's or guest's address.
 const core = <T>(path: string) => request<T>(`/core${path}`);
+/** When CRMDev gave an answer (ISO, UTC): a cached one keeps its own time. */
+type ReadAt = { readAt: string | null };
+/** The query of a read: its filters and, for «Volver a leer», `fresco=1` (CRMDev is asked now, not the core's cache). */
+const query = (params: Record<string, string | undefined>, fresh: boolean) => {
+  const text = new URLSearchParams(Object.entries({ ...params, fresco: fresh ? '1' : undefined })
+    .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '')).toString();
+  return text ? `?${text}` : '';
+};
 
 /** What «Probar» answers: the scope of an organization key, the tools of the closed list CRMDev offers and those that
  * also depend on a module of the plan (tickets), only known when their view is opened. */
@@ -21,7 +29,7 @@ export type CrmdevMember = { id: string | null; name: string | null; role: strin
 export type CrmdevHours = { project: string | null; total: string | null; entries: number | null;
   rows: { task: string | null; user: string | null; minutes: number | null }[];
   /** Only the first 500 rows are here; `total` and `entries` are CRMDev's for the whole project. */
-  cut: boolean };
+  cut: boolean } & ReadAt;
 
 export type CrmdevLists = { proyectos: CrmdevProject; tareas: CrmdevTask; tickets: CrmdevTicket; clientes: CrmdevClient; miembros: CrmdevMember };
 export type CrmdevViewName = keyof CrmdevLists;
@@ -30,16 +38,17 @@ export type CrmdevFilters = { proyectos: { estado?: string }; tareas: { estado?:
   clientes: { estado?: string }; miembros: Record<string, never> };
 /** At most 100 rows; `more` when the list is full (CRMDev has no pages: the rest is only seen in CRMDev). `order` says
  * which rows a full list holds: the most recent ones, or for members the 100 who joined first. */
-export type CrmdevPage<T> = { items: T[]; limit: number; more: boolean; order: 'recientes' | 'primeros' };
+export type CrmdevPage<T> = { items: T[]; limit: number; more: boolean; order: 'recientes' | 'primeros' } & ReadAt;
 
-export function getCrmdevView<V extends CrmdevViewName>(view: V, filters: CrmdevFilters[V] = {} as CrmdevFilters[V]) {
-  const query = new URLSearchParams(Object.entries(filters).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '')).toString();
-  return core<CrmdevPage<CrmdevLists[V]>>(`/crmdev/views/${view}${query ? `?${query}` : ''}`);
+export function getCrmdevView<V extends CrmdevViewName>(view: V, filters: CrmdevFilters[V] = {} as CrmdevFilters[V], fresh = false) {
+  return core<CrmdevPage<CrmdevLists[V]>>(`/crmdev/views/${view}${query(filters, fresh)}`);
 }
 
-export const getCrmdevHours = (projectId: string) => core<CrmdevHours>(`/crmdev/proyectos/${encodeURIComponent(projectId)}/horas`);
+export const getCrmdevHours = (projectId: string, fresh = false) =>
+  core<CrmdevHours>(`/crmdev/proyectos/${encodeURIComponent(projectId)}/horas${query({}, fresh)}`);
 
-/** A client's record with its address, from the same list of the 100 most recent (CRMDev has no read by id). Hidden,
- * and not asked, in discreet mode. */
-export type CrmdevClientRecord = CrmdevClient & { email: string | null };
-export const getCrmdevClient = (clientId: string) => core<CrmdevClientRecord>(`/crmdev/clientes/${encodeURIComponent(clientId)}`);
+/** A client's record with its address, from the same list (and state filter) as the list on screen, since CRMDev has
+ * no read by id. Hidden, and not asked, in discreet mode. */
+export type CrmdevClientRecord = CrmdevClient & { email: string | null } & ReadAt;
+export const getCrmdevClient = (clientId: string, estado?: string, fresh = false) =>
+  core<CrmdevClientRecord>(`/crmdev/clientes/${encodeURIComponent(clientId)}${query({ estado }, fresh)}`);

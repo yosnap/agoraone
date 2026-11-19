@@ -202,7 +202,8 @@ def test_ficha_de_cliente_con_su_correo_desde_la_misma_lista(tmp_path, fake):
         assert "info@cliente.example" not in listed.text, "la lista nunca lleva el correo"
         record = client.get("/crmdev/clientes/c1", headers=HEADERS)
         assert record.status_code == 200
-        assert record.json() == {"id": "c1", "name": "Cliente Uno", "company": "Uno SL", "status": "CUSTOMER", "email": "info@cliente.example"}
+        assert record.json() == {"id": "c1", "name": "Cliente Uno", "company": "Uno SL", "status": "CUSTOMER", "email": "info@cliente.example",
+                                 "readAt": listed.json()["readAt"]}
         assert fake.tools() == ["list_clients"], "la ficha usa la lista ya leída, sin otra petición"
         missing = client.get("/crmdev/clientes/c9", headers=HEADERS)
         assert missing.status_code == 404 and missing.json()["status"] == "not_found"
@@ -212,3 +213,35 @@ def test_ficha_de_cliente_con_su_correo_desde_la_misma_lista(tmp_path, fake):
         client.put("/modules", json={"modules": {"crmdev": False}}, headers=HEADERS)
         off = client.get("/crmdev/clientes/c1", headers=HEADERS)
         assert off.status_code == 404 and off.json()["status"] == "off"
+
+
+def test_ficha_de_cliente_con_el_filtro_de_la_lista(tmp_path, fake):
+    settings, app = app_with(tmp_path, MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        connected(client)
+        assert client.get("/crmdev/views/clientes?estado=CUSTOMER", headers=HEADERS).status_code == 200
+        record = client.get("/crmdev/clientes/c1?estado=CUSTOMER", headers=HEADERS)
+        assert record.status_code == 200 and record.json()["email"] == "info@cliente.example"
+        assert fake.tools() == ["list_clients"], "la ficha usa la misma lista filtrada y su caché"
+        assert crmdev_api.json.loads(fake.seen[-1].content)["arguments"] == {"status": "CUSTOMER", "limit": 100}
+        for path in ("/crmdev/clientes/c1?estado=BORRADO", "/crmdev/clientes/c1?cliente=c1", "/crmdev/clientes/c1?estado=LEAD&estado=LEAD"):
+            assert client.get(path, headers=HEADERS).status_code == 422, path
+        assert len(fake.tools()) == 1
+
+
+def test_volver_a_leer_pregunta_a_crmdev_y_dice_cuando(tmp_path, fake):
+    settings, app = app_with(tmp_path, MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        connected(client)
+        first = client.get("/crmdev/views/proyectos", headers=HEADERS).json()
+        assert first["readAt"].endswith("Z") and client.get("/crmdev/views/proyectos", headers=HEADERS).json()["readAt"] == first["readAt"]
+        assert fake.tools() == ["list_projects"]
+        assert client.get("/crmdev/views/proyectos?fresco=1", headers=HEADERS).status_code == 200
+        assert client.get("/crmdev/proyectos/p1/horas?fresco=1", headers=HEADERS).json()["readAt"]
+        client.get("/crmdev/proyectos/p1/horas?fresco=1", headers=HEADERS)
+        client.get("/crmdev/clientes/c1?fresco=1", headers=HEADERS)
+        assert fake.tools() == ["list_projects", "list_projects", "get_project_time_report", "get_project_time_report", "list_clients"]
+        for path in ("/crmdev/views/proyectos?fresco=0", "/crmdev/views/proyectos?fresco=1&fresco=1", "/crmdev/proyectos/p1/horas?fresco=si",
+                     "/crmdev/clientes/c1?fresco=true"):
+            assert client.get(path, headers=HEADERS).status_code == 422, path
+        assert len(fake.tools()) == 5

@@ -101,7 +101,8 @@ def test_fuera_de_la_lista_no_sale_nada(fake, tool):
 
 
 def test_solo_call_ejecuta_herramientas():
-    """The only exchange of the module is in `_send`, which only `_run` (a tool by POST, reached through `call`) and
+    """The only exchange of the module is in `_send`, which only `_run` (a tool by POST, reached through `call_at`, which
+    `call` wraps) and
     `probe` (a GET of the tool list, which runs none) use. No other function reaches the network."""
     tree = ast.parse(inspect.getsource(crmdev_api))
     functions = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
@@ -120,7 +121,9 @@ def test_solo_call_ejecuta_herramientas():
                 senders.setdefault(f"{name}→_run", True)
     assert network == {"_send": ["session", "exchange"]}, network
     assert {k: v for k, v in senders.items() if "→" not in k} == {"_run": "POST", "probe": "GET"}
-    assert {k for k in senders if "→" in k} == {"call→_run"}
+    assert {k for k in senders if "→" in k} == {"call_at→_run"}
+    wrapped = {getattr(n.func, "id", "") for n in ast.walk(functions["call"]) if isinstance(n, ast.Call)}
+    assert wrapped == {"call_at"}, "call solo envuelve call_at, que comprueba la lista cerrada"
     probe_send = next(n for n in ast.walk(functions["probe"]) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_send")
     assert isinstance(probe_send.args[2], ast.Constant) and probe_send.args[2].value is None, "la prueba no envía herramienta"
 
@@ -393,3 +396,42 @@ def test_formas_reducidas():
                          crmdev_shapes.shape_list(crmdev_shapes.shape_ticket, DATA["list_tickets"]),
                          crmdev_shapes.shape_list(crmdev_shapes.shape_member, DATA["list_members"])])
     assert "@example.com" not in dumped, "ningún correo en las listas de la pantalla"
+
+
+def test_lectura_fresca_salta_la_cache_pero_no_la_espera_ni_la_lectura_en_curso(fake, monkeypatch):
+    first, at = crmdev_api.call_at(TARGET, "list_projects", {"limit": 100})
+    again, kept_at = crmdev_api.call_at(TARGET, "list_projects", {"limit": 100})
+    assert fake.tools() == ["list_projects"] and kept_at == at, "lo guardado conserva la hora en que CRMDev respondió"
+    crmdev_api.call(TARGET, "list_projects", {"limit": 100}, fresh=True)
+    assert fake.tools() == ["list_projects", "list_projects"], "«Volver a leer» pregunta a CRMDev"
+    crmdev_api.call(TARGET, "list_projects", {"limit": 100})
+    assert len(fake.tools()) == 2, "y deja la respuesta nueva en la caché"
+    monkeypatch.setattr(crmdev_api, "TRANSPORT", httpx.MockTransport(lambda r: httpx.Response(429, json={"retryAfter": 30})))
+    with pytest.raises(WebApiError):
+        crmdev_api.call(TARGET, "list_tasks", {"limit": 100}, fresh=True)
+    seen = []
+    monkeypatch.setattr(crmdev_api, "TRANSPORT", httpx.MockTransport(lambda r: seen.append(r) or httpx.Response(200, json={"success": True, "data": []})))
+    with pytest.raises(WebApiError) as busy:
+        crmdev_api.call(TARGET, "list_projects", {"limit": 100}, fresh=True)
+    assert busy.value.status == "busy" and seen == [], "tras un 429, tampoco lo fresco sale hasta que pase la espera"
+
+
+def test_lecturas_frescas_a_la_vez_hacen_una_sola_peticion(monkeypatch):
+    seen, release = [], threading.Event()
+
+    def slow(request):
+        seen.append(request)
+        release.wait(5)
+        return httpx.Response(200, json={"success": True, "data": DATA["list_projects"]})
+    monkeypatch.setattr(crmdev_api, "TRANSPORT", httpx.MockTransport(slow))
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(crmdev_api.call(TARGET, "list_projects", {"limit": 100}, fresh=True))) for _ in range(3)]
+    for thread in threads:
+        thread.start()
+    while not seen:
+        threading.Event().wait(0.01)
+    threading.Event().wait(0.2)  # the others have asked and wait their turn
+    release.set()
+    for thread in threads:
+        thread.join(5)
+    assert len(seen) == 1 and results == [DATA["list_projects"]] * 3

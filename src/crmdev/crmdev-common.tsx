@@ -1,7 +1,7 @@
 import { openConnector } from '../connectors/open-connector';
 import type { Section } from '../shell/shell-state';
 import { statusTone, labelOf } from './crmdev-labels';
-import { orderNote, type CrmdevFailure } from './use-crmdev-view';
+import { orderNote, readAgain, readAtLabel, type CrmdevFailure } from './use-crmdev-view';
 
 // Pieces shared by the tabs and records of the «CRMDev» section. Everything from CRMDev is React text: never HTML, never
 // Markdown, never a link, even when it looks like an address.
@@ -50,8 +50,18 @@ export function Badge({ labels, value }: { labels: Record<string, string>; value
   return value ? <span className={`status-badge ${statusTone(value)}`}>{labelOf(labels, value)}</span> : <span>—</span>;
 }
 
-/** A long text of CRMDev (a description), as plain text with its line breaks; hidden in discreet mode. */
+/** A long text of CRMDev (a description), as plain text with its line breaks. In discreet mode nothing at all, so not
+ * even which rows have one shows. */
 export function LongText({ text, discreet }: { text: string | null; discreet: boolean }) {
-  if (!text) return null;
-  return discreet ? <small className="muted crmdev-text">Descripción: {HIDDEN.toLowerCase()}.</small> : <small className="crmdev-text">{text}</small>;
+  return !text || discreet ? null : <small className="crmdev-text">{text}</small>;
+}
+
+/** «Volver a leer» (asks CRMDev now for what is on screen) and when the oldest answer on screen was given; one per
+ * screen, on the right of its filters or in the head of a record. */
+export function ReadAgain({ times }: { times: (string | null | undefined)[] }) {
+  const when = readAtLabel(times);
+  return <div className="actions central-actions crmdev-read">
+    {when && <small className="muted">{when}</small>}
+    <button type="button" className="button" onClick={readAgain}>Volver a leer</button>
+  </div>;
 }
