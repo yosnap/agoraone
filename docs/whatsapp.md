@@ -107,9 +107,30 @@ Meta corta la conexión si la app del móvil no se abre en 14 días.
   mensaje de servicio; desde el 01/10/2026 Meta da 1.000 gratis al mes por número y cobra desde el 1.001, y sin
   método de pago en la cuenta de Meta los que pasan de esos 1.000 no se entregan.
 
+## Watson y portada (1.7.0-alpha.76)
+- `consultar_bandeja` incluye WhatsApp con el módulo encendido (parámetro `fuente`: todas, correo o whatsapp). Watson
+  solo ve lo **normal ahora** (nivel guardado, de la cuenta, de la regla guardada y de las reglas que casan hoy): lo
+  «solo en este Mac» y lo privado no aparecen, ni contados. De cada conversación ve el id, el contacto por su nombre o
+  etiqueta (nunca el número), el cliente, la fecha, el resumen, lo que piden, importes, fechas, ámbito, estado y si la
+  ventana de 24 h está abierta; **nunca el texto de los mensajes**, y lo que parezca un teléfono o un enlace se tapa.
+  «¿Qué me ha escrito X?» busca también en lo hecho.
+- `proponer_respuesta_whatsapp` (módulo WhatsApp, solo Claude) guarda una propuesta para una conversación que Watson
+  haya visto, normal, con la ventana abierta y un texto de hasta 4096 caracteres sin líneas con pinta de clave. La
+  tarjeta del chat (de Watson y de la Bandeja) enseña contacto, resumen y texto, con «Revisar y enviar…» y
+  «Descartar». «Revisar y enviar…» gasta la propuesta (`POST /assistant/proposals/{id}/chat-reply`, que no envía) y
+  abre el compositor de «Responder» con ese texto: vista previa sellada y «Enviar», como desde la tarjeta. Watson no
+  tiene herramienta de envío y un «sí» en el chat no envía nada.
+- Anuncio al abrir el chat (decisión del usuario, 19/11/2026): las conversaciones pendientes de clase cliente,
+  incidencia, cita, factura o pago, o de un cliente del directorio, una sola vez cada una (`chat_summary.announced_at`,
+  migración `0035_chat_announced.sql`; algo nuevo recibido la vuelve a anunciar). Lo privado sale sin nombre, y en modo
+  discreto ningún detalle. «Sí» la marca como hecha y «no» la descarta, sin modelo.
+- Portada (decisión del usuario, 19/11/2026): un solo bloque «Mensajes recibidos» con correo y WhatsApp mezclados por
+  fecha, con distintivo «WhatsApp», contacto, hora, clase, resumen y lo que piden, y el mismo tope que el correo. En
+  modo discreto solo lo normal y sin resumen ni peticiones. Con el módulo apagado no se pide nada.
+
 Código: `core/agora_core/zernio.py`, `chat_sync.py`, `routes_chat.py`, `chat_rules.py`, `chat_inbox.py`,
-`chat_summarizer.py`, `chat_send.py`, `routes_chat_send.py`, migraciones `0030_chat.sql` y `0031_chat_summary.sql`, `src/settings/settings-whatsapp.tsx`,
-`settings-whatsapp-rules.tsx`, `src/inbox/chat-card.tsx`, `chat-reply.tsx`, `chat-reply-text.ts` e `inbox-cards.ts`.
-Pruebas: `core/tests/test_zernio.py`, `test_chat_sync.py`, `test_chat_inbox.py`, `test_chat_bandeja.py`, `test_chat_send.py`,
-`src/inbox/inbox-cards.test.ts`, `chat-reply.test.ts`, `card-actions.test.ts` y
+`chat_summarizer.py`, `chat_send.py`, `routes_chat_send.py`, `brain_chat.py`, migraciones `0030_chat.sql`, `0031_chat_summary.sql` y `0035_chat_announced.sql`, `src/settings/settings-whatsapp.tsx`,
+`settings-whatsapp-rules.tsx`, `src/inbox/chat-card.tsx`, `chat-reply.tsx`, `chat-reply-text.ts`, `inbox-cards.ts`, `src/assistant/chat-reply-proposals.tsx` y `src/home/home-parts.tsx`.
+Pruebas: `core/tests/test_zernio.py`, `test_chat_sync.py`, `test_chat_inbox.py`, `test_chat_bandeja.py`, `test_chat_send.py`, `test_brain_chat.py`,
+`src/inbox/inbox-cards.test.ts`, `chat-reply.test.ts`, `card-actions.test.ts`, `src/home/received.test.ts` y
 `scripts/verify-inbox.mjs` (con datos de ejemplo; `VERIFY_LIVE=1` añade la lectura de la app en marcha).

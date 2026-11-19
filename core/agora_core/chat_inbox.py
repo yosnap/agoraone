@@ -189,7 +189,8 @@ def store(connection: sqlite3.Connection, entry: dict, found: dict | None) -> No
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
            ON CONFLICT (conversation_id) DO UPDATE SET kind = excluded.kind, source = excluded.source, rule_id = excluded.rule_id,
              label = excluded.label, confidentiality = excluded.confidentiality, summary = excluded.summary, details = excluded.details,
-             state = excluded.state, until_message_id = excluded.until_message_id, decided_at = NULL, updated_at = excluded.updated_at""",
+             state = excluded.state, until_message_id = excluded.until_message_id, decided_at = NULL, announced_at = NULL,
+             updated_at = excluded.updated_at""",
         (conversation_id, kind, source, rule["id"] if rule else None, rule["label"] if rule else None, level,
          found["summary"] if keep else None, json.dumps(found["details"] if keep else {}, ensure_ascii=False),
          "quiet" if quiet else "pending", entry["until"], now()),
@@ -202,16 +203,18 @@ _LEVEL = """CASE WHEN 'private' IN (s.confidentiality, a.confidentiality, COALES
               ELSE 'normal' END"""
 
 
-def summaries(connection: sqlite3.Connection, state: str = "pending", limit: int = 100) -> list[dict]:
+def summaries(connection: sqlite3.Connection, state: str = "pending", limit: int = 100, audience: str | None = None) -> list[dict]:
     """The classified conversations in a state, most recent first, without the text of their messages. A private
-    one carries no participant's name or number."""
+    one carries no participant's name or number. `audience="external"` leaves out everything that may not leave
+    this Mac (by its stored, account and rule levels; `level_of` also weighs the rules that match today)."""
+    external = f"AND {_LEVEL} = 'normal'" if audience == "external" else ""
     rows = connection.execute(
         f"""SELECT s.*, {_LEVEL} AS level, r.name AS rule_name, c.account_id, c.participant_name, c.participant_phone,
                    a.phone AS account_phone, a.label AS account_label, sc.id AS scope_id, sc.name AS scope_name, sc.color AS scope_color,
                    (SELECT max({_MOMENT.format('m')}) FROM chat_message m WHERE m.conversation_id = c.id AND m.direction = 'incoming') AS last_in
             FROM chat_summary s JOIN chat_conversation c ON c.id = s.conversation_id JOIN chat_account a ON a.id = c.account_id
             LEFT JOIN chat_rule r ON r.id = s.rule_id LEFT JOIN scope sc ON sc.id = COALESCE(r.scope_id, a.scope_id)
-            WHERE s.state = ? ORDER BY last_in DESC LIMIT ?""", (state, limit)).fetchall()
+            WHERE s.state = ? {external} ORDER BY last_in DESC LIMIT ?""", (state, limit)).fetchall()
     from .clients import brief, directory, find
 
     known = directory(connection) if rows else []
@@ -229,8 +232,39 @@ def summaries(connection: sqlite3.Connection, state: str = "pending", limit: int
         "account": {"id": row["account_id"], "phone": row["account_phone"], "label": row["account_label"]},
         "scope": {"id": row["scope_id"], "name": row["scope_name"], "color": row["scope_color"]} if row["scope_id"] else None,
         "attachments": attached.get(row["conversation_id"], {}),
-        "lastIncomingAt": row["last_in"], "updatedAt": row["updated_at"],
+        "lastIncomingAt": row["last_in"], "updatedAt": row["updated_at"], "announcedAt": row["announced_at"],
     } for row in rows]
+
+
+# What Watson announces when the chat opens (user's decision, 19/11/2026): only what matters to the user's work.
+ANNOUNCED_KINDS = ("client", "incident", "appointment", "invoice", "payment")
+
+
+def claim_announcements(connection: sqlite3.Connection, limit: int = 3) -> list[dict]:
+    """Pending conversations not announced yet whose kind is one of ANNOUNCED_KINDS or whose number is one of the
+    user's clients, marked as announced in the same transaction, so two open windows never announce one twice. A
+    private one is matched to a client here too (locally, never shown) and goes out without a name, like the card.
+    Empty with the WhatsApp module off. The announcement's words are written by the screen, never by a model."""
+    from . import modules
+    from .clients import directory, find
+
+    if not modules.state(connection)["whatsapp"]:
+        return []
+    with transaction(connection):
+        waiting = [item for item in summaries(connection, "pending", 300) if item["announcedAt"] is None]
+        known = directory(connection) if waiting else []
+
+        def wanted(item: dict) -> bool:
+            if item["kind"] in ANNOUNCED_KINDS or item["client"] is not None:
+                return True
+            if item["confidentiality"] != "private":
+                return False
+            phone = connection.execute("SELECT participant_phone FROM chat_conversation WHERE id = ?", (item["id"],)).fetchone()
+            return phone is not None and find(known, phone=phone[0]) is not None
+        chosen = [item for item in waiting if wanted(item)][:limit]
+        stamp = now()
+        connection.executemany("UPDATE chat_summary SET announced_at = ? WHERE conversation_id = ?", [(stamp, item["id"]) for item in chosen])
+    return [{**item, "announcedAt": stamp} for item in chosen]
 
 
 def counts(connection: sqlite3.Connection) -> dict:

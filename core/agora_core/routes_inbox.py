@@ -166,7 +166,11 @@ def inbox_router(settings: Settings, health, secrets=None) -> APIRouter:
 
     @router.post("/mail/inbox/announce")
     async def announce():
-        """What the assistant announces now; each card is handed out once."""
-        return {"items": await db(mail_inbox.claim_announcements)}
+        """What the assistant announces now, from mail and WhatsApp, each item with its `channel` (its `source` is who
+        classified it); each card is handed out once."""
+        def work(connection):
+            mails = [{**item, "channel": "mail"} for item in mail_inbox.claim_announcements(connection)]
+            return mails + [{**item, "channel": "chat"} for item in chat_inbox.claim_announcements(connection)]
+        return {"items": await db(work)}
 
     return router

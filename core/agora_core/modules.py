@@ -28,7 +28,7 @@ FOLLOW_FABRICA = "fabrica"
 # «CRMDev» follows its connection in the same way: on once a URL is saved, off while there is none.
 FOLLOW_CRMDEV = "crmdev"
 # Watson's tools that belong to a module.
-TOOLS = {"correo": {"consultar_bandeja", "proponer_regla", "proponer_limpieza"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos"}, "presupuestos": {"proponer_presupuesto"},
+TOOLS = {"correo": {"consultar_bandeja", "proponer_regla", "proponer_limpieza"}, "whatsapp": {"proponer_respuesta_whatsapp"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos"}, "presupuestos": {"proponer_presupuesto"},
          "reuniones": {"consultar_reuniones", "leer_reunion", "proponer_issue"}, "orca": {"proponer_encargo_orca"}}
 CHECK_EVERY = 20.0
 

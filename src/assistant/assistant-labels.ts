@@ -6,3 +6,7 @@ export const stageLabels = { recuerda: 'Recordando en tu cerebro…', piensa: 'P
 
 export const engineName = (engine?: string | null) => (engine && engineLabels[engine]) || engine || 'motor desconocido';
 export const modelName = (model?: string | null) => (model && modelLabels[model]) || model || '';
+
+/** The step a Bandeja lookup leaves in the chat: how many mails and, with WhatsApp on, how many conversations. */
+export const inboxStep = (mails: number, chats?: number) =>
+  `Consultó la Bandeja · ${mails} ${mails === 1 ? 'correo' : 'correos'}${chats === undefined ? '' : ` y ${chats} WhatsApp`}`;

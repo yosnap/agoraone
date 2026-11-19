@@ -75,8 +75,11 @@ const settled = (failure: unknown) => !(failure instanceof ApiError && failure.d
 const unknownOutcome = (failure: unknown) => !(failure instanceof ApiError) || failure.data?.outcome === 'unknown' || failure.status >= 500 && failure.data?.notSent !== true;
 
 /** A reply to a WhatsApp conversation: written by hand or drafted by Watson (only when the model may read it), then the
- * exact preview, and it leaves only with «Enviar» on that preview. Nothing is sent otherwise. */
-export function ChatReply({ item, onDone, onCancel }: { item: ChatSummary; onDone: (note: string) => void; onCancel: () => void }) {
+ * exact preview, and it leaves only with «Enviar» on that preview. Nothing is sent otherwise. `initialText`: a reply
+ * Watson proposed in the chat, which starts the form (editable) instead of the saved draft. */
+export function ChatReply({ item, initialText, onDone, onCancel }: {
+  item: Pick<ChatSummary, 'id'>; initialText?: string; onDone: (note: string) => void; onCancel: () => void;
+}) {
   const assistant = useAssistantName();
   const [reply, setReply] = useState<ChatReplyDraft | null>(null);
   const [text, setText] = useState('');
@@ -92,7 +95,7 @@ export function ChatReply({ item, onDone, onCancel }: { item: ChatSummary; onDon
   const asked = useRef(false);
   if (!asked.current) {
     asked.current = true;
-    getChatReply(item.id).then(found => { setReply(found); setText(found.text); })
+    getChatReply(item.id).then(found => { setReply(found); setText(initialText ?? found.text); })
       .catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo preparar la respuesta.'));
   }
   const run = async (label: string, work: () => Promise<void>) => {

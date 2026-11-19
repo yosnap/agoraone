@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager
 
 from fastapi.concurrency import run_in_threadpool
 
-from . import meeting_tools, orca_launch
+from . import brain_chat, meeting_tools, orca_launch
 from .embed import Embedder, VectorCache
 from .search import search
 
@@ -63,9 +63,11 @@ SPECS = [
     {
         "name": "consultar_bandeja",
         "description": (
-            "Lista los correos recibidos que esperan al usuario en la Bandeja (facturas, pagos, ofertas de trabajo, "
-            "peticiones de clientes, citas…) con su resumen, remitente, fecha y la acción propuesta. Úsala cuando "
-            "pregunte por su correo, sus facturas o lo que tiene pendiente. " + MAIL_NOTICE
+            "Lista lo recibido que espera al usuario en la Bandeja: correos (facturas, pagos, ofertas de trabajo, "
+            "peticiones de clientes, citas…) con su resumen, remitente, fecha y la acción propuesta, y, si tiene WhatsApp "
+            "conectado, conversaciones de WhatsApp con su id, contacto, resumen y lo que piden (nunca el texto de los "
+            "mensajes). Úsala cuando pregunte por su correo, sus WhatsApp, sus facturas o lo que tiene pendiente. "
+            + MAIL_NOTICE + " " + brain_chat.NOTICE
         ),
         "schema": {
             "type": "object",
@@ -76,6 +78,8 @@ SPECS = [
                                                          "busca también en los correos ya marcados como hechos.")},
                 "texto": {"type": "string", "description": ("Palabras que buscar en el asunto, el resumen o el remitente (opcional), para "
                                                             "«busca el correo de la factura de Hostinger»: busca también en los ya hechos.")},
+                "fuente": {"type": "string", "enum": ["todas", "correo", "whatsapp"],
+                           "description": "De dónde: correo, WhatsApp o las dos (todas por defecto)."},
             },
         },
     },
@@ -204,6 +208,7 @@ SPECS.append({
 })
 SPECS.extend(meeting_tools.SPECS)
 SPECS.append(orca_launch.SPEC)
+SPECS.append(brain_chat.SPEC)
 NOTE_TEXT = 20000
 SECRET_LINE = re.compile(r"(?i)(contrase(n|ñ)a|password|passwd|api[_ -]?key|token|secret|clave)\s*[:=]\s*\S{6,}")
 _ACTION_OF_ACCION = {"factura": "invoice", "cliente": "client", "personal": "personal", "importante": "important", "ignorar": "ignore"}
@@ -254,6 +259,7 @@ class Toolbox:
         self.proposals: dict[str, dict] = {}
         self.owner: str | None = None
         self.meetings_seen: set[int] = set()  # a meeting can only be read once it was found
+        self.chats_seen: set[int] = set()  # a reply is only proposed to a conversation consultar_bandeja showed
 
     def register(self, results: list[dict], listed: bool = False) -> list[dict]:
         """Numbers the notes found (a note found again keeps its number). `listed` notes were only seen by title in
@@ -318,7 +324,10 @@ class Toolbox:
             if name == "consultar_trabajos":
                 return await self._projects(str(args.get("periodo") or "7d"), str(args.get("cliente") or ""))
             if name == "consultar_bandeja":
-                return await self._inbox(str(args.get("tipo") or "todos"), str(args.get("de") or ""), str(args.get("texto") or ""))
+                return await self._inbox(str(args.get("tipo") or "todos"), str(args.get("de") or ""), str(args.get("texto") or ""),
+                                         str(args.get("fuente") or "todas"))
+            if name == brain_chat.NAME:
+                return await self._propose_chat_reply(args)
             if name == orca_launch.SPEC["name"]:
                 return await self._propose_orca(args)
             if name in meeting_tools.NAMES:
@@ -438,7 +447,33 @@ class Toolbox:
                            "estado": "Tarjeta abierta en la pantalla del usuario: tiene que ver la vista previa y pulsar «Lanzar en Orca». No se ha lanzado nada."},
                           ensure_ascii=False)
 
-    async def _inbox(self, tipo: str, sender: str = "", text: str = "") -> str:
+    async def _propose_chat_reply(self, args: dict) -> str:
+        """Keeps a WhatsApp reply Watson wrote as a proposal; the screen opens the reply composer with it and only the
+        user sends it from there, after its sealed preview (POST /assistant/proposals/<id>/chat-reply sends nothing)."""
+        import secrets as random
+        import time
+
+        if not self.mail or self.owner is None:
+            return json.dumps({"error": "Proponer respuestas de WhatsApp no está disponible con este motor."}, ensure_ascii=False)
+        seen = set(self.chats_seen)
+
+        def check():
+            with self.database() as connection:
+                return brain_chat.propose(connection, args, seen)
+        try:
+            reply = await run_in_threadpool(check)
+        except brain_chat.ChatProposalError as error:
+            return json.dumps({"error": str(error)}, ensure_ascii=False)
+        now = time.time()
+        for key in [k for k, v in self.proposals.items() if v["expires"] < now]:
+            del self.proposals[key]
+        proposal_id = random.token_urlsafe(12)
+        self.proposals[proposal_id] = {"owner": self.owner, "chatReply": reply, "expires": now + PROPOSAL_SECONDS}
+        self._record({"tool": "chat_reply_proposal", "id": proposal_id, "reply": reply})
+        return json.dumps({"propuesta": {"contacto": reply["contact"], "caracteres": len(reply["text"])},
+                           "estado": "En la pantalla del usuario, esperando que la revise. No se ha enviado nada."}, ensure_ascii=False)
+
+    async def _inbox(self, tipo: str, sender: str = "", text: str = "", source: str = "todas") -> str:
         from . import mail_inbox
 
         if not self.mail:
@@ -459,20 +494,33 @@ class Toolbox:
             return all(word in seen for word in words)
 
         def run():
+            items, chats = [], None
             with self.database() as connection:
-                items = mail_inbox.inbox(connection, "pending", 200, audience=AUDIENCE)
-                if wanted or words:  # «what has X asked me?» or a search covers what was already handled too
-                    items += mail_inbox.inbox(connection, "done", 200, audience=AUDIENCE)
-            return [i for i in items if not i["moved"] and (kind is None or i["kind"] == kind) and matches(i)][:INBOX_LIMIT]
-        items = await run_in_threadpool(run)
-        self._record({"tool": "inbox", "filter": tipo, "sender": bool(wanted), "text": bool(words), "count": len(items)})
+                if source != "whatsapp":
+                    items = mail_inbox.inbox(connection, "pending", 200, audience=AUDIENCE)
+                    if wanted or words:  # «what has X asked me?» or a search covers what was already handled too
+                        items += mail_inbox.inbox(connection, "done", 200, audience=AUDIENCE)
+                if source != "correo" and brain_chat.enabled(connection):  # WhatsApp only with its module on
+                    chats = brain_chat.items(connection, kind, wanted, words, INBOX_LIMIT)
+            return [i for i in items if not i["moved"] and (kind is None or i["kind"] == kind) and matches(i)][:INBOX_LIMIT], chats
+        items, chats = await run_in_threadpool(run)
+        chat_off = "El módulo WhatsApp está apagado en Ajustes: no hay WhatsApp en la Bandeja."
+        self.chats_seen.update(chat["id"] for chat in chats or [])
+        self._record({"tool": "inbox", "filter": tipo, "sender": bool(wanted), "text": bool(words), "count": len(items),
+                      **({} if chats is None else {"chats": len(chats)})})
+        answer = {} if chats is None else {"whatsapp": chats}
+        if source == "whatsapp":
+            if chats is None:
+                return json.dumps({"error": chat_off}, ensure_ascii=False)
+            return json.dumps({**answer, "aviso": brain_chat.NOTICE}, ensure_ascii=False)
         return json.dumps({
+            **answer,
             "correos": [{"tipo": i["kind"], "de": i["from"]["name"] or i["from"]["address"], "asunto": i["subject"],
                          "fecha": i["sentAt"], "resumen": i["summary"], "piden": i["details"].get("asks", []),
                          "importes": i["details"].get("amounts", []), "fechas": i["details"].get("dates", []),
                          "ambito": i["scope"]["name"] if i["scope"] else None, "accion_propuesta": i["proposal"],
                          "cliente": (i.get("client") or {}).get("name"), "estado": "pendiente" if i["state"] == "pending" else "hecho"} for i in items],
-            "aviso": MAIL_NOTICE,
+            "aviso": MAIL_NOTICE if chats is None else f"{MAIL_NOTICE} {brain_chat.NOTICE}",
         }, ensure_ascii=False)
 
     async def _day(self) -> str:

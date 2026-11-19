@@ -1,17 +1,17 @@
 import { useRef, useState } from 'react';
-import { getAgenda, getAlerts, getCentral, getDoctor, getInbox, getReceipts, type Agenda, type AlertsView, type CentralState, type DoctorPiece, type InboxItem, type Receipt } from '../api/core';
+import { getAgenda, getAlerts, getCentral, getChatSummaries, getDoctor, getInbox, getReceipts, type Agenda, type AlertsView, type CentralState, type ChatSummary, type DoctorPiece, type InboxItem, type Receipt } from '../api/core';
 import type { Section } from '../shell/shell-state';
 import { moduleOn, useModules } from '../shell/modules';
-import { doneButOpen, invoicesToFile, latestMail, openDates, serversByTrouble, systemNotes, upcoming } from './home-data';
-import { Block, MailSlider } from './home-parts';
+import { doneButOpen, invoicesToFile, latestReceived, openDates, serversByTrouble, systemNotes, upcoming } from './home-data';
+import { Block, day, hour, MailSlider, ReceivedSlide } from './home-parts';
 import { hasCentralData } from '../summary/central-card-state';
 import './home.css';
 
 type Data = {
-  pending: InboxItem[] | null; done: InboxItem[] | null; mailProblem: string | null; agenda: Agenda | null; receipts: Receipt[] | null;
+  pending: InboxItem[] | null; done: InboxItem[] | null; chats: ChatSummary[] | null; mailProblem: string | null; agenda: Agenda | null; receipts: Receipt[] | null;
   alerts: AlertsView | null; alertsProblem: string | null; central: CentralState | null; pieces: DoctorPiece[];
 };
-const empty: Data = { pending: null, done: null, mailProblem: null, agenda: null, receipts: null, alerts: null, alertsProblem: null, central: null, pieces: [] };
+const empty: Data = { pending: null, done: null, chats: null, mailProblem: null, agenda: null, receipts: null, alerts: null, alertsProblem: null, central: null, pieces: [] };
 // What was read last, kept a minute: going to the graph and back does not read everything again (reading receipts
 // also imports the new ones, as opening Fiscal does).
 let kept: { data: Data; at: number } | null = null;
@@ -19,8 +19,6 @@ const FRESH = 60_000;
 const HIDDEN = '•••';
 // The latest reading: one counter for the screen, so a render React repeats cannot split it in two.
 let latest = 0;
-const day = (stamp: string) => new Date(stamp).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
-const hour = (stamp: string) => new Date(stamp).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 const sender = (item: InboxItem) => item.from.name || item.from.address || 'Remitente desconocido';
 const SERVER_LABEL: Record<string, string> = { red: 'caído', amber: 'con avisos', green: 'bien', grey: 'sin datos' };
 
@@ -33,6 +31,7 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
   const asked = useRef(false);
   const modules = useModules();
   const mailOn = moduleOn(modules, 'correo'), agendaOn = moduleOn(modules, 'agenda'), fiscalOn = moduleOn(modules, 'fiscal'), centralOn = moduleOn(modules, 'central'), jobsOn = moduleOn(modules, 'trabajos');
+  const chatOn = moduleOn(modules, 'whatsapp');
   // Each reading is a round: an answer from an older round (a slow one, after «Actualizar») never overwrites a newer one.
   const read = () => {
     const mine = ++latest;
@@ -41,6 +40,7 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
     const run = <T,>(ask: () => Promise<T>, done: (value: T) => Partial<Data>, failed: Partial<Data>) => jobs.push(ask().then(value => put(done(value))).catch(() => put(failed)));
     run(() => getInbox('pending'), r => ({ pending: r.items, mailProblem: r.problem }), { pending: [], mailProblem: 'No se pudo leer la Bandeja.' });
     run(() => getInbox('done'), r => ({ done: r.items }), { done: [] });
+    if (chatOn) run(() => getChatSummaries('pending'), r => ({ chats: r.items }), { chats: [] });  // off: nothing is asked
     run(() => getAgenda('semana'), agenda => ({ agenda }), { agenda: { events: [], reminders: [], overlaps: [], problem: 'No se pudo leer la agenda.' } });
     if (fiscalOn) run(getReceipts, r => ({ receipts: r.receipts }), { receipts: [] });
     run(getAlerts, alerts => ({ alerts, alertsProblem: null }), { alertsProblem: 'No se pudieron leer los avisos.' });
@@ -51,7 +51,8 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
   };
   if (!asked.current) { asked.current = true; if (!kept || Date.now() - kept.at > FRESH) read(); }
   const hide = (text: string) => discreet ? HIDDEN : text;
-  const mails = latestMail(data.pending ?? [], discreet);
+  const received = latestReceived(mailOn ? data.pending ?? [] : [], chatOn ? data.chats ?? [] : [], discreet);
+  const receivedReading = (mailOn && data.pending === null) || (chatOn && data.chats === null);
   const events = upcoming(data.agenda?.events ?? []);
   const reminders = data.agenda?.reminders ?? [];
   const toFile = invoicesToFile(mailOn ? data.pending ?? [] : [], data.receipts ?? [], discreet);
@@ -68,14 +69,10 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
       <button type="button" className="button" disabled={waiting > 0} onClick={read}>{waiting > 0 ? 'Actualizando…' : 'Actualizar'}</button>
     </div>
     <div className="home-grid">
-      {mailOn && <Block title="Correo recibido" count={data.pending === null ? null : mails.length} wide onOpen={() => onOpen('inbox')} openLabel="Abrir la Bandeja"
-        empty="No hay correos esperando.">
-        {mails.length > 0 && <MailSlider items={mails} render={item => <>
-          <small className="home-meta">{sender(item)} · {day(item.sentAt)} {hour(item.sentAt)}</small>
-          <strong>{item.subject || 'Sin asunto'}</strong>
-          {item.summary && <p className="home-clamp">{item.summary}</p>}
-          {(item.details.asks?.length ?? 0) > 0 && <small className="home-ask">Pide: {item.details.asks!.slice(0, 2).join(' · ')}</small>}
-        </>}/>}
+      {(mailOn || chatOn) && <Block title="Mensajes recibidos" count={receivedReading ? null : received.length} wide onOpen={() => onOpen('inbox')} openLabel="Abrir la Bandeja"
+        empty="No hay mensajes esperando.">
+        {received.length > 0 && <MailSlider items={received}
+          render={card => <ReceivedSlide card={card} discreet={discreet}/>}/>}
       </Block>}
       {agendaOn && <Block title="Próximas reuniones" count={data.agenda === null ? null : events.length} onOpen={() => onOpen('agenda')} openLabel="Abrir la agenda"
         empty="Nada más esta semana.">

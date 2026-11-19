@@ -71,7 +71,7 @@ const errors = [], decided = [];
 await page.route('**/api/core/fiscal/invoices/prepare', route => route.fulfill({ status: 422, json: { error: 'Elige primero la carpeta fiscal en Ajustes.' } }));
 page.on('pageerror', e => errors.push(e.message));
 await page.route('**/api/core/mail/inbox?state=pending', route => route.fulfill({ json: { items: [sample], counts: { pending: 1, done: 0, dismissed: 0, unread: 0 }, problem: null } }));
-await page.route('**/api/core/mail/inbox/announce', route => route.fulfill({ json: { items: [sample] } }));
+await page.route('**/api/core/mail/inbox/announce', route => route.fulfill({ json: { items: [{ ...sample, channel: 'mail' }] } }));
 await page.route('**/api/core/mail/inbox/1', route => { decided.push(route.request().postDataJSON().state); return route.fulfill({ json: { ok: true } }); });
 await page.goto(sampleUrl('bandeja'));
 const card = page.locator('.inbox-card');

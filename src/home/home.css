@@ -42,3 +42,7 @@
   .brain.centre-panel .dock-card { flex:1 1 240px }
 }
 .home-list small.home-clamp, .home-clamp { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+/* The WhatsApp badge of a received message: a filled pill, never a side stripe. */
+.home-badge { display:inline-block; margin-right:6px; padding:0 6px; border-radius:999px; background:#d4f0dc; color:#1c5a33; font-size:10px; font-weight:600 }
+:root[data-theme="dark"] .home-badge { background:#173d26; color:#b4e6c4 }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .home-badge { background:#173d26; color:#b4e6c4 } }

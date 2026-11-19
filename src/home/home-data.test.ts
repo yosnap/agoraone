@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { doneButOpen, invoicesToFile, latestMail, serversByTrouble, systemNotes, upcoming } from './home-data.ts';
+import { doneButOpen, invoicesToFile, latestMail, latestReceived, serversByTrouble, systemNotes, upcoming } from './home-data.ts';
 
 const mail = (id: number, extra: Record<string, unknown> = {}) => ({ id, kind: 'other', confidentiality: 'normal', sentAt: `2026-11-1${id}T10:00:00Z`, details: {}, proposal: null, ...extra }) as never;
 
@@ -32,4 +32,15 @@ test('agenda por venir, servidores caídos primero y avisos del sistema', () => 
   assert.deepEqual(systemNotes(alerts, ['Sin permiso de calendario', null], pieces, all, false).map(n => n.text), ['Sin permiso de calendario', 'Falta Whisper', 'Llamada perdida de Ana', 'Reunión con X']);
   const noAgendaNoVoice = (m: string) => !['agenda', 'voz', 'reuniones'].includes(m);
   assert.deepEqual(systemNotes(alerts, [], pieces, noAgendaNoVoice, true).map(n => [n.text, n.detail]), [['Llamada perdida', undefined]], 'módulos apagados fuera y, en discreto, solo el tipo');
+});
+
+const chat = (id: number, extra: Record<string, unknown> = {}) => ({ id, kind: 'client', confidentiality: 'normal', lastIncomingAt: `2026-11-1${id}T11:00:00Z`,
+  updatedAt: '2026-11-01T00:00:00Z', details: {}, summary: 'Pide algo', participant: { name: 'Ana', phone: '+34 600 000 001' }, ...extra }) as never;
+
+test('mensajes recibidos: correo y WhatsApp mezclados por fecha, con el mismo tope y sin lo no normal en discreto', () => {
+  const received = latestReceived([mail(1), mail(3)], [chat(2), chat(4, { confidentiality: 'local_only' }), chat(5, { lastIncomingAt: null, updatedAt: '2026-11-10T00:00:00Z' })], false);
+  assert.deepEqual(received.map(card => `${card.source}${card.item.id}`), ['chat4', 'mail3', 'chat2', 'mail1', 'chat5'], 'sin mensaje recibido cuenta su última clasificación');
+  assert.deepEqual(latestReceived([mail(1), mail(3, { confidentiality: 'private' })], [chat(2), chat(4, { confidentiality: 'local_only' })], true)
+    .map(card => `${card.source}${card.item.id}`), ['chat2', 'mail1']);
+  assert.equal(latestReceived(Array.from({ length: 6 }, (_, i) => mail(i)), Array.from({ length: 6 }, (_, i) => chat(i)), false).length, 8);
 });

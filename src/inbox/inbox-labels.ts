@@ -1,4 +1,4 @@
-import type { InboxItem, InboxKind, MailRuleAction } from '../api/core';
+import type { ChatSummary, InboxItem, InboxKind, MailRuleAction } from '../api/core';
 
 export const kindLabels: Record<InboxKind, string> = {
   invoice: 'Factura', payment: 'Pago', job: 'Oferta de trabajo', client: 'Cliente', incident: 'Incidencia',
@@ -33,6 +33,20 @@ export function announcement(item: InboxItem) {
   const amount = item.details.amounts?.[0] ? ` (${item.details.amounts[0]})` : '';
   const proposal = item.proposal ? proposalLabels[item.proposal] : null;
   return `Tienes ${phrases[item.kind]} de ${sender(item)}${amount}${proposal ? `: ${proposal.question}` : '.'}`;
+}
+
+const chatPhrases: Partial<Record<InboxKind, string>> = {
+  invoice: 'una factura', payment: 'un aviso de pago', client: 'una petición de cliente', incident: 'una incidencia', appointment: 'una cita',
+};
+
+/** Watson's sentence for a pending WhatsApp conversation, written here and never by a model. A private one goes without
+ * its name (nor its client's); the number is never said. */
+export function chatAnnouncement(item: ChatSummary) {
+  if (item.confidentiality === 'private' || !item.participant) return 'Tienes un WhatsApp privado pendiente en la Bandeja.';
+  const who = item.participant.name || item.label || item.client?.name || 'un contacto';
+  const amount = item.details.amounts?.[0] ? ` (${item.details.amounts[0]})` : '';
+  const client = item.client && item.client.name !== who ? `, de ${item.client.name}` : '';
+  return `Tienes ${chatPhrases[item.kind] ?? 'un mensaje'} por WhatsApp de ${who}${client}${amount}. ¿Lo marco como hecho?`;
 }
 
 /** What a mail taken to Orca asks the agent by default; the user changes it before the preview. The mail's own

@@ -1,4 +1,5 @@
-import type { AlertItem, CalendarEvent, CentralServer, DoctorPiece, InboxItem, ModuleName, Receipt } from '../api/core';
+import type { AlertItem, CalendarEvent, CentralServer, ChatSummary, DoctorPiece, InboxItem, ModuleName, Receipt } from '../api/core';
+import { cardDate, type Card } from '../inbox/inbox-cards';
 
 /** What the home blocks show, derived from what the core already reads (no new data, nothing invented). Pure, so
  * the rules are tested apart from the screen. */
@@ -9,6 +10,14 @@ const shownLevel = (discreet: boolean) => (item: { confidentiality: string }) =>
 /** The mail waiting for the user, newest first. */
 export function latestMail(items: InboxItem[], discreet: boolean, limit = 8): InboxItem[] {
   return items.filter(shownLevel(discreet)).sort((a, b) => b.sentAt.localeCompare(a.sentAt)).slice(0, limit);
+}
+
+/** «Mensajes recibidos»: the mail and the WhatsApp conversations waiting for the user in one list, newest first, with
+ * the same limit as the mail alone; in discreet mode only what is normal (the screen also hides their summaries). */
+export function latestReceived(mails: InboxItem[], chats: ChatSummary[], discreet: boolean, limit = 8): Card[] {
+  const cards: Card[] = [...mails.map(item => ({ source: 'mail' as const, item })), ...chats.map(item => ({ source: 'chat' as const, item }))];
+  return cards.filter(card => shownLevel(discreet)(card.item))
+    .sort((a, b) => (Date.parse(cardDate(b)) || 0) - (Date.parse(cardDate(a)) || 0)).slice(0, limit);
 }
 
 /** Invoices still to file: invoice mails not yet archived in a fiscal folder, plus receipts from the phone. */
