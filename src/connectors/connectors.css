@@ -1,0 +1,15 @@
+/* Conectores: one card per connector, each using the whole width of the section, as Central does. A notice is told by
+   its background and text colour, never by a side stripe. */
+.page.connectors > .page-lead { max-width:110ch }
+.connectors-list { display:flex; flex-direction:column; gap:14px; width:100%; min-width:0 }
+.connector-card { width:100%; scroll-margin-top:16px }
+.connector-card:focus { outline:none }
+.connector-card:focus-visible, .connector-card.focused { box-shadow:0 0 0 3px var(--c-dcebdc) }
+.connector-how { font-size:12px }
+.connector-form > .field { flex:1 1 220px }
+.connector-form > .field.connector-port { flex:0 1 110px }
+.connector-actions { margin-left:auto; justify-content:flex-end }
+.connector-forget { align-items:center }
+.connector-extra { display:flex; flex-direction:column; gap:10px; overflow-x:auto }
+.connector-extra h3 { font:600 14px Manrope,sans-serif; margin:0 }
+.connector-modules { border-top:1px solid var(--c-edf0e8); padding-top:4px }

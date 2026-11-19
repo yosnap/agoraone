@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { sendMeetingPiece, startMeeting, stopMeeting, type Level } from '../api/core';
+import { sendMeetingPiece, startMeeting, stopMeeting, type Level, type MeetingClass } from '../api/core';
 
 /** The meeting being recorded, kept outside any view so it goes on while the user moves between sections;
  * the left rail shows it all the time. Your microphone is recorded here and sent to the core every few
@@ -21,6 +21,8 @@ const listeners = new Set<() => void>();
 const set = (changes: Partial<RecorderState>) => { state = { ...state, ...changes }; listeners.forEach(listener => listener()); };
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export const useMeetingRecorder = () => useSyncExternalStore(subscribe, () => state);
+/** The recorder now, outside React (Watson's voice orders). */
+export const meetingRecorder = () => state;
 
 let media: MediaRecorder | null = null;
 let stream: MediaStream | null = null;
@@ -53,7 +55,7 @@ function watchLevel(input: MediaStream) {
 }
 const message = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
 
-export async function startRecording(title: string, confidentiality: Level, system: boolean) {
+export async function startRecording(title: string, confidentiality: Level, system: boolean, about?: MeetingClass) {
   if (state.phase !== 'idle') return;
   set({ phase: 'starting', error: '', note: null });
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { set({ phase: 'idle', error: 'Este equipo no permite grabar audio aquí.' }); return; }
@@ -64,7 +66,7 @@ export async function startRecording(title: string, confidentiality: Level, syst
   try { recorder = new MediaRecorder(stream, { ...(type ? { mimeType: type } : {}), audioBitsPerSecond: BITRATE }); }
   catch { release(); set({ phase: 'idle', error: 'Este equipo no puede grabar audio aquí.' }); return; }
   let meeting;
-  try { meeting = await startMeeting({ title, confidentiality, mic_type: recorder.mimeType || type || 'audio/webm', system }); }
+  try { meeting = await startMeeting({ title, confidentiality, mic_type: recorder.mimeType || type || 'audio/webm', system, ...about }); }
   catch (failure) { release(); set({ phase: 'idle', error: message(failure, 'No se pudo empezar a grabar.') }); return; }
   const id = meeting.id;
   failed = false;

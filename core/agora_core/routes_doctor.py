@@ -5,7 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import doctor, installer, modules
+from . import connectors, doctor, installer, jev, modules, zernio
 from .db import DB_NAME, connect, transaction
 from .engines import SECRET_ACCOUNTS
 from .settings import Settings
@@ -30,7 +30,7 @@ def doctor_router(settings: Settings, secrets) -> APIRouter:
     def diagnose():
         connection = connect(settings.data_dir / DB_NAME)
         try:
-            return doctor.check(connection, bool(secrets.get(SECRET_ACCOUNTS["anthropic"])))
+            return doctor.check(connection, bool(secrets.get(SECRET_ACCOUNTS["anthropic"])), bool(secrets.get(zernio.SECRET)), bool(secrets.get(jev.SECRET)))
         finally:
             connection.close()
 
@@ -45,13 +45,17 @@ def doctor_router(settings: Settings, secrets) -> APIRouter:
         finally:
             connection.close()
 
+    # `owners`: the connector whose card holds each module's switch, and `windows`: that connector's window label
+    # (both from the connectors' manifests, nothing read).
     @router.get("/modules")
     async def list_modules():
-        return await run_in_threadpool(lambda: {"modules": with_db(modules.state), "labels": modules.MODULES})
+        return await run_in_threadpool(lambda: {"modules": with_db(modules.state), "labels": modules.MODULES, "owners": connectors.module_owners(),
+                                                "windows": connectors.module_windows()})
 
     @router.put("/modules")
     async def change_modules(body: Modules):
-        return await run_in_threadpool(lambda: {"modules": with_db(lambda c: modules.save(c, body.modules)), "labels": modules.MODULES})
+        return await run_in_threadpool(lambda: {"modules": with_db(lambda c: modules.save(c, body.modules)), "labels": modules.MODULES,
+                                                "owners": connectors.module_owners(), "windows": connectors.module_windows()})
 
     # The first start's guide is shown until finished or skipped once, in any browser (1.6).
     @router.get("/setup/first-run")

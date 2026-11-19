@@ -116,13 +116,14 @@ def missed_not_returned(calls: list[dict]) -> list[dict]:
 
 
 class ContactsBook:
-    """Names from macOS Contacts, by number or address; read once every ten minutes."""
+    """Names from macOS Contacts (which also holds the iCloud, Google and Microsoft accounts added to the system), by
+    number or address, and the people themselves to pick from; read once every ten minutes."""
 
     def __init__(self):
         import Contacts
 
         self.kit = Contacts
-        self.cache: tuple[float, dict[str, str]] | None = None
+        self.cache: tuple[float, dict[str, str], list[dict]] | None = None
         self.lock = threading.Lock()
 
     def status(self) -> str:
@@ -137,12 +138,19 @@ class ContactsBook:
         return self.status()
 
     def names(self) -> dict[str, str]:
+        return self._read()[0]
+
+    def people(self) -> list[dict]:
+        """Everyone in Contacts with a name: {name, org, emails}."""
+        return self._read()[1]
+
+    def _read(self) -> tuple[dict[str, str], list[dict]]:
         if self.status() != "granted":
-            return {}
+            return {}, []
         with self.lock:
             if self.cache and time.monotonic() - self.cache[0] < CONTACTS_TTL:
-                return self.cache[1]
-            kit, found = self.kit, {}
+                return self.cache[1], self.cache[2]
+            kit, found, people = self.kit, {}, []
             keys = [kit.CNContactGivenNameKey, kit.CNContactFamilyNameKey, kit.CNContactOrganizationNameKey,
                     kit.CNContactPhoneNumbersKey, kit.CNContactEmailAddressesKey]
             request = kit.CNContactFetchRequest.alloc().initWithKeysToFetch_(keys)
@@ -151,19 +159,24 @@ class ContactsBook:
                 name = " ".join(p for p in (str(contact.givenName() or ""), str(contact.familyName() or "")) if p) or str(contact.organizationName() or "")
                 if not name:
                     return
+                emails = [str(item.value()) for item in list(contact.emailAddresses() or [])]
+                people.append({"name": name, "org": str(contact.organizationName() or "") or None, "emails": [e for e in emails if "@" in e][:5]})
                 for item in list(contact.phoneNumbers() or []) + list(contact.emailAddresses() or []):
                     value = item.value()
                     key = key_of(str(value.stringValue()) if hasattr(value, "stringValue") else str(value))
                     if key:
                         found.setdefault(key, name)
             kit.CNContactStore.alloc().init().enumerateContactsWithFetchRequest_error_usingBlock_(request, None, each)
-            self.cache = (time.monotonic(), found)
-            return found
+            self.cache = (time.monotonic(), found, people)
+            return found, people
 
 
 class FakeContacts:
-    def __init__(self, names=None, status="granted"):
-        self.book, self.state = names or {}, status
+    def __init__(self, names=None, status="granted", people=None):
+        self.book, self.state, self.everyone = names or {}, status, people or []
+
+    def people(self) -> list[dict]:
+        return list(self.everyone) if self.state == "granted" else []
 
     def status(self) -> str:
         return self.state
@@ -180,6 +193,21 @@ def default_contacts():
         return ContactsBook()
     except Exception:  # noqa: BLE001 - not macOS: no names
         return FakeContacts(status="unavailable")
+
+
+def find_people(book, query: str, limit: int = 8) -> list[dict]:
+    """Contacts whose name, company or address matches what is typed; a word that starts with it goes first."""
+    words = query.casefold().split()
+    if not words:
+        return []
+    found = []
+    for person in book.people():
+        text = " ".join([person["name"], person.get("org") or "", *person.get("emails", [])]).casefold()
+        if all(w in text for w in words):
+            starts = sum(1 for w in words if any(part.startswith(w) for part in text.replace("@", " ").split()))
+            found.append((-starts, person["name"].casefold(), person))
+    found.sort(key=lambda item: item[:2])
+    return [{"name": p["name"], "org": p.get("org"), "email": (p.get("emails") or [None])[0]} for _, _, p in found[:limit]]
 
 
 _CONTACTS = None

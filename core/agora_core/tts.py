@@ -1,0 +1,198 @@
+"""Watson's voice (1.7): which engine speaks its answers and with which voice.
+- macOS: the system's own voices, spoken by the screen itself (nothing goes through the core);
+- VoiceStudio: a local voice studio (OmniVoice) on this Mac, at a fixed loopback address, asked through its
+  OpenAI-compatible route. The text goes to that app on this machine and nowhere else, so any answer can use it.
+«auto» uses the VoiceStudio profile named «Watson (AgoraOne)» when VoiceStudio is open and has it, else macOS.
+The address is fixed here, never taken from the client or the settings, so the core cannot be pointed anywhere else.
+When AgoraOne starts, it opens VoiceStudio in the background if it is installed and closed (user's request,
+16/11/2026; can be turned off in Ajustes › Voz), and each spoken answer asks for the chosen quality: VoiceStudio's
+own «max» profile takes four times longer per sentence."""
+
+import json
+import sqlite3
+import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
+
+import httpx
+
+from .db import transaction
+
+VOICESTUDIO = "http://127.0.0.1:3900"
+WATSON_PROFILE = "Watson (AgoraOne)"
+ENGINES = ("auto", "macos", "voicestudio")
+DEFAULTS = {"engine": "auto", "voice": None, "speed": 1.0, "macVoice": None, "quality": "balanced", "openAtStart": True}
+# Unmasking steps of OmniVoice per quality: fewer steps, sooner and lighter; VoiceStudio's «max» profile uses 64.
+QUALITY = {"fast": 8, "balanced": 16, "best": 32}
+APPS = (Path("/Applications/VoiceStudio.app"), Path.home() / "Applications" / "VoiceStudio.app")
+MAX_TEXT = 400  # one piece: the screen sends an answer sentence by sentence
+
+
+class TtsError(RuntimeError):
+    pass
+
+
+def settings(connection: sqlite3.Connection) -> dict:
+    row = connection.execute("SELECT value FROM setting WHERE key = 'voice.tts'").fetchone()
+    saved = json.loads(row["value"]) if row else {}
+    return {**DEFAULTS, **{k: v for k, v in saved.items() if k in DEFAULTS}}
+
+
+def save_settings(connection: sqlite3.Connection, changes: dict) -> dict:
+    merged = {**settings(connection), **{k: v for k, v in changes.items() if k in DEFAULTS}}
+    if merged["engine"] not in ENGINES:
+        raise TtsError("Motor de voz desconocido.")
+    for key in ("voice", "macVoice"):
+        if merged[key] is not None and (not isinstance(merged[key], str) or not 0 < len(merged[key]) <= 120):
+            raise TtsError("Voz no válida.")
+    if not isinstance(merged["speed"], (int, float)) or not 0.5 <= merged["speed"] <= 2:
+        raise TtsError("La velocidad va de 0,5 a 2.")
+    if merged["quality"] not in QUALITY:
+        raise TtsError("Calidad de voz desconocida.")
+    if not isinstance(merged["openAtStart"], bool):
+        raise TtsError("Abrir VoiceStudio al arrancar es sí o no.")
+    with transaction(connection):
+        connection.execute("INSERT INTO setting (key, value) VALUES ('voice.tts', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                           (json.dumps(merged),))
+    return merged
+
+
+_seen: dict = {"at": 0.0, "voices": None}
+
+
+def voicestudio_voices(fresh: bool = False) -> list[dict] | None:
+    """VoiceStudio's voice profiles, or None when it is not open. Kept 30 s: an answer is spoken in several pieces
+    and asking for the list each time would queue behind VoiceStudio's own work."""
+    if not fresh and time.monotonic() - _seen["at"] < 30:
+        return _seen["voices"]
+    _seen.update(at=time.monotonic(), voices=_read_voices())
+    return _seen["voices"]
+
+
+def _read_voices() -> list[dict] | None:
+    try:
+        answer = httpx.get(f"{VOICESTUDIO}/profiles", timeout=2.5)
+        answer.raise_for_status()
+        profiles = answer.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+    if not isinstance(profiles, list):  # something else on that port, or another VoiceStudio API
+        return None
+    return [{"id": str(p["id"])[:120], "name": str(p.get("name") or p["id"])[:120], "language": str(p.get("language") or "")[:40] or None}
+            for p in profiles if isinstance(p, dict) and p.get("id")][:100]
+
+
+def resolve(chosen: dict, voices: list[dict] | None) -> dict:
+    """What speaks now: the engine and voice the screen should use, and why when it is not the chosen one."""
+    engine, voice, problem = chosen["engine"], chosen["voice"], None
+    if engine == "auto":
+        watson = next((v for v in voices or [] if v["name"] == WATSON_PROFILE), None)
+        engine, voice = ("voicestudio", watson["id"]) if watson else ("macos", None)
+    elif engine == "voicestudio":
+        if voices is None:
+            engine, problem = "macos", "VoiceStudio no está abierto: Watson habla con la voz de macOS."
+        elif not voice:
+            engine, problem = "macos", "Elige una voz de VoiceStudio: mientras, Watson habla con la voz de macOS."
+        elif not any(v["id"] == voice for v in voices):
+            engine, problem = "macos", "Esa voz ya no está en VoiceStudio: Watson habla con la voz de macOS."
+    if engine == "macos" and chosen["engine"] != "macos" and voices is None and _launch["state"]:
+        problem = {"opening": "Abriendo VoiceStudio: mientras arranca, Watson habla con la voz de macOS.",
+                   "failed": "AgoraOne intentó abrir VoiceStudio y no respondió en 2 minutos: Watson habla con la voz de macOS."}[_launch["state"]]
+    return {"engine": engine, "voice": voice if engine == "voicestudio" else None, "speed": chosen["speed"],
+            "macVoice": chosen["macVoice"], "problem": problem, "steps": QUALITY.get(chosen["quality"], 16)}
+
+
+_launch: dict = {"state": None}
+_spoke: dict = {"at": -1e9, "failed": -1e9}  # when VoiceStudio last spoke for AgoraOne, or last failed to (monotonic)
+WARM_FOR = 600
+_warming = threading.Lock()
+
+
+def installed_app() -> Path | None:
+    """VoiceStudio's app on this Mac, from the two usual folders only (never a path from the client)."""
+    if sys.platform != "darwin":
+        return None
+    return next((app for app in APPS if (app / "Contents" / "Info.plist").is_file()), None)
+
+
+def app_running() -> bool:
+    """Whether VoiceStudio's app is running on this Mac (it may still be loading): Watson then waits for its voice
+    instead of speaking with macOS. Only the two usual app folders count."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        found = subprocess.run(["/usr/bin/pgrep", "-f", "VoiceStudio.app/Contents/MacOS/"], capture_output=True, timeout=3, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return found.returncode == 0
+
+
+def open_at_start(connect_db, wait: float = 120.0, opener=subprocess.run) -> str:
+    """At start: when Watson may speak with VoiceStudio and it is installed but closed, open it in the background
+    (hidden, without taking the focus) and wait for it; then get its voice ready. Returns what happened."""
+    connection = connect_db()
+    try:
+        chosen = settings(connection)
+    finally:
+        connection.close()
+    if chosen["engine"] == "macos" or not chosen["openAtStart"]:
+        return "off"
+    if voicestudio_voices(fresh=True) is None:
+        app = installed_app()
+        if app is None:
+            return "missing"
+        _launch["state"] = "opening"
+        try:
+            opener(["/usr/bin/open", "-g", "-j", str(app)], timeout=15, check=False, capture_output=True)
+            limit = time.monotonic() + wait
+            while voicestudio_voices(fresh=True) is None and time.monotonic() < limit:
+                time.sleep(2)
+        except (OSError, subprocess.SubprocessError):
+            pass
+        finally:  # never left «opening»: whatever happened, the state says how it ended
+            _launch["state"] = None if _seen["voices"] is not None else "failed"
+        if _seen["voices"] is None:
+            return "failed"
+    warm(chosen)
+    return "ready"
+
+
+def warm(chosen: dict) -> bool:
+    """Gets VoiceStudio's voice ready before the first answer: its model loads on the first request (10 to 15 s
+    cold), so one short word is said and thrown away while Watson is still thinking. VoiceStudio lists its voice
+    process as loaded before the model is really in memory, so this goes by when AgoraOne last heard it speak:
+    nothing if that was less than ten minutes ago."""
+    now = resolve(chosen, voicestudio_voices())
+    recent = lambda: time.monotonic() - max(_spoke["at"], _spoke["failed"]) < WARM_FOR  # noqa: E731
+    if now["engine"] != "voicestudio" or recent() or not _warming.acquire(blocking=False):
+        return False
+    try:
+        if recent():  # another thread got it ready while this one waited
+            return False
+        synthesize(now["voice"], "Hola.", steps=QUALITY["fast"])
+        return True
+    except TtsError:
+        _spoke["failed"] = time.monotonic()  # not asked again on every question while VoiceStudio keeps failing
+        return False
+    finally:
+        _warming.release()
+
+
+def synthesize(voice: str, text: str, steps: int = QUALITY["balanced"]) -> bytes:
+    """One piece of an answer, spoken by VoiceStudio with that voice profile: WAV bytes."""
+    text = " ".join((text or "").split())[:MAX_TEXT]
+    if not text or not voice:
+        raise TtsError("Nada que decir.")
+    body = {"model": "omnivoice", "voice": voice, "input": text, "language": "es", "response_format": "wav",
+            # The profile's reference is already clean: preparing it again each time only adds seconds.
+            "denoise": False, "preprocess_prompt": False, "num_step": steps if steps in QUALITY.values() else QUALITY["balanced"]}
+    try:
+        answer = httpx.post(f"{VOICESTUDIO}/v1/audio/speech", json=body, timeout=60)
+    except httpx.HTTPError as error:
+        raise TtsError("VoiceStudio no responde.") from error
+    if answer.status_code != 200 or not answer.headers.get("content-type", "").startswith("audio/"):
+        raise TtsError("VoiceStudio no pudo decirlo.")
+    _spoke["at"] = time.monotonic()
+    return answer.content

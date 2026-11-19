@@ -1,8 +1,9 @@
 """Add-ons: other projects of the user that AgoraOne connects to without changing them.
 
-Manifests are generic (this repository is public): how each add-on is recognised, what it offers and how
-to tell it is running. Where it lives on this Mac (paths, ports) is the user's own setting, stored in the
-core's database. Nothing here starts, stops or writes to an add-on.
+Manifests are generic (this repository is public): how each add-on is recognised and how to tell it is
+running; its card is a connector (`connectors.py`). Where it lives on this Mac (paths, ports) is the user's own
+setting, stored in the core's database. Nothing here starts, stops or writes to an add-on; the one exception, starting Mi fábrica's own
+launchd service on macOS at the user's request, lives in `fabrica_service.py`.
 """
 
 import json
@@ -19,22 +20,18 @@ class Manifest:
     id: str
     name: str
     description: str
-    offers: list[str]
     defaults: dict = field(default_factory=dict)
 
 
 MANIFESTS = {m.id: m for m in [
-    Manifest("central", "Central", "CRM personal: proyectos, clientes, presupuestos, webs y servidores.",
-             ["MCP por stdio (bun src/mcp/server.ts)", "Web local"], {"port": 3099}),
     Manifest("costguard", "CostGuard", "Mide el gasto de tokens de los agentes (Claude Code, Codex, OpenCode, pi).",
-             ["Consumo de tokens de las últimas 5 y 24 horas, en solo lectura"],
              {"dataPath": str(Path.home() / "Library" / "Application Support" / "CostGuard" / "consumo.sqlite")}),
     Manifest("fabrica", "Mi fábrica", "Fábrica de contenido: investiga, produce, espera aprobación, publica y mide.",
-             ["Panel local", "Nutrirse del cerebro por MCP"], {"port": 8742}),
+             {"port": 8742}),
 ]}
 
 
-ALLOWED = {"central": {"path", "port"}, "fabrica": {"path", "port"}, "costguard": {"dataPath"}}
+ALLOWED = {"fabrica": {"path", "port"}, "costguard": {"dataPath"}}
 COSTGUARD_COLUMNS = {"hora", "agente", "gi", "go", "cr", "cw", "turnos"}
 
 
@@ -51,22 +48,12 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
 
-def _read_json(path: Path) -> dict:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def recognised(addon: str, folder: Path) -> bool:
     """Whether the folder really holds that add-on, judged by its own project files (read, never run)."""
-    if addon == "central":
-        return _read_json(folder / "package.json").get("name") == "central" and (folder / "src" / "mcp" / "server.ts").is_file()
     if addon == "fabrica":
         try:
             text = (folder / "pyproject.toml").read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, ValueError):  # unreadable, not UTF-8 (UnicodeDecodeError) or a bad path: not the fábrica
             return False
         return 'name = "mi-fabrica"' in text
     return False
@@ -95,6 +82,33 @@ def config(connection: sqlite3.Connection, addon: str) -> dict:
     return {**MANIFESTS[addon].defaults, **(json.loads(row["value"]) if row else {})}
 
 
+def check_format(addon: str, key: str, value: object) -> None:
+    """Whether a setting is one of the add-on's own and well formed (a port of 1024-65535, an absolute path);
+    whether the path really holds the add-on is checked only when saving."""
+    if key not in ALLOWED.get(addon, ()):
+        raise AddonError("Ajuste no válido para este complemento.")
+    if key == "port":
+        if type(value) is not int or not 1024 <= value <= 65535:
+            raise AddonError("Puerto no válido.")
+    elif not isinstance(value, str) or len(value) > 500 or not Path(value).is_absolute():
+        raise AddonError("La ruta debe ser absoluta.")
+
+
+LOCATIONS = ("path", "dataPath")  # where an add-on is: forgetting them leaves it unconfigured, never at a default
+
+
+def forget(connection: sqlite3.Connection, addon: str) -> None:
+    """Forgets every setting of the add-on: a port goes back to its default, a location (even a default one such as
+    CostGuard's data file) is left unset, so the add-on is no longer configured."""
+    if addon not in MANIFESTS:
+        raise AddonError("Complemento desconocido.")
+    unset = {k: None for k in MANIFESTS[addon].defaults if k in LOCATIONS}
+    connection.execute(
+        "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        (f"addons.{addon}", json.dumps(unset)),
+    )
+
+
 def save_config(connection: sqlite3.Connection, addon: str, changes: dict) -> dict:
     """Validates where the add-on is and stores it. Each add-on accepts only its own settings; None forgets
     a setting (back to the default or to «not configured»)."""
@@ -109,12 +123,8 @@ def save_config(connection: sqlite3.Connection, addon: str, changes: dict) -> di
             if key in MANIFESTS[addon].defaults:
                 current[key] = MANIFESTS[addon].defaults[key]
             continue
-        if key == "port":
-            if type(value) is not int or not 1024 <= value <= 65535:
-                raise AddonError("Puerto no válido.")
-        else:
-            if not isinstance(value, str) or not Path(value).is_absolute() or len(value) > 500:
-                raise AddonError("La ruta debe ser absoluta.")
+        check_format(addon, key, value)
+        if key != "port":
             target = Path(value)
             if key == "path" and not (target.is_dir() and recognised(addon, target)):
                 raise AddonError(f"Esa carpeta no contiene {MANIFESTS[addon].name}.")
@@ -146,21 +156,9 @@ def status(addon: str, settings: dict) -> str:
             return "not_configured"
         if not recognised(addon, Path(settings["path"])):
             return "not_found"
-        answers = _listening(settings.get("port")) if addon == "central" else _healthy(settings.get("port"), "/salud")
-        return "responding" if answers else "detected"
+        return "responding" if _healthy(settings.get("port"), "/salud") else "detected"
     except Exception:  # noqa: BLE001 - one add-on in a bad state must not break the whole registry
         return "unreadable"
-
-
-def describe(connection: sqlite3.Connection) -> list[dict]:
-    found = []
-    for manifest in MANIFESTS.values():
-        settings = config(connection, manifest.id)
-        found.append({
-            "id": manifest.id, "name": manifest.name, "description": manifest.description, "offers": manifest.offers,
-            "status": status(manifest.id, settings), "configured": settings,
-        })
-    return found
 
 
 def _open_costguard(database: Path) -> sqlite3.Connection:

@@ -1,0 +1,28 @@
+/* The standard action button: icon + label, a tone that says what it does, light and dark. Buttons are never glued:
+   the rows they sit in keep their own gap. */
+.button.action-button { display:inline-flex; align-items:center; justify-content:center; gap:6px; white-space:nowrap; line-height:1.2; cursor:pointer;
+  transition:filter .12s ease, background-color .12s ease }
+.button.action-button.small { padding:6px 10px; font-size:11px }
+.button.action-button.icon-only { padding:7px; min-width:32px }
+.button.action-button.icon-only.small { padding:5px; min-width:28px }
+.action-icon { flex:none }
+.button.action-button:hover:not(:disabled) { filter:brightness(.96) }
+.button.action-button:disabled { opacity:.55; cursor:default }
+.button.action-button:focus-visible { outline:2px solid var(--c-2d7a4f); outline-offset:2px }
+.button.action-button.tone-primary { background:var(--c-244e42); border-color:var(--c-244e42); color:var(--c-fff9e7) }
+.button.action-button.tone-info { background:#d6e6f5; color:#1d4f7a; border-color:#b8d3ee }
+.button.action-button.tone-success { background:#d9ecd8; color:#1f5a35; border-color:#b9dbb8 }
+.button.action-button.tone-warning { background:#f6e3c0; color:#7a4e0e; border-color:#ecd09a }
+.button.action-button.tone-danger { background:#f6d6d2; color:#8e2f24; border-color:#eebcb5 }
+:root[data-theme="dark"] .button.action-button.tone-info { background:#16324d; color:#a9cdf0; border-color:#25507a }
+:root[data-theme="dark"] .button.action-button.tone-success { background:#1b3a26; color:#b5e0c0; border-color:#2c5a3b }
+:root[data-theme="dark"] .button.action-button.tone-warning { background:#4a3412; color:#f3d39b; border-color:#6b4c1c }
+:root[data-theme="dark"] .button.action-button.tone-danger { background:#4d1f1a; color:#f4b5ac; border-color:#73302a }
+:root[data-theme="dark"] .button.action-button:hover:not(:disabled) { filter:brightness(1.15) }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .button.action-button.tone-info { background:#16324d; color:#a9cdf0; border-color:#25507a }
+  :root:not([data-theme="light"]) .button.action-button.tone-success { background:#1b3a26; color:#b5e0c0; border-color:#2c5a3b }
+  :root:not([data-theme="light"]) .button.action-button.tone-warning { background:#4a3412; color:#f3d39b; border-color:#6b4c1c }
+  :root:not([data-theme="light"]) .button.action-button.tone-danger { background:#4d1f1a; color:#f4b5ac; border-color:#73302a }
+  :root:not([data-theme="light"]) .button.action-button:hover:not(:disabled) { filter:brightness(1.15) }
+}

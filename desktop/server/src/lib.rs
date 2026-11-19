@@ -171,6 +171,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/hermes/vaults/{id}/notes", get(vault::routes::list).post(vault::routes::create))
         .route("/api/hermes/vaults/{id}/notes/{note}", get(vault::routes::note).put(vault::routes::save))
         .route("/api/hermes/vaults/{id}/notes/{note}/move", post(vault::routes::move_note))
+        .route("/api/hermes/vaults/{id}/files", post(vault::routes::create_file).layer(DefaultBodyLimit::max(26 * 1024 * 1024)))
         .route("/api/hermes/vaults/{id}/search", get(vault::routes::search))
         .route("/api/library/documents", get(library::routes::list).fallback(library::routes::not_allowed))
         .route("/api/library/documents/{id}", get(library::routes::read).patch(library::routes::rename).delete(library::routes::delete).fallback(library::routes::not_allowed))

@@ -24,6 +24,13 @@ static INVISIBLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[\p{Cf}\u{2028
 const LINKED_FOLDER: &str = "La carpeta de la nota es un enlace y no se escribe en ella.";
 const LINKED: &str = "La carpeta es un enlace y no se escribe en ella.";
 
+/// What a mail's file may be in the vault: documents, images, audio and video (never a note or a program).
+/// The same list as core/agora_core/note_sources.py FILE_TYPES (a test keeps them equal).
+const FILE_TYPES: &[&str] = &[
+    "pdf", "png", "jpg", "jpeg", "gif", "webp", "heic", "tif", "tiff", "txt", "csv", "rtf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp",
+    "pages", "numbers", "key", "zip", "rar", "7z", "mp3", "m4a", "wav", "mp4", "mov", "eml", "msg", "ics", "xml", "xsig",
+];
+
 fn conflict() -> Failure {
     Failure::new(409, "La nota cambió (en Obsidian o en otro sitio) mientras la editabas. Vuelve a cargarla para ver la versión actual.")
 }
@@ -85,21 +92,26 @@ fn folder_of(index: &Index, folder: &str) -> Result<PathBuf, Failure> {
 /// A folder that does not exist yet, one level inside a folder that does (never at the vault's top level):
 /// a new client's folder in «Clientes/Proyectos». Created when its first note is created, never through a link.
 fn new_folder(index: &Index, folder: &str) -> Result<PathBuf, Failure> {
+    new_folder_made(index, folder).map(|(directory, _)| directory)
+}
+
+/// Like `new_folder`, also telling whether the folder was created now (so a failed move can take it back).
+fn new_folder_made(index: &Index, folder: &str) -> Result<(PathBuf, bool), Failure> {
     let missing = || Failure::new(404, "Esa carpeta no existe en el vault.");
     let (parent, name) = folder.rsplit_once('/').ok_or_else(missing)?;
     if parent.is_empty() || note_name(name).ok().as_deref() != Some(name) {
         return Err(missing());
     }
     let directory = folder_of(index, parent)?.join(name);
-    match DirBuilder::new().mode(0o755).create(&directory) {
-        Ok(()) => {}
-        Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
+    let made = match DirBuilder::new().mode(0o755).create(&directory) {
+        Ok(()) => true,
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => false,
         Err(_) => return Err(refused("No se pudo crear la carpeta en el vault.")),
-    }
+    };
     if fs::canonicalize(&directory).map_err(internal)? != directory {
         return Err(refused(LINKED));
     }
-    Ok(directory)
+    Ok((directory, made))
 }
 
 fn check(content: &str) -> Result<(), Failure> {
@@ -226,10 +238,43 @@ impl VaultNotes {
         Ok(created(&index, vault_id, &file, folder, name))
     }
 
+    /// A file a mail brought (an attachment or a shared document the user ticked), saved next to the note made
+    /// from it (user's decision, 17/11/2026): only in a folder that exists, only document, image, audio and video
+    /// types, never over a file that exists, never through a link. Not a note: it is never read as one.
+    pub fn create_file(&self, vault_id: &str, folder: &str, name: &str, data: &[u8]) -> Result<Created, Failure> {
+        let _writing = self.writing.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let index = self.index(vault_id, true)?;
+        let (stem, extension) = name.rsplit_once('.').ok_or_else(|| refused("El archivo necesita una extensión."))?;
+        let extension = extension.to_lowercase();
+        if !FILE_TYPES.contains(&extension.as_str()) {
+            return Err(refused("Ese tipo de archivo no se guarda en el vault."));
+        }
+        let file_name = format!("{}.{extension}", note_name(stem)?);
+        let directory = folder_of(&index, folder)?;
+        let file = directory.join(&file_name);
+        let mut handle = OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW).mode(0o644).open(&file).map_err(|error| {
+            if error.kind() == ErrorKind::AlreadyExists {
+                Failure::new(409, "Ya existe un archivo con ese nombre en esta carpeta.")
+            } else {
+                refused("No se pudo crear el archivo en esa carpeta.")
+            }
+        })?;
+        if fs::canonicalize(&directory).map(|real| real != directory).unwrap_or(true) {
+            let _ = fs::remove_file(&file);
+            return Err(refused(LINKED));
+        }
+        if let Err(failure) = handle.write_all(data).and_then(|()| handle.sync_all()) {
+            let _ = fs::remove_file(&file);  // never a half file left behind
+            return Err(internal(failure));
+        }
+        Ok(created(&index, vault_id, &file, folder, file_name))
+    }
+
     /// Moves a note to another folder of the vault and/or gives it a new title (user's decision, 13/11/2026).
     /// The user confirmed the revision they saw; the previous version is copied first. The note keeps its
     /// file (a hard link to the new name, then the old name is removed), so Obsidian keeps its creation date,
-    /// and an existing note is never overwritten. Links to it from other notes are not rewritten.
+    /// and an existing note is never overwritten. Links to it from other notes are not rewritten. The destination
+    /// may be a new folder one level inside an existing one, as when creating (Watson's reorganisation, 1.7).
     pub fn move_note(&self, vault_id: &str, note_id: &str, target: NoteMove, backups: &Path) -> Result<Created, Failure> {
         let _writing = self.writing.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let index = self.index(vault_id, true)?;
@@ -243,40 +288,50 @@ impl VaultNotes {
             return Err(refused("La nota ya tiene ese título y está en esa carpeta."));
         }
         let listed = safe_target(&index, &entry.file)?;
-        let directory = folder_of(&index, &target.folder)?;
-        let file = directory.join(format!("{name}.md"));
-        let handle = OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW).open(&entry.file).map_err(|_| conflict())?;
-        let opened = handle.metadata().map_err(internal)?;
-        if !opened.is_file() || opened.nlink() != 1 || opened.ino() != listed.ino() || opened.len() > MAX_NOTE_BYTES {
-            return Err(refused("Esta nota no se puede mover: es un enlace o cambió de archivo."));
-        }
-        let mut bytes = Vec::new();
-        handle.take(opened.len()).read_to_end(&mut bytes).map_err(internal)?;
-        if sha256_hex(&bytes) != target.revision {
-            return Err(conflict());
-        }
-        backup(backups, vault_id, note_id, &bytes).map_err(internal)?;
-        if let Err(error) = fs::hard_link(&entry.file, &file) {
-            // Same file under another spelling (only case or accents change on a case-insensitive disk): a plain rename.
-            let exists = error.kind() == ErrorKind::AlreadyExists;
-            if exists && fs::symlink_metadata(&file).is_ok_and(|m| m.ino() == listed.ino()) {
-                fs::rename(&entry.file, &file).map_err(internal)?;
-                self.forget(vault_id);
-                return Ok(created(&index, vault_id, &file, &target.folder, name));
+        let (directory, made) = match folder_of(&index, &target.folder) {
+            Err(failure) if failure.status.as_u16() == 404 => new_folder_made(&index, &target.folder)?,
+            found => (found?, false),
+        };
+        let moved = (|| -> Result<Created, Failure> {
+            let file = directory.join(format!("{name}.md"));
+            let handle = OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW).open(&entry.file).map_err(|_| conflict())?;
+            let opened = handle.metadata().map_err(internal)?;
+            if !opened.is_file() || opened.nlink() != 1 || opened.ino() != listed.ino() || opened.len() > MAX_NOTE_BYTES {
+                return Err(refused("Esta nota no se puede mover: es un enlace o cambió de archivo."));
             }
-            return Err(if exists { Failure::new(409, "Ya existe una nota con ese título en esa carpeta.") } else { refused("No se pudo mover la nota en este disco.") });
+            let mut bytes = Vec::new();
+            handle.take(opened.len()).read_to_end(&mut bytes).map_err(internal)?;
+            if sha256_hex(&bytes) != target.revision {
+                return Err(conflict());
+            }
+            backup(backups, vault_id, note_id, &bytes).map_err(internal)?;
+            if let Err(error) = fs::hard_link(&entry.file, &file) {
+                // Same file under another spelling (only case or accents change on a case-insensitive disk): a plain rename.
+                let exists = error.kind() == ErrorKind::AlreadyExists;
+                if exists && fs::symlink_metadata(&file).is_ok_and(|m| m.ino() == listed.ino()) {
+                    fs::rename(&entry.file, &file).map_err(internal)?;
+                    self.forget(vault_id);
+                    return Ok(created(&index, vault_id, &file, &target.folder, name));
+                }
+                return Err(if exists { Failure::new(409, "Ya existe una nota con ese título en esa carpeta.") } else { refused("No se pudo mover la nota en este disco.") });
+            }
+            // The destination folder was swapped for a link meanwhile: undo and stop.
+            if fs::canonicalize(&directory).map(|real| real != directory).unwrap_or(true) {
+                let _ = fs::remove_file(&file);
+                return Err(refused(LINKED));
+            }
+            if let Err(error) = fs::remove_file(&entry.file) {
+                let _ = fs::remove_file(&file);
+                return Err(internal(error));
+            }
+            self.forget(vault_id);
+            Ok(created(&index, vault_id, &file, &target.folder, name))
+        })();
+        // A folder created for this move and left empty by a failure is taken back (only when empty).
+        if moved.is_err() && made {
+            let _ = fs::remove_dir(&directory);
         }
-        // The destination folder was swapped for a link meanwhile: undo and stop.
-        if fs::canonicalize(&directory).map(|real| real != directory).unwrap_or(true) {
-            let _ = fs::remove_file(&file);
-            return Err(refused(LINKED));
-        }
-        if let Err(error) = fs::remove_file(&entry.file) {
-            let _ = fs::remove_file(&file);
-            return Err(internal(error));
-        }
-        self.forget(vault_id);
-        Ok(created(&index, vault_id, &file, &target.folder, name))
+        moved
     }
 }
 

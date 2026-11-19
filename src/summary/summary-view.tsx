@@ -1,4 +1,7 @@
 import { CentralCard } from './central-card';
+import { ClientsFollowCard } from './clients-follow-card';
+import type { Section } from '../shell/shell-state';
+import { moduleOn, useModules } from '../shell/modules';
 import { useAssistantName } from '../assistant/assistant-name';
 import { useEffect, useState } from 'react';
 import { ago } from '../data/activity-format';
@@ -59,8 +62,10 @@ function Status({ summary, now }: { summary: Summary; now: number }) {
 
 /** The whole picture: status, connected agents, tokens per project and agent, Watson's questions and the
  * words used most. Real data only; each source that fails is named. */
-export function SummaryView({ discreet, onRead }: { discreet: boolean; onRead: (note: NoteRef) => void }) {
+export function SummaryView({ discreet, onRead, onOpen }: { discreet: boolean; onRead: (note: NoteRef) => void; onOpen: (section: Section) => void }) {
   const assistant = useAssistantName();
+  const modules = useModules();
+  const centralOn = moduleOn(modules, 'central');
   const { summary, reload } = useSummary(discreet);
   const [window, setWindow] = useState<Window>('7d');
   const [words, setWords] = useState<'notes' | 'questions' | 'hermes'>('notes');
@@ -132,7 +137,8 @@ export function SummaryView({ discreet, onRead }: { discreet: boolean; onRead: (
           : <Words words={hermes?.words ?? []} empty="Sin mensajes tuyos en Hermes en 30 días."/>}
         <small className="muted">{words === 'hermes' ? `Tus mensajes de los últimos ${hermes?.days ?? 30} días (${hermes?.messagesCounted ?? 0}), contados en este Mac; solo se guardan los recuentos.` : words === 'notes' && discreet ? 'Modo discreto: solo notas normales.' : 'Sin palabras vacías ni cadenas con pinta de clave.'}</small>
       </article>
-      <CentralCard discreet={discreet}/>
+      {centralOn && <CentralCard discreet={discreet}/>}
+      {moduleOn(modules, 'trabajos') && <ClientsFollowCard discreet={discreet} onOpen={onOpen}/>}
     </div>
   </section>;
 }

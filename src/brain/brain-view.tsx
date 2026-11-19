@@ -5,6 +5,8 @@ import { BrainDock } from './brain-dock';
 import { BrainSide } from './brain-side';
 import { BrainToday } from './brain-today';
 import { BrainAgents } from './brain-agents';
+import { HomeBlocks } from '../home/home-blocks';
+import type { Section } from '../shell/shell-state';
 import { getBrainGraph, levelLabels, searchBrain, type BrainGraph, type GraphLayers, type NodeType, type SearchResult } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 import { layoutGraph } from './graph-layout';
@@ -27,13 +29,20 @@ export const typeColors: Partial<Record<NodeType, string>> = { person: '#e2bf72'
 export const typeLabels: Record<NodeType, string> = { note: 'Nota', person: 'Persona', org: 'Organización', project: 'Proyecto', amount: 'Cifra', date: 'Fecha', tag: 'Etiqueta', folder: 'Carpeta' };
 const topFolder = (node: { type: NodeType; folder?: string; id: string }) => node.type === 'folder' ? node.id.split('/').slice(1)[0] ?? '' : (node.folder ?? '').split('/')[0];
 
+// Panel (the blocks) or graph at the centre, remembered per browser; the panel unless the graph was chosen.
+type Centre = 'panel' | 'grafo';
+const readCentre = (): Centre => { try { return localStorage.getItem('agora-brain-centre') === 'grafo' ? 'grafo' : 'panel'; } catch { return 'panel'; } };
+const writeCentre = (centre: Centre) => { try { localStorage.setItem('agora-brain-centre', centre); } catch { /* not remembered this time */ } };
+
 const reducedMotion = () => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** The start page: every indexed note as a graph with a floating explorer, and Watson beside it; the notes an
  * answer uses light up on the graph as they arrive. */
-export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
-  discreet: boolean; focus: string[]; onFocus: (ids: string[]) => void; onRead: (note: NoteRef) => void; onSummary: () => void;
+export function BrainView({ discreet, focus, onFocus, onRead, onSummary, onOpen }: {
+  discreet: boolean; focus: string[]; onFocus: (ids: string[]) => void; onRead: (note: NoteRef) => void; onSummary: () => void; onOpen: (section: Section) => void;
 }) {
+  const [centre, setCentreState] = useState<Centre>(readCentre);
+  const setCentre = (next: Centre) => { setCentreState(next); writeCentre(next); };
   const [explorer, setExplorer] = useState(true);
   const [thinking, setThinking] = useState<Thinking>(null);
   // A question from the command bar, handed to Watson's panel (which sends it and then clears it).
@@ -54,6 +63,8 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
   const [query, setQuery] = useState('');
+  // An answer that lights notes up, or a search, is about the graph: show it.
+  const graphWanted = centre === 'grafo' || focus.length > 0 || query.trim().length >= 2;
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [searchError, setSearchError] = useState('');
   useEffect(() => {
@@ -110,9 +121,14 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
   }, [graph, positions, colors]);
   const hubs = useMemo(() => [...(graph?.nodes ?? [])].filter(node => node.type === 'note').sort((a, b) => b.degree - a.degree).filter(node => node.degree > 0).slice(0, 8), [graph]);
   const titles = useMemo(() => new Map(graph?.nodes.map(node => [node.id, node]) ?? []), [graph]);
-  return <section className="brain" aria-labelledby="brain-title">
-    <div className="brain-stage">
-      {error ? <div className="brain-message"><LoadError message={error} onRetry={() => setVersion(value => value + 1)}/></div>
+  return <section className={`brain${graphWanted ? '' : ' centre-panel'}`} aria-labelledby="brain-title">
+    <div className={`brain-stage${graphWanted ? '' : ' panel'}`}>
+      <div className="brain-view-switch" role="group" aria-label="Qué ver en el centro">
+        <button type="button" aria-pressed={!graphWanted} onClick={() => { setCentre('panel'); if (focus.length) onFocus([]); setQuery(''); setPicked(null); setPickedArea(null); setFromArea(false); }}>Panel</button>
+        <button type="button" aria-pressed={graphWanted} onClick={() => setCentre('grafo')}>Grafo</button>
+      </div>
+      {!graphWanted ? <HomeBlocks discreet={discreet} onOpen={onOpen}/>
+        : error ? <div className="brain-message"><LoadError message={error} onRetry={() => setVersion(value => value + 1)}/></div>
         : !graph ? <div className="brain-message"><Loading label="Leyendo el cerebro"/></div>
         : !graph.nodes.length ? <div className="brain-message"><p>{discreet ? 'En modo discreto no hay notas normales que mostrar.' : 'El cerebro aún no tiene notas. AgoraOne indexa tus vaults de Obsidian al arrancar y cada 5 minutos.'}</p></div>
         : <Suspense fallback={<div className="brain-message"><Loading label="Preparando el grafo"/></div>}>
@@ -134,7 +150,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
         {focus.length > 0 && !shown && <button className="button" onClick={() => onFocus([])}>Quitar resaltado ({focus.length})</button>}
       </div>
       {searchError && <LoadError message={searchError}/>}
-      {!shown && !pickedNode && <BrainToday discreet={discreet}/>}
+      {graphWanted && !shown && !pickedNode && <BrainToday discreet={discreet}/>}
       {!shown && !pickedNode && <BrainAgents/>}
       {pickedNode && !shown ? <div className="brain-list" aria-live="polite">
         <h2>{typeLabels[pickedNode.type]}: {pickedNode.title}</h2>
@@ -147,7 +163,7 @@ export function BrainView({ discreet, focus, onFocus, onRead, onSummary }: {
         </button></li>)}</ul>
       </div> : focus.length > 0 && !fromArea ? <div className="brain-list"><h2>Fuentes de la respuesta</h2>
         <ul>{focus.map(id => <li key={id}><button onClick={() => read(id)}><strong>{titles.get(id)?.title ?? 'Nota no visible ahora'}</strong><small>{titles.get(id)?.folder || ''}</small></button></li>)}</ul>
-      </div> : <BrainSide discreet={discreet} colors={colors} picked={pickedArea} onPick={pickArea} onRead={read}/>}
+      </div> : <BrainSide discreet={discreet} colors={colors} picked={pickedArea} onPick={pickArea} onRead={read} onAsk={setQuestion}/>}
       {!shown && !pickedNode && hubs.length > 0 && <details className="brain-hubs"><summary>Notas más conectadas</summary><div className="brain-list">
         <ul>{hubs.map(node => <li key={node.id}><button onClick={() => read(node.id)}><strong>{node.title}</strong><small>{node.degree} conexiones · {node.folder || 'Raíz'}</small></button></li>)}</ul>
       </div></details>}

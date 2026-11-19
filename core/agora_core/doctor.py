@@ -38,7 +38,7 @@ def _how(brew: str | None = None, linux: str | None = None, windows: str | None 
     return {"kind": "page", "url": url} if url else {"kind": "none"}
 
 
-def check(connection: sqlite3.Connection, has_anthropic_key: bool) -> dict:
+def check(connection: sqlite3.Connection, has_anthropic_key: bool, has_zernio_key: bool = False, has_typesafe_key: bool = False) -> dict:
     voice = transcribe.status(connection)
     local = local_model.detect()
     pieces = []
@@ -79,6 +79,17 @@ def check(connection: sqlite3.Connection, has_anthropic_key: bool) -> dict:
     lmstudio = _app("LM Studio") or (HOME / ".lmstudio/bin/lms").is_file()
     add("lmstudio", "LM Studio", lmstudio, ["Reuniones privadas"], "Alternativa a Ollama." if not lmstudio else "Instalado.",
         _how(brew="--cask lm-studio", url="https://lmstudio.ai"), optional=True)
+    from .orca_launch import binary as orca_binary
+
+    orca = orca_binary()
+    add("orca", "Orca", bool(orca), ["Orca"], "Lanza Claude Code o Codex en el repositorio de un proyecto." if orca else "Para llevar encargos a un agente en tus repositorios.",
+        optional=True)
+    add("zernio", "WhatsApp (Zernio)", has_zernio_key, ["WhatsApp"],
+        "Clave de API de Zernio guardada en el Llavero." if has_zernio_key else "Para leer tu WhatsApp: guarda la clave de Zernio en Ajustes › WhatsApp.",
+        _how(url="https://zernio.com"), optional=True)
+    add("typesafe", "Jev (TypeSafe)", has_typesafe_key, ["Jev"],
+        "Clave de API de TypeSafe guardada en el Llavero." if has_typesafe_key else "Para que Jev ayude a decidir: guarda la clave de TypeSafe en Ajustes › Jev.",
+        _how(url="https://console.typesafe.ai/keys"), optional=True)
     library = music_library.folders(connection)
     add("music-folder", "Carpeta de música", bool(library), ["Música"], ", ".join(library) if library else "Elígela en Ajustes › Voz › Tu música.", optional=True)
     if LINUX:

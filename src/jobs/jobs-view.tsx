@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { takeJobsTab } from './jobs-tab';
 import { getHermesActivity, getHermesCatalog, getHermesWork } from '../api/client';
 import { getJobsSettings } from '../api/core';
 import type { HermesWork, WorkCard, WorkTask, WorkTokens } from '../../shared/hermes-work';
@@ -9,8 +10,10 @@ import { CardControls, JobManager, useAction, type ActionState } from '../ui/pro
 import { cost, count, duration, tokens } from './work-format';
 import { CardHistory } from './card-history';
 import { ClientProjectsSection } from './client-projects';
+import { ClientsDirectoryView } from './clients-directory';
 import { CommissionForm, type ProfileChoice } from './commission-form';
 import './jobs.css';
+import { ActionButton } from '../ui/action-button';
 
 type Period = '24h' | '7d' | '30d';
 const periods: { id: Period; label: string; days: number }[] = [{ id: '24h', label: '24 h', days: 1 }, { id: '7d', label: '7 días', days: 7 }, { id: '30d', label: '30 días', days: 30 }];
@@ -64,6 +67,9 @@ export function JobsView({ discreet }: { discreet: boolean }) {
   const [error, setError] = useState('');
   const [period, setPeriod] = useState<Period>('7d');
   const [profile, setProfile] = useState(ALL);
+  const [tab, setTab] = useState<'work' | 'clients'>(takeJobsTab);
+  const onClients = useRef(false);  // the timer does not refresh the work while the «Clientes» tab is open
+  onClients.current = tab === 'clients';
   const started = useRef(false);
   const request = useRef(0);
   // The refresh lives while the section is on screen: leaving it stops the timer.
@@ -86,7 +92,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
     getJobsSettings().then(found => setCentral(found.central)).catch(() => setCentral('default'));
     const tick = () => {
       // Not while a comment, block reason or task is being written: a card moving column would lose it.
-      if (document.visibilityState === 'visible' && !document.querySelector('section.jobs .task-form')) void load();
+      if (document.visibilityState === 'visible' && !onClients.current && !document.querySelector('section.jobs .task-form')) void load();
       timer.current = window.setTimeout(tick, REFRESH);
     };
     timer.current = window.setTimeout(tick, REFRESH);
@@ -112,12 +118,17 @@ export function JobsView({ discreet }: { discreet: boolean }) {
     <div className="eyebrow">TRABAJOS{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="jobs-title">Trabajos</h1>
     <p className="page-lead">Las tareas programadas y el kanban de todos tus perfiles de Hermes, con el tiempo y los tokens que Hermes ha registrado en cada ejecución. Los cambios usan las funciones de Hermes y solo ocurren al pulsar cada botón.</p>
+    <div className="segmented jobs-tabs" role="group" aria-label="Pestañas de Trabajos">
+      <button aria-pressed={tab === 'work'} onClick={() => setTab('work')}>Trabajos</button>
+      <button aria-pressed={tab === 'clients'} onClick={() => setTab('clients')}>Clientes</button>
+    </div>
+    {tab === 'clients' ? <ClientsDirectoryView discreet={discreet}/> : <>
     <div className="fiscal-bar">
       <div className="segmented" role="group" aria-label="Periodo">{periods.map(p =>
         <button key={p.id} aria-pressed={period === p.id} onClick={() => setPeriod(p.id)}>{p.label}</button>)}</div>
       <label className="field jobs-filter">Perfil<ModernSelect value={profile} onChange={setProfile}
         options={[{ value: ALL, label: 'Todos los perfiles' }, ...Object.keys(work?.profiles ?? {}).map(id => ({ value: id, label: labelOf(id) }))]}/></label>
-      <button type="button" className="button" onClick={() => void load()}>Actualizar</button>
+      <ActionButton icon="refresh" label="Actualizar" onClick={() => void load()}/>
     </div>
     {error && <LoadError message={error}/>}
     {!work && !error ? <Loading label="Leyendo los trabajos de Hermes" lines={4}/> : work && <>
@@ -136,7 +147,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
             : <JobManager profileId={id} jobs={entry.tasks} gateway={gateway} onChanged={() => void load()} extra={task => <TaskRuns task={task} period={period} discreet={discreet}/>}/>}
         </article>)}
       <div className="jobs-heading"><h2>Kanban y encargos</h2>
-        {!commissioning && !discreet && central !== null && profileList.length > 0 && <button type="button" className="button primary" onClick={() => { setCommissioning(true); action.say(''); }}>Nuevo encargo</button>}</div>
+        {!commissioning && !discreet && central !== null && profileList.length > 0 && <ActionButton icon="plus" label="Nuevo encargo" tone="primary" onClick={() => { setCommissioning(true); action.say(''); }}/>}</div>
       {commissioning && !discreet && central !== null && <CommissionForm profiles={profileList} central={central} ready={ready} onCancel={() => setCommissioning(false)}
         onDone={note => { setCommissioning(false); action.say(note); void load(); }}/>}
       {action.error && <p role="alert" className="error">{action.error}</p>}
@@ -153,6 +164,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
         })}</div>}
       <h2>Proyectos de clientes</h2>
       <ClientProjectsSection period={period} discreet={discreet}/>
+    </>}
     </>}
   </section>;
 }

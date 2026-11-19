@@ -83,3 +83,14 @@ section.assistant { display:grid; grid-template-columns:260px minmax(0,1fr); gri
 .assistant.embedded .assistant-form .actions { flex-wrap:nowrap; flex:none }
 .watson-hush { padding:4px 10px; font-size:11px; background:var(--c-8e3d2a); border-color:var(--c-8e3d2a); color:#fff }
 .assistant.embedded .assistant-head > .watson-hush { grid-column:3; grid-row:2; justify-self:end }
+.note-proposal { display:flex; flex-direction:column; gap:8px }
+.note-proposal-fields { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px }
+.note-proposal-text { max-height:260px; overflow:auto; font-size:13px; padding:8px 10px; border-radius:8px; background:var(--c-f1f2ea) }
+.cleanup-list { list-style:none; margin:0; padding:0; max-height:280px; overflow:auto; display:flex; flex-direction:column; gap:4px }
+.cleanup-list label { align-items:flex-start }
+.cleanup-text { display:flex; flex-direction:column; min-width:0; font-size:12.5px }
+.cleanup-text strong { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+.cleanup-text small { color:var(--c-6f8379); font-size:11px }
+.cleanup-text .reorg-warn { color:var(--c-7a5717) }
+.cleanup-text .ok-note { color:var(--c-24563a); background:none; padding:0 }
+.issue-body { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; max-height:320px; overflow:auto; background:var(--c-edf0e8); padding:10px; border-radius:8px; margin:0 }

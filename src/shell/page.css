@@ -4,15 +4,23 @@
 .page h2 { font:600 17px Manrope,sans-serif; margin:0 0 4px }
 .page > p, .page-lead { font-size:13px; line-height:1.7; color:var(--c-4c6b62); max-width:70ch; margin:0 0 22px }
 .page-pending > * { max-width:640px }
-.page-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,360px),1fr)); gap:16px; align-items:start }
+.page-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr)); gap:16px; align-items:start }
 .card { background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:16px; padding:20px; display:flex; flex-direction:column; gap:12px; min-width:0 }
 .card-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start }
 .card p, .card li { font-size:12px; line-height:1.6; color:var(--c-4c6b62); margin:0 }
-.card ul { margin:0; padding-left:18px }
+/* Only plain bullet lists are indented: a list with its own class (rows, accounts, rules) uses the card's full width. */
+.card ul:not([class]) { margin:0; padding-left:18px }
 .field { display:flex; flex-direction:column; gap:6px; font-size:11px; color:var(--c-355a50) }
 .field input, .field textarea { border:1px solid var(--c-cbd6c9); border-radius:9px; padding:10px 12px; background:var(--c-fffffa); color:var(--c-173d3c); font:inherit; font-size:13px; min-width:0 }
 .field-row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end }
 .field-row > .field { flex:1 1 160px }
+/* An input written straight in a row (without its .field label) looks like every other field and takes the free width. */
+.field-row > input:not([type="checkbox"]):not([type="radio"]) { flex:1 1 220px; min-width:0; border:1px solid var(--c-cbd6c9); border-radius:9px; padding:10px 12px; background:var(--c-fffffa); color:var(--c-173d3c); font:inherit; font-size:13px }
+.field-row > .field-row { flex:1 1 320px }
+.card label.check { font-size:13px; line-height:1.4 }
+/* A card's fields in rows across its width; anything that is not a field (a note, a switch, the actions) takes a row. */
+.card-fields { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr)); gap:12px 16px; align-items:start }
+.card-fields > :not(.field):not(.voice-choice) { grid-column:1 / -1 }
 .actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center }
 .button { border:1px solid var(--c-c9d3c4); border-radius:9px; background:var(--c-fffffa); color:var(--c-214b44); padding:9px 14px; font-size:12px }
 .button.primary { background:var(--c-244e42); border-color:var(--c-244e42); color:var(--c-fff9e7) }
@@ -25,13 +33,31 @@
 .ok-note { font-size:11px; padding:9px 11px; border-radius:8px; background:var(--c-dcebdc); color:var(--c-24563a) }
 .code-block { background:var(--deep); color:var(--deep-text); border-radius:10px; padding:12px 14px; font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; overflow-x:auto; white-space:pre; margin:0 }
 .data-table { width:100%; border-collapse:collapse; font-size:12px }
-.data-table th { text-align:left; font-weight:600; color:var(--c-355a50); padding:6px 8px; border-bottom:1px solid var(--c-dfe3d6) }
-.data-table td { padding:6px 8px; border-bottom:1px solid var(--c-edf0e8); color:var(--c-355a50) }
-.data-table td.num, .data-table th.num { text-align:right; font-variant-numeric:tabular-nums }
+.data-table th { text-align:left; font-weight:600; color:var(--c-355a50); padding:8px 10px; border-bottom:1px solid var(--c-dfe3d6) }
+.data-table td { padding:8px 10px; border-bottom:1px solid var(--c-edf0e8); color:var(--c-355a50) }
+/* The row tints: soft enough to read through, visible in both themes. */
+:root { --row-stripe:color-mix(in srgb, var(--c-e7ece2) 60%, transparent); --row-hover:color-mix(in srgb, var(--c-dcebdc) 85%, transparent) }
+:root[data-theme="dark"] { --row-stripe:rgba(255,255,255,.035); --row-hover:rgba(110,200,160,.10) }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --row-stripe:rgba(255,255,255,.035); --row-hover:rgba(110,200,160,.10) } }
+/* Every data table of the app (Central, CRMDev, Presupuestos, Fiscal, Clientes, Agentes…): a row's cells centred on
+   one line with its buttons, a soft tint on every other row and a highlight under the pointer to follow a row, and
+   figures on the right under their header. Light and dark through the theme tokens. */
+.data-table td, .data-table th, .work-table td, .work-table th, .fiscal-table td, .fiscal-table th { vertical-align:middle }
+.data-table tbody tr:nth-child(even) > td, .work-table tbody tr:nth-child(even) > td, .fiscal-table tbody tr:nth-child(even) > td {
+  background:var(--row-stripe) }
+.data-table tbody tr:hover > td, .work-table tbody tr:hover > td, .fiscal-table tbody tr:hover > td {
+  background:var(--row-hover) }
+/* Chips, badges and button rows inside a cell never add their own vertical margin, so they line up with the text. */
+:is(.data-table, .work-table, .fiscal-table) td :is(.status-badge, .chip, .actions, .central-open, .button, p.error, p.ok-note) { margin-block:0 }
+:is(.data-table, .work-table, .fiscal-table) td > :is(.status-badge, .chip, .button, .central-open) { vertical-align:middle }
+.data-table tbody tr > td, .work-table tbody tr > td, .fiscal-table tbody tr > td { transition:background-color .12s ease }
+.data-table .num, .work-table .num, .fiscal-table .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap }
 .segmented { display:inline-flex; background:var(--c-e7ece2); border-radius:10px; padding:3px; gap:2px }
 .segmented button { border:0; background:none; border-radius:8px; padding:7px 12px; font-size:11px; color:var(--c-355a50) }
 .segmented button[aria-pressed="true"] { background:var(--c-fffffa); color:var(--c-173d3c); box-shadow:0 1px 3px var(--c-173d3c22) }
 .page-actions { margin:-8px 0 20px }
+/* A section-wide notice or error never touches the cards that follow it. */
+.page > .load-error, .page > .notice, .page > .error { margin-bottom:16px }
 /* Interface size (Ajustes › Apariencia): text areas grow, the 3D scenes keep their size. */
 .page > *, .assistant-head, .assistant-messages > *, .assistant-form, .assistant-list > * { zoom:var(--ui-zoom, 1) }
 
@@ -43,6 +69,15 @@
 .status-badge.waiting { background:var(--c-f3e6c4); color:var(--c-7a5717) }
 .status-badge.paused, .status-badge.neutral { background:var(--c-e7ece2); color:var(--c-355a50) }
 .status-badge.neutral::before { display:none }
+/* Each state with a small icon besides its colour (a tick, an exclamation, a clock, a pause), so it reads without colour too. */
+.status-badge.good::before, .status-badge.bad::before, .status-badge.waiting::before, .status-badge.paused::before {
+  width:11px; height:11px; border-radius:0; background:currentColor; -webkit-mask:var(--badge-icon) center / contain no-repeat; mask:var(--badge-icon) center / contain no-repeat }
+.status-badge.good { --badge-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") }
+.status-badge.bad { --badge-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 6v8'/%3E%3Cpath d='M12 18.5v.5'/%3E%3C/svg%3E") }
+.status-badge.waiting { --badge-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='8'/%3E%3Cpath d='M12 8v4l3 2'/%3E%3C/svg%3E") }
+.status-badge.paused { --badge-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 6v12'/%3E%3Cpath d='M16 6v12'/%3E%3C/svg%3E") }
+/* A badge that only names a kind (a source, a count) keeps the plain dot: its colour is not a state. */
+.status-badge.dot::before { width:8px; height:8px; border-radius:50%; -webkit-mask:none; mask:none }
 .dictation { display:inline-flex; flex-direction:column; gap:4px; min-width:0 }
 .dictation-button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-width:40px }
 .dictation-button.recording { background:var(--c-f3e6c4); color:var(--c-7a5717); font-variant-numeric:tabular-nums }
@@ -56,7 +91,17 @@
 .apps-list { list-style:none; margin:6px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:4px 12px }
 .install-group h3 { font:600 12px Manrope,sans-serif; letter-spacing:.4px; text-transform:uppercase; color:var(--c-4c6b62); margin:14px 0 6px }
 .install-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px }
-.install-row { display:grid; grid-template-columns:96px minmax(0,1fr); gap:10px; align-items:start; padding:8px 0; border-bottom:1px solid var(--c-edf0e8) }
+/* A row of a list: what it is (a switch, a name, a badge) on the left with its natural width, its explanation filling the
+   rest and its actions on the right; it wraps on narrow screens. Never a fixed narrow column for the label. */
+.install-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px 16px; padding:8px 0; border-bottom:1px solid var(--c-edf0e8); font-size:13px; min-width:0 }
+.install-row > * { min-width:0 }
+.install-row > :first-child { flex:0 1 auto }
+.install-row > :first-child:has(+ small) { flex-basis:min(100%, 15rem) }
+.install-row > :not(:first-child) { flex:1 1 260px }
+.install-row > .actions { flex:0 0 auto; margin-left:auto; justify-content:flex-end }
+/* A piece of the installation: a badge column the same width in every row and its details beside it. */
+.install-row.install-piece { display:grid; grid-template-columns:96px minmax(0,1fr); gap:10px; align-items:start }
+.install-text .button { align-self:flex-start }
 .install-text { display:flex; flex-direction:column; gap:2px; font-size:12px; min-width:0 }
 .install-text strong { font-size:13px }
 .install-command { font-size:11px; padding:3px 6px; border-radius:6px; background:var(--c-edf0e8); width:fit-content; max-width:100%; overflow-x:auto; white-space:nowrap }

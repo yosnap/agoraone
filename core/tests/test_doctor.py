@@ -16,6 +16,20 @@ def test_diagnostico(tmp_path, monkeypatch):
     c.close()
 
 
+def test_central_no_necesita_ninguna_pieza(tmp_path, monkeypatch):
+    """Central is reached through its web API only: the diagnosis never asks for bun nor anything of Central's."""
+    import json
+
+    monkeypatch.setattr(doctor.local_model, "detect", lambda: None)
+    c = connect(tmp_path / DB_NAME)
+    migrate(c)
+    c.execute("INSERT INTO setting (key, value) VALUES ('addons.central', ?)", (json.dumps({"path": "/ruta/de/central"}),))
+    for piece in doctor.check(c, has_anthropic_key=False)["pieces"]:
+        assert "bun" not in (piece["id"].lower(), piece["name"].lower())
+        assert "central" not in json.dumps(piece, ensure_ascii=False).lower(), piece["id"]
+    c.close()
+
+
 def test_instalar_solo_lo_de_la_lista(monkeypatch):
     from agora_core import installer
     import pytest

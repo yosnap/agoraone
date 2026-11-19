@@ -176,7 +176,7 @@ async fn rutas_internas_doble_barra_cuerpo_grande_y_nucleo_ausente_u_otro() {
     let (url, seen) = fake_core(401).await;
     let (app, state) = app(Some(CoreLink { url, secret: "s".repeat(64) }));
     let with = |path: &str| get(path).header(header::COOKIE, access()).header("x-agora-csrf", &state.csrf).body(Body::empty()).unwrap();
-    for path in ["/api/core/internal/index/state", "/api/core/%69nternal/x", "/api/core//internal", "/api/core/INTERNAL/x", "/api/core/%2e%2e/internal/index/notes", "/api/core/a/%2E%2E/internal/x", "/api/core/a/../internal/x"] {
+    for path in ["/api/core/internal/index/state", "/api/core/%69nternal/x", "/api/core//internal", "/api/core/INTERNAL/x", "/api/core/%2e%2e/internal/index/notes", "/api/core/a/%2E%2E/internal/x", "/api/core/a/../internal/x", "/api/core/internal/wake/status", "/api/core/internal/central/window/next", "/api/core/internal/fabrica/window/next", "/api/core/internal/crmdev/window/next"] {
         assert!(matches!(call(&app, with(path)).await.0, StatusCode::NOT_FOUND | StatusCode::BAD_REQUEST), "{path}");
     }
     assert!(seen.lock().unwrap().is_empty(), "nada llegó al núcleo");
@@ -187,4 +187,12 @@ async fn rutas_internas_doble_barra_cuerpo_grande_y_nucleo_ausente_u_otro() {
     let (absent, state) = self::app(None);
     let request = get("/api/core/health").header(header::COOKIE, access()).header("x-agora-csrf", &state.csrf).body(Body::empty()).unwrap();
     assert_eq!(call(&absent, request).await.0, StatusCode::SERVICE_UNAVAILABLE);
+}
+
+#[test]
+fn el_nucleo_conoce_los_puertos_de_agoraone() {
+    let settings = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../core/agora_core/settings.py")).unwrap();
+    let core_port = agora_server::core::CORE_URL.rsplit(':').next().unwrap();
+    assert!(settings.lines().any(|l| l == format!("SERVER_PORT = {}", agora_server::PORT)), "el puerto del servidor, igual en el núcleo");
+    assert!(settings.lines().any(|l| l == format!("PORT = {core_port}")), "el puerto del núcleo, igual en los dos lados");
 }

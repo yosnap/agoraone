@@ -1,16 +1,34 @@
+import type { ModuleName } from '../api/core';
+
 // Which section was open and whether discreet mode was on, per browser. Storage may be unavailable
 // (private window, blocked site data): the app then starts on the brain with discreet mode off.
 
-export type Section = 'brain' | 'summary' | 'assistant' | 'office' | 'connectors' | 'settings' | 'inbox' | 'agenda' | 'jobs' | 'meetings' | 'fiscal';
-export const sections: Section[] = ['brain', 'summary', 'assistant', 'office', 'connectors', 'settings', 'inbox', 'agenda', 'jobs', 'meetings', 'fiscal'];
+export type Section = 'brain' | 'summary' | 'assistant' | 'office' | 'connectors' | 'settings' | 'inbox' | 'agenda' | 'jobs' | 'meetings' | 'fiscal' | 'agents' | 'quotes' | 'central' | 'fabrica' | 'crmdev';
+export const sections: Section[] = ['brain', 'summary', 'assistant', 'office', 'connectors', 'settings', 'inbox', 'agenda', 'jobs', 'meetings', 'fiscal', 'agents', 'quotes', 'central', 'fabrica', 'crmdev'];
+
+/** The rail's sections, in order (Ajustes lives apart, at its foot). «Central» is always the last one, with
+ * «Presupuestos» right before it, «CRMDev» before that and «Mi fábrica» before that. */
+export const menu: { id: Exclude<Section, 'settings'>; label: string }[] = [
+  { id: 'brain', label: 'Cerebro' }, { id: 'summary', label: 'Resumen' }, { id: 'assistant', label: 'Asistente' }, { id: 'agents', label: 'Agentes' },
+  { id: 'office', label: 'Oficina 3D' }, { id: 'connectors', label: 'Conectores' }, { id: 'inbox', label: 'Bandeja' }, { id: 'agenda', label: 'Agenda' },
+  { id: 'fiscal', label: 'Fiscal' }, { id: 'jobs', label: 'Trabajos' }, { id: 'meetings', label: 'Reuniones' }, { id: 'fabrica', label: 'Mi fábrica' }, { id: 'crmdev', label: 'CRMDev' },
+  { id: 'quotes', label: 'Presupuestos' },
+  { id: 'central', label: 'Central' },
+];
+
+/** The sections that belong to a module that can be turned off (1.6): hidden from the rail and never shown while off.
+ * Conectores is not one of them: it is always shown and each connector keeps the switch of its own modules. */
+export const sectionModule: Partial<Record<Section, ModuleName>> = { inbox: 'correo', agenda: 'agenda', fiscal: 'fiscal', jobs: 'trabajos', meetings: 'reuniones', office: 'oficina', quotes: 'presupuestos', central: 'central', fabrica: 'fabrica', crmdev: 'crmdev' };
 
 const key = 'agora-shell';
 
 // A link may name the section to open (?seccion=oficina), e.g. the browser checks, which start in the city.
-const linked: Record<string, Section> = { cerebro: 'brain', resumen: 'summary', asistente: 'assistant', oficina: 'office', conectores: 'connectors', ajustes: 'settings', bandeja: 'inbox', agenda: 'agenda', fiscal: 'fiscal', trabajos: 'jobs', reuniones: 'meetings' };
+const linked: Record<string, Section> = { cerebro: 'brain', resumen: 'summary', asistente: 'assistant', oficina: 'office', conectores: 'connectors', ajustes: 'settings', bandeja: 'inbox', agenda: 'agenda', fiscal: 'fiscal', trabajos: 'jobs', reuniones: 'meetings', agentes: 'agents', presupuestos: 'quotes', central: 'central', fabrica: 'fabrica', crmdev: 'crmdev' };
 
 export function readShell(): { section: Section; discreet: boolean } {
-  const fromLink = linked[new URLSearchParams(window.location.search).get('seccion') ?? ''];
+  const params = new URLSearchParams(window.location.search);
+  // ?conector=central opens Conectores on that card.
+  const fromLink = linked[params.get('seccion') ?? ''] ?? (params.has('conector') ? 'connectors' : undefined);
   try {
     const value = JSON.parse(localStorage.getItem(key) || '{}');
     return { section: fromLink ?? (sections.includes(value?.section) ? value.section : 'brain'), discreet: value?.discreet === true };

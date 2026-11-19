@@ -23,28 +23,49 @@ from .db import DB_NAME, connect, migrate
 from .embed import DEFAULT_MODEL, DEFAULT_URL, Embedder, OllamaEmbedder, VectorCache
 from .keystore import KeychainStore, KeyStore, recovery_pending
 from .routes_addons import addons_router
+from .routes_connectors import connectors_router
 from .routes_assistant import KeychainSecrets, assistant_router, default_engines
 from .entity_worker import ExtractHealth, entity_worker
 from .engines import AnthropicApiEngine, ClaudeCodeEngine
 from .routes_index import EmbedHealth, embed_worker, index_router
 from .routes_mail import mail_router, mail_worker
 from .routes_mail_send import mail_send_router
-from .mail_summarizer import SummaryHealth, summary_worker
+from .routes_chat import chat_router
+from .routes_chat_send import chat_send_router
+from .routes_jev import jev_router
+from . import jev_shadow
+from .chat_sync import chat_worker
+from .chat_summarizer import chat_summary_worker
+from .mail_summarizer import Budget, SummaryHealth, summary_worker
 from .routes_inbox import inbox_router
 from .routes_fiscal import fiscal_router
-from . import calendar_store, calls
+from . import calendar_store, calls, tts
 from .routes_alerts import alerts_router
 from .routes_jobs import jobs_router
+from .routes_orca import orca_router
+from .routes_note_sources import note_sources_router
+from .routes_issues import issues_router
 from .routes_voice import voice_router
+from .routes_agents import agents_router
 from .routes_meetings import meetings_router
 from .routes_music import music_router
 from .routes_apps import apps_router
 from .routes_doctor import doctor_router
-from . import modules
+from . import crmdev_sync, modules
 from .meetings import Recorder
 from .meeting_notes import Worker
 from .routes_calendar import calendar_router
 from .routes_central import CentralHealth, central_router, central_worker
+from .routes_central_views import central_views_router
+from .routes_central_write import central_write_router
+from .routes_central_window import central_window_router
+from .routes_crmdev import crmdev_router
+from .routes_crmdev_window import crmdev_window_router
+from .routes_crmdev_write import crmdev_write_router
+from .routes_fabrica_window import fabrica_window_router
+from .routes_quotes import quotes_router
+from .central_quotes import clean_documents
+from .routes_clients import clients_router
 from .routes_summary import summary_router
 from .settings import DEFAULT_DATA, Settings
 
@@ -79,8 +100,15 @@ def create_app(
     embed_health = EmbedHealth()
     extract_health = ExtractHealth()
     summary_health = SummaryHealth()
+    chat_summary_health = SummaryHealth()
+    # Mail and WhatsApp spend the same hourly allowance of Claude calls.
+    summary_budget = Budget()
     central_health = CentralHealth()
+    crmdev_health = crmdev_sync.CrmdevHealth()
     secrets = secrets or KeychainSecrets()
+    # Jev in shadow after each summary round, in threads of their own (its answers are kept, never applied).
+    open_db = lambda: connect(settings.data_dir / DB_NAME)  # noqa: E731
+    mail_shadow, chat_shadow = jev_shadow.Shadow(jev_shadow.MAIL, open_db, secrets), jev_shadow.Shadow(jev_shadow.CHAT, open_db, secrets)
     expected = settings.secret.encode()
     recorder = Recorder(settings.data_dir, lambda: connect(settings.data_dir / DB_NAME))
     # Summaries of normal meetings (Claude, like the rest of the core); the others use a local model.
@@ -92,6 +120,7 @@ def create_app(
     async def lifespan(app: FastAPI):
         # Each use opens its own connection (sqlite3 connections are not shared between threads here).
         clean_leftovers(settings.data_dir)
+        clean_documents(settings.data_dir)  # quotes' PDF and Word opened more than a day ago
         database = connect(settings.data_dir / DB_NAME)
         try:
             migrate(database, backup_first=lambda: create_backup(settings.data_dir, store, "premigration"))
@@ -109,13 +138,21 @@ def create_app(
             extract_engines = lambda: [ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)]  # noqa: E731
             threading.Thread(target=entity_worker, args=(settings, extract_engines, stop, extract_health), daemon=True).start()
             # New mail of the connected accounts, read-only (user's decision, 14/11/2026).
-            # Mail and its summaries only while «Correo» is on; Central only while «Trabajos» is (1.6).
+            # Mail and its summaries only while «Correo» is on; Central only while «Central» is.
             database_now = lambda: connect(settings.data_dir / DB_NAME)  # noqa: E731
             threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: mail_worker(settings, secrets, own), stop), daemon=True).start()
             # Kinds and summaries of new mail: rules first, then Claude Haiku for what may leave this Mac.
-            threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: summary_worker(settings, extract_engines, own, summary_health), stop), daemon=True).start()
-            # Clients and servers from Central, read-only, every half hour (user's decision, 14/11/2026).
-            threading.Thread(target=modules.gated, args=("trabajos", database_now, lambda own: central_worker(settings, own, central_health), stop), daemon=True).start()
+            threading.Thread(target=modules.gated, args=("correo", database_now, lambda own: summary_worker(settings, extract_engines, own, summary_health, budget=summary_budget, shadow=mail_shadow), stop), daemon=True).start()
+            # WhatsApp through Zernio, read-only, polled every five minutes while «WhatsApp» is on (user's decision, 18/11/2026).
+            threading.Thread(target=modules.gated, args=("whatsapp", database_now, lambda own: chat_worker(settings, secrets, own), stop), daemon=True).start()
+            # Kinds and summaries of WhatsApp conversations, like mail: rules first, Claude Haiku only for what may leave this Mac.
+            threading.Thread(target=modules.gated, args=("whatsapp", database_now, lambda own: chat_summary_worker(settings, extract_engines, own, chat_summary_health, summary_budget, chat_shadow), stop), daemon=True).start()
+            # Clients and servers from Central, read-only, every half hour (user's decisions, 14/11 and 18/11/2026).
+            threading.Thread(target=modules.gated, args=("central", database_now, lambda own: central_worker(settings, own, central_health, secrets), stop), daemon=True).start()
+            # CRMDev's clients for the directory, read-only, every half hour while «CRMDev» is on (user's decision, 19/11/2026).
+            threading.Thread(target=modules.gated, args=("crmdev", database_now, lambda own: crmdev_sync.crmdev_worker(settings, own, crmdev_health, secrets), stop), daemon=True).start()
+            # Watson's voice: VoiceStudio opened in the background if it is closed (user's request, 16/11/2026).
+            threading.Thread(target=tts.open_at_start, args=(database_now,), daemon=True).start()
         try:
             yield
         finally:
@@ -185,13 +222,26 @@ def create_app(
 
     app.include_router(index_router(settings, embedder, cache, embed_health, extract_health))
     app.include_router(addons_router(settings))
+    app.include_router(connectors_router(settings, secrets))
     app.include_router(summary_router(settings, time.time()))
     app.include_router(assistant_router(settings, embedder, cache, secrets, engines))
     app.include_router(mail_router(settings, secrets))
     app.include_router(mail_send_router(settings, secrets, drafter))
-    app.include_router(inbox_router(settings, summary_health))
+    app.include_router(chat_router(settings, secrets, chat_summary_health))
+    app.include_router(chat_send_router(settings, secrets, drafter))
+    app.include_router(jev_router(settings, secrets))
+    app.include_router(inbox_router(settings, summary_health, secrets))
     app.include_router(fiscal_router(settings, secrets))
-    app.include_router(central_router(settings, central_health))
+    app.include_router(central_router(settings, central_health, secrets))
+    app.include_router(central_views_router(settings, secrets))
+    app.include_router(central_write_router(settings, secrets))
+    app.include_router(central_window_router(settings))
+    app.include_router(crmdev_router(settings, secrets, crmdev_health))
+    app.include_router(crmdev_window_router(settings))
+    app.include_router(crmdev_write_router(settings, secrets))
+    app.include_router(fabrica_window_router(settings))
+    app.include_router(quotes_router(settings, secrets))
+    app.include_router(clients_router(settings, secrets, crmdev_health))
     if calendar is not None:
         calendar_store.use(calendar)
     app.include_router(calendar_router(settings))
@@ -204,4 +254,8 @@ def create_app(
     app.include_router(music_router(settings))
     app.include_router(apps_router(settings))
     app.include_router(doctor_router(settings, secrets))
+    app.include_router(agents_router(settings))
+    app.include_router(orca_router(settings))
+    app.include_router(note_sources_router(settings, secrets))
+    app.include_router(issues_router(settings))
     return app

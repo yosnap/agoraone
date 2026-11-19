@@ -1,0 +1,57 @@
+/* The «Central» section: tabs, summary figures, lists and records. No side accent stripe anywhere: the level of a
+   figure is said by its background and text colour. */
+.central-head { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap }
+.central-actions { justify-content:flex-end; margin-left:auto }
+.central-tabs { margin-bottom:18px; flex-wrap:wrap }
+/* Central and Presupuestos use the whole width of the section; a table wider than it scrolls inside its own box. */
+.central-panel { display:flex; flex-direction:column; gap:14px; width:100%; min-width:0; overflow-x:auto }
+.page.central > .page-lead { max-width:110ch }
+.central-connect { max-width:640px }
+.central-figures { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,210px),1fr)); gap:12px }
+.central-figure { display:flex; flex-direction:column; align-items:flex-start; gap:4px; text-align:left; border:1px solid var(--c-dfe3d6); border-radius:14px;
+  padding:16px; background:var(--c-fbfaf3); color:var(--c-173d3c) }
+.central-figure.bad { background:var(--c-f6ddd4); border-color:var(--c-e6c2b5); color:var(--c-8e3d2a) }
+.central-figure.warn { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.central-figure.good { background:var(--c-dcebdc); color:var(--c-24563a) }
+.central-figure-label { font-size:11px; font-weight:600; letter-spacing:.3px }
+.central-figure-value { font:500 30px/1.1 Manrope,sans-serif }
+.central-figure small { font-size:11px; opacity:.85 }
+.central-table .central-date, .central-table th { white-space:nowrap }
+.central-text { white-space:pre-wrap; overflow-wrap:anywhere }
+.central-row-actions { text-align:right; white-space:nowrap; width:1% }
+.central-row-actions .actions { justify-content:flex-end; flex-wrap:nowrap }
+.central-row-actions .central-open { display:inline-flex }
+.central-url { overflow-wrap:anywhere }
+.central-chips { display:inline-flex; gap:6px; flex-wrap:wrap }
+.central-filters { margin-bottom:6px }
+.central-filters { gap:12px }
+/* Filters stay compact in one row: each select with a sensible width, the search a little wider; never one giant field. */
+.central-filters > .field { flex:0 1 200px; min-width:150px; max-width:240px }
+.central-filters > .field.central-search { flex:1 1 260px; max-width:380px }
+/* A change to Central: the form, then the exact change and its buttons on the right, apart from the fields. */
+.central-edit, .central-change { display:flex; flex-direction:column; gap:10px }
+.central-edit-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr)); gap:10px 16px }
+.central-edit-grid .central-edit-wide { grid-column:1 / -1 }
+.central-edit textarea { resize:vertical }
+.central-edit .actions, .central-change .actions { margin-top:6px }
+.central-emptied td { background:var(--c-f6ddd4) }
+.central-check { display:flex; align-items:flex-start; gap:8px; font-size:12px }
+.central-level-link { border:0; background:none; padding:0; cursor:pointer }
+.central-notes { list-style:none; padding:0 !important; display:flex; flex-direction:column; gap:8px }
+.central-notes p { white-space:pre-wrap; overflow-wrap:anywhere }
+.central-fix { display:block; margin-top:4px; padding:8px 10px; border-radius:8px; background:var(--c-e7ece2); font-size:11px; white-space:pre-wrap; overflow-wrap:anywhere }
+.central-error { display:block; color:var(--c-8e3d2a) }
+.central-day { text-transform:capitalize }
+.central-events { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:10px }
+.central-events li { display:grid; grid-template-columns:7rem 1fr; gap:12px }
+.central-events li > div { display:flex; flex-direction:column; align-items:flex-start; gap:3px }
+.central-events li > div .chip { margin-left:0 }
+.central-event-time { display:flex; flex-direction:column; font-weight:600 }
+/* «Abrir en Central»: buttons on the right, apart from the content; the parts of Central opened in its window. */
+.central-open { display:flex; flex-direction:column; align-items:flex-end; gap:4px }
+.central-open .error, .central-open .ok-note { text-align:right }
+.central-pages { margin-top:16px }  /* apart from the tab's content above, like any other card */
+.central-pages h2 { font:600 14px Manrope,sans-serif; margin:0 }
+.central-pages-list { list-style:none; padding:0; margin:8px 0 0; display:flex; flex-direction:column; gap:10px }
+.central-pages-list li { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap }
+.central-pages-list li > div:first-child { display:flex; flex-direction:column; gap:2px }

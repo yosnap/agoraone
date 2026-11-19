@@ -17,6 +17,8 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await rail.waitFor();
   assert.equal(await rail.getByRole('button', { name: 'Cerebro' }).getAttribute('aria-current'), 'page');
   await page.locator('.brain-stats').waitFor({ timeout: 60_000 });
+  // The centre opens on the home panel; the graph is one click away.
+  await page.getByRole('button', { name: 'Grafo' }).click();
   const graph = graphs.at(-1);
   assert.ok(graph?.nodes.length, 'el grafo trae notas reales');
   const links = graph.edges.filter(edge => edge.kind === 'link').length, near = graph.edges.length - links;
@@ -57,11 +59,12 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
   await page.locator('.assistant-head .chip').filter({ hasNotText: 'Comprobando' }).waitFor({ timeout: 30_000 });
   console.log(`${viewport.width}px · motor: ${await page.locator('.assistant-head .chip').textContent()}`);
   if (shots) await page.screenshot({ path: `${shots}/assistant-${viewport.width}.png` });
-  // Connectors: the three add-ons and the brain's MCP command.
+  // Connectors: one card per connector, the brain's MCP command in its guide card, no key on screen.
   await rail.getByRole('button', { name: 'Conectores' }).click();
-  await page.locator('.brain-mcp-card .code-block').waitFor();
-  assert.equal(await page.locator('.page-grid > .card h2').filter({ hasText: /^(Central|CostGuard|Mi fábrica)$/ }).count(), 3);
-  console.log(`${viewport.width}px · complementos: ${(await page.locator('.page-grid .card .chip').allTextContents()).slice(0, 3).join(' / ')}`);
+  await page.locator('[data-connector="cerebro-mcp"] .code-block').waitFor();
+  for (const id of ['central', 'fabrica', 'costguard', 'cerebro-mcp']) assert.equal(await page.locator(`[data-connector="${id}"]`).count(), 1, id);
+  assert.equal(await page.locator('[data-connector] input[type="password"]').evaluateAll(all => all.filter(input => input.value).length), 0, 'ninguna clave a la vista');
+  console.log(`${viewport.width}px · conectores: ${(await page.locator('[data-connector] .card-head .chip').allTextContents()).join(' / ')}`);
   if (shots) await page.screenshot({ path: `${shots}/connectors-${viewport.width}.png`, fullPage: true });
   // Settings: characters, rules and backups.
   await rail.getByRole('button', { name: 'Ajustes' }).click();

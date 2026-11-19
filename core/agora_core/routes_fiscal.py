@@ -482,7 +482,7 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
         issue("plain", "{n} facturas recibidas sin base ni IVA desglosados: revísalas antes de presentar.",
               rows([e for e in expenses if not e["base"] and not e["vat"]], lambda r: r.get("issuedOn", "")))
         notes += [i["text"] for i in issues]
-        return {"folder": folder, "root": root, "income": income, "incomeProblem": problem, "expenses": expenses, "notes": notes,
+        return {"folder": folder, "root": root, "income": fiscal.with_clients(connection, income), "incomeProblem": problem, "expenses": expenses, "notes": notes,
                 "issues": issues, "reading": in_flight, "readingTotal": started, "qontoMissing": [i["qonto"] for x in issues if x["key"] == "qonto" for i in x["items"]]}
 
     @router.get("/fiscal/folders/{folder_id}/quarter")

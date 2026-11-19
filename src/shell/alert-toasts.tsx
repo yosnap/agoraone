@@ -27,10 +27,10 @@ export function AlertToasts({ discreet }: { discreet: boolean }) {
   }
   if (!shown.length) return null;
   const kinds: Record<DueAlert['kind'], string> = { call: 'Llamada perdida', meeting: 'Reunión próxima', commitment: 'Plazo de un correo', summary: 'Tu día' };
-  return <div className="alert-toasts" role="status" aria-live="polite">
+  return <>
     {shown.map(alert => <div key={alert.key} className="alert-toast">
       <div><strong>{discreet ? kinds[alert.kind] : alert.title}</strong>{!discreet && alert.body && <p>{alert.body}</p>}</div>
       <button type="button" className="icon-button" aria-label="Cerrar el aviso" onClick={() => setShown(current => current.filter(a => a.key !== alert.key))}>×</button>
     </div>)}
-  </div>;
+  </>;
 }

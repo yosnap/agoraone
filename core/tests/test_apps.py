@@ -42,5 +42,9 @@ def test_oye_watson_apagado_por_defecto(tmp_path):
     settings = load_settings({"AGORA_CORE_SECRET": "a" * 64, "AGORA_CORE_DATA": str(tmp_path / "data")})
     with TestClient(create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets()), base_url=f"http://{settings.authority}") as client:
         h = {SECRET_HEADER: "a" * 64}
-        assert client.get("/wake/settings", headers=h).json() == {"enabled": False}
-        assert client.put("/wake/settings", json={"enabled": True}, headers=h).json() == {"enabled": True}
+        assert client.get("/wake/settings", headers=h).json() == {"enabled": False, "state": None, "attempt": 0}
+        assert client.put("/wake/settings", json={"enabled": True}, headers=h).json() == {"enabled": True, "state": None, "attempt": 1}
+        assert client.post("/internal/wake/status", json={"state": "no_offline"}, headers=h).json() == {"state": "no_offline"}
+        assert client.get("/wake/settings", headers=h).json()["state"] == "no_offline", "la app de escritorio cuenta por qué no escucha"
+        assert client.put("/wake/settings", json={"enabled": True}, headers=h).json()["state"] == "starting", "reintentar borra el fallo anterior"
+        assert client.post("/internal/wake/status", json={"state": "rm -rf"}, headers=h).status_code == 400

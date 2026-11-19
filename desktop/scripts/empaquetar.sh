@@ -59,6 +59,8 @@ rm -f "$STDLIB/site-packages/claude_agent_sdk/_bundled/claude"
 step "Núcleo, web y ejemplos"
 mkdir -p "$CONTENT/core"
 rsync -a --exclude '__pycache__' --exclude '*.pyc' "$ROOT/core/agora_core" "$CONTENT/core/"
+# The version the core reports (User-Agent of Jev) comes from here.
+cp "$ROOT/core/pyproject.toml" "$CONTENT/core/"
 # The meetings' system audio (ScreenCaptureKit, audio only); signed below with the other binaries.
 mkdir -p "$CONTENT/core/helpers/bin"
 xcrun swiftc -O -swift-version 5 -target arm64-apple-macos13 "$ROOT/core/helpers/system-audio-macos.swift" -o "$CONTENT/core/helpers/bin/agora-system-audio"

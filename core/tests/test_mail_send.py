@@ -172,3 +172,19 @@ def test_microsoft_saluda_tras_starttls_y_comprueba_el_acceso(monkeypatch):
     with pytest.raises(mail_send.SendError, match="STARTTLS"):
         mail_send.open_smtp("mail.x.es", 587)
     assert calls[-1] == "close", "el socket se cierra"
+
+
+def test_responder_desde_una_cuenta_de_solo_envio(tmp_path, monkeypatch):
+    client, connection, account, message, asked = setup(tmp_path, monkeypatch)
+    headers = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
+    other = mail.create_account(connection, {"address": "otra@icloud.com", "provider": "icloud"})
+    resend = mail.create_account(connection, {"provider": "resend", "address": "hola@midominio.com"})
+    draft = {**client.get(f"/mail/messages/{message}/reply", headers=headers).json(), "accountId": resend}
+    seen = client.post("/mail/drafts/preview", json=draft, headers=headers).json()
+    assert seen["from"] == "hola@midominio.com"
+    result = mail_send.send(connection, mail_send.clean(draft), seen["digest"], "clave-buena")
+    assert result["sent"] and result["savedToSent"] is False and FakeIMAP.appended == [], "sin buzón no se guarda copia"
+    out = FakeSMTP.sent[-1]
+    assert out["From"] == "hola@midominio.com" and out["In-Reply-To"] == "<orig@cliente.es>"
+    with pytest.raises(mail_send.SendError, match="cuenta de solo envío"):
+        mail_send.send(connection, mail_send.clean({**draft, "accountId": other}), mail_send.digest(mail_send.clean({**draft, "accountId": other})), "clave-buena")

@@ -1,0 +1,3 @@
+/* The notice of an add-on's window (a link it did not follow, a download that ended): its button on the right. */
+.window-link-url { overflow-wrap:anywhere }
+.window-link-actions { justify-content:flex-end; margin-left:auto; margin-top:8px }

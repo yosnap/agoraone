@@ -1,9 +1,46 @@
-.inbox > * { max-width:1640px }
 .inbox-bar { margin:0 0 14px; align-items:center }
 .inbox-group { margin:18px 0 0 }
 .inbox-group h2 { margin:0 0 10px }
-.inbox-cards { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(min(460px, 100%), 1fr)); gap:12px; align-items:start }
-.inbox-card { gap:8px }
+/* The cards chosen per row (3 or 4) when there is room, fewer on a narrow window; every card as tall as the
+   others of its row, with the long texts cut to the same lines and the buttons at the bottom. */
+.inbox-cards { list-style:none; margin:0; padding:0; display:grid; gap:12px; align-items:stretch;
+  grid-template-columns:repeat(auto-fill, minmax(max(260px, calc((100% - 36px) / 4)), 1fr)) }
+/* Every row as tall as the tallest card, except while a card holds an open form (it would stretch them all). */
+.inbox-cards { grid-auto-rows:1fr }
+.inbox-cards.editing { grid-auto-rows:auto }
+.inbox-cards.per-3 { grid-template-columns:repeat(auto-fill, minmax(max(300px, calc((100% - 24px) / 3)), 1fr)) }
+.inbox-card { gap:8px; display:flex; flex-direction:column; min-height:250px; height:100% }
+.inbox-card.wide { grid-column:1 / -1 }  /* the note being written gets the whole row: its folder browser and text need room */
+.inbox-card > .inbox-actions { margin-top:auto; padding-top:4px }
+.inbox-card.chosen { border-color:var(--c-24563a); box-shadow:0 0 0 1px var(--c-24563a) inset }
+.inbox-card.pickable { cursor:pointer }
+.inbox-card.pickable:hover:not(.chosen) { border-color:var(--c-cbd6c9) }
+.inbox-card .inbox-subject { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden }
+.inbox-card .inbox-summary { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:4; overflow:hidden }
+.inbox-card .inbox-from { white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.inbox-card .inbox-details { max-height:5.6em; overflow:hidden }
+.inbox-pick { margin-right:2px }
+.inbox-tools { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; margin:4px 0 10px }
+.inbox-search { flex:1 1 260px }
+.inbox-tools .field { min-width:170px }
+.inbox-tools .inbox-per-row { min-width:0 }
+.inbox-per-row .segmented { width:auto }
+.inbox-delete { display:flex; flex-direction:column; gap:10px; margin:0 0 14px; max-width:760px }
+.inbox .inbox-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(320px,380px); gap:20px; align-items:start; max-width:none }
+.inbox .inbox-layout.alone { grid-template-columns:minmax(0,1fr) }
+@media (max-width:1100px) { .inbox .inbox-layout { grid-template-columns:minmax(0,1fr) } }
+.inbox-main { min-width:0 }
+.inbox-chat { position:sticky; top:16px; display:flex; flex-direction:column; gap:8px; max-height:calc(100vh - 80px) }
+.inbox-chat-lines { flex:1; min-height:160px; overflow:auto; display:flex; flex-direction:column; gap:8px }
+.inbox-chat-line { display:flex; flex-direction:column; gap:2px }
+.inbox-chat-line p { margin:0; white-space:pre-wrap; font-size:13px; line-height:1.45; padding:8px 10px; border-radius:10px }
+.inbox-chat-line.user p { background:var(--c-dcebdc); color:var(--c-24563a); align-self:flex-end; max-width:90% }
+.inbox-chat-line.assistant p { background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6) }
+.inbox-chat-line.failed p { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.inbox-chat-examples { display:flex; flex-direction:column; gap:6px }
+.inbox-chat-examples .button { text-align:left; white-space:normal }
+.inbox-chat-form { display:flex; gap:12px; align-items:stretch }
+.inbox-chat-form input { flex:1; min-width:0 }
 .inbox-chips { display:flex; flex-wrap:wrap; gap:6px }
 .inbox-from, .inbox-subject { overflow-wrap:anywhere }
 .inbox-subject { font-weight:600; color:var(--c-173d3c) !important }
@@ -56,3 +93,41 @@
   :root:not([data-theme="light"]) .chip.kind-appointment { background:#3b2148; color:#e2bdf2 }
   :root:not([data-theme="light"]) .chip.kind-personal { background:#1b3a26; color:#b5e0c0 }
 }
+.note-files { display:flex; flex-direction:column; gap:6px; border:1px solid var(--c-dfe3d6); border-radius:9px; padding:8px 12px; margin:0 }
+.note-files legend { font-size:13px; padding:0 4px }
+.note-files small { overflow-wrap:anywhere }
+.note-extra { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; max-height:220px; overflow:auto; background:var(--c-edf0e8); padding:10px; border-radius:8px }
+.issue-handoff { display:flex; flex-direction:column; gap:8px }
+.issue-sessions { display:flex; flex-direction:column; gap:4px; border:1px solid var(--c-dfe3d6); border-radius:9px; padding:8px 12px; margin:0 }
+.issue-sessions legend { font-size:13px; padding:0 4px }
+.issue-sessions .check { font-size:13px }
+
+/* WhatsApp's cards (1.7): a badge of their own and the latest messages as plain text, with whole borders (no side stripes). */
+.chip.source-whatsapp { background:#d4f0dc; color:#1c5a33 }
+:root[data-theme="dark"] .chip.source-whatsapp { background:#173d26; color:#b4e6c4 }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .chip.source-whatsapp { background:#173d26; color:#b4e6c4 } }
+.chat-messages { border:1px solid var(--c-dfe3d6); border-radius:12px; padding:10px; background:var(--c-fbfaf3); max-height:360px; overflow:auto }
+.chat-messages ol { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px }
+.chat-message { display:flex; flex-direction:column; gap:2px; max-width:88% }
+.chat-message p { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.45; padding:7px 10px; border-radius:10px;
+  background:var(--c-fffffa); border:1px solid var(--c-dfe3d6) }
+.chat-message p.muted { background:none; border:none; padding:0 10px; font-size:12px }
+.chat-message.outgoing { align-self:flex-end; text-align:right }
+.chat-message.outgoing p:not(.muted) { background:var(--c-dcebdc); color:var(--c-24563a); border-color:var(--c-dcebdc) }
+.chat-message > .muted { font-size:11px }
+/* WhatsApp reply: the closed-window reason with a uniform border, never a side stripe */
+.chat-reply-closed { margin:0; padding:9px 11px; font-size:12px; border-radius:8px; background:var(--c-f3e6c4); color:var(--c-7a5717); border:1px solid var(--c-f3e6c4) }
+.chat-reply-count { align-self:flex-end; font-size:11px; color:var(--c-6f8379) }
+.chat-reply-count.over { color:var(--c-7a5717); font-weight:600 }
+
+.inbox-filters-row { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin:4px 0 12px }
+.inbox-filters-row .inbox-scopes { margin:0 }
+.inbox-sources button, .chip.source-whatsapp, .chip.source-mail { display:inline-flex; align-items:center; gap:6px }
+.source-icon-chat { color:#1f8f4e }
+.source-icon-mail { color:#2f6db3 }
+.chip.source-mail { background:#dbe8f6; color:#21466f }
+:root[data-theme="dark"] .chip.source-mail { background:#1c2f45; color:#bcd5f2 }
+:root[data-theme="dark"] .source-icon-chat { color:#7fd6a0 }
+:root[data-theme="dark"] .source-icon-mail { color:#9cc2ee }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .chip.source-mail { background:#1c2f45; color:#bcd5f2 }
+  :root:not([data-theme="light"]) .source-icon-chat { color:#7fd6a0 } :root:not([data-theme="light"]) .source-icon-mail { color:#9cc2ee } }

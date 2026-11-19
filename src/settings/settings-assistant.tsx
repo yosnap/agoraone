@@ -7,6 +7,7 @@ import {
 import { ModernSelect } from '../ui/modern-select';
 import { Loading, LoadError } from '../ui/load-state';
 import { engineLabels, modelLabels } from '../assistant/assistant-labels';
+import { ActionButton } from '../ui/action-button';
 
 const toneNames: Record<ToneKey, string> = { register: 'Registro', humor: 'Humor', length: 'Extensión', address: 'Tratamiento', language: 'Idioma' };
 const toneValues: Record<string, string> = {
@@ -25,7 +26,7 @@ function KeyField({ kind, label }: { kind: 'anthropic' | 'compatible'; label: st
   };
   return <form className="field-row" onSubmit={save}>
     <label className="field">{label}<input type="password" value={value} onChange={event => setValue(event.target.value)} autoComplete="off" spellCheck={false} placeholder="Nunca se muestra una vez guardada"/></label>
-    <div className="actions"><button className="button primary" disabled={value.trim().length < 8}>Guardar</button><button type="button" className="button danger" onClick={event => void save(event, true)}>Borrar</button></div>
+    <div className="actions"><ActionButton icon="save" label="Guardar" tone="primary" type="submit" disabled={value.trim().length < 8}/><ActionButton icon="trash" label="Borrar" tone="danger" onClick={event => void save(event, true)}/></div>
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </form>;
 }
@@ -79,7 +80,7 @@ export function AssistantSettingsCard() {
     <form className="field-row" onSubmit={event => { event.preventDefault(); void change({ compatible: { baseUrl: provider.baseUrl.trim() || null, model: provider.model.trim() || null } }, 'Proveedor'); }}>
       <label className="field">Proveedor compatible (https, público)<input value={provider.baseUrl} onChange={event => setProvider({ ...provider, baseUrl: event.target.value })} placeholder="https://…/v1" spellCheck={false}/></label>
       <label className="field">Modelo del proveedor<input value={provider.model} onChange={event => setProvider({ ...provider, model: event.target.value })} spellCheck={false}/></label>
-      <div className="actions"><button className="button primary">Guardar proveedor</button></div>
+      <div className="actions"><ActionButton icon="save" label="Guardar proveedor" tone="primary" type="submit"/></div>
     </form>
     <KeyField kind="compatible" label="Clave del proveedor compatible"/>
     <small className="muted">Al cambiar la dirección del proveedor, su clave se borra para no enviarla a otro sitio.</small>

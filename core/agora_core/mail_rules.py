@@ -139,11 +139,15 @@ def matches(rule: sqlite3.Row | dict, message: sqlite3.Row | dict) -> bool:
     subject = (message["subject"] or "").casefold()
     if rule["subject"] and rule["subject"].casefold() not in subject:
         return False
-    if rule["words"]:
-        text = subject + "\n" + (message["body"] or "").casefold()
-        if not any(re.search(rf"(?<!\w){re.escape(w)}(?!\w)", text) for w in word_list(rule["words"])):
-            return False
+    if rule["words"] and not any_word(rule["words"], subject + "\n" + (message["body"] or "")):
+        return False
     return True
+
+
+def any_word(words: str, text: str) -> bool:
+    """Whether any of the comma-separated words is in the text as a whole word, ignoring case."""
+    text = text.casefold()
+    return any(re.search(rf"(?<!\w){re.escape(w)}(?!\w)", text) for w in word_list(words))
 
 
 def enabled_rules(connection: sqlite3.Connection) -> list[sqlite3.Row]:

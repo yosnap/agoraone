@@ -12,6 +12,8 @@ export function ModernSelect({ id, value, onChange, options, disabled = false }:
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  // Opens upward when the list would not fit below (a select at the foot of the screen, like the music card's).
+  const [upward, setUpward] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const current = options.find(option => option.value === value);
   useEffect(() => {
@@ -20,7 +22,11 @@ export function ModernSelect({ id, value, onChange, options, disabled = false }:
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
-  const openFrom = () => { setOpen(true); setActive(Math.max(0, options.findIndex(option => option.value === value))); };
+  const openFrom = () => {
+    const box = root.current?.getBoundingClientRect();
+    const wanted = Math.min(320, options.length * 38 + 8);
+    setUpward(Boolean(box && window.innerHeight - box.bottom < wanted && box.top > window.innerHeight - box.bottom));
+    setOpen(true); setActive(Math.max(0, options.findIndex(option => option.value === value))); };
   const pick = (index: number) => { const option = options[index]; if (!option) return; onChange(option.value); setOpen(false); };
   const onKey = (event: KeyboardEvent) => {
     if (disabled) return;
@@ -35,7 +41,7 @@ export function ModernSelect({ id, value, onChange, options, disabled = false }:
       onClick={() => (open ? setOpen(false) : openFrom())} onKeyDown={onKey}>
       <span className="modern-select-current">{current?.label ?? '—'}</span><span aria-hidden="true">▾</span>
     </button>
-    {open && <div className="modern-select-list" role="listbox" aria-label={id}>
+    {open && <div className={`modern-select-list${upward ? ' upward' : ''}`} role="listbox" aria-label={id}>
       {options.map((option, index) => <button type="button" key={option.value} role="option"
         aria-selected={option.value === value} className={index === active ? 'modern-select-active' : ''}
         onMouseEnter={() => setActive(index)} onClick={event => { event.preventDefault(); pick(index); }}>{option.render ?? option.label}</button>)}
