@@ -23,5 +23,5 @@ export const escape = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
  * points to another token file, e.g. the packaged app's, to check the interface against the running app. */
 export function appUrl(port = 5173, section = 'oficina') {
   const token = readFileSync(process.env.AGORA_ACCESS_TOKEN_FILE || '.agora/access-token', 'utf8').trim();
-  return `http://127.0.0.1:${port}/?seccion=${section}#acceso=${token}`;
+  return `http://localhost:${port}/?seccion=${section}#acceso=${token}`;
 }

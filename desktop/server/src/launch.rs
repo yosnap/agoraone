@@ -228,7 +228,8 @@ pub async fn prepare(paths: &Paths) -> anyhow::Result<Server> {
     let config = Config {
         data: paths.data.clone(),
         web: paths.web.clone(),
-        hosts: vec![format!("127.0.0.1:{PORT}"), "127.0.0.1:5173".into()],
+        // «localhost» is the address the windows use: YouTube refuses to play inside a page served from a bare IP.
+        hosts: vec![format!("localhost:{PORT}"), "localhost:5173".into(), format!("127.0.0.1:{PORT}"), "127.0.0.1:5173".into()],
         hermes: location::from_env(),
         obsidian_registry: resources::obsidian_registry_path(),
         examples: paths.examples.clone(),
@@ -274,7 +275,7 @@ impl Server {
 
 /// The browser address that lets this browser in (the token goes in the fragment, never to a server log).
 pub fn access_url(port: u16, token: &str) -> String {
-    format!("http://127.0.0.1:{port}/#acceso={token}")
+    format!("http://localhost:{port}/#acceso={token}")
 }
 
 #[cfg(test)]
@@ -364,7 +365,7 @@ mod tests {
 
     #[test]
     fn el_enlace_lleva_el_token_en_el_fragmento() {
-        assert_eq!(access_url(5173, "abc"), "http://127.0.0.1:5173/#acceso=abc");
+        assert_eq!(access_url(5173, "abc"), "http://localhost:5173/#acceso=abc");
     }
 
     #[test]
