@@ -1,28 +1,36 @@
 import { useRef, useState } from 'react';
 import { useAssistantName } from '../assistant/assistant-name';
 import { createVaultNote, getHermesCatalog, listVaultNotes } from '../api/client';
-import { createRepoNote, decideInbox, type InboxItem, type MailSources } from '../api/core';
+import { createRepoNote, decideChat, decideInbox, type InboxState, type MailSources } from '../api/core';
 import { getClients, type DirectoryClient } from '../api/clients';
 import { OrcaLaunch } from '../orca/orca-launch';
 import { clientProjects, useOrcaProjects } from '../orca/orca-projects';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { VaultFolderBrowser } from '../ui/vault-folder-browser';
-import { noteContent, noteTitle, projectsBase, withLevel } from './project-note-text';
+import { attachmentsSection, noteContent, noteTitle, projectsBase, withLevel } from './project-note-text';
+import { attachmentName, type CardOrigin } from './inbox-cards';
 import { filesSection, NoteFiles, saveFiles, type Chosen } from './note-files';
 import { RepoFolderPicker } from './repo-note';
 
 type Vault = { id: string; name: string; folders: string[] };
 const NO_PROJECT = '';
 type Saved = { repo: string; root: string; path: string };
+/** Marks the card of the note's origin, mail or conversation (their ids are different spaces). */
+export const decideOrigin = (origin: CardOrigin, state: InboxState) => origin.kind === 'chat' ? decideChat(origin.id, state) : decideInbox(origin.id, state);
+const decide = decideOrigin;
+/** The note for the repository, tied to its card by kind and id (never a conversation's id as a mail's). */
+export const repoNoteRequest = (origin: CardOrigin, note: { client: string; project: string; folder: string; title: string; content: string }) =>
+  ({ ...note, source: { kind: origin.kind, id: origin.id } });
 
-/** «Añadir a la nota del proyecto»: a client's mail becomes one new note in the vault. The client and project
+/** «Añadir a la nota del proyecto»: a client's mail or WhatsApp conversation becomes one new note in the vault. The client and project
  * come from the user's clients, Central's and their own (the mail's own preselected), the folder is browsed to (the client's folder suggested, any
  * other reachable, a new one inside an existing one), and the user can change the title and the whole text.
  * Nothing is written until «Crear la nota»; no existing note is ever changed. The card then goes to «Hechos».
  * A note to act on can instead go to the local copy of the project's repository that Orca has (user's decision,
  * 17/11/2026): a new file only, no commit, and then «Llevar a Orca…» hands it to an agent. */
-export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDone: (note: string) => void; onCancel: () => void }) {
+export function ProjectNote({ origin: item, onDone, onCancel }: { origin: CardOrigin; onDone: (note: string) => void; onCancel: () => void }) {
+  const mail = item.kind === 'mail';  // only a mail has files to save next to the note; a conversation's are only listed
   const assistant = useAssistantName();
   const [vaults, setVaults] = useState<Vault[] | null>(null);
   const [vaultId, setVaultId] = useState('');
@@ -58,7 +66,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
   // title) follows the client until the user picks one.
   const suggest = (name: string, chosen: string) => {
     if (!touched.folder) { setFolder(null); setBrowser(n => n + 1); if (!touched.title) setTitle(noteTitle(name || 'Cliente', item.subject, item.sentAt)); }
-    if (!touched.content) setContent(noteContent({ ...item, asks: item.details.asks }, chosen || null));
+    if (!touched.content) setContent(noteContent(item, chosen || null));
   };
   const pickFolder = (next: string) => {
     if (folder !== null) setTouched({ ...touched, folder: true });  // the first one is the browser's own suggestion
@@ -77,7 +85,9 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
       const preferred = found.find(v => projectsBase(v.folders)) ?? found[0];
       setVaults(found);
       if (preferred) setVaultId(preferred.id);
-      setContent(noteContent({ ...item, asks: item.details.asks }, project || null));
+      setContent(noteContent(item, project || null));
+      // A title even without a vault (a note only for the repository); the vault's folder suggestion replaces it.
+      setTitle(current => current || noteTitle(client || 'Cliente', item.subject, item.sentAt));
     })().catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer los vaults.'));
   }
 
@@ -88,7 +98,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
     const chosen = next.includes(project) ? project : next[0] ?? NO_PROJECT;
     setClient(name); setProject(chosen); setRepoFolder(null); suggest(name, chosen);
   };
-  const extra = filesSection(sources, chosen, title, where === 'repo');
+  const extra = mail ? filesSection(sources, chosen, title, where === 'repo') : attachmentsSection(item.attachments, attachmentName);
   const problems = (failed: string[]) => failed.length ? ` No se pudieron guardar ${failed.length === 1 ? 'un archivo' : `${failed.length} archivos`}: ${failed.join('; ')}.` : '';
   const create = async () => {
     if (where === 'repo') return saveInRepo();
@@ -97,9 +107,9 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
     try {
       const note = made ?? await createVaultNote(vault.id, folder, title.trim(), withLevel(content + extra, item.confidentiality));
       setMade(note);
-      const failed = sources ? await saveFiles(item.id, sources, chosen, title, { kind: 'vault', vaultId: vault.id, folder: note.folder }, filesDone.current) : [];
+      const failed = mail && sources ? await saveFiles(item.id, sources, chosen, title, { kind: 'vault', vaultId: vault.id, folder: note.folder }, filesDone.current) : [];
       if (failed.length) { setError(`La nota está creada.${problems(failed)}`); return; }  // the card stays: retry, or finish without them
-      await decideInbox(item.id, 'done');
+      await decide(item, 'done');
       onDone(`Nota creada en ${note.folder}: «${note.title}»${filesDone.current.size ? `, con ${filesDone.current.size === 1 ? 'un archivo' : `${filesDone.current.size} archivos`} al lado` : ''}. La tarjeta pasa a «Hechos».`);
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo crear la nota.'); }
     finally { setBusy(false); }
@@ -108,17 +118,17 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
     if (repoFolder === null) return;
     setBusy(true); setError('');
     try {
-      const note = saved ?? await createRepoNote({ client, project, folder: repoFolder, title: title.trim(), content: content + extra, inboxId: item.id });
+      const note = saved ?? await createRepoNote(repoNoteRequest(item, { client, project, folder: repoFolder, title: title.trim(), content: content + extra }));
       setSaved(note);
-      const failed = sources ? await saveFiles(item.id, sources, chosen, title, { kind: 'repo', client, project, folder: note.path.split('/').slice(0, -1).join('/') }, filesDone.current) : [];
+      const failed = mail && sources ? await saveFiles(item.id, sources, chosen, title, { kind: 'repo', client, project, folder: note.path.split('/').slice(0, -1).join('/') }, filesDone.current) : [];
       if (failed.length) { setError(`La nota está guardada.${problems(failed)}`); return; }
-      await decideInbox(item.id, 'done');
+      await decide(item, 'done');
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar la nota en el repositorio.'); }
     finally { setBusy(false); }
   };
   const finish = async () => {  // the note exists; the files that failed are left out
     setBusy(true);
-    try { await decideInbox(item.id, 'done'); setError(''); if (!saved) onDone(`Nota creada${made ? ` en ${made.folder}: «${made.title}»` : ''}. La tarjeta pasa a «Hechos».`); }
+    try { await decide(item, 'done'); setError(''); if (!saved) onDone(`Nota creada${made ? ` en ${made.folder}: «${made.title}»` : ''}. La tarjeta pasa a «Hechos».`); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo marcar la tarjeta.'); }
     finally { setBusy(false); }
   };
@@ -149,7 +159,7 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
         : <label className="field">Cliente<input value={client} maxLength={80} onChange={event => setClient(event.target.value)} onBlur={() => suggest(client, project)}/></label>}
       {projects.length > 0 && <label className="field">Proyecto<ModernSelect value={project}
         options={[...projects.map(p => ({ value: p, label: p })), { value: NO_PROJECT, label: 'Sin proyecto concreto' }]}
-        onChange={value => { setProject(value); setRepoFolder(null); if (!touched.content) setContent(noteContent({ ...item, asks: item.details.asks }, value || null)); }}/></label>}
+        onChange={value => { setProject(value); setRepoFolder(null); if (!touched.content) setContent(noteContent(item, value || null)); }}/></label>}
     </div>
     {where === 'repo' && <div className="field"><span>Carpeta del repositorio</span><RepoFolderPicker key={`${client}|${project}`} client={client} project={project}
       value={repoFolder} onChange={(from, of, next) => { if (from === client && of === project) setRepoFolder(next); }}/></div>}
@@ -157,9 +167,9 @@ export function ProjectNote({ item, onDone, onCancel }: { item: InboxItem; onDon
       client={client.trim() || null} value={folder} onChange={(from, next) => { if (from === vault.id) pickFolder(next); }}/></div>}
     <label className="field">Título<input value={title} maxLength={200} required disabled={Boolean(made || saved)} onChange={event => { setTitle(event.target.value); setTouched({ ...touched, title: true }); }}/></label>
     <label className="field">Texto de la nota<textarea value={content} rows={12} onChange={event => { setContent(event.target.value); setTouched({ ...touched, content: true }); }}/></label>
-    <NoteFiles itemId={item.id} chosen={chosen} locked={Boolean(made || saved)} onChange={setChosen} onSources={setSources}/>
+    {mail && <NoteFiles itemId={item.id} chosen={chosen} locked={Boolean(made || saved)} onChange={setChosen} onSources={setSources}/>}
     {extra && <details><summary>Se añade al final de la nota</summary><pre className="note-extra">{extra.trim()}</pre></details>}
-    {item.confidentiality !== 'normal' && <p className="muted">El correo es {item.confidentiality === 'private' ? 'privado' : 'solo de este Mac'}: la nota se guarda marcada igual
+    {item.confidentiality !== 'normal' && <p className="muted">{mail ? 'El correo es' : 'La conversación es'} {item.confidentiality === 'private' ? (mail ? 'privado' : 'privada') : 'solo de este Mac'}: la nota se guarda marcada igual
       («confidencialidad: {item.confidentiality === 'private' ? 'privado' : 'solo-local'}»), y ni {assistant} ni ningún modelo remoto la leerán.</p>}
     {made && <p className="muted">La nota ya está creada; falta marcar la tarjeta como hecha.</p>}
     {where === 'repo' ? <p className="muted">Se crea un archivo nuevo, «{title.trim() || '…'}.md», en {[`${client} · ${project}`, ...(repoFolder ? repoFolder.split('/') : ['(raíz)'])].join(' › ')}, sin commit ni push. No se cambia ni se borra ningún archivo del repositorio.</p>

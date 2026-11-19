@@ -63,13 +63,24 @@ export function noteTitle(folder: string, subject: string | null, sentAt: string
   return `${folder.split('/').pop()} - ${cleanSubject(subject)} ${dmy(sentAt, '-')}`;
 }
 
-export function noteContent(mail: { subject: string | null; sentAt: string; from: { name: string | null; address: string | null };
-  summary: string | null; asks?: string[] }, project: string | null): string {
+/** Where a card's note comes from: a mail, or a WhatsApp conversation (its participant's name, never the number). */
+export type NoteSource = { kind?: 'mail' | 'chat'; subject: string | null; sentAt: string; from: { name: string | null; address: string | null };
+  summary: string | null; asks?: string[] };
+
+export function noteContent(mail: NoteSource, project: string | null): string {
+  const chat = mail.kind === 'chat';
   const who = mail.from.name && mail.from.address ? `${mail.from.name} (${mail.from.address})` : mail.from.name || mail.from.address || 'desconocido';
-  const lines = [`# ${cleanSubject(mail.subject)}`, '', `- Fecha: ${dmy(mail.sentAt, '/')}`, `- De: ${who}`];
+  const lines = [`# ${cleanSubject(mail.subject)}`, '', `- Fecha: ${dmy(mail.sentAt, '/')}`, `- De: ${who}${chat ? ' (WhatsApp)' : ''}`];
   if (project) lines.push(`- Proyecto: ${project}`);
-  lines.push(`- Correo: «${(mail.subject ?? '(sin asunto)').trim()}»`);
+  lines.push(chat ? '- Conversación de WhatsApp' : `- Correo: «${(mail.subject ?? '(sin asunto)').trim()}»`);
   if (mail.asks?.length) lines.push('', '## Qué piden', ...mail.asks.map(ask => `- ${ask}`));
   lines.push('', '## Resumen', mail.summary?.trim() || '');
   return `${lines.join('\n').trimEnd()}\n`;
+}
+
+/** The attachments of a WhatsApp conversation, only listed by kind and number (user's decision, 19/11/2026): they are
+ * not downloaded and no link is kept. `named` gives each kind its words («2 imágenes»). */
+export function attachmentsSection(counts: Record<string, number>, named: (kind: string, count: number) => string): string {
+  const lines = Object.entries(counts).filter(([, n]) => n > 0).map(([kind, n]) => `- ${n} ${named(kind, n)}`);
+  return lines.length ? `\n## Adjuntos\nEn la conversación de WhatsApp (no se descargan):\n${lines.join('\n')}\n` : '';
 }

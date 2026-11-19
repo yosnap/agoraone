@@ -68,14 +68,16 @@ def _cutoff(connection: sqlite3.Connection) -> str:
     return max(recent, since(connection) or "")
 
 
-def archive_all(connection: sqlite3.Connection) -> int:
+def archive_all(connection: sqlite3.Connection, also=None) -> tuple[int, int]:
     """Clears the Bandeja: every pending card goes to «done» and, from now on, only new mail is summarised
-    (older mail of accounts added later is not shown either). No message is moved or deleted anywhere."""
+    (older mail of accounts added later is not shown either). No message is moved or deleted anywhere. `also` runs
+    in the same transaction (WhatsApp's pending conversations) and says how many it archived: (mail, also)."""
     stamp = now()
     with transaction(connection):
         connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
                            (SINCE_SETTING, json.dumps(stamp)))
-        return connection.execute("UPDATE mail_summary SET state = 'done', decided_at = ? WHERE state = 'pending'", (stamp,)).rowcount
+        mail = connection.execute("UPDATE mail_summary SET state = 'done', decided_at = ? WHERE state = 'pending'", (stamp,)).rowcount
+        return mail, also(connection) if also else 0
 
 
 def unread(connection: sqlite3.Connection, limit: int = WINDOW) -> list[sqlite3.Row]:
@@ -196,15 +198,10 @@ def _suggestion(row: sqlite3.Row) -> dict | None:
 
 
 def _client(clients: list[dict], address: str | None) -> dict | None:
-    """The sender's client in the directory (Central's and the user's own), with its active projects: only the
-    name and project names, never its address, phone or tax id."""
-    from .clients import find
+    """The sender's client in the directory (Central's and the user's own), with its active projects."""
+    from .clients import brief, find
 
-    found = find(clients, address=address)
-    if not found:
-        return None
-    active = [p["name"] for p in found["projects"] if p.get("status") in ("ACTIVE", "MAINTENANCE")][:5]
-    return {"name": found["name"], "projects": active}
+    return brief(find(clients, address=address))
 
 
 def _item(row: sqlite3.Row, clients: list[dict] | None = None) -> dict:

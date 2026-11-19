@@ -38,3 +38,12 @@ export function announcement(item: InboxItem) {
 /** What a mail taken to Orca asks the agent by default; the user changes it before the preview. The mail's own
  * words never go here: they travel below, marked as data. */
 export const orcaTask = 'Lee el correo del cliente que va debajo y resuelve en este repositorio lo que pide. Antes de cambiar nada, explica tu plan.';
+
+/** The same for a WhatsApp conversation: its latest messages travel below, marked as data. */
+export const orcaChatTask = 'Lee la conversación de WhatsApp del cliente que va debajo y resuelve en este repositorio lo que pide. Antes de cambiar nada, explica tu plan.';
+
+/** The level a card carries, when it is not normal (the same words for mail and WhatsApp). */
+export const levelNotes = { normal: null, local_only: 'Solo en este Mac: sin resumen de modelo', private: 'Privado: sin resumen de modelo' } as const;
+
+/** What a card can have open: a form, or a conversation's latest messages. One card per action at a time. */
+export type CardAction = 'filing' | 'noting' | 'scheduling' | 'replying' | 'orca' | 'issue' | 'messages';

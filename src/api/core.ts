@@ -232,12 +232,19 @@ export type ChatSummary = {
   id: number; kind: InboxKind; source: 'rule' | 'model' | 'local'; ruleId: number | null; ruleName: string | null; label: string | null;
   confidentiality: Level; state: InboxState; summary: string | null; details: { asks?: string[]; dates?: string[]; amounts?: string[]; language?: string | null };
   participant: { name: string | null; phone: string | null } | null; account: { id: number; phone: string | null; label: string | null };
-  /** The user's client this number belongs to (never for a private conversation). */
-  client: { name: string } | null;
+  /** The user's client this number belongs to, with up to five active projects (never for a private conversation). */
+  client: { name: string; projects: string[] } | null;
+  /** How many attachments of each kind («image», «audio»…) the messages the summary covers bring; never their link. */
+  attachments: Record<string, number>;
   scope: { id: number; name: string; color: string | null } | null; lastIncomingAt: string | null; updatedAt: string;
 };
 export const getChatSummaries = (state: InboxState = 'pending') =>
   core<{ items: ChatSummary[]; counts: Record<InboxState | 'quiet', number>; problem: string | null }>(`/chat/summaries?state=${state}`);
+/** The user's decision on a conversation's card; nothing changes in WhatsApp. */
+export const decideChat = (id: number, state: InboxState) => core<{ ok: true }>(`/chat/summaries/${id}`, { state }, 'PUT');
+/** One of a card's latest messages, as AgoraOne keeps it (never asked to Zernio): the text as plain data. */
+export type ChatMessage = { id: number; direction: 'incoming' | 'outgoing'; at: string | null; text: string | null; unsupported: boolean; attachments: string[] };
+export const getChatMessages = (id: number) => core<{ messages: ChatMessage[] }>(`/chat/summaries/${id}/messages`);
 export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error' | 'cancelled'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
 export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail/microsoft');
 export const putMicrosoftClient = (clientId: string | null) => core<{ clientId: string | null }>('/mail/microsoft', { clientId }, 'PUT');
@@ -266,7 +273,7 @@ export type InboxItem = {
 };
 export type InboxCounts = { pending: number; done: number; dismissed: number; unread: number; since: string | null };
 export const getInbox = (state: InboxState = 'pending') => core<{ items: InboxItem[]; counts: InboxCounts; problem: string | null }>(`/mail/inbox?state=${state}`);
-export const archiveAllInbox = () => core<{ archived: number; counts: InboxCounts }>('/mail/inbox/archive-all', {});
+export const archiveAllInbox = () => core<{ archived: number; chats: number; counts: InboxCounts }>('/mail/inbox/archive-all', {});
 export const decideInbox = (id: number, state: InboxState) => core<{ ok: true }>(`/mail/inbox/${id}`, { state }, 'PUT');
 /** Moves these cards' messages to their account's trash (or archive), only after the user confirmed it. Never deleted for good. */
 export const moveInboxMail = (ids: number[], action: 'trash' | 'archive') =>
@@ -363,7 +370,7 @@ export type CalendarEvent = { id: string; calendarId: string; title: string; sta
 export type CalendarReminder = { id: string; calendarId: string; title: string; due: string | null } & CalendarOrigin;
 export type Agenda = { events: CalendarEvent[]; reminders: CalendarReminder[]; overlaps: [string, string][]; problem: string | null };
 export type NewEvent = { calendarId?: string | null; title: string; start: string; end: string; allDay?: boolean; location?: string | null;
-  notes?: string | null; overlapOk?: boolean; inboxId?: number | null };
+  notes?: string | null; overlapOk?: boolean; inboxId?: number | null; chatId?: number | null };
 export const getCalendarStatus = () => core<CalendarStatus>('/calendar/status');
 export const askCalendarAccess = () => core<CalendarStatus>('/calendar/access', {});
 export const getCalendars = () => core<{ calendars: CalendarInfo[]; problem: string | null }>('/calendar/calendars');
@@ -380,7 +387,7 @@ export const changeCalendarEvent = (change: { id: string; revision: string; titl
   location: string | null; notes: string | null; overlapOk: boolean }) => core<{ id: string; clashes: number }>('/calendar/event', change, 'PUT');
 export const getAgendaRange = (from: string, to: string) => core<Agenda>(`/calendar/agenda?from=${from}&to=${to}`);
 export const createEvent = (event: NewEvent) => core<{ id: string; clashes: number }>('/calendar/events', event);
-export const createReminder = (reminder: { calendarId?: string | null; title: string; due?: string | null; notes?: string | null; inboxId?: number | null }) =>
+export const createReminder = (reminder: { calendarId?: string | null; title: string; due?: string | null; notes?: string | null; inboxId?: number | null; chatId?: number | null }) =>
   core<{ id: string }>('/calendar/reminders', reminder);
 
 /** Reminders: missed calls, meetings about to start, mail deadlines and the morning summary. */
@@ -589,7 +596,7 @@ export type ReorgMove = { n: number; source: string; ref: string; title: string;
 /** Orca module (1.7): Central projects already in Orca, the exact preview of a launch and the launch itself. */
 export type OrcaAgent = 'claude' | 'codex';
 export type OrcaProject = { client: string; project: string; repo: string };
-export type OrcaSource = { kind: 'mail'; id: number } | { kind: 'issue'; url: string } | { kind: 'note'; source: string; ref: string; revision: string } | { kind: 'project' };
+export type OrcaSource = { kind: 'mail'; id: number } | { kind: 'chat'; id: number } | { kind: 'issue'; url: string } | { kind: 'note'; source: string; ref: string; revision: string } | { kind: 'project' };
 /** What Watson proposes to take to Orca: it only opens the card, which still needs the preview and «Lanzar en Orca». */
 export type OrcaProposal = OrcaProject & { task: string; agent: OrcaAgent; issue: string | null };
 export type OrcaPreview = { id: string; client: string; project: string; repo: string; orcaName: string; agent: OrcaAgent; agentName: string; name: string;
@@ -611,7 +618,7 @@ export const saveRepoFile = (body: MailFile & { client: string; project: string;
   core<{ path: string }>('/orca/repo-file', body);
 export const getIssueTarget = (client: string, project: string) =>
   core<{ repo: string | null; visibility: 'public' | 'private' | 'internal' | null }>(`/issues/target?client=${encodeURIComponent(client)}&project=${encodeURIComponent(project)}`);
-export type IssueSource = { kind: 'mail'; id: number } | { kind: 'note'; source: string; ref: string; revision: string };
+export type IssueSource = { kind: 'mail'; id: number } | { kind: 'chat'; id: number } | { kind: 'note'; source: string; ref: string; revision: string };
 export const createIssue = (issue: { client: string; project: string; title: string; body: string; source: IssueSource }) => core<{ repo: string; url: string }>('/issues', issue);
 export type WaitingSession = { id: string; tool: 'claude' | 'codex'; project: string | null; branch: string | null; model: string | null; lastAt: string | null };
 export const getWaitingSessions = (repo: string, url: string) =>
@@ -619,6 +626,8 @@ export const getWaitingSessions = (repo: string, url: string) =>
 export const handoffIssue = (repo: string, url: string, session: string) => core<{ line: string }>('/orca/handoff', { repo, url, session });
 export type RepoFolders = { repo: string; root: string; folders: string[]; suggested: string; visibility: 'public' | 'private' | 'internal' | null };
 export const getRepoFolders = (client: string, project: string) => core<RepoFolders>(`/orca/repo-folders?client=${encodeURIComponent(client)}&project=${encodeURIComponent(project)}`);
-export const createRepoNote = (note: { client: string; project: string; folder: string; title: string; content: string; inboxId: number }) =>
+/** A card's note in the repository: from a mail (`inboxId`, as before) or from the card's origin (`source`), never both. */
+export const createRepoNote = (note: { client: string; project: string; folder: string; title: string; content: string; inboxId?: number;
+  source?: { kind: 'mail' | 'chat'; id: number } }) =>
   core<{ repo: string; root: string; path: string }>('/orca/repo-note', note);
 export const launchOrca = (id: string) => core<{ name: string; surface: 'chat' | 'terminal' | null; repo: string; agentName: string }>('/orca/launch', { id });

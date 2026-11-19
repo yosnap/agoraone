@@ -155,7 +155,7 @@ def test_whatsapp_casa_por_telefono_y_nunca_lo_privado(db):
         db.execute("INSERT INTO chat_summary (conversation_id, kind, source, confidentiality, updated_at) VALUES (?, 'client', 'model', ?, 'x')",
                    (conversation, level))
     found = {s["confidentiality"]: s["client"] for s in chat_inbox.summaries(db)}
-    assert found == {"normal": {"name": "Café Web"}, "private": None}
+    assert found == {"normal": {"name": "Café Web", "projects": []}, "private": None}
 
 
 def test_rutas_sin_contacto_en_la_lista_y_sin_clave_rechazadas(tmp_path):

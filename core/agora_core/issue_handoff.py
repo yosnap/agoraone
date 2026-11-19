@@ -1,4 +1,4 @@
-"""Issues from a client's mail or a vault note, and handing an issue to a Claude Code or Codex session already open in
+"""Issues from a client's mail, a WhatsApp conversation or a vault note, and handing an issue to a Claude Code or Codex session already open in
 Orca (user's decision, 17/11/2026). The issue is created only with «Crear la issue» and the user's own `gh`, never from
 what is private or «solo en este Mac». To a session, AgoraOne only types one line that points to the issue, without
 Enter (the user sends it), and only in a session of that repository that is waiting for the user; never the text of
@@ -8,7 +8,7 @@ import re
 import sqlite3
 import subprocess
 
-from . import coding_sessions, github_issues, orca_launch, repo_notes
+from . import chat_inbox, coding_sessions, github_issues, orca_launch, repo_notes
 
 TITLE_CHARS = 200
 BODY_CHARS = 20_000
@@ -36,6 +36,13 @@ def from_source(connection: sqlite3.Connection, args: dict) -> dict:
             raise HandoffError("Ese correo ya no está en la Bandeja.") from error
         if level != "normal":
             raise HandoffError("Ese correo es privado o «solo en este Mac»: no va a una issue.")
+    elif source.get("kind") == "chat":
+        try:
+            level = chat_inbox.level_of(connection, source.get("id"))
+        except chat_inbox.ChatGone as error:
+            raise HandoffError(str(error)) from error
+        if level != "normal":
+            raise HandoffError("Esa conversación es privada o «solo en este Mac»: no va a una issue.")
     elif source.get("kind") == "note":
         try:  # indexed, normal and as the user saw it
             orca_launch._note(connection, str(source.get("source") or ""), str(source.get("ref") or ""), str(source.get("revision") or ""))
