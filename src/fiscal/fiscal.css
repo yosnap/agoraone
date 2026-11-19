@@ -1,4 +1,4 @@
-.fiscal { max-width:1100px }
+.fiscal > * { max-width:1100px }
 .fiscal-bar { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; margin-bottom:16px }
 .fiscal-bar .field { min-width:180px }
 .fiscal-totals { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-bottom:12px }

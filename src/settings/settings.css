@@ -1,10 +1,12 @@
-.settings { max-width:980px }
-.settings-tabs { display:flex; gap:4px; margin:4px 0 18px; padding:3px; background:var(--c-e7ece2); border-radius:12px; overflow-x:auto; scrollbar-width:none; max-width:100% }
+.settings > * { max-width:1640px }
+.settings-tabs { display:flex; gap:4px; margin:4px 0 18px; padding:3px; background:var(--c-e7ece2); border-radius:12px; flex-wrap:wrap; max-width:100% }
 .settings-tabs::-webkit-scrollbar { display:none }
-.settings-tabs button { flex:0 0 auto; border:0; background:none; border-radius:9px; padding:8px 14px; font-size:12px; color:var(--c-355a50); white-space:nowrap; cursor:pointer }
+.settings-tabs button { flex:1 1 auto; border:0; background:none; border-radius:9px; padding:8px 14px; font-size:12px; color:var(--c-355a50); white-space:nowrap; cursor:pointer }
 .settings-tabs button[aria-selected="true"] { background:var(--c-fffffa); color:var(--c-173d3c); box-shadow:0 1px 3px var(--c-173d3c22); font-weight:600 }
 .settings-tabs button:focus-visible { outline:2px solid var(--c-355a50); outline-offset:1px }
-.settings-panel { display:flex; flex-direction:column; gap:16px; min-width:0 }
+.settings-panel { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(560px, 100%), 1fr)); gap:16px; align-items:start; min-width:0 }
+/* A tab with one card keeps it at a comfortable width; one with several fills two columns (1.6.1). */
+.settings-panel > .card:only-child { max-width:980px }
 .persona-picker { border:0; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px }
 .persona-picker legend { margin-bottom:6px }
 .persona-option { position:relative; display:flex; flex-direction:column; gap:3px; border:1px solid var(--c-dfe3d6); border-radius:12px; padding:10px 12px; background:var(--c-fffffa); cursor:pointer }

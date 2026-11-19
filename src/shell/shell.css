@@ -44,8 +44,24 @@
 :root[data-theme="dark"] { color-scheme:dark }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme:dark } }
 body { background:var(--c-eef0e6) }
-.alert-toasts { position:fixed; right:16px; bottom:16px; z-index:60; display:flex; flex-direction:column; gap:8px; max-width:min(360px, calc(100vw - 32px)) }
+.alert-toasts { position:fixed; right:16px; top:16px; z-index:60; display:flex; flex-direction:column; gap:8px; max-width:min(360px, calc(100vw - 32px)) }
 .alert-toast { display:flex; gap:10px; align-items:flex-start; justify-content:space-between; padding:10px 12px; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fffffa); box-shadow:0 6px 24px rgba(0,0,0,.14); font-size:13px }
 .alert-toast p { margin:3px 0 0; color:var(--c-6f8379) }
 .alert-toast .icon-button { display:inline-grid; place-items:center; width:26px; height:26px; flex:none; border:1px solid var(--c-c9d3c4); border-radius:8px; background:transparent; color:inherit; cursor:pointer }
 
+.first-run { position:fixed; inset:0; z-index:50; display:grid; place-items:center; padding:24px; background:rgba(13,22,38,.45) }
+.first-run-panel { width:min(1180px,100%); font-size:16px; max-height:calc(100vh - 48px); overflow:auto; background:var(--c-fbfaf3); color:var(--c-173d3c); border-radius:18px; padding:24px 28px; display:flex; flex-direction:column; gap:12px; box-shadow:0 24px 60px rgba(0,0,0,.25) }
+.first-run-head { display:flex; justify-content:space-between; align-items:center }
+.first-run-panel h1 { font:500 38px/1.12 Manrope,sans-serif; letter-spacing:-1px; margin:0 }
+.first-run-panel { padding:34px 40px; gap:16px }
+.first-run-body p { font-size:17px; line-height:1.65; max-width:72ch }
+.first-run-body .install-text { font-size:14px; gap:4px }
+.first-run-body .install-text strong { font-size:16px }
+.first-run-body .install-row { grid-template-columns:110px minmax(0,1fr); padding:12px 0 }
+.first-run-body .install-group h3 { font-size:13px }
+.first-run-body .card p { font-size:15px }
+.first-run-body .card-head h2 { font-size:22px }
+.first-run-body .install-list { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(460px,100%), 1fr)); column-gap:28px }
+.first-run-foot .button { font-size:15px; padding:10px 20px }
+.first-run-body .card { box-shadow:none; border:0; padding:0; background:transparent }
+.first-run-foot { display:flex; justify-content:flex-end; gap:8px; padding-top:8px }
