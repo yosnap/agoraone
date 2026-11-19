@@ -30,7 +30,7 @@ function Group({ title, pieces, busy, onStart }: { title: string; pieces: Doctor
   if (!pieces.length) return null;
   return <section className="install-group" aria-label={title}>
     <h3>{title}</h3>
-    <ul className="install-list">{pieces.map(piece => <li key={piece.id} className={`install-row ${piece.state}`}>
+    <ul className="install-list">{pieces.map(piece => <li key={piece.id} className={`install-row install-piece ${piece.state}`}>
       <span className={`status-badge ${piece.state === 'ok' ? 'good' : piece.state === 'missing' ? 'bad' : 'paused'}`}>{labels[piece.state]}</span>
       <div className="install-text">
         <strong>{piece.name}</strong>

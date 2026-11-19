@@ -45,21 +45,23 @@ export function VoiceSettingsCard() {
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
   };
   const windows = state?.platform === 'win32';
-  return <article className="card" aria-labelledby="voice-title">
+  return <article className="card wide" aria-labelledby="voice-title">
     <div className="card-head"><h2 id="voice-title">Voz</h2>
       {state && <span className={`status-badge ${state.ready ? 'good' : 'paused'}`}>{state.ready ? 'Lista' : 'Falta algo'}</span>}</div>
     <p>La voz se transcribe en este equipo con <strong>whisper.cpp</strong>, para dictar en los chats y para las reuniones. El audio no sale de aquí. Necesita el programa <code>whisper-cli</code>, <code>ffmpeg</code> y un modelo de Whisper (<code>ggml-….bin</code>); AgoraOne los busca donde suele instalarlos cada sistema y aquí puedes elegir otros.</p>
     {!state && !error ? <Loading label="Buscando whisper.cpp y sus modelos" lines={2}/> : state && <>
+      <div className="card-fields">
       <PathChoice label="Programa de Whisper" value={state.chosen.binary} describe={windows ? 'C:\\…\\whisper-cli.exe' : '/ruta/a/whisper-cli'}
         found={state.binaries.map(path => ({ path, text: path }))} onSave={path => void save({ binary: path })}/>
       <PathChoice label="ffmpeg" value={state.chosen.ffmpeg} describe={windows ? 'C:\\…\\ffmpeg.exe' : '/ruta/a/ffmpeg'}
         found={state.ffmpegs.map(path => ({ path, text: path }))} onSave={path => void save({ ffmpeg: path })}/>
       <PathChoice label="Modelo" value={state.chosen.model} describe="/ruta/a/ggml-large-v3-turbo.bin"
         found={state.models.map(m => ({ path: m.path, text: `${m.name} · ${size(m.bytes)} · ${fileName(m.path)}` }))} onSave={path => void save({ model: path })}/>
+      <label className="field">Idioma<ModernSelect value={state.chosen.language} options={languages} onChange={value => void save({ language: value })}/></label>
       <WatsonVoice/>
+      </div>
       <WatsonVoiceChoice/>
       <WakeWord/>
-      <label className="field">Idioma<ModernSelect value={state.chosen.language} options={languages} onChange={value => void save({ language: value })}/></label>
       {!state.ready && <p className="fiscal-warning">{state.missing.length ? `Lo elegido ya no está (${state.missing.map(k => k === 'binary' ? 'whisper-cli' : k === 'model' ? 'el modelo' : 'ffmpeg').join(', ')}): ¿se desinstaló o actualizó? Elígelo de nuevo.`
         : !state.binary ? 'No se encuentra whisper-cli: instala whisper.cpp (Homebrew, el gestor de paquetes de tu Linux o la versión para Windows) o indica dónde está.'
         : !state.ffmpeg ? 'No se encuentra ffmpeg: instálalo o indica dónde está.'

@@ -30,7 +30,7 @@ export function WatsonVoiceChoice() {
   const { settings, now, voicestudio } = view;
   const shownSpeed = speed ?? settings.speed;
   const studioVoices = (voicestudio ?? []).map(v => ({ value: v.id, label: `${v.name}${v.language ? ` · ${v.language}` : ''}` }));
-  return <div className="field">
+  return <div className="card-fields">
     <label className="field">Voz de Watson<ModernSelect value={settings.engine} onChange={value => void save({ engine: value as TtsSettings['engine'] })} options={[
       { value: 'auto', label: 'Automática: «Watson (AgoraOne)» de VoiceStudio, o macOS' },
       { value: 'voicestudio', label: 'Una voz de VoiceStudio' },

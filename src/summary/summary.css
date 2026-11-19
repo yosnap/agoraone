@@ -1,5 +1,5 @@
 /* The summary: a dense grid of panels with figures, bars and a word heat strip. */
-.summary-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr)); gap:16px; align-items:start }
+.summary-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,380px),1fr)); grid-auto-flow:row dense; gap:16px; align-items:start }
 .summary-wide { grid-column:span 2 }
 .summary h3 { font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:1px; text-transform:uppercase; color:var(--c-5f7a71); margin:6px 0 0 }
 .summary h3 .chip { margin-left:6px }
