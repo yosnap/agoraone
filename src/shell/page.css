@@ -35,14 +35,18 @@
 .data-table { width:100%; border-collapse:collapse; font-size:12px }
 .data-table th { text-align:left; font-weight:600; color:var(--c-355a50); padding:8px 10px; border-bottom:1px solid var(--c-dfe3d6) }
 .data-table td { padding:8px 10px; border-bottom:1px solid var(--c-edf0e8); color:var(--c-355a50) }
+/* The row tints: soft enough to read through, visible in both themes. */
+:root { --row-stripe:color-mix(in srgb, var(--c-e7ece2) 60%, transparent); --row-hover:color-mix(in srgb, var(--c-dcebdc) 85%, transparent) }
+:root[data-theme="dark"] { --row-stripe:rgba(255,255,255,.035); --row-hover:rgba(110,200,160,.10) }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --row-stripe:rgba(255,255,255,.035); --row-hover:rgba(110,200,160,.10) } }
 /* Every data table of the app (Central, CRMDev, Presupuestos, Fiscal, Clientes, Agentes…): a row's cells centred on
    one line with its buttons, a soft tint on every other row and a highlight under the pointer to follow a row, and
    figures on the right under their header. Light and dark through the theme tokens. */
 .data-table td, .data-table th, .work-table td, .work-table th, .fiscal-table td, .fiscal-table th { vertical-align:middle }
 .data-table tbody tr:nth-child(even) > td, .work-table tbody tr:nth-child(even) > td, .fiscal-table tbody tr:nth-child(even) > td {
-  background:color-mix(in srgb, var(--c-e7ece2) 55%, transparent) }
+  background:var(--row-stripe) }
 .data-table tbody tr:hover > td, .work-table tbody tr:hover > td, .fiscal-table tbody tr:hover > td {
-  background:color-mix(in srgb, var(--c-dcebdc) 80%, transparent) }
+  background:var(--row-hover) }
 /* Chips, badges and button rows inside a cell never add their own vertical margin, so they line up with the text. */
 :is(.data-table, .work-table, .fiscal-table) td :is(.status-badge, .chip, .actions, .central-open, .button, p.error, p.ok-note) { margin-block:0 }
 :is(.data-table, .work-table, .fiscal-table) td > :is(.status-badge, .chip, .button, .central-open) { vertical-align:middle }
