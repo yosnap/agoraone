@@ -6,7 +6,7 @@
 .settings-panel { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, max(560px, calc((100% - 16px) / 2))), 1fr)); gap:16px; align-items:start; min-width:0 }
 /* A tab with one card spans the whole width; one with several fills two columns. Long paragraphs keep a readable line. */
 .settings-panel .card > p { max-width:120ch }
-.settings-panel > .card.wide { grid-column:1 / -1 }
+.settings-panel > .card.wide, .settings-panel > .card:last-child:nth-child(odd) { grid-column:1 / -1 }
 .persona-picker { border:0; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px }
 .persona-picker legend { margin-bottom:6px }
 .persona-option { position:relative; display:flex; flex-direction:column; gap:3px; border:1px solid var(--c-dfe3d6); border-radius:12px; padding:10px 12px; background:var(--c-fffffa); cursor:pointer }
