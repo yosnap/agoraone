@@ -61,7 +61,7 @@ export async function askChange(key: string, request: CrmdevChangeRequest, api: 
 /** «Crear de todos modos», after looking in CRMDev: the same creation, now said explicitly. */
 export async function askAnyway(key: string, api: ChangeApi = REAL) {
   const doubtful = changeOf(key).doubtful;
-  if (doubtful && (doubtful.request.kind === 'tarea-nueva' || doubtful.request.kind === 'cliente-nuevo')) await askChange(key, { ...doubtful.request, anyway: true }, api);
+  if (doubtful && (doubtful.request.kind === 'tarea-nueva' || doubtful.request.kind === 'cliente-nuevo' || doubtful.request.kind === 'cliente-desde-local')) await askChange(key, { ...doubtful.request, anyway: true }, api);
 }
 
 /** «Guardar en CRMDev»: sends the token of the preview once and calls `onDone` with what to say. */

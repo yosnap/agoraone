@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { createClient, getClient, undistinctClient, updateClient, type OwnClient, type OwnClientFields } from '../api/clients';
+import { createClient, getClient, linkCrmdevClient, undistinctClient, updateClient, type OwnClient, type OwnClientFields } from '../api/clients';
 import { LoadError, Loading } from '../ui/load-state';
 
 const blank: OwnClientFields = { name: '', company: null, email: null, phone: null, taxId: null, domains: [], notes: null };
@@ -33,10 +33,10 @@ export function ClientForm({ clientId, onDone, onCancel }: { clientId: number | 
     try { onDone(clientId === null ? await createClient(body) : await updateClient(clientId, body)); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar el cliente.'); setBusy(false); }
   };
-  const undo = async (centralId: string) => {
+  const undo = async (centralId: string, connector: 'central' | 'crmdev' = 'central') => {
     if (clientId === null) return;
     setBusy(true); setError('');
-    try { setRecord(await undistinctClient(clientId, centralId)); }
+    try { setRecord(await (connector === 'central' ? undistinctClient(clientId, centralId) : linkCrmdevClient(clientId, centralId, 'undistinct'))); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo deshacer.'); }
     finally { setBusy(false); }
   };
@@ -59,6 +59,11 @@ export function ClientForm({ clientId, onDone, onCancel }: { clientId: number | 
       <li key={pair.centralId} className="install-row">
         <span>Distinto de «{pair.centralName ?? 'un cliente de Central que ya no se ve'}» de Central.</span>
         <span className="actions"><button type="button" className="button" disabled={busy} onClick={() => void undo(pair.centralId)}>Deshacer</button></span>
+      </li>)}</ul>}
+    {record && record.links.length > 0 && <ul className="install-list" aria-label="Enlaces con clientes de CRMDev">{record.links.map(link =>
+      <li key={`${link.state}-${link.remoteId}`} className="install-row">
+        <span>{link.state === 'linked' ? 'Enlazado con' : 'Distinto de'} «{link.remoteName ?? 'un cliente de CRMDev que ya no se ve'}» de CRMDev.</span>
+        {link.state === 'distinct' && <span className="actions"><button type="button" className="button" disabled={busy} onClick={() => void undo(link.remoteId, 'crmdev')}>Deshacer</button></span>}
       </li>)}</ul>}
     {error && <LoadError message={error}/>}
     <div className="field-row">

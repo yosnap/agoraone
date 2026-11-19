@@ -88,9 +88,9 @@ export function EditActions({ busy, disabled, onCancel }: { busy: boolean; disab
 /** The exact change to CRMDev and «Guardar en CRMDev»; after a conflict, what CRMDev has now. `onReview` goes back to
  * the form (closing the review), `onLink` opens the existing record of a new client CRMDev already has. After a creation
  * whose answer never came, it asks to look in CRMDev (`page`) and offers «Crear de todos modos». */
-export function CrmdevReview({ change, onCancel, onReview, onLink, page, discreet = false }: {
-  change: ReturnType<typeof useCrmdevChange>; onCancel: () => void; onReview: () => void; onLink?: (id: string) => void; page?: CrmdevWindowPage;
-  discreet?: boolean;
+export function CrmdevReview({ change, onCancel, onReview, onLink, linkLabel, page, discreet = false }: {
+  change: ReturnType<typeof useCrmdevChange>; onCancel: () => void; onReview: () => void; onLink?: (id: string) => void; linkLabel?: string;
+  page?: CrmdevWindowPage; discreet?: boolean;
 }) {
   const cancel = () => { change.reset(); onCancel(); };
   if (change.doubtful) {
@@ -105,7 +105,7 @@ export function CrmdevReview({ change, onCancel, onReview, onLink, page, discree
     </div>;
   }
   return <ChangeReview change={change} where="CRMDev" onCancel={cancel} onReview={() => { change.reset(); onReview(); }}
-    onLink={onLink && (id => { change.reset(); onLink(id); })}/>;
+    onLink={onLink && (id => { change.reset(); onLink(id); })} linkLabel={linkLabel}/>;
 }
 
 /** The record being changed left the list it was shown in (another change in CRMDev, or this one): said, never closed silently. */

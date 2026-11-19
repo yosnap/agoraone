@@ -50,7 +50,7 @@ from .routes_meetings import meetings_router
 from .routes_music import music_router
 from .routes_apps import apps_router
 from .routes_doctor import doctor_router
-from . import modules
+from . import crmdev_sync, modules
 from .meetings import Recorder
 from .meeting_notes import Worker
 from .routes_calendar import calendar_router
@@ -103,6 +103,7 @@ def create_app(
     # Mail and WhatsApp spend the same hourly allowance of Claude calls.
     summary_budget = Budget()
     central_health = CentralHealth()
+    crmdev_health = crmdev_sync.CrmdevHealth()
     secrets = secrets or KeychainSecrets()
     # Jev in shadow after each summary round, in threads of their own (its answers are kept, never applied).
     open_db = lambda: connect(settings.data_dir / DB_NAME)  # noqa: E731
@@ -147,6 +148,8 @@ def create_app(
             threading.Thread(target=modules.gated, args=("whatsapp", database_now, lambda own: chat_summary_worker(settings, extract_engines, own, chat_summary_health, summary_budget, chat_shadow), stop), daemon=True).start()
             # Clients and servers from Central, read-only, every half hour (user's decisions, 14/11 and 18/11/2026).
             threading.Thread(target=modules.gated, args=("central", database_now, lambda own: central_worker(settings, own, central_health, secrets), stop), daemon=True).start()
+            # CRMDev's clients for the directory, read-only, every half hour while «CRMDev» is on (user's decision, 19/11/2026).
+            threading.Thread(target=modules.gated, args=("crmdev", database_now, lambda own: crmdev_sync.crmdev_worker(settings, own, crmdev_health, secrets), stop), daemon=True).start()
             # Watson's voice: VoiceStudio opened in the background if it is closed (user's request, 16/11/2026).
             threading.Thread(target=tts.open_at_start, args=(database_now,), daemon=True).start()
         try:
@@ -231,12 +234,12 @@ def create_app(
     app.include_router(central_views_router(settings, secrets))
     app.include_router(central_write_router(settings, secrets))
     app.include_router(central_window_router(settings))
-    app.include_router(crmdev_router(settings, secrets))
+    app.include_router(crmdev_router(settings, secrets, crmdev_health))
     app.include_router(crmdev_window_router(settings))
     app.include_router(crmdev_write_router(settings, secrets))
     app.include_router(fabrica_window_router(settings))
     app.include_router(quotes_router(settings, secrets))
-    app.include_router(clients_router(settings))
+    app.include_router(clients_router(settings, secrets, crmdev_health))
     if calendar is not None:
         calendar_store.use(calendar)
     app.include_router(calendar_router(settings))

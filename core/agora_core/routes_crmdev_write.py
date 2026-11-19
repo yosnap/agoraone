@@ -14,6 +14,9 @@ one is refused before anything is asked. A change already in CRMDev (found so on
 CRMDev could not be heard to the end, a creation is marked «unknown» and never sent again with that token; a change of
 a record may be pressed again (it is read again first). After a change, the readings it makes old are forgotten.
 
+«Crear en CRMDev» of a client kept only in AgoraOne (`cliente-desde-local`, from Trabajos › Clientes) is one more
+creation: once created, the client kept here is linked with the new one and CRMDev's clients are read again.
+
 The «CRMDev» module off → 404, without a connection → 409. Watson has no tool that reaches these routes, and nothing
 from CRMDev, the mail or any text triggers them: only a form the user fills and confirms. Never the key, CRMDev's
 address nor the values changed in an answer of error or in the action log (only the names of the fields)."""
@@ -30,7 +33,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import crmdev_api, crmdev_write, modules, web_api
+from . import clients, crmdev_api, crmdev_sync, crmdev_write, modules, web_api
 from .confirmed_change import ChangeError, Pending, PendingChanges, Refused, Sentences
 from .db import DB_NAME, connect, now, transaction
 from .settings import Settings
@@ -45,7 +48,9 @@ BUSY_TARGET = "Hay otro cambio de esto enviándose a CRMDev: espera a que termin
 DOUBTFUL = ("Un intento anterior de crear esto no recibió respuesta de CRMDev y puede haberse creado: revisa en CRMDev si ya está antes de "
             "crearlo otra vez.")
 ANYWAY = "Un intento anterior pudo crearlo ya: si sigues, puede quedar repetido en CRMDev."
-CREATIONS = frozenset({"tarea-nueva", "cliente-nuevo"})
+CREATIONS = frozenset({"tarea-nueva", "cliente-nuevo", "cliente-desde-local"})
+NOT_LINKED = "Creado en CRMDev, pero no se pudo enlazar con tu cliente: enlázalos con «Enlazar» tras actualizar los clientes de CRMDev."
+REPEATED_LOCAL = "Ese cliente ya no está en AgoraOne o ya está enlazado con uno de CRMDev."
 DOUBT_SECONDS = 24 * 3600
 MAX_BODY = 64 * 1024
 STATUS_CODES = {"forbidden": 403, "not_found": 404, "invalid": 422, "busy": 429, "config": 409}
@@ -120,8 +125,13 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
             return problem(404, OFF, "off")
         if target is None:
             return problem(409, NOT_CONNECTED, "not_connected")
+        def plan():
+            if given["kind"] == "cliente-desde-local":
+                with database() as connection:
+                    return crmdev_write.from_local(connection, target, given)
+            return crmdev_write.plan(target, given)
         try:
-            change = await run_in_threadpool(crmdev_write.plan, target, given)
+            change = await run_in_threadpool(plan)
         except ChangeError as error:
             return problem(422, str(error), "invalid")
         except crmdev_write.ExistsError as error:
@@ -152,6 +162,9 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
         if owner_of(target) != entry.owner:
             pending.drop(token)
             return problem(409, MOVED, "expired")
+        if change.local_id is not None and not await run_in_threadpool(unlinked, change.local_id):
+            pending.drop(token)
+            return problem(409, REPEATED_LOCAL, "repeated")
         try:
             already = await run_in_threadpool(crmdev_write.check, target, change)
         except crmdev_write.StaleError as error:
@@ -167,10 +180,11 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
             else:
                 pending.drop(token)
             return failed(error)
+        made: object = None
         if not already:
             try:
                 # The tool comes from the kind of change, fixed in the core; the closed list checks it again.
-                await run_in_threadpool(crmdev_api.call, target, crmdev_write.KIND_TOOL[change.kind], change.arguments)
+                made = await run_in_threadpool(crmdev_api.call, target, crmdev_write.KIND_TOOL[change.kind], change.arguments)
             except web_api.WebApiError as error:
                 if error.status != "busy":
                     crmdev_api.forget_reads(crmdev_write.KIND_LISTS[change.kind])  # it may have been written: read it anew
@@ -194,9 +208,34 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
         doubtful.pop(change.target, None)
         crmdev_api.forget_reads(crmdev_write.KIND_LISTS[change.kind])
         warning = await run_in_threadpool(record, change, already)
+        if change.local_id is not None and not already:
+            warning = await run_in_threadpool(link_created, change.local_id, made, target) or warning
         if warning:
             result["warning"] = warning
         return result
+
+    def unlinked(local_id: int) -> bool:
+        with database() as connection:
+            own = clients.get(connection, local_id)
+        return own is not None and not any(link["connector"] == "crmdev" and link["state"] == "linked" for link in own["links"])
+
+    def link_created(local_id: int, made: object, target: web_api.Connection) -> str | None:
+        """Links the client kept here with the one just created in CRMDev and reads CRMDev's clients again, so the
+        directory shows it once now. If the link fails, the next reading joins them by name: never a duplicate."""
+        made_id = made.get("id") if isinstance(made, dict) else None
+        if not isinstance(made_id, str) or not crmdev_api.ID.fullmatch(made_id):
+            return NOT_LINKED
+        try:
+            with database() as connection:
+                if not clients.link_remote(connection, local_id, "crmdev", made_id):
+                    return NOT_LINKED
+                try:
+                    crmdev_sync.refresh(connection, target)
+                except web_api.WebApiError:
+                    pass  # read again on the next half hour or with «Actualizar»: the link is already kept
+        except sqlite3.Error:
+            return NOT_LINKED
+        return None
 
     def record(change: crmdev_write.Change, already: bool) -> str | None:
         """Writes down what was created or changed in CRMDev (field names, never values); `already` when CRMDev had it

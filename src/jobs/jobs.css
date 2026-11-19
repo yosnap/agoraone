@@ -32,3 +32,13 @@
 .client-form { display:grid; gap:12px; margin-bottom:16px }
 .clients-table td .actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end }
 .clients-table td:last-child { text-align:right }
+
+/* Directory of clients with three sources: badges of each source, a client's record and what is left to place. */
+.client-origins { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.client-detail { width: 100%; display: grid; gap: 10px; }
+.client-differences { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.client-placement { display: grid; gap: 10px; }
+.client-placement .field-row { align-items: end; gap: 12px; }
+.client-pairs summary { cursor: pointer; }
+.vault-cards { display: grid; gap: 10px; }
+.clients-directory > .segmented { margin: 4px 0 10px; }

@@ -17,7 +17,7 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
-from . import crmdev_api, crmdev_shapes, modules, web_api
+from . import crmdev_api, crmdev_shapes, crmdev_sync, modules, web_api
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -40,7 +40,7 @@ VIEWS = {
 ORDER = {"miembros": "primeros"}
 
 
-def crmdev_router(settings: Settings, secrets) -> APIRouter:
+def crmdev_router(settings: Settings, secrets, health: crmdev_sync.CrmdevHealth | None = None) -> APIRouter:
     router = APIRouter()
 
     @contextmanager
@@ -121,6 +121,27 @@ def crmdev_router(settings: Settings, secrets) -> APIRouter:
             return crmdev_shapes.shape_client(found[0], contact=True)
 
         return await answer("list_clients", {**arguments, "limit": crmdev_api.MAX_ROWS}, record, fresh)
+
+    # «Actualizar» of the clients the directory uses (Trabajos › Clientes and the CRMDev section): CRMDev is read now.
+    @router.post("/crmdev/clients/refresh")
+    async def refresh_clients():
+        def work():
+            with database() as connection:
+                if not modules.state(connection)["crmdev"]:
+                    return problem(404, OFF, "off")
+                target = crmdev_api.connection_of(connection, secrets)
+                if target is None:
+                    return problem(409, NOT_CONNECTED, "not_connected")
+                data = crmdev_sync.refresh(connection, target)
+            if health is not None:
+                health.problem = None
+            return {"count": len(data["clients"]), "fetchedAt": data["fetchedAt"], "truncated": data["truncated"]}
+        try:
+            return await run_in_threadpool(work)
+        except web_api.WebApiError as error:
+            if health is not None and error.status != "busy":
+                health.problem = str(error)[:200]
+            return problem(STATUS_CODES.get(error.status, 502), str(error), error.status)
 
     return router
 
