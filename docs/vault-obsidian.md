@@ -41,7 +41,7 @@ Decisión del usuario (18/10/2026): el editor de notas, de la personalidad (SOUL
 - **Interfaz**: el libro abierto tiene **Mover o renombrar** (`src/ui/vault-note-move.tsx`): título y carpeta de destino (la raíz o cualquier carpeta que ya tenga notas). **Revisar el cambio** muestra qué se hará y nada se toca hasta **Confirmar**. Tras el cambio, el libro sigue a la nota con su nuevo título.
 - **Servidor** (`VaultNotes.move` en Node, `move_note` en `desktop/server/src/vault/write.rs`): ruta `POST /api/hermes/vaults/:id/notes/:noteId/move` con `{ folder, title, revision }`, cuerpo estricto y CSRF.
   - Comprueba que la nota sigue siendo la revisión que se veía (si no, 409) y copia la versión actual en `.agora/vault-backups/<vault>/`.
-  - Mismas reglas de título y carpeta que al crear; mover al mismo sitio con el mismo título se rechaza.
+  - Mismas reglas de título y carpeta que al crear (desde 1.7, también una carpeta nueva un nivel dentro de una que exista, para las reorganizaciones que propone Watson; docs/watson-actua.md); mover al mismo sitio con el mismo título se rechaza.
   - Crea un enlace duro con el nombre nuevo (falla si ya existe: nunca pisa otra nota) y después quita el nombre antiguo. La nota conserva su archivo, su fecha de creación en Obsidian y sus permisos. Si solo cambian mayúsculas o tildes en un disco que no las distingue, hace un renombrado directo del mismo archivo.
   - Rechaza notas que son enlaces y carpetas enlazadas; si la carpeta de destino se cambia por un enlace a mitad, se deshace.
 - **Lo que no hace**: no reescribe los `[[enlaces]]` de otras notas (la interfaz lo avisa) ni mueve o renombra carpetas. El id de la nota cambia, y el índice del cerebro lo recoge en su siguiente pasada.

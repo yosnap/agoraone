@@ -5,6 +5,7 @@ import { ReceiptsPanel } from './receipts-panel';
 import { ModernSelect } from '../ui/modern-select';
 import { ManualForm } from './manual-form';
 import './fiscal.css';
+import { ActionButton } from '../ui/action-button';
 
 function money(value: number | string | null | undefined, currency = 'EUR') {
   if (value === null || value === undefined || value === '') return '—';
@@ -132,7 +133,7 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
     {manualForm}
     <div className="fiscal-table"><table><thead><tr><th>Documento</th><th>Detalle</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
       <tbody>{detail.items.map((item, index) => <tr key={index}><td>{discreet ? '•••' : item.label}</td><td className="fiscal-detail-path">{discreet && ['qonto', 'foreign', 'foreignIncome'].includes(detail.key) ? '•••' : item.detail}</td>
-        <td>{item.qonto ? <button type="button" className="button" disabled={downloading} onClick={() => void fetchFromQonto([item.qonto!])}>Descargar</button>
+        <td>{item.qonto ? <ActionButton icon="download" label="Descargar" disabled={downloading} onClick={() => void fetchFromQonto([item.qonto!])}/>
           : <span className="fiscal-file">{fileButtons(item.path ?? undefined)}{['unreadable', 'images'].includes(detail.key) && item.path
             && <button type="button" className="button fiscal-edit" onClick={() => setEditing({ path: item.path! })}>Escribir los datos</button>}</span>}</td></tr>)}</tbody></table></div>
     {detail.items.length >= 500 && <p className="muted">Se muestran los 500 primeros.</p>}
@@ -171,19 +172,19 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
         <div className="fiscal-actions">{confirming ? <span className="field-row" role="group" aria-label="Confirmar Excel">
           <span>Se guardará en «{folder?.name}» como <code>Registro-{period.quarter}T-{period.year}-….xlsx</code> (si existe, con un número; nunca se sobrescribe).</span>
           <button type="button" className="button primary" onClick={() => void excel()}>Generar</button>
-          <button type="button" className="button" onClick={() => setConfirming(false)}>Cancelar</button></span>
+          <ActionButton icon="close" label="Cancelar" onClick={() => setConfirming(false)}/></span>
           : <span className="field-row"><button type="button" className="button primary" onClick={() => setConfirming(true)}>Generar el Excel del {period.quarter}T</button>
-            <button type="button" className="button" onClick={() => folderId && void load(folderId, period.year, period.quarter)}>Actualizar</button>
+            <ActionButton icon="refresh" label="Actualizar" onClick={() => folderId && void load(folderId, period.year, period.quarter)}/>
             <button type="button" className="button" onClick={() => void reveal(null, false)}>Abrir la carpeta</button></span>}</div>
         {!discreet && <>
           {manualForm}
           <h2>Ingresos · facturas emitidas</h2>
-          {view.income.length === 0 ? <p className="muted">Ninguna en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Nº</th><th>Cliente</th><th>Base</th><th>IVA</th><th>Total</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>
-            <tbody>{view.income.map((row, index) => <tr key={index}><td>{day(row.date)}</td><td>{row.number}</td><td>{row.client}</td><td>{money(row.base, row.currency)}</td>
-              <td>{row.vatRate !== null ? `${Math.round((row.vatRate > 1 ? row.vatRate : row.vatRate * 100))} %` : '—'}</td><td>{money(row.total, row.currency)}</td><td><span className="fiscal-file">{fileButtons(row.file)}{editButton(row.file, row.manual)}</span></td></tr>)}</tbody></table></div>}
+          {view.income.length === 0 ? <p className="muted">Ninguna en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Nº</th><th>Cliente</th><th className="num">Base</th><th className="num">IVA</th><th className="num">Total</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>
+            <tbody>{view.income.map((row, index) => <tr key={index}><td>{day(row.date)}</td><td>{row.number}</td><td>{row.client}{row.knownClient && row.knownClient !== row.client && <small className="muted"> · {discreet ? '•••' : row.knownClient}</small>}</td><td className="num">{money(row.base, row.currency)}</td>
+              <td className="num">{row.vatRate !== null ? `${Math.round((row.vatRate > 1 ? row.vatRate : row.vatRate * 100))} %` : '—'}</td><td className="num">{money(row.total, row.currency)}</td><td><span className="fiscal-file">{fileButtons(row.file)}{editButton(row.file, row.manual)}</span></td></tr>)}</tbody></table></div>}
           <h2>Gastos · facturas recibidas</h2>
-          {view.expenses.length === 0 ? <p className="muted">Ninguna archivada en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>NIF</th><th>Total</th><th>Dudas</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>
-            <tbody>{view.expenses.map(row => <tr key={row.id}><td>{day(row.issuedOn)}</td><td>{row.supplier}</td><td>{row.taxId ?? '—'}</td><td>{money(row.total, row.currency)}{(row as { totalEur?: number }).totalEur !== undefined && <small className="muted fiscal-eur">≈ {money((row as { totalEur?: number }).totalEur)}</small>}</td>
+          {view.expenses.length === 0 ? <p className="muted">Ninguna archivada en este trimestre.</p> : <div className="fiscal-table"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>NIF</th><th className="num">Total</th><th>Dudas</th><th><span className="visually-hidden">Archivo</span></th></tr></thead>
+            <tbody>{view.expenses.map(row => <tr key={row.id}><td>{day(row.issuedOn)}</td><td>{row.supplier}</td><td>{row.taxId ?? '—'}</td><td className="num">{money(row.total, row.currency)}{(row as { totalEur?: number }).totalEur !== undefined && <small className="muted fiscal-eur">≈ {money((row as { totalEur?: number }).totalEur)}</small>}</td>
               <td>{row.doubts.length ? row.doubts.join(' ') : '—'}</td><td><span className="fiscal-file">{fileButtons(row.file ?? row.path)}{editButton(row.file, row.manual)}</span></td></tr>)}</tbody></table></div>}
         </>}
       </>}

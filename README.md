@@ -1,6 +1,6 @@
 # AgoraOne
 
-**Tu instalación local de [Hermes](https://github.com/NousResearch/hermes-agent) convertida en una ciudad 3D que puedes recorrer, entender y gestionar.**
+**Un cerebro personal en tu ordenador: tu correo, tu agenda, tus reuniones, tus notas y tus agentes de [Hermes](https://github.com/NousResearch/hermes-agent) en un solo sitio, con Watson para ayudarte y una ciudad 3D para recorrerlos.**
 
 ![Ciudad de AgoraOne: cada perfil de Hermes es un edificio](docs/img/agoraone-ciudad.jpg)
 
@@ -15,7 +15,9 @@ Cuando usas Hermes con varios perfiles (un asistente principal, uno para program
 - **Tus vaults de Obsidian son bibliotecas**: las carpetas son estanterías y cada nota se abre como un libro.
 - **Los servidores MCP** de todos tus perfiles se reúnen en un centro de integraciones.
 
-Sirve para tener una vista de conjunto de tus agentes, revisar y corregir lo que saben de ti, y gestionar su trabajo sin abrir archivos a mano ni usar la terminal.
+Alrededor de esa ciudad, AgoraOne reúne tu día a día: Watson, un asistente que responde con tus notas y propone acciones que tú confirmas; tu correo y tu WhatsApp en una bandeja; tu agenda; tus reuniones grabadas, transcritas en el equipo y resumidas; tus facturas por trimestre; y tus clientes y proyectos, con las herramientas externas que conectes.
+
+Sirve para tener una vista de conjunto de tu trabajo y de tus agentes, revisar y corregir lo que saben de ti, y gestionarlo sin abrir archivos a mano ni usar la terminal. Nada se envía, se crea ni se borra sin que veas antes exactamente qué se hará y lo confirmes.
 
 ![Ficha de un perfil abierta sobre la ciudad](docs/img/agoraone-perfil.jpg)
 
@@ -36,6 +38,17 @@ Sirve para tener una vista de conjunto de tus agentes, revisar y corregir lo que
 | **Fiscal** | El trimestre de cada carpeta fiscal leído de sus facturas, avisos de lo que falta o no cuadra, Qonto y el Excel para el gestor. Ver [docs/fiscal.md](docs/fiscal.md). |
 | **Agenda y avisos** | Calendarios y recordatorios de macOS con los solapes marcados, llamadas perdidas sin devolver, reuniones próximas, plazos de correos y resumen de la mañana como notificaciones. Ver [docs/agenda-avisos.md](docs/agenda-avisos.md). |
 | **Trabajos** | Las tareas programadas y el kanban de todos los perfiles con el tiempo, los tokens y el coste de cada ejecución; encargos al bot central o a cualquier perfil con su historia; y los proyectos de tus clientes con lo que han gastado en ellos los agentes. Ver [docs/trabajos.md](docs/trabajos.md). |
+| **Watson** | Responde con tus notas y su memoria, y propone notas, eventos, presupuestos en borrador o limpiar el correo; cada propuesta llega como una tarjeta con lo que se hará y solo se ejecuta al confirmarla. Ver [docs/watson-actua.md](docs/watson-actua.md). |
+| **Voz** | Dictado en todos los chats, «Oye Watson» (apagado por defecto) y respuestas habladas. La voz se transcribe siempre en el equipo con whisper.cpp. Ver [docs/voz-musica.md](docs/voz-musica.md). |
+| **Reuniones** | Grabar una reunión con un botón y un indicador visible, transcribirla en el equipo, resumirla y pasar sus tareas a recordatorios, a una nota del vault o a una issue de GitHub tras confirmar cada una. Ver [docs/reuniones-voz.md](docs/reuniones-voz.md). |
+| **WhatsApp** | Las conversaciones de tu WhatsApp Business (a través de Zernio) en la Bandeja junto al correo, sin marcarlas como leídas; responder con vista previa y un solo envío al pulsar «Enviar». Ver [docs/whatsapp.md](docs/whatsapp.md). |
+| **Clientes** | Un directorio con tus clientes de Central, de CRMDev y los que añadas a mano, enlazados sin duplicar, con su correo, sus reuniones y sus proyectos. |
+| **Conectores** | Un solo sitio para conectar Central (clientes, proyectos, webs, servidores y agenda), CRMDev (proyectos, tareas, tickets y clientes), Mi fábrica, CostGuard y el MCP del cerebro. Los cambios en Central y CRMDev se hacen tras ver el cambio exacto, y nunca se borra nada. Ver [docs/conectores.md](docs/conectores.md). |
+| **Presupuestos** | Ver los presupuestos de Central y crear borradores; enviarlos o cambiar su fase sigue siendo cosa de Central. |
+| **Orca** | Desde un correo, una nota o un proyecto, abrir un espacio de trabajo nuevo en Orca y arrancar Claude Code o Codex con un encargo, tras ver repositorio, agente e indicaciones exactas. Ver [docs/orca.md](docs/orca.md). |
+| **Jev** | Decisiones tipadas de TypeSafe (clase, prioridad, destino), evaluadas en sombra antes de sustituir a ninguna lógica actual y solo con lo que ya puede salir del equipo. Ver [docs/jev.md](docs/jev.md). |
+| **Música** | Pedir «pon …» por voz o por escrito: tu biblioteca, Apple Music o YouTube, con sus controles en el pie del Cerebro. |
+| **Módulos** | Apagar lo que no uses desde Ajustes, y ver en «Qué tengo instalado» qué piezas faltan y cómo conseguirlas. Ver [docs/instalacion-modulos.md](docs/instalacion-modulos.md). |
 | **Biblioteca y Luma** | Importar TXT, Markdown, PDF y DOCX como copias privadas y consultarlas con Luma, una asistente sin herramientas. |
 
 Los paseantes y el movimiento de la ciudad son decorativos: no representan tareas reales y no llaman a ningún modelo.
@@ -43,6 +56,8 @@ Los paseantes y el movimiento de la ciudad son decorativos: no representan tarea
 ## Qué necesitas
 
 - Para usar la app: un **Mac con Apple Silicon** (macOS 13 o superior). La app es autocontenida: lleva su servidor, su Python y la interfaz.
+- Solo en macOS: calendarios y recordatorios, historial de llamadas y Contactos, Apple Music, el audio del sistema en las reuniones y arrancar Mi fábrica. El código se escribe pensando también en Linux y Windows, pero no hay app para ellos y **en Windows todavía no compila**.
+- Opcional, según los módulos que uses: whisper.cpp y ffmpeg para la voz y las reuniones, y las cuentas de Central, CRMDev, Zernio o TypeSafe. Las claves se guardan en el Llavero del sistema.
 - Para desarrollar: **Rust** estable (con `cargo`), **Node.js 22.12 o superior** para la interfaz y [**uv**](https://docs.astral.sh/uv/) para el núcleo Python.
 - **Hermes** instalado en `~/.hermes`. Si está en otra ruta, indícala con `AGORA_HERMES_HOME` y `AGORA_HERMES_PATH`.
 - Para conversar con Luma, un **proveedor de inferencia compatible con OpenAI** (modelo, URL y clave). Los perfiles usan su propia configuración de Hermes.
@@ -72,15 +87,16 @@ Más detalle en [docs/arranque.md](docs/arranque.md). La arquitectura está en [
 AgoraOne está pensado para usarse en tu propio ordenador:
 
 - El servidor escucha **solo en `127.0.0.1`**. Toda la API exige un token de acceso guardado en `.agora/access-token`, legible solo por tu usuario.
-- **Las credenciales se quedan en el servidor** y nunca llegan al navegador ni al modelo. Las líneas que parecen claves se ocultan al mostrar archivos.
+- **Las credenciales se quedan en el servidor** (las de los servicios externos, en el Llavero del sistema) y nunca llegan al navegador ni al modelo. Las líneas que parecen claves se ocultan al mostrar archivos.
 - **No modifica tu instalación de Hermes.** Solo escribe en los archivos de identidad, las skills y las notas, cuando tú lo pides y lo confirmas, y siempre con una copia previa.
-- Ninguna acción con efectos se ejecuta sin que pulses «Permitir», aunque el perfil tenga las aprobaciones desactivadas.
+- Ninguna acción con efectos se ejecuta sin que pulses «Permitir» o el botón de su tarjeta, aunque el perfil tenga las aprobaciones desactivadas. El texto de un correo, un mensaje o una web es siempre dato, nunca instrucciones.
+- Lo que marques como «solo en este Mac» o privado no va a modelos remotos.
 
 Si encuentras un problema de seguridad, consulta [SECURITY.md](SECURITY.md).
 
 ## Estado del proyecto
 
-En desarrollo activo. Lo que está conectado, lo pendiente y lo ilustrativo se detalla en [docs/estado.md](docs/estado.md). Entre las próximas mejoras están una paleta de comandos, la búsqueda en todo el contenido, cancelar el chat a mano y una vista sin 3D para equipos modestos.
+En desarrollo activo; la última versión publicada es la 1.7.0. Lo que está conectado, lo pendiente y lo ilustrativo se detalla en [docs/estado.md](docs/estado.md). Entre las próximas mejoras están una vista sin 3D para equipos modestos y la app para Linux y Windows.
 
 ## Pruebas
 

@@ -2,7 +2,16 @@ import { useCallback, useEffect, useRef, useState, type FormEvent, type Keyboard
 import { RuleProposals, useProposals } from './rule-proposals';
 import { DictationButton } from '../ui/dictation-button';
 import { isYes, quickCommand, type QuickResult } from './quick-commands';
-import { speak, stopSpeaking, useSpeaking } from './speech';
+import { NoteProposals, useNoteProposals } from './note-proposals';
+import { EventProposals, useEventProposals } from './event-proposals';
+import { QuoteProposals, useQuoteProposals } from './quote-proposals';
+import { IssueProposals, useIssueProposals } from './issue-proposals';
+import { OrcaProposals, useOrcaProposals } from './orca-proposals';
+import { ChatReplyProposals, useChatReplyProposals } from './chat-reply-proposals';
+import { inboxStep } from './assistant-labels';
+import { CleanupProposals, useCleanupProposals } from './cleanup-proposals';
+import { ReorgProposals, useReorgProposals } from './reorg-proposals';
+import { answerSoFar, beginAnswer, speak, stopSpeaking, useSpeaking, useVoiceNotice } from './speech';
 
 // The conversation last open (its number only, in this browser), opened again when coming back to the chat.
 const LAST = 'agora-watson-conversation';
@@ -50,8 +59,16 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const [draft, setDraft] = useState('');
   const [persona, setPersona] = useState<Persona | null>(null);
   const [engine, setEngine] = useState<{ active: string | null; model: string } | null>(null);
-  const announced = useAnnouncements();
+  const announced = useAnnouncements(discreet);
   const proposals = useProposals();
+  const notes = useNoteProposals();
+  const events = useEventProposals();
+  const quotes = useQuoteProposals();
+  const issues = useIssueProposals();
+  const orcas = useOrcaProposals();
+  const chatReplies = useChatReplyProposals();
+  const cleanups = useCleanupProposals();
+  const reorgs = useReorgProposals();
   const abort = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
   // The conversation on screen, read by answers that finish after the user moved to another one.
@@ -67,7 +84,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [refreshList]);
   const open = useCallback(async (id: number) => {
     abort.current?.abort();
-    setCurrent(id); setLive(null); setError(''); setLoading(true); proposals.clear(); writeLast(id); shownId.current = id;
+    setCurrent(id); setLive(null); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); chatReplies.clear(); writeLast(id); shownId.current = id;
     if (embedded) setListOpen(false);
     try { const found = (await getAssistantConversation(id)).messages; setMessages(found); onSources?.(lastSources(found)); }
     catch (failure) { setMessages([]); setCurrent(null); writeLast(null); setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.'); }
@@ -80,8 +97,10 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
     return () => stopSpeaking();
   }, [open]);
   const talking = useSpeaking();
+  const voiceNote = useVoiceNotice();
   const send = useCallback(async (text: string, into: number | null) => {
     let id = into;
+    let spokeFinal = false;
     setError('');
     try {
       if (id === null) { id = (await createAssistantConversation()).id; shownId.current = id; setCurrent(id); writeLast(id); setMessages([]); }
@@ -89,20 +108,35 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       abort.current = controller;
       setLive({ question: text, stage: null, sources: [], text: '', steps: [] });
       play('send');
+      // The voice gets ready now and starts with the first whole sentence while the rest is written.
+      beginAnswer(spokenTurn.current);
+      let soFar = '';
       const reading: string[] = [];
       await askAssistant(id, text, event => {
+        if (event.kind === 'delta') answerSoFar(soFar += event.text);
         if (event.kind === 'done') play('receive');
         if (event.kind === 'stage') onThinking?.({ stage: event.stage, label: stageLabels[event.stage], reading });
         else if (event.kind === 'tool' && event.tool === 'search') onThinking?.({ stage: 'busca', label: `Buscando «${event.query}»`, reading });
         else if (event.kind === 'tool' && event.tool === 'clients') onThinking?.({ stage: 'busca', label: 'Consultando los clientes', reading });
         else if (event.kind === 'tool' && event.tool === 'inbox') onThinking?.({ stage: 'busca', label: 'Consultando la Bandeja', reading });
+        else if (event.kind === 'tool' && event.tool === 'meetings') onThinking?.({ stage: 'busca', label: 'Buscando en las reuniones', reading });
+        else if (event.kind === 'tool' && event.tool === 'meeting') onThinking?.({ stage: 'lee', label: `Leyendo la reunión «${event.title}»`, reading });
         else if (event.kind === 'tool' && event.tool === 'rule_proposal') proposals.add(event.id, event.rule);
+        else if (event.kind === 'tool' && event.tool === 'note_proposal') notes.add(event.id, event.note);
+        else if (event.kind === 'tool' && event.tool === 'event_proposal') events.add(event.id, event.event);
+        else if (event.kind === 'tool' && event.tool === 'quote_proposal') quotes.add(event.id, event.quote);
+        else if (event.kind === 'tool' && event.tool === 'issue_proposal') issues.add(event.id, event.issue);
+        else if (event.kind === 'tool' && event.tool === 'orca_proposal') orcas.add(event.proposal);
+        else if (event.kind === 'tool' && event.tool === 'chat_reply_proposal') chatReplies.add(event.id, event.reply);
+        else if (event.kind === 'tool' && event.tool === 'cleanup_proposal') cleanups.add(event.id, event.action, event.messages);
+        else if (event.kind === 'tool' && event.tool === 'reorg_proposal') reorgs.add(event.id, event.summary, event.moves);
+        else if (event.kind === 'tool' && event.tool === 'vault_outline') onThinking?.({ stage: 'busca', label: 'Revisando el vault', reading });
         else if (event.kind === 'tool' && event.tool === 'read') { reading.push(event.id); onThinking?.({ stage: 'lee', label: `Leyendo «${event.title}»`, reading: [...reading] }); }
         setLive(previous => previous && (
         event.kind === 'stage' ? { ...previous, stage: event.stage, engine: event.engine ?? previous.engine, model: event.model ?? previous.model }
           : event.kind === 'sources' ? (onSources?.(event.sources.map(sourceId)), { ...previous, sources: event.sources })
           : event.kind === 'delta' ? { ...previous, text: previous.text + event.text }
-          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? `Consultó la Bandeja · ${event.count} correos` : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
+          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? inboxStep(event.count, event.chats) : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'meetings' ? `Buscó en las reuniones · ${event.count}` : event.tool === 'meeting' ? `Leyó la reunión «${event.title}»` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'note_proposal' ? `Propuso la nota «${event.note.title}»` : event.tool === 'event_proposal' ? `Propuso el evento «${event.event.title}»` : event.tool === 'quote_proposal' ? `Propuso el presupuesto «${event.quote.title}»` : event.tool === 'issue_proposal' ? `Propuso una issue en ${event.issue.repo}` : event.tool === 'orca_proposal' ? `Propuso llevar un encargo a Orca en ${event.proposal.repo}` : event.tool === 'chat_reply_proposal' ? 'Propuso una respuesta de WhatsApp' : event.tool === 'cleanup_proposal' ? `Preparó ${event.messages.length} correos para ${event.action === 'trash' ? 'la Papelera' : 'archivar'}` : event.tool === 'reorg_proposal' ? `Propuso ${event.moves.length} cambios para ordenar el vault` : event.tool === 'vault_outline' ? `Revisó el vault · ${event.notes} notas en ${event.folders} carpetas` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
           : previous));
       }, controller.signal);
     } catch (failure) {
@@ -115,9 +149,11 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
           const found = (await getAssistantConversation(id)).messages;
           setMessages(found);
           const last = found.at(-1);
-          if (last?.role === 'assistant' && !last.failed) speak(last.content, spokenTurn.current);
+          if (last?.role === 'assistant' && !last.failed) { speak(last.content, spokenTurn.current); spokeFinal = true; }
         } catch { /* the error above is enough */ }
       }
+      // No answer to finish (an error, another conversation on screen): the voice waiting for it lets go.
+      if (!spokeFinal) speak('', false);  // closes the answer begun (an error, another conversation): nothing more is said
       if (id === null || shownId.current === id) setLive(null);
       void refreshList();
     }
@@ -130,7 +166,8 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const submit = (event?: FormEvent, spoken?: string) => {
     event?.preventDefault();
     const text = (spoken === undefined ? draft : (draft.trim() ? `${draft.trimEnd()} ${spoken}` : spoken)).trim();
-    if (!text || live) return; setDraft('');
+    // While Watson answers, only the quick commands (music, apps) go through: they need no model.
+    if (!text || (live && !quickCommand(text))) return; setDraft('');
     spokenTurn.current = spoken !== undefined;
     stopSpeaking();
     if (proposals.answer(text, discreet)) return;  // a plain «sí» / «no» answers the rule Watson just proposed, without a model
@@ -154,7 +191,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
-  const fresh = () => { abort.current?.abort(); stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setLive(null); setError(''); proposals.clear(); onSources?.([]); if (embedded) setListOpen(false); };
+  const fresh = () => { abort.current?.abort(); stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setLive(null); setError(''); proposals.clear(); issues.clear(); orcas.clear(); chatReplies.clear(); onSources?.([]); if (embedded) setListOpen(false); };
   const sourceList = (sources: Source[]) => sources.length > 0 && <div className="sources">
     <span className="muted">Fuentes</span>
     <ol>{sources.map(source => <li key={source.n} value={source.n}><button onClick={() => onRead({ vault: source.source, note: source.ref })}>{source.title}</button><small>{source.folder || 'Raíz'}</small></li>)}</ol>
@@ -176,7 +213,8 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <div>{!embedded && <div className="eyebrow">ASISTENTE</div>}<h1 id="assistant-title">{name}</h1>
           {embedded ? <p className="watson-state" role="status">{hearing === 'recording' ? 'Escuchando… (en este Mac)' : hearing === 'transcribing' ? 'Pasando tu voz a texto…'
             : live ? (live.stage ? stageLabels[live.stage] : 'Enviando…') : 'Listo · escribe o pulsa el micrófono'}</p>
-            : persona && <p className="muted">{persona.conveys}. Inspirado en {persona.origin}.</p>}</div>
+            : persona && <p className="muted">{persona.conveys}. Inspirado en {persona.origin}.</p>}
+          {voiceNote && <p className="muted watson-voice-note" role="status">{voiceNote}</p>}</div>
         {embedded && <div className="actions"><button className="button" aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)}>Conversaciones</button><button className="button" onClick={fresh}>Nueva</button></div>}
         {talking && <button type="button" className="button watson-hush" onClick={stopSpeaking} aria-label="Callar a Watson">■ Callar</button>}
         <span className={`chip ${engine?.active ? 'good' : engine ? 'bad' : ''}`} role="status">
@@ -209,6 +247,14 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         {(hearing === 'recording' || hearing === 'transcribing') && <div className="watson-heard" aria-live="polite">
           {hearing === 'recording' ? '«…»' : 'Transcribiendo…'}<small>{hearing === 'recording' ? 'oyendo · se transcribe en este Mac' : 'en este Mac, con whisper'}</small></div>}
         <RuleProposals state={proposals} discreet={discreet}/>
+        <NoteProposals state={notes}/>
+        <EventProposals state={events}/>
+        <QuoteProposals state={quotes}/>
+        <IssueProposals state={issues}/>
+        <OrcaProposals state={orcas}/>
+        <ChatReplyProposals state={chatReplies} discreet={discreet}/>
+        <CleanupProposals state={cleanups} discreet={discreet}/>
+        <ReorgProposals state={reorgs}/>
         {error && <LoadError message={error}/>}
         <div ref={end}/>
       </div>

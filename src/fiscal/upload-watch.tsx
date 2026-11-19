@@ -29,15 +29,11 @@ export const useUpload = () => useSyncExternalStore(cb => { listeners.add(cb); r
 /** The notice of a receipt that arrived from the phone, over any section. */
 export function UploadNotice({ onOpen }: { onOpen: () => void }) {
   const { state, arrived } = useUpload();
-  if (state?.open && state.receiving) return <div className="alert-toasts" role="status" aria-live="polite">
-    <div className="alert-toast"><div><strong>Recibiendo un archivo del móvil…</strong><p>En un momento aparece en Fiscal › Recibos.</p></div></div>
-  </div>;
+  if (state?.open && state.receiving) return <div className="alert-toast"><div><strong>Recibiendo un archivo del móvil…</strong><p>En un momento aparece en Fiscal › Recibos.</p></div></div>;
   if (!arrived) return null;
-  return <div className="alert-toasts" role="status" aria-live="polite">
-    <div className="alert-toast">
+  return <div className="alert-toast">
       <div><strong>Recibo recibido desde el móvil</strong><p>Míralo y completa sus datos para archivarlo.</p>
         <button type="button" className="button" onClick={() => { dismissArrival(); onOpen(); }}>Verlo</button></div>
       <button type="button" className="icon-button" aria-label="Cerrar el aviso" onClick={dismissArrival}>×</button>
-    </div>
-  </div>;
+    </div>;
 }

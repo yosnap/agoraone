@@ -1,11 +1,26 @@
 import { chromium } from '@playwright/test';
 import assert from 'node:assert/strict';
 import { appUrl } from './verify-targets.mjs';
-// The Bandeja and Settings › mail rules, read only: the Bandeja loads with its tabs and cards (or says it is
-// empty), and the rules card opens and cancels its form. Nothing is written; prints counts, never content.
+// Runs against the web on VERIFY_PORT (Vite, 5173 by default). By default every /api request is answered by the script
+// with invented samples, so nothing reaches a core (the live app's data stays untouched) and no access token is read.
+// VERIFY_LIVE=1 adds the first part, read only, against the running core: the Bandeja loads with its tabs and cards
+// (or says it is empty), and the rules card opens and cancels its form. Nothing is written; prints counts, never content.
 const shots = process.env.SHOTS;
+const port = Number(process.env.VERIFY_PORT || 5173);
 const browser = await chromium.launch({ headless: true });
-for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+const sampleUrl = section => `http://127.0.0.1:${port}/?seccion=${section}#acceso=${'0'.repeat(64)}`;
+/** Answers every /api request with a sample (registered first, so the routes of each part win): nothing reaches a core. */
+async function stub(page, modules = {}) {
+  await page.route(url => url.pathname.startsWith('/api/'), route => {
+    const path = new URL(route.request().url()).pathname;
+    const json = path === '/api/status' ? { state: 'ready', detail: '', csrf: 'x' }
+      : path === '/api/core/modules' ? { modules: { whatsapp: false, orca: true, central: true, ...modules }, labels: {}, owners: {}, windows: {} }
+      : path === '/api/core/orca/projects' ? { projects: [], problem: null }
+      : path.endsWith('/first-run') ? { done: true } : path === '/api/session' ? { ok: true } : {};
+    return route.fulfill({ json });
+  });
+}
+if (process.env.VERIFY_LIVE === '1') for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
   const page = await browser.newPage({ viewport });
   const errors = [], writes = [];
   page.on('pageerror', e => errors.push(e.message));
@@ -51,13 +66,14 @@ const sample = { id: 1, kind: 'invoice', source: 'model', ruleId: null, ruleName
   subject: 'Tu factura de noviembre', sentAt: '2026-11-14T09:00:00Z', account: { id: 1, address: 'yo@ejemplo.com' }, scope: { id: 1, name: 'Ejemplo', color: null },
   attachments: 1, announcedAt: null };
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await stub(page);
 const errors = [], decided = [];
 await page.route('**/api/core/fiscal/invoices/prepare', route => route.fulfill({ status: 422, json: { error: 'Elige primero la carpeta fiscal en Ajustes.' } }));
 page.on('pageerror', e => errors.push(e.message));
 await page.route('**/api/core/mail/inbox?state=pending', route => route.fulfill({ json: { items: [sample], counts: { pending: 1, done: 0, dismissed: 0, unread: 0 }, problem: null } }));
-await page.route('**/api/core/mail/inbox/announce', route => route.fulfill({ json: { items: [sample] } }));
+await page.route('**/api/core/mail/inbox/announce', route => route.fulfill({ json: { items: [{ ...sample, channel: 'mail' }] } }));
 await page.route('**/api/core/mail/inbox/1', route => { decided.push(route.request().postDataJSON().state); return route.fulfill({ json: { ok: true } }); });
-await page.goto(appUrl(5173, 'bandeja'));
+await page.goto(sampleUrl('bandeja'));
 const card = page.locator('.inbox-card');
 await card.waitFor({ timeout: 60_000 });
 assert.ok(await page.getByRole('heading', { name: /Ejemplo/ }).count(), 'agrupada por ámbito');
@@ -77,7 +93,7 @@ await card.getByRole('button', { name: 'Archivar la factura' }).click();
 await page.getByText(/Factura archivada en/).waitFor();
 assert.equal(filed[0].fields.supplier, 'Proveedor Uno');
 assert.deepEqual(filed[0].source, { kind: 'attachment', part: 2 });
-await page.goto(appUrl(5173, 'asistente'));
+await page.goto(sampleUrl('asistente'));
 const notice = page.locator('.announcement');
 await notice.waitFor({ timeout: 60_000 });
 assert.match(await notice.innerText(), /Tienes una factura de Proveedor de ejemplo \(12,50 €\)/);
@@ -88,4 +104,138 @@ assert.deepEqual(decided, ['dismissed'], '«no» descarta el aviso sin pasar por
 if (shots) await page.screenshot({ path: `${shots}/announcement.png` });
 assert.deepEqual(errors, [], 'sin errores JS');
 console.log('tarjeta de ejemplo y aviso de Watson: correctos');
+
+// WhatsApp's cards with sample data (no real conversation): both sources in one list, the source filter, the latest
+// messages read from the core only (never from Zernio nor any address outside loopback), the discreet mode hiding the
+// number, the summary and the messages, and the actions of a client's conversation (issue, Orca, note in the
+// repository, event), each sent with the conversation as its origin and never as a mail's id.
+const chatSample = { id: 1, kind: 'client', source: 'model', ruleId: null, ruleName: null, label: 'Instinct', confidentiality: 'normal', state: 'pending',
+  summary: 'Quiere mover la cita al lunes.', details: { asks: ['Mover la cita al lunes'], dates: ['2030-11-25'] },
+  participant: { name: 'Contacto de ejemplo', phone: '+34 600 000 000' }, account: { id: 1, phone: '+34 600 999 999', label: 'Mi número' },
+  client: { name: 'Acme', projects: ['Web'] }, attachments: { image: 1 }, scope: { id: 1, name: 'Ejemplo', color: null },
+  lastIncomingAt: '2026-11-19T08:00:00Z', updatedAt: '2026-11-19T08:00:00Z' };
+const privateSample = { ...chatSample, id: 2, label: null, confidentiality: 'private', summary: null, details: {}, participant: null, client: null, attachments: {} };
+const chatPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await stub(chatPage, { whatsapp: true });
+const chatErrors = [], outside = [], chatCalls = [], sent = {};
+chatPage.on('pageerror', e => chatErrors.push(e.message));
+chatPage.on('request', r => {
+  const url = new URL(r.url());
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) && !url.protocol.startsWith('data')) outside.push(url.hostname);
+  if (url.pathname.includes('/api/core/chat/')) chatCalls.push(`${r.method()} ${url.pathname}`);
+});
+const keep = (name, reply) => route => { sent[name] = route.request().postDataJSON(); return route.fulfill({ status: 201, json: reply }); };
+await chatPage.route('**/api/core/mail/inbox?state=pending', route => route.fulfill({ json: { items: [sample], counts: { pending: 1, done: 0, dismissed: 0, unread: 0 }, problem: null } }));
+await chatPage.route('**/api/core/chat/settings', route => route.fulfill({ json: { hasKey: true, accounts: [], lastSync: null } }));
+await chatPage.route('**/api/core/chat/summaries?state=pending', route => route.fulfill({ json: { items: [chatSample, privateSample], counts: { pending: 2, done: 0, dismissed: 0, quiet: 0 }, problem: null } }));
+await chatPage.route('**/api/core/chat/summaries/1', route => { sent.decide = route.request().postDataJSON(); return route.fulfill({ json: { ok: true } }); });
+await chatPage.route('**/api/core/chat/summaries/1/messages', route => route.fulfill({ json: { messages: [
+  { id: 1, direction: 'incoming', at: '2026-11-19T07:59:00Z', text: '<b>¿Podemos</b> moverla al lunes?', unsupported: false, attachments: [] },
+  { id: 2, direction: 'incoming', at: '2026-11-19T08:00:00Z', text: null, unsupported: false, attachments: ['image'] },
+  { id: 3, direction: 'outgoing', at: '2026-11-19T08:01:00Z', text: null, unsupported: true, attachments: [] }] } }));
+await chatPage.route('**/api/core/orca/projects', route => route.fulfill({ json: { projects: [{ client: 'Acme', project: 'Web', repo: 'acme/web' }], problem: null } }));
+await chatPage.route('**/api/core/clients', route => route.fulfill({ json: { clients: [{ name: 'Acme', company: null, domains: [], projects: [{ name: 'Web', repo: 'acme/web', status: 'ACTIVE' }],
+  websites: [], source: 'central', localId: null, centralId: 'c1', aliases: [], sources: ['central'], crmdevId: null, crmdevStatus: null }], suggestions: [], distinctPairs: [],
+  unplacedCount: 0, central: { on: true, read: true }, crmdev: { on: false, connected: false, read: false, fetchedAt: null, truncated: false, problem: null } } }));
+await chatPage.route('**/api/core/issues/target?*', route => route.fulfill({ json: { repo: 'acme/web', visibility: 'private' } }));
+await chatPage.route('**/api/core/issues', keep('issue', { repo: 'acme/web', url: 'https://github.com/acme/web/issues/9' }));
+await chatPage.route('**/api/core/orca/waiting?*', route => route.fulfill({ json: { sessions: [], line: null } }));
+await chatPage.route('**/api/core/orca/preview', route => { sent.orca = route.request().postDataJSON(); return route.fulfill({ json: { id: 'p1', client: 'Acme', project: 'Web',
+  repo: 'acme/web', orcaName: 'Web', agent: 'claude', agentName: 'Claude Code', name: 'agora-x', source: { kind: 'chat', label: 'Conversación de WhatsApp con Contacto de ejemplo' },
+  sourceText: null, prompt: 'Lee la conversación…' } }); });
+await chatPage.route('**/api/hermes/catalog', route => route.fulfill({ json: { vaults: [] } }));
+await chatPage.route('**/api/core/orca/repo-folders?*', route => route.fulfill({ json: { repo: 'acme/web', root: '/tmp/acme-web', folders: ['docs'], suggested: 'docs/notas', visibility: 'private' } }));
+await chatPage.route('**/api/core/orca/repo-note', keep('note', { repo: 'acme/web', root: '/tmp/acme-web', path: 'docs/notas/Nota.md' }));
+await chatPage.route('**/api/core/calendar/calendars', route => route.fulfill({ json: { calendars: [], problem: null } }));
+await chatPage.route('**/api/core/calendar/events', keep('event', { id: 'e1', clashes: 0 }));
+// Reply: an open window for the normal card and a closed one for the private card. Nothing is ever sent here.
+const until = new Date(Date.now() + 5 * 3_600_000).toISOString();
+const people = { to: { name: 'Contacto de ejemplo', phone: '+34 600 000 000' }, from: { phone: '+34 600 999 999', label: 'Mi número' } };
+await chatPage.route('**/api/core/chat/summaries/1/reply', route => route.fulfill({ json: { conversationId: 1, accountId: 1, text: '', confidentiality: 'normal',
+  window: { open: true, until, lastIncomingAt: '2026-11-19T08:00:00Z' }, maxLength: 4096, ...people } }));
+await chatPage.route('**/api/core/chat/summaries/2/reply', route => route.fulfill({ json: { conversationId: 2, accountId: 1, text: '', confidentiality: 'private',
+  window: { open: false, until: '2026-11-01T08:00:00Z', lastIncomingAt: '2026-10-31T08:00:00Z' }, maxLength: 4096, to: null, from: people.from } }));
+await chatPage.route('**/api/core/chat/drafts/preview', route => { sent.preview = route.request().postDataJSON(); return route.fulfill({ json: {
+  draft: sent.preview, digest: 'a'.repeat(64), confidentiality: 'normal', attachments: [], window: { open: true, until, lastIncomingAt: '2026-11-19T08:00:00Z' }, ...people } }); });
+await chatPage.route('**/api/core/chat/send', keep('send', { sent: true, messageId: null }));
+await chatPage.goto(sampleUrl('bandeja'));
+const chatCard = chatPage.locator('.chat-card').first();
+await chatCard.waitFor({ timeout: 60_000 });
+assert.equal(await chatPage.locator('.inbox-card').count(), 3, 'correo y WhatsApp en la misma lista');
+assert.ok(await chatCard.getByText('WhatsApp', { exact: true }).count(), 'distintivo de WhatsApp');
+assert.ok(await chatCard.getByText('Instinct', { exact: true }).count(), 'etiqueta de la regla');
+assert.match(await chatPage.getByRole('button', { name: /^Pendientes/ }).innerText(), /· 3/, 'las pestañas suman las dos fuentes');
+const secret = chatPage.locator('.chat-card').nth(1);
+assert.ok(await secret.getByText('Conversación privada').count());
+assert.equal(await secret.getByRole('button', { name: /Crear issue|Llevar a Orca|Añadir a la nota/ }).count(), 0, 'lo privado no ofrece issue, Orca ni nota');
+await chatPage.locator('.inbox-tools label.field', { hasText: 'Fuente' }).locator('.modern-select button').first().click();
+await chatPage.getByRole('option', { name: 'WhatsApp' }).click();
+assert.equal(await chatPage.locator('.inbox-card').count(), 2, 'el filtro deja solo WhatsApp');
+assert.equal(await chatPage.locator('.page select').count(), 0, 'ningún select nativo');
+const before = chatCalls.length;
+await chatCard.getByRole('button', { name: 'Ver mensajes' }).click();
+await chatCard.locator('.chat-message').first().waitFor();
+assert.deepEqual(chatCalls.slice(before), ['GET /api/core/chat/summaries/1/messages'], 'abrir los mensajes solo lee el núcleo');
+assert.ok(await chatCard.getByText('<b>¿Podemos</b> moverla al lunes?').count(), 'el texto sale tal cual, sin interpretar marcado');
+assert.ok(await chatCard.getByText('Mensaje no disponible').count() && await chatCard.getByText('imagen', { exact: true }).count());
+assert.equal(await chatCard.locator('.chat-messages a').count(), 0, 'sin enlaces');
+if (shots) await chatPage.screenshot({ path: `${shots}/inbox-whatsapp.png` });
+await chatPage.getByRole('button', { name: /discreto/i }).first().click();
+await chatCard.getByText('Resumen y mensajes ocultos en modo discreto.').waitFor();
+assert.equal(await chatCard.getByText(/600 000 000|Quiere mover|moverla al lunes/).count(), 0, 'el discreto oculta número, resumen y mensajes');
+assert.ok(await chatCard.getByText('Contacto de ejemplo').count(), 'el nombre se ve, como el remitente de un correo');
+assert.ok(await chatCard.getByRole('button', { name: 'Responder…' }).isDisabled(), 'en discreto no se responde');
+await chatPage.getByRole('button', { name: /discreto/i }).first().click();
+assert.equal(await chatCard.locator('.chat-message').count(), 0, 'al salir del discreto los mensajes no vuelven solos');
+
+// Reply: the exact preview with its notices, never sent; a closed window disables it with its reason.
+await chatCard.getByRole('button', { name: 'Responder…' }).click();
+await chatCard.getByLabel('Mensaje').fill('Sí, el lunes a las 10 me va bien.');
+assert.ok(await chatCard.getByText('33 / 4096').count(), 'contador de caracteres');
+await chatCard.getByRole('button', { name: 'Vista previa' }).click();
+await chatCard.getByText('Esto es exactamente lo que se enviará.', { exact: false }).waitFor();
+assert.deepEqual(sent.preview, { conversationId: 1, text: 'Sí, el lunes a las 10 me va bien.' });
+assert.ok(await chatCard.getByText(/marcar como leídos sus mensajes anteriores/).count() && await chatCard.getByText(/1\.000 mensajes de servicio gratis/).count());
+assert.ok(await chatCard.getByRole('button', { name: 'Enviar', exact: true }).isEnabled(), 'con la ventana abierta se podría enviar');
+if (shots) await chatCard.screenshot({ path: `${shots}/whatsapp-reply-preview.png` });
+await chatCard.getByRole('button', { name: 'Volver a editar' }).click();
+await chatCard.getByRole('button', { name: 'Cancelar' }).click();
+await secret.getByRole('button', { name: 'Responder…' }).click();
+await secret.getByText(/Han pasado más de 24 h desde su último mensaje/).waitFor();
+assert.ok(await secret.getByRole('button', { name: 'Vista previa' }).isDisabled(), 'ventana cerrada: sin vista previa');
+assert.equal(await secret.getByRole('button', { name: /Redactar con/ }).count(), 0, 'lo privado no lo redacta Watson');
+await secret.getByRole('button', { name: 'Cancelar' }).click();
+assert.equal(sent.send, undefined, 'no se ha enviado nada');
+
+// Issue: the conversation is its origin.
+await chatCard.getByRole('button', { name: 'Crear issue…' }).click();
+await chatCard.getByRole('button', { name: 'Crear la issue' }).click();
+await chatCard.getByText('Issue creada en acme/web.').waitFor();
+assert.deepEqual(sent.issue.source, { kind: 'chat', id: 1 });
+assert.doesNotMatch(JSON.stringify(sent.issue), /600 000 000/, 'la issue no lleva el número');
+await chatCard.getByRole('button', { name: 'Cerrar' }).click();
+// Orca: only the preview (nothing is launched here).
+await chatCard.getByRole('button', { name: 'Llevar a Orca…' }).click();
+await chatCard.getByRole('button', { name: 'Ver la vista previa' }).click();
+await chatCard.getByText('Vista previa: esto es exactamente lo que se lanzará').waitFor();
+assert.deepEqual(sent.orca.source, { kind: 'chat', id: 1 });
+await chatCard.locator('.orca-launch').getByRole('button', { name: 'Cancelar' }).click();
+// Note in the project's repository, then the card is marked done as a conversation.
+await chatCard.getByRole('button', { name: 'Añadir a la nota del proyecto…' }).click();
+await chatCard.getByRole('button', { name: 'Repositorio del proyecto (para actuar)' }).click();
+await chatCard.getByRole('button', { name: 'Guardar en el repositorio' }).click();
+await chatCard.getByText(/Nota guardada en acme\/web/).waitFor();
+assert.deepEqual(sent.note.source, { kind: 'chat', id: 1 });
+assert.equal(sent.note.inboxId, undefined, 'nunca como id de correo');
+assert.match(sent.note.content, /## Adjuntos[\s\S]*- 1 imagen/, 'los adjuntos solo se listan');
+assert.deepEqual(sent.decide, { state: 'done' });
+await chatCard.getByRole('button', { name: 'Cerrar' }).click();
+// Event.
+await chatCard.getByRole('button', { name: 'Crear evento…' }).click();
+await chatCard.getByRole('button', { name: 'Crear el evento' }).click();
+await chatPage.getByText(/La conversación pasa a «Hechos»/).waitFor();
+assert.deepEqual([sent.event.chatId, sent.event.inboxId], [1, null]);
+assert.deepEqual(outside, [], 'ninguna petición fuera de loopback');
+assert.deepEqual(chatErrors, [], 'sin errores JS');
+console.log('tarjetas de WhatsApp de ejemplo, filtro, mensajes, modo discreto, respuesta (sin enviar), issue, Orca, nota y evento: correctos');
 await browser.close();

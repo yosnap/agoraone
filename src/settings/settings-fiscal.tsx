@@ -6,6 +6,7 @@ import {
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { FolderLogo } from './provider-logos';
+import { ActionButton } from '../ui/action-button';
 
 export const kindLabels: Record<FolderKind, string> = { autonomo: 'Autónomo', empresa: 'Empresa', personal: 'Personal' };
 const kinds = (Object.keys(kindLabels) as FolderKind[]).map(value => ({ value, label: kindLabels[value] }));
@@ -69,7 +70,7 @@ export function FiscalSettingsCard() {
   const scopeOptions = [{ value: '', label: 'Ninguno' }, ...scopes.map(s => ({ value: String(s.id), label: s.name }))];
   return <article className="card" aria-labelledby="fiscal-title">
     <div className="card-head"><h2 id="fiscal-title">Carpetas fiscales</h2>
-      {!draft && <button type="button" className="button" disabled={busy} onClick={() => void pick()}>Añadir carpeta…</button>}</div>
+      {!draft && <ActionButton icon="plus" label="Añadir carpeta…" disabled={busy} onClick={() => void pick()}/>}</div>
     <p>Donde se archivan facturas y recibos. Cada una recibe lo de las cuentas de su ámbito; una regla del correo con ámbito manda sobre la cuenta, y al archivar puedes cambiarla. AgoraOne no toca nada fuera de ellas y nunca sobrescribe ni borra.</p>
     {draft && <div className="mail-new" aria-label="Nueva carpeta fiscal">
       <p className="muted"><code>{draft.path}</code></p>
@@ -79,8 +80,8 @@ export function FiscalSettingsCard() {
         <label className="field">Ámbito<ModernSelect value={draft.scopeId} options={scopeOptions} onChange={value => setDraft({ ...draft, scopeId: value })}/></label>
       </div>
       <p className="muted">Estructura: {structure[draft.kind]}.</p>
-      <div className="field-row"><button type="button" className="button primary" disabled={!draft.name.trim()} onClick={save}>Guardar carpeta</button>
-        <button type="button" className="button" onClick={() => setDraft(null)}>Cancelar</button></div>
+      <div className="field-row"><ActionButton icon="save" label="Guardar carpeta" tone="primary" disabled={!draft.name.trim()} onClick={save}/>
+        <ActionButton icon="close" label="Cancelar" onClick={() => setDraft(null)}/></div>
     </div>}
     {folders === null && !error ? <Loading label="Leyendo las carpetas"/> : <ul className="mail-accounts compact">
       {folders?.length === 0 && !draft && <li className="muted">Aún no hay carpetas. Pulsa «Añadir carpeta…» y elige, por ejemplo, la de tu actividad de autónomo.</li>}
@@ -105,9 +106,9 @@ export function FiscalSettingsCard() {
         <div className="field-row">
           {folder.kind !== 'personal' && <button type="button" className="button" disabled={busy} onClick={() => void calculate(folder.id)}>Proponer cómo ordenarla</button>}
           {removing === folder.id ? <span className="field-row" role="group" aria-label={`Confirmar olvidar ${folder.name}`}>
-            <button type="button" className="button danger" onClick={() => void act(() => removeFiscalFolder(folder.id), 'Carpeta olvidada (no se ha tocado nada en ella).').then(() => setRemoving(null))}>Olvidar de verdad</button>
-            <button type="button" className="button" onClick={() => setRemoving(null)}>Cancelar</button></span>
-            : <button type="button" className="button danger" onClick={() => setRemoving(folder.id)}>Olvidar…</button>}
+            <ActionButton icon="trash" label="Olvidar de verdad" tone="danger" onClick={() => void act(() => removeFiscalFolder(folder.id), 'Carpeta olvidada (no se ha tocado nada en ella).').then(() => setRemoving(null))}/>
+            <ActionButton icon="close" label="Cancelar" onClick={() => setRemoving(null)}/></span>
+            : <ActionButton icon="trash" label="Olvidar…" tone="danger" onClick={() => setRemoving(folder.id)}/>}
         </div>
         </>}
         {plan?.folder === folder.id && <div className="mail-new" aria-label="Plan de orden">
@@ -120,7 +121,7 @@ export function FiscalSettingsCard() {
             <ul className="fiscal-moves">{plan.plan.undecided.map(path => <li key={path}><code>{path}</code></li>)}</ul></details>}
           {plan.plan.moves.length > 0 && (confirming ? <div className="field-row" role="group" aria-label="Confirmar movimientos">
             <button type="button" className="button primary" onClick={() => void apply()}>Mover {plan.plan.moves.length} archivos (con copia previa)</button>
-            <button type="button" className="button" onClick={() => setConfirming(false)}>Cancelar</button>
+            <ActionButton icon="close" label="Cancelar" onClick={() => setConfirming(false)}/>
           </div> : <button type="button" className="button" onClick={() => setConfirming(true)}>Aplicar este plan…</button>)}
         </div>}
       </li>)}

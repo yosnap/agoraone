@@ -13,3 +13,4 @@
 .modern-select-list .ms-text { flex:1;min-width:0;overflow-wrap:anywhere }
 .modern-select-list .ms-dot { width:9px;height:9px;border-radius:3px;flex:none }
 .modern-select-list .ms-indent { flex:none }
+.modern-select-list.upward { top:auto; bottom:calc(100% + 4px) }

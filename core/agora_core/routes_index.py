@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from .db import DB_NAME, connect
 from .embed import Embedder, VectorCache, embed_pending
-from . import brain_home
+from . import brain_home, vault_review
 from .graph import graph
 from . import entities as entity_index
 from .index import Note, RuleError, remove_notes, replace_folder_rules, state, status, upsert_notes
@@ -162,6 +162,11 @@ def index_router(settings: Settings, embedder: Embedder | None, cache: VectorCac
     async def brain_home_side(discreet: bool = Query(False)):
         """The brain's side for the owner's screen: areas and what changed lately. Never sent to a model."""
         return await run(lambda c: {"areas": brain_home.areas(c, discreet), "lately": brain_home.lately(c, discreet)})
+
+    @router.get("/brain/review")
+    async def brain_review(discreet: bool = Query(False)):
+        """The vault's review for the owner's screen: what makes things hard to find. Changes nothing."""
+        return await run(lambda c: vault_review.review(c, discreet))
 
     @router.get("/graph")
     async def brain_graph(discreet: bool = Query(False), near: bool = Query(True), entities: bool = Query(False),

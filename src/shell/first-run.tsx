@@ -2,14 +2,16 @@ import { useRef, useState } from 'react';
 import { getFirstRun, putFirstRun } from '../api/core';
 import { InstallSettingsCard } from '../settings/settings-install';
 import { ModulesSettingsCard } from '../settings/settings-modules';
+import type { Section } from './shell-state';
 
 // Whether the guide was seen is kept by the core, so it counts in every browser.
+// «Ir a Conectores» from the guide only hides it: it is not marked as seen, so it comes back on the next start.
 const finish = () => void putFirstRun(true).catch(() => undefined);
 export const showFirstRunAgain = () => void putFirstRun(false).then(() => window.location.reload()).catch(() => undefined);
 
 /** The first start, guided (1.6): what is installed and what is missing, which modules to keep, and where the
  * rest is. Shown once per browser; it can be skipped and opened again from Settings › Instalación. */
-export function FirstRun() {
+export function FirstRun({ onOpen }: { onOpen: (section: Section) => void }) {
   const [open, setOpen] = useState(false);
   const asked = useRef(false);
   if (!asked.current) { asked.current = true; void getFirstRun().then(state => setOpen(!state.done)).catch(() => undefined); }
@@ -21,7 +23,7 @@ export function FirstRun() {
       <p>AgoraOne es tu cerebro personal en este equipo: tus notas, tu correo, tu agenda, tus reuniones y tus agentes de Hermes, con Watson para preguntar, hablar y pedir cosas. Lo privado no sale del equipo y nada se hace sin que lo confirmes.</p>
       <p>En dos pasos: comprobamos qué tienes instalado y eliges qué módulos quieres.</p></> },
     { title: 'Qué tengo instalado', body: <InstallSettingsCard/> },
-    { title: 'Elige tus módulos', body: <ModulesSettingsCard/> },
+    { title: 'Elige tus módulos', body: <ModulesSettingsCard onOpen={section => { setOpen(false); onOpen(section); }}/> },
     { title: 'Listo', body: <>
       <p>Llama a Watson con <strong>⌃⌥W</strong> desde cualquier app, o activa «Oye Watson» en Ajustes › Voz. En el Cerebro tienes Hoy, tus áreas, la grabación de reuniones y la música.</p>
       <p className="muted">Puedes volver a esta guía en Ajustes › Instalación.</p></> },

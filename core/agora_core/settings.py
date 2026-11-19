@@ -7,6 +7,8 @@ from pathlib import Path
 
 HOST = "127.0.0.1"
 PORT = 4318
+# AgoraOne's server (agora_server::PORT in desktop/server/src/lib.rs; a test there checks both say the same).
+SERVER_PORT = 4317
 SECRET_ENV = "AGORA_CORE_SECRET"
 DATA_ENV = "AGORA_CORE_DATA"
 _SECRET = re.compile(r"[a-f0-9]{64}")
@@ -24,6 +26,7 @@ class Settings:
     data_dir: Path = DEFAULT_DATA
     host: str = HOST
     port: int = PORT
+    server_port: int = SERVER_PORT
 
     @property
     def authority(self) -> str:

@@ -1,0 +1,18 @@
+/* The «CRMDev» section. It reuses Central's layout (tabs, filters, tables, records); only what is its own is here. No
+   side accent stripe anywhere. CRMDev's text keeps its line breaks and wraps, never as HTML. */
+.crmdev-title { min-width:16ch; max-width:60ch }
+.crmdev-title strong { overflow-wrap:anywhere }
+.crmdev-text { display:block; margin-top:4px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--c-44675e) }
+.crmdev-order { margin:0 }
+.crmdev-problem .actions { flex:none; justify-content:flex-end }
+/* A single filter does not stretch across a wide screen; «Volver a leer» and its time go on the right of the last
+   field, apart from it, at the height of the fields. */
+.crmdev .central-filters { align-items:flex-end }
+.crmdev .central-filters .field { max-width:360px }
+.crmdev-read { align-items:center; gap:12px }
+/* Rows centred: badges and buttons on the line of their text. */
+.crmdev-edit { margin-bottom:14px }
+.crmdev-edit-row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px 16px }
+.crmdev-edit-row > .field { flex:1 1 200px; min-width:0 }
+.crmdev-edit-row > .crmdev-edit-actions { margin-left:auto; margin-top:0 }
+.crmdev-new { display:flex; justify-content:flex-end; margin-bottom:10px }

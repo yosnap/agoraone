@@ -76,8 +76,28 @@ def _logged(event: dict) -> tuple[str, str]:
         return "clientes", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
     if event["tool"] == "inbox":
         return "bandeja", json.dumps({"filter": event["filter"], "count": event["count"]}, ensure_ascii=False)
+    if event["tool"] == "reorg_proposal":  # how many changes, never titles or folders
+        return "proponer_reorganizacion", json.dumps({"cambios": len(event["moves"]), "renombrados": sum(1 for m in event["moves"] if m["toTitle"])}, ensure_ascii=False)
+    if event["tool"] == "vault_outline":
+        return "revisar_vault", json.dumps({"notas": event["notes"], "carpetas": event["folders"]}, ensure_ascii=False)
+    if event["tool"] == "cleanup_proposal":  # how many and what to do, never senders or subjects
+        return "proponer_limpieza", json.dumps({"accion": event["action"], "correos": len(event["messages"])}, ensure_ascii=False)
+    if event["tool"] == "quote_proposal":  # for whom and how many lines, not the prices
+        return "proponer_presupuesto", json.dumps({"cliente": event["quote"].get("client"), "partidas": len(event["quote"].get("items") or [])}, ensure_ascii=False)
+    if event["tool"] == "event_proposal":  # that an event was proposed and when, not its title or notes
+        return "proponer_evento", json.dumps({"inicio": event["event"].get("start")}, ensure_ascii=False)
+    if event["tool"] == "note_proposal":  # that a note was proposed and where, not what it says
+        return "proponer_nota", json.dumps({"carpeta": event["note"].get("folder") or ""}, ensure_ascii=False)
     if event["tool"] == "rule_proposal":  # what kind of rule, not its sender or words
         return "proponer_regla", json.dumps({"action": event["rule"].get("action")}, ensure_ascii=False)
+    if event["tool"] == "orca_proposal":  # which repository and agent, not the task
+        return "proponer_encargo_orca", json.dumps({"repositorio": event["proposal"].get("repo"), "agente": event["proposal"].get("agent")}, ensure_ascii=False)
+    if event["tool"] == "issue_proposal":  # which repository, not what it says
+        return "proponer_issue", json.dumps({"repositorio": event["issue"].get("repo")}, ensure_ascii=False)
+    if event["tool"] == "meetings":  # how many, not the words searched
+        return "consultar_reuniones", json.dumps({"reuniones": event["count"]}, ensure_ascii=False)
+    if event["tool"] == "meeting":
+        return "leer_reunion", json.dumps({"parte": event.get("part")}, ensure_ascii=False)
     if event["tool"] in ("projects", "agenda", "day"):
         return event["tool"], json.dumps({k: v for k, v in event.items() if k != "tool"}, ensure_ascii=False, default=str)
     if event["tool"] == "read":
@@ -85,8 +105,16 @@ def _logged(event: dict) -> tuple[str, str]:
     return str(event.get("tool") or "herramienta"), "{}"
 
 
+# Answers being written right now, for the «Agentes» section (only how many and since when).
+ANSWERING: dict = {"now": 0, "since": None}
+
+
 def _event(kind: str, data) -> str:
     return f"event: {kind}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+class CleanupChoice(BaseModel):
+    ids: list[int]
 
 
 def assistant_router(
@@ -178,6 +206,8 @@ def assistant_router(
         found = proposals.get(proposal_id)
         if not owner or found is None or found["owner"] != owner or found["expires"] < time.time():
             return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        if "rule" not in found:  # a note is created by the vault's own route, never here
+            return JSONResponse({"error": "Esa propuesta no es una regla."}, status_code=409)
         proposals.pop(proposal_id, None)  # taken before any wait: a double click or a click and a «sí» create one rule
         def work(connection):
             rule_id = mail_rules.create_rule(connection, found["rule"])
@@ -191,6 +221,98 @@ def assistant_router(
             message = str(error) if isinstance(error, mail_rules.RuleError) else "La regla no se pudo guardar tal cual: pídesela otra vez a Watson."
             return JSONResponse({"error": message}, status_code=422)
         return {"id": rule_id, "name": found["rule"]["name"]}
+
+    @router.post("/proposals/{proposal_id}/quote", status_code=201)
+    async def create_quote(proposal_id: str, request: Request):
+        """Creates in Central, as a draft, the very quote Watson proposed, once, for the owner it was proposed to.
+        Needs the «Presupuestos» module on (404 otherwise) and a connection whose key has the `presupuestos`
+        permission; the «Central» module may be off."""
+        from . import central, modules
+        owner = owner_of(request)
+        found = proposals.get(proposal_id)
+        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "quote" not in found:
+            return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        proposals.pop(proposal_id, None)  # taken before any wait: two confirmations at once create one quote
+        def quotes_on():
+            with database() as connection:
+                return modules.state(connection)["presupuestos"]
+        if not await run_in_threadpool(quotes_on):
+            proposals.setdefault(proposal_id, found)  # not spent: it may be created once the module is on again
+            return JSONResponse({"error": "El módulo Presupuestos está apagado."}, status_code=404)
+        def connected():
+            with database() as connection:
+                return central.source(connection, secrets)
+        origin = await run_in_threadpool(connected)
+        if origin is None:
+            proposals.setdefault(proposal_id, found)  # not spent: it may be created once Central is connected
+            return JSONResponse({"error": "Central no está conectado: conéctalo con su dirección y su clave."}, status_code=422)
+        def work():
+            return central.create_quote(origin, found["quote"])
+        try:
+            made = await run_in_threadpool(work)
+        except (central.CentralError, Exception) as error:  # noqa: BLE001 - Central's own message, or that it failed
+            return JSONResponse({"error": str(error) if isinstance(error, central.CentralError) else "Central no pudo crear el presupuesto."}, status_code=422)
+        return {"created": made}
+
+    @router.post("/proposals/{proposal_id}/chat-reply")
+    async def open_chat_reply(proposal_id: str, request: Request):
+        """Hands the screen the WhatsApp reply Watson proposed, once, for its owner, to open the reply composer with it.
+        Sends nothing: a WhatsApp only leaves from `/chat/send`, with the seal of the preview the user saw."""
+        from . import brain_chat, chat_inbox
+        owner = owner_of(request)
+        found = proposals.get(proposal_id)
+        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "chatReply" not in found:
+            return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        proposals.pop(proposal_id, None)  # taken before any wait: a double click opens it once
+        reply = found["chatReply"]
+
+        def check():
+            with database() as connection:
+                brain_chat.still_normal(connection, reply["conversationId"])
+        try:
+            await run_in_threadpool(check)
+        except chat_inbox.ChatGone as error:
+            return JSONResponse({"error": str(error)}, status_code=404)
+        except brain_chat.ChatProposalError as error:
+            return JSONResponse({"error": str(error)}, status_code=409)
+        return {"conversationId": reply["conversationId"], "text": reply["text"]}
+
+    @router.post("/proposals/{proposal_id}/issue", status_code=201)
+    async def create_issue(proposal_id: str, request: Request):
+        """Creates on GitHub, with the user's own `gh`, the very issue Watson proposed, once, for its owner."""
+        from . import github_issues
+        owner = owner_of(request)
+        found = proposals.get(proposal_id)
+        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "issue" not in found:
+            return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        proposals.pop(proposal_id, None)  # taken before any wait: a double click creates one issue
+        try:
+            url = await run_in_threadpool(github_issues.create, found["issue"])
+        except github_issues.IssueError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
+        return {"url": url, "repo": found["issue"]["repo"]}
+
+    @router.post("/proposals/{proposal_id}/mail")
+    async def clean_mail(proposal_id: str, request: Request, body: CleanupChoice):
+        """Moves to the archive or the trash the messages the user approved, only from the list Watson proposed."""
+        from . import mail, mail_cleanup
+        from .routes_mail import microsoft_login
+        owner = owner_of(request)
+        found = proposals.get(proposal_id)
+        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "cleanup" not in found:
+            return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        chosen = [i for i in body.ids if i in set(found["cleanup"]["ids"])]
+        if not chosen:
+            return JSONResponse({"error": "No has elegido ningún correo de la lista."}, status_code=422)
+        proposals.pop(proposal_id, None)  # once: a double click moves nothing twice
+        def work():
+            with database() as connection:
+                return mail_cleanup.move(connection, chosen, found["cleanup"]["action"], lambda account: secrets.get(mail.secret_account(account)),
+                                         login=microsoft_login(connection, secrets))
+        try:
+            return await run_in_threadpool(work)
+        except mail_cleanup.CleanupError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
 
     @router.post("/proposals/{proposal_id}/dismiss")
     async def dismiss_proposal(proposal_id: str, request: Request):
@@ -275,6 +397,8 @@ def assistant_router(
 
         async def answer():
             replied = False
+            ANSWERING["now"] += 1
+            ANSWERING["since"] = ANSWERING["since"] or now()
             try:
                 yield _event("stage", {"stage": "recuerda"})
                 # Every engine runs outside this Mac: only what the external audience may see.
@@ -303,10 +427,14 @@ def assistant_router(
                         # aclosing: if the browser leaves, the engine (and Claude Code's process) is closed too.
                         async with aclosing(engine.stream(turn)) as stream:
                             async for text in stream:
-                                if text is None:  # a tool round: say what was searched and read, for real
-                                    for done in toolbox.drain():
-                                        yield _event("tool", done)
+                                # What the tools did, as soon as it is known: an engine may announce a tool round
+                                # before the tool runs (Claude Code does), so it is collected again here.
+                                done_now = toolbox.drain()
+                                for done in done_now:
+                                    yield _event("tool", done)
+                                if text is None or done_now:
                                     yield _event("sources", {"sources": toolbox.sources})
+                                if text is None:
                                     continue
                                 if not parts:
                                     yield _event("stage", {"stage": "responde", "engine": engine.name, "model": model})
@@ -318,6 +446,12 @@ def assistant_router(
                         last_error = error
                         print(f"AgoraOne núcleo: el motor {engine.name} falló, se prueba el siguiente ({error}).", file=sys.stderr)
                         continue
+                    # The last tool of the answer (often a proposal for the screen) may have run after the last round.
+                    late = toolbox.drain()
+                    for done in late:
+                        yield _event("tool", done)
+                    if late:
+                        yield _event("sources", {"sources": toolbox.sources})
                     reply = "".join(parts).strip()
                     if not reply:
                         last_error = EngineError("El motor no devolvió texto.")
@@ -334,6 +468,9 @@ def assistant_router(
                 print(f"AgoraOne núcleo: fallo al responder ({type(error).__name__}: {error}).", file=sys.stderr)
                 yield _event("error", {"error": "No se pudo completar la respuesta."})
             finally:
+                ANSWERING["now"] = max(0, ANSWERING["now"] - 1)
+                if not ANSWERING["now"]:
+                    ANSWERING["since"] = None
                 if not replied:
                     try:
                         await store(None, [], None, None)

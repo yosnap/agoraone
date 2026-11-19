@@ -3,6 +3,7 @@ stop, list and delete. Each meeting belongs to the access that recorded it."""
 
 import re
 from contextlib import contextmanager
+from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 
 import json
 
-from . import local_model, meeting_notes, system_audio
+from . import fiscal, local_model, meeting_notes, system_audio
 from .db import DB_NAME, connect, transaction
 from .meetings import MeetingError, Recorder
 from .settings import Settings
@@ -34,11 +35,34 @@ class LocalSettings(BaseModel):
     auto: bool | None = None
 
 
+class Person(BaseModel):
+    name: str
+    email: str | None = None
+
+
 class NewMeeting(BaseModel):
     title: str = ""
     confidentiality: str = "normal"
     mic_type: str
     system: bool = True
+    kind: str = "meeting"
+    client: str | None = None
+    project: str | None = None
+    people: list[str | Person] = []
+
+
+class Changes(BaseModel):
+    title: str | None = None
+    kind: str | None = None
+    client: str | None = None
+    project: str | None = None
+    people: list[str | Person] | None = None
+
+
+def downloads() -> Path:
+    """The user's Downloads folder (or their home when there is none)."""
+    folder = Path.home() / "Downloads"
+    return folder if folder.is_dir() else Path.home()
 
 
 def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_notes.Worker) -> APIRouter:
@@ -85,6 +109,16 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
     async def put_local(request: Request, body: LocalSettings):
         return await run(request, lambda c, o: meeting_notes.save_settings(c, body.model_dump(exclude_unset=True)))
 
+    @router.get("/meetings/contacts")
+    async def contacts(request: Request, q: str = ""):
+        """People from the Mac's Contacts (with the iCloud, Google and Microsoft accounts added to the system) for «Con quién»."""
+        from . import calls
+        def work(connection, owner):
+            book = calls.shared_contacts()
+            state = book.status()
+            return {"status": state, "contacts": calls.find_people(book, q[:100]) if state == "granted" else []}
+        return await run(request, work)
+
     @router.get("/meetings/summarizers")
     async def who(request: Request):
         return await run(request, lambda c, o: meeting_notes.summarizers(worker.make_engines(), meeting_notes.settings(c)))
@@ -99,6 +133,30 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
             row = recorder.owned(connection, owner, meeting_id)
             return {**recorder.view(row), "transcript": json.loads(row["transcript"] or "[]"),
                     "summary": json.loads(row["summary"]) if row["summary"] else None, "draft": meeting_notes.note(row) if row["transcript"] else None}
+        return await run(request, work)
+
+    @router.patch("/meetings/{meeting_id}")
+    async def change(request: Request, meeting_id: int, body: Changes):
+        return await run(request, lambda c, o: recorder.update(c, o, meeting_id, body.model_dump(exclude_unset=True)))
+
+    @router.post("/meetings/{meeting_id}/export")
+    async def export(request: Request, meeting_id: int):
+        """The whole meeting as a Markdown file in Downloads, shown selected in the Finder."""
+        def work(connection, owner):
+            row = recorder.owned(connection, owner, meeting_id)
+            if not row["transcript"]:
+                raise MeetingError("Todavía no hay transcripción que exportar.")
+            if row["confidentiality"] != "normal":
+                raise MeetingError("Las reuniones privadas o solo en este Mac no salen de AgoraOne: no se exportan.", 403)
+            try:
+                path = meeting_notes.export(row, downloads())
+            except OSError as error:
+                raise MeetingError(f"No se pudo escribir en Descargas ({error.strerror or type(error).__name__}).") from error
+            try:
+                fiscal.open_in_finder(path.parent, path.name, reveal=True)
+            except fiscal.FiscalError:
+                pass  # the file is there even if the Finder could not show it
+            return {"path": str(path), "name": path.name}
         return await run(request, work)
 
     @router.post("/meetings/{meeting_id}/process")
@@ -121,7 +179,7 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
 
     @router.post("/meetings")
     async def start(request: Request, body: NewMeeting):
-        return await run(request, lambda c, o: recorder.start(c, o, body.title, body.confidentiality, body.mic_type, body.system))
+        return await run(request, lambda c, o: recorder.start(c, o, body.title, body.confidentiality, body.mic_type, body.system, body.kind, body.client, body.model_dump()["people"], body.project))
 
     @router.post("/meetings/{meeting_id}/mic")
     async def piece(request: Request, meeting_id: int):

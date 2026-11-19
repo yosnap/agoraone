@@ -1,4 +1,4 @@
-import type { InboxItem, InboxKind, MailRuleAction } from '../api/core';
+import type { ChatSummary, InboxItem, InboxKind, MailRuleAction } from '../api/core';
 
 export const kindLabels: Record<InboxKind, string> = {
   invoice: 'Factura', payment: 'Pago', job: 'Oferta de trabajo', client: 'Cliente', incident: 'Incidencia',
@@ -34,3 +34,30 @@ export function announcement(item: InboxItem) {
   const proposal = item.proposal ? proposalLabels[item.proposal] : null;
   return `Tienes ${phrases[item.kind]} de ${sender(item)}${amount}${proposal ? `: ${proposal.question}` : '.'}`;
 }
+
+const chatPhrases: Partial<Record<InboxKind, string>> = {
+  invoice: 'una factura', payment: 'un aviso de pago', client: 'una petición de cliente', incident: 'una incidencia', appointment: 'una cita',
+};
+
+/** Watson's sentence for a pending WhatsApp conversation, written here and never by a model. A private one goes without
+ * its name (nor its client's); the number is never said. */
+export function chatAnnouncement(item: ChatSummary) {
+  if (item.confidentiality === 'private' || !item.participant) return 'Tienes un WhatsApp privado pendiente en la Bandeja.';
+  const who = item.participant.name || item.label || item.client?.name || 'un contacto';
+  const amount = item.details.amounts?.[0] ? ` (${item.details.amounts[0]})` : '';
+  const client = item.client && item.client.name !== who ? `, de ${item.client.name}` : '';
+  return `Tienes ${chatPhrases[item.kind] ?? 'un mensaje'} por WhatsApp de ${who}${client}${amount}. ¿Lo marco como hecho?`;
+}
+
+/** What a mail taken to Orca asks the agent by default; the user changes it before the preview. The mail's own
+ * words never go here: they travel below, marked as data. */
+export const orcaTask = 'Lee el correo del cliente que va debajo y resuelve en este repositorio lo que pide. Antes de cambiar nada, explica tu plan.';
+
+/** The same for a WhatsApp conversation: its latest messages travel below, marked as data. */
+export const orcaChatTask = 'Lee la conversación de WhatsApp del cliente que va debajo y resuelve en este repositorio lo que pide. Antes de cambiar nada, explica tu plan.';
+
+/** The level a card carries, when it is not normal (the same words for mail and WhatsApp). */
+export const levelNotes = { normal: null, local_only: 'Solo en este Mac: sin resumen de modelo', private: 'Privado: sin resumen de modelo' } as const;
+
+/** What a card can have open: a form, or a conversation's latest messages. One card per action at a time. */
+export type CardAction = 'filing' | 'noting' | 'scheduling' | 'replying' | 'orca' | 'issue' | 'messages';

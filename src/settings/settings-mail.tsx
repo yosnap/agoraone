@@ -1,18 +1,20 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
-  changeMailAccount, createMailAccount, createScope, deleteMailAccount, getMailAccounts, getMailPresets, getScopes, levelLabels, syncMailAccount,
+  changeMailAccount, checkMailSender, createMailAccount, createScope, deleteMailAccount, getMailAccounts, getMailPresets, getScopes, levelLabels, sendOnly, syncMailAccount,
   type Level, type MailAccount, type MailPreset, type MailProvider, type Scope,
 } from '../api/core';
 import { ModernSelect } from '../ui/modern-select';
 import { MicrosoftClientField, MicrosoftConnect } from './settings-microsoft';
 import { ProviderLogo } from './provider-logos';
+import { MailServersForm } from './settings-mail-servers';
 import { Loading, LoadError } from '../ui/load-state';
+import { ActionButton } from '../ui/action-button';
 
 const statusLabels: Record<MailAccount['status'], string> = {
   pending: 'Pendiente de leer', ok: 'Conectada', auth: 'Revisa la contraseña', unreachable: 'Sin conexión', error: 'Error del servidor',
 };
 const levels = (['normal', 'local_only', 'private'] as const).map(level => ({ value: level, label: levelLabels[level] }));
-const empty = { address: '', provider: 'gmail' as MailProvider, username: '', imapHost: '', imapPort: 993, smtpHost: '', password: '', scopeId: '', confidentiality: 'normal' as Level, maxAgeDays: 60 };
+const empty = { address: '', provider: 'gmail' as MailProvider, username: '', imapHost: '', imapPort: 993, smtpHost: '', smtpPort: 465, password: '', scopeId: '', confidentiality: 'normal' as Level, maxAgeDays: 60, inbound: true };
 const syncNotes: Record<string, string> = {
   busy: 'Ya se estaba leyendo esta cuenta; espera un momento.', auth: 'El servidor no aceptó la contraseña: revisa el aviso de la cuenta.',
   unreachable: 'No se pudo conectar con el servidor.', error: 'El servidor respondió con un error: revisa el aviso de la cuenta.',
@@ -37,8 +39,8 @@ function ScopeSelect({ value, scopes, onChange, onCreated, id }: { value: string
   };
   if (naming) return <span className="field-row">
     <input aria-label="Nombre del ámbito nuevo" autoFocus value={name} maxLength={80} onChange={event => setName(event.target.value)} placeholder="CodeIA, Humanitek…"/>
-    <button type="button" className="button primary" disabled={!name.trim()} onClick={() => void create()}>Crear</button>
-    <button type="button" className="button" onClick={() => setNaming(false)}>Cancelar</button>{failed && <LoadError message={failed}/>}</span>;
+    <ActionButton icon="plus" label="Crear" tone="primary" disabled={!name.trim()} onClick={() => void create()}/>
+    <ActionButton icon="close" label="Cancelar" onClick={() => setNaming(false)}/>{failed && <LoadError message={failed}/>}</span>;
   return <ModernSelect id={id} value={value} onChange={choice => choice === 'new' ? setNaming(true) : onChange(choice)}
     options={[{ value: '', label: 'Sin ámbito' }, ...scopes.map(scope => ({ value: String(scope.id), label: scope.name })), { value: 'new', label: 'Nuevo ámbito…' }]}/>;
 }
@@ -72,12 +74,14 @@ export function MailSettingsCard() {
   };
   const add = (event: FormEvent) => {
     event.preventDefault();
-    const other = form.provider === 'other';
+    const other = form.provider === 'other', relay = form.provider === 'smtp';
     void act('new', () => createMailAccount({
-      address: form.address.trim(), provider: form.provider, username: form.username.trim() || undefined,
-      imapHost: other ? form.imapHost.trim() : undefined, imapPort: other ? form.imapPort : undefined, smtpHost: other && form.smtpHost.trim() ? form.smtpHost.trim() : undefined,
+      address: form.address.trim(), provider: form.provider, username: form.provider === 'resend' ? undefined : form.username.trim() || undefined,
+      imapHost: other ? form.imapHost.trim() : undefined, imapPort: other ? form.imapPort : undefined,
+      smtpHost: (other || relay) && form.smtpHost.trim() ? form.smtpHost.trim() : undefined, smtpPort: relay ? form.smtpPort : undefined,
       scopeId: form.scopeId ? Number(form.scopeId) : null, confidentiality: form.confidentiality, maxAgeDays: form.maxAgeDays, password: form.password || undefined,
-    }), `${form.provider === 'microsoft' ? 'Cuenta añadida: pulsa «Conectar con Microsoft».' : 'Cuenta añadida. La contraseña está en el Llavero; pulsa «Leer ahora» para probarla.'}`).then(ok => { if (ok) { setForm(empty); setAdding(false); } });
+      inbound: form.provider === 'resend' ? form.inbound : undefined,
+    }), `${form.provider === 'microsoft' ? 'Cuenta añadida: pulsa «Conectar con Microsoft».' : sendOnly(form.provider) ? 'Cuenta de envío añadida. La clave está en el Llavero; pulsa «Probar» para comprobarla.' : 'Cuenta añadida. La contraseña está en el Llavero; pulsa «Leer ahora» para probarla.'}`).then(ok => { if (ok) { setForm(empty); setAdding(false); } });
   };
   if (!accounts || !presets) return <article className="card"><h2>Cuentas de correo</h2>{error ? <LoadError message={error} onRetry={load}/> : <Loading label="Leyendo las cuentas de correo"/>}</article>;
   const preset = presets[form.provider];
@@ -90,17 +94,23 @@ export function MailSettingsCard() {
           title={open.has(account.id) ? 'Cerrar' : 'Ver y editar'}>
           <ProviderLogo provider={account.provider}/>
           <span className="compact-name"><strong>{account.address}</strong>
-            <small className="muted">{account.scopeName ?? 'Sin ámbito'}{account.confidentiality !== 'normal' ? ` · ${levelLabels[account.confidentiality]}` : ''} · {account.messages} correos · {when(account.lastSyncAt)}</small></span>
+            <small className="muted">{account.scopeName ?? 'Sin ámbito'}{account.confidentiality !== 'normal' ? ` · ${levelLabels[account.confidentiality]}` : ''} · {account.kind === 'send' && !account.inbound ? `solo envío · ${account.smtpHost}` : `${account.kind === 'send' ? 'Resend · ' : ''}${account.messages} correos · ${when(account.lastSyncAt)}`}</small></span>
           <span className={`status-badge ${!account.enabled ? 'paused' : account.status === 'ok' ? 'good' : account.status === 'pending' ? 'waiting' : 'bad'}`}>
-            {account.enabled ? statusLabels[account.status] : 'En pausa'}</span>
+            {!account.enabled ? 'En pausa' : account.kind === 'send' && account.status === 'pending' ? 'Sin probar' : account.kind === 'send' && account.status === 'ok' ? (account.inbound ? 'Conectada' : 'Lista para enviar') : statusLabels[account.status]}</span>
           <span className="compact-chevron" aria-hidden="true">▾</span>
         </button>
-        <button className="button compact-action" disabled={busy === account.id || !account.hasPassword} title="Leer ahora"
+        {account.kind === 'send' ? <button className="button compact-action" disabled={busy === account.id || !account.hasPassword} title="Iniciar sesión en el servidor de salida sin enviar nada"
+          onClick={() => void act(account.id, async () => {
+            const answer = await checkMailSender(account.id);
+            setNote(answer.result.detail);
+            return answer;
+          }, '')}>{busy === account.id ? 'Probando…' : 'Probar'}</button> : null}
+        {(account.kind === 'mailbox' || account.inbound) && <button className="button compact-action" disabled={busy === account.id || !account.hasPassword} title="Leer ahora"
           onClick={() => void act(account.id, async () => {
             const answer = await syncMailAccount(account.id);
             setNote(answer.result.status === 'ok' ? `Leídos ${answer.result.added} correos nuevos${answer.result.added ? ' (el resto llega en segundo plano)' : ''}.` : syncNotes[answer.result.status] ?? 'No se pudo leer.');
             return answer;
-          }, '')}>{busy === account.id ? 'Leyendo…' : 'Leer'}</button>
+          }, '')}>{busy === account.id ? 'Leyendo…' : 'Leer'}</button>}
       </div>
       {account.lastError && account.status !== 'ok' && <small className="mail-error">{account.lastError}</small>}
       {open.has(account.id) && <>
@@ -112,17 +122,22 @@ export function MailSettingsCard() {
       </div>
       {account.auth === 'microsoft' ? <MicrosoftConnect accountId={account.id} connected={account.hasPassword} onDone={load}/> :
       <form className="field-row" onSubmit={event => { event.preventDefault(); void act(account.id, () => changeMailAccount(account.id, { password: passwords[account.id] }), 'Contraseña guardada en el Llavero.').then(ok => { if (ok) setPasswords({ ...passwords, [account.id]: '' }); }); }}>
-        <label className="field">{account.hasPassword ? 'Cambiar la contraseña de aplicación' : 'Contraseña de aplicación'}
+        <label className="field">{account.provider === 'resend' ? (account.hasPassword ? 'Cambiar la clave de API de Resend' : 'Clave de API de Resend') : account.hasPassword ? 'Cambiar la contraseña de aplicación' : 'Contraseña de aplicación'}
           <input type="password" autoComplete="off" spellCheck={false} value={passwords[account.id] ?? ''} onChange={event => setPasswords({ ...passwords, [account.id]: event.target.value })} placeholder="Nunca se muestra una vez guardada"/></label>
-        <button className="button" disabled={(passwords[account.id] ?? '').length < 4 || busy === account.id}>Guardar</button>
+        <ActionButton icon="save" label="Guardar" type="submit" disabled={(passwords[account.id] ?? '').length < 4 || busy === account.id}/>
       </form>}
+      {account.provider === 'resend' && <label className="check"><input type="checkbox" checked={account.inbound} disabled={busy === account.id}
+        onChange={event => void act(account.id, () => changeMailAccount(account.id, { inbound: event.target.checked }), event.target.checked ? 'AgoraOne leerá también lo que recibes en Resend.' : 'Ya no se lee lo que recibes en Resend.')}/>
+        Leer también lo que recibes en Resend (necesita una clave con «Full access»)</label>}
+      {account.auth === 'password' && <MailServersForm key={`${account.username}:${account.imapHost}:${account.imapPort}:${account.smtpHost}:${account.smtpPort}`} account={account} busy={busy === account.id}
+        onSave={(work, done) => act(account.id, work, done)}/>}
       <div className="actions">
-        <button className="button" disabled={busy === account.id} onClick={() => void act(account.id, () => changeMailAccount(account.id, { enabled: !account.enabled }), account.enabled ? 'Cuenta en pausa.' : 'Cuenta reanudada.')}>{account.enabled ? 'Pausar' : 'Reanudar'}</button>
+        <button type="button" className="button" disabled={busy === account.id} onClick={() => void act(account.id, () => changeMailAccount(account.id, { enabled: !account.enabled }), account.enabled ? 'Cuenta en pausa.' : 'Cuenta reanudada.')}>{account.enabled ? 'Pausar' : 'Reanudar'}</button>
         {removing === account.id ? <span className="field-row" role="group" aria-label={`Confirmar quitar ${account.address}`}>
           <small>Se borran sus correos guardados y su contraseña del Llavero; el buzón no se toca.</small>
-          <button className="button danger" disabled={busy === account.id} onClick={() => void act(account.id, () => deleteMailAccount(account.id), 'Cuenta quitada.').then(() => setRemoving(null))}>Quitar</button>
-          <button className="button" onClick={() => setRemoving(null)}>Cancelar</button>
-        </span> : <button className="button danger" disabled={busy === account.id} onClick={() => setRemoving(account.id)}>Quitar…</button>}
+          <ActionButton icon="trash" label="Quitar" tone="danger" disabled={busy === account.id} onClick={() => void act(account.id, () => deleteMailAccount(account.id), 'Cuenta quitada.').then(() => setRemoving(null))}/>
+          <ActionButton icon="close" label="Cancelar" onClick={() => setRemoving(null)}/>
+        </span> : <ActionButton icon="trash" label="Quitar…" tone="danger" disabled={busy === account.id} onClick={() => setRemoving(account.id)}/>}
       </div>
       </>}
     </li>)}</ul> : <p className="muted">Todavía no hay cuentas conectadas.</p>}
@@ -132,20 +147,26 @@ export function MailSettingsCard() {
       <small className="muted">{preset.hint}</small>
       {form.provider === 'microsoft' && <MicrosoftClientField/>}
       <label className="field">Dirección<input type="email" required value={form.address} onChange={event => setForm({ ...form, address: event.target.value })} autoComplete="off"/></label>
-      {form.provider !== 'microsoft' && <label className="field">Usuario (si no es la dirección)<input value={form.username} onChange={event => setForm({ ...form, username: event.target.value })} autoComplete="off"/></label>}
+      {form.provider !== 'microsoft' && form.provider !== 'resend' && <label className="field">{form.provider === 'smtp' ? 'Usuario' : 'Usuario (si no es la dirección)'}<input value={form.username} onChange={event => setForm({ ...form, username: event.target.value })} autoComplete="off"/></label>}
       {form.provider === 'other' && <div className="mail-account-fields">
         <label className="field">Servidor IMAP<input required value={form.imapHost} onChange={event => setForm({ ...form, imapHost: event.target.value })} placeholder="imap.tudominio.com"/></label>
         <label className="field">Puerto IMAP (SSL)<input type="number" min={1} max={65535} value={form.imapPort} onChange={event => setForm({ ...form, imapPort: Math.max(1, Math.min(65535, Number(event.target.value) || 993)) })}/></label>
         <label className="field">Servidor SMTP<input value={form.smtpHost} onChange={event => setForm({ ...form, smtpHost: event.target.value })} placeholder="smtp.tudominio.com"/></label>
       </div>}
-      {form.provider !== 'microsoft' && <label className="field">Contraseña de aplicación<input type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} autoComplete="off" spellCheck={false} placeholder="Va directa al Llavero"/></label>}
+      {form.provider === 'resend' && <label className="check"><input type="checkbox" checked={form.inbound} onChange={event => setForm({ ...form, inbound: event.target.checked })}/>
+        Leer también lo que recibes en Resend (necesita una clave con «Full access»; las de solo envío no leen)</label>}
+      {form.provider === 'smtp' && <div className="mail-account-fields">
+        <label className="field">Servidor SMTP<input required value={form.smtpHost} onChange={event => setForm({ ...form, smtpHost: event.target.value })} placeholder="smtp.sendgrid.net"/></label>
+        <label className="field">Puerto SMTP<input type="number" min={1} max={65535} value={form.smtpPort} onChange={event => setForm({ ...form, smtpPort: Math.max(1, Math.min(65535, Number(event.target.value) || 465)) })}/></label>
+      </div>}
+      {form.provider !== 'microsoft' && <label className="field">{form.provider === 'resend' ? 'Clave de API de Resend' : form.provider === 'smtp' ? 'Contraseña o clave del servicio' : 'Contraseña de aplicación'}<input type="password" value={form.password} onChange={event => setForm({ ...form, password: event.target.value })} autoComplete="off" spellCheck={false} placeholder="Va directa al Llavero"/></label>}
       <div className="mail-account-fields">
         <label className="field">Ámbito<ScopeSelect value={form.scopeId} scopes={scopes} onCreated={setScopes} onChange={value => setForm({ ...form, scopeId: value })}/></label>
         <label className="field">Nivel<ModernSelect value={form.confidentiality} options={levels} onChange={value => setForm({ ...form, confidentiality: value as Level })}/></label>
-        <label className="field">Días hacia atrás<input type="number" min={1} max={3650} value={form.maxAgeDays} onChange={event => setForm({ ...form, maxAgeDays: Math.max(1, Math.min(3650, Number(event.target.value) || 60)) })}/></label>
+        {(!sendOnly(form.provider) || (form.provider === 'resend' && form.inbound)) && <label className="field">Días hacia atrás<input type="number" min={1} max={3650} value={form.maxAgeDays} onChange={event => setForm({ ...form, maxAgeDays: Math.max(1, Math.min(3650, Number(event.target.value) || 60)) })}/></label>}
       </div>
-      <div className="actions"><button className="button primary" disabled={busy === 'new' || !form.address.includes('@')}>Añadir cuenta</button><button type="button" className="button" onClick={() => setAdding(false)}>Cancelar</button></div>
-    </form> : <div className="actions"><button className="button" onClick={() => setAdding(true)}>Añadir cuenta</button></div>}
+      <div className="actions"><ActionButton icon="plus" label="Añadir cuenta" tone="primary" type="submit" disabled={busy === 'new' || !form.address.includes('@')}/><ActionButton icon="close" label="Cancelar" onClick={() => setAdding(false)}/></div>
+    </form> : <div className="actions"><ActionButton icon="plus" label="Añadir cuenta" onClick={() => setAdding(true)}/></div>}
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;
 }

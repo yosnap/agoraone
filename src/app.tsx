@@ -1,4 +1,5 @@
-import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { FOCUS_FOR, useOfficeFocus } from './office/office-focus';
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { catalogPlaces, servicePlaces } from './data/city';
 import { getHermesCatalog, type Status, type DocumentSource } from './api/client';
 import { LibraryPanel } from './ui/library-panel';
@@ -11,6 +12,8 @@ import { serviceGroups } from './data/service-groups';
 import type { HermesCatalog } from '../shared/hermes-catalog';
 import './ui/hermes-catalog.css';
 import { useHermesActivity } from './data/use-hermes-activity';
+import { atWork, useCodingSessions } from './agents/coding-feed';
+import { CodingSessions } from './agents/coding-sessions';
 import { gatewaySummary } from './data/activity-format';
 import { ActivityLog } from './ui/activity-log';
 import { VaultPanel } from './ui/vault-panel';
@@ -61,6 +64,7 @@ export function Office({ status, active, onWaiting, onWatson }: { status: Status
   const [restored, setRestored] = useState(false);
   const daylight = useDaylightClock(lightMode);
   const hermesActivity = useHermesActivity(status?.csrf);
+  const coding = useCodingSessions();  // the code workshop's agents, from their own records
   const [logOpen, setLogOpen] = useState(false);
   const [vaultRoom, setVaultRoom] = useState<string | null>(null);
   const [vaultFolder, setVaultFolder] = useState<string | null>(null);
@@ -124,6 +128,18 @@ export function Office({ status, active, onWaiting, onWatson }: { status: Status
     if (id === 'library') setLibraryTab('chat'); else setProfileTab('chat');
   };
   const browse = () => { setSelected('library'); setLibraryTab('documents'); };
+  // A card in «Agentes» asked to see this agent here or to talk to it: done once per request, while rendering
+  // (no effect needed: the request number tells whether it was already handled).
+  const focus = useOfficeFocus();
+  const handledFocus = useRef(0);
+  if (focus && focus.n !== handledFocus.current && (Date.now() - focus.at > FOCUS_FOR || places.some(place => place.id === focus.id))) {
+    handledFocus.current = focus.n;
+    if (Date.now() - focus.at <= FOCUS_FOR) {
+      // «Verlo en la ciudad»: out of any room or first person first, so the city is what you see.
+      if (focus.mode === 'select') { setVaultRoom(null); setInside(false); setIntegrationsInside(false); setProfileRoom(null); setFirstPerson(false); }
+      if (focus.mode === 'chat') openChat(focus.id); else select(focus.id);
+    }
+  }
   const exit = () => { setBook(null); setVaultRoom(null); setVaultFolder(null); setInside(false); setIntegrationsInside(false); setProfileRoom(null); setFirstPerson(false); setSelected(null); };
   // The profile's own space: same look, theme and real declarations as in the city.
   const room = useMemo<ProfileRoom | undefined>(() => {
@@ -237,7 +253,7 @@ export function Office({ status, active, onWaiting, onWatson }: { status: Status
     return () => window.removeEventListener('keydown', back);
   });
   return <main hidden={!active} className={indoors || daylight.night > 0.5 ? 'inside-world' : undefined}>
-    <div className="world"><WorldBoundary><Suspense fallback={<div className="canvas-fallback" role="status">Cargando la ciudad…</div>}><City paused={!active} statuses={statuses} places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected || bookOpen} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf} onBook={id => vaultRoom && openBook(vaultRoom, id)}/></Suspense></WorldBoundary></div>
+    <div className="world"><WorldBoundary><Suspense fallback={<div className="canvas-fallback" role="status">Cargando la ciudad…</div>}><City paused={!active} statuses={statuses} coding={atWork(coding)} places={places} selected={selected} onSelect={select} firstPerson={firstPerson} blocked={!!selected || bookOpen} inside={inside} integrations={integrationsInside} room={room} onStation={station} services={serviceGroups(catalog)} onBrowse={browse} onExit={exit} daylight={daylight} activity={hermesActivity.activity} vault={vaultRoom ? { name: vaultName, shelves: vault.shelves } : undefined} onShelf={openShelf} onBook={id => vaultRoom && openBook(vaultRoom, id)}/></Suspense></WorldBoundary></div>
     <header className="topbar" data-theme="light"><a className="brand" href="/">a<span>AGORA<span className="brand-light">ONE</span></span></a>{crumbs.length > 1 ? <Breadcrumbs crumbs={crumbs}/> : <span className="top-note">TU MUNDO, EN UN LUGAR</span>}<div className="local-status"><i/> LOCAL · MAC</div></header>
     <section data-theme="light" className={`intro ${indoors || daylight.night > 0.5 ? 'interior-intro' : ''}`}><div className="eyebrow">{copy.eyebrow}</div><h1>{copy.title}</h1><p>{copy.text}</p></section>
     <nav className="view-switch" aria-label="Modo de cámara"><button className={!firstPerson ? 'active' : ''} aria-label="Vista ciudad" onClick={exit}><span aria-hidden="true">↗</span> <span className="view-label">Vista ciudad</span></button><button className={firstPerson ? 'active' : ''} aria-label="Primera persona" onClick={() => setFirstPerson(true)}><span aria-hidden="true">◎</span> <span className="view-label">Primera persona</span></button>
@@ -259,8 +275,8 @@ export function Office({ status, active, onWaiting, onWatson }: { status: Status
     {firstPerson && kind === 'city' && !selected && <WalkHud places={selectablePlaces.filter(item => item.kind !== 'service')} onUse={actNear}/>}
     <div className="world-caption" data-theme="light"><span>{copy.caption}</span><small>{copy.hint}</small></div>
     {logOpen && !place && <ActivityLog activity={hermesActivity.activity} catalog={catalog} error={hermesActivity.error} onRetry={hermesActivity.reload} onSelect={select} onClose={() => setLogOpen(false)}/>}
-    {panelPlaces.map(place => <aside key={place.id} hidden={place.id !== selected} className="detail-panel" aria-label={`Espacio ${place.name}`}><button className="close" aria-label="Cerrar espacio" onClick={() => setSelected(null)}>×</button><div className="eyebrow">{place.kind === 'profile' ? 'PERFIL HERMES' : place.kind === 'space' ? 'ESPACIO HERMES' : place.kind === 'vault' ? 'OBSIDIAN · VAULT LOCAL' : place.kind === 'service' ? 'MCP · SERVICIO CONFIGURADO' : 'BIBLIOTECA · AGORAONE'}</div><h2>{place.character || place.name}<span style={{ background: place.color }}/></h2><p className="description">{place.description}</p>
-      {place.id === 'library' ? <LibraryPanel status={status} onConnected={() => setConnected(true)} inside={inside} onEnter={() => { setVaultRoom(null); setIntegrationsInside(false); setProfileRoom(null); setInside(true); setFirstPerson(true); setSelected(null); }} tab={libraryTab} onTab={setLibraryTab} document={attachments.library} onDetach={() => attach('library')} targets={consultTargets} onConsult={consult} onChanged={changeAttachment} onChatState={state => reportChat('library', state)}/> : catalog && (place.id === 'mcp-center' ? <IntegrationsPanel catalog={catalog} inside={integrationsInside} onEnter={enterIntegrations} onSelect={select}/> : place.kind === 'vault' ? <VaultPanel key={place.id} vaultId={place.id} listing={vault.listing} error={vault.error} onRetry={vault.reload} inside={vaultRoom === place.id} onEnter={() => enterVault(place.id)} folder={vaultFolder} onFolder={setVaultFolder} onRead={id => openBook(place.id, id)} reading={book?.vault === place.id ? book.note : null} onCreated={id => { vault.reload(); openBook(place.id, id, true); }}/> : place.kind === 'service' ? <ResourcePanel key={place.id} id={place.id} catalog={catalog} onSelect={select} activity={hermesActivity.activity}/> : <HermesPanel key={place.id} id={place.id} catalog={catalog} onSelect={select} status={status} onConnected={() => setConnected(true)} tab={place.id === selected ? profileTab : 'chat'} onTab={setProfileTab} inside={profileRoom === place.id} onEnter={() => enterProfile(place.id)} activity={hermesActivity} document={attachments[place.id]} onDetach={() => attach(place.id)} onChatState={state => reportChat(place.id, state)}/>)}
+    {panelPlaces.map(place => <aside key={place.id} hidden={place.id !== selected} className="detail-panel" aria-label={`Espacio ${place.name}`}><button className="close" aria-label="Cerrar espacio" onClick={() => setSelected(null)}>×</button><div className="eyebrow">{place.kind === 'profile' ? 'PERFIL HERMES' : place.kind === 'space' ? 'ESPACIO HERMES' : place.kind === 'vault' ? 'OBSIDIAN · VAULT LOCAL' : place.kind === 'service' ? 'MCP · SERVICIO CONFIGURADO' : place.kind === 'workshop' ? 'AGENTES DE CÓDIGO · ESTE MAC' : 'BIBLIOTECA · AGORAONE'}</div><h2>{place.character || place.name}<span style={{ background: place.color }}/></h2><p className="description">{place.description}</p>
+      {place.id === 'library' ? <LibraryPanel status={status} onConnected={() => setConnected(true)} inside={inside} onEnter={() => { setVaultRoom(null); setIntegrationsInside(false); setProfileRoom(null); setInside(true); setFirstPerson(true); setSelected(null); }} tab={libraryTab} onTab={setLibraryTab} document={attachments.library} onDetach={() => attach('library')} targets={consultTargets} onConsult={consult} onChanged={changeAttachment} onChatState={state => reportChat('library', state)}/> : place.kind === 'workshop' ? <CodingSessions sessions={coding} discreet={false} now={Date.now()} compact/> : catalog && (place.id === 'mcp-center' ? <IntegrationsPanel catalog={catalog} inside={integrationsInside} onEnter={enterIntegrations} onSelect={select}/> : place.kind === 'vault' ? <VaultPanel key={place.id} vaultId={place.id} listing={vault.listing} error={vault.error} onRetry={vault.reload} inside={vaultRoom === place.id} onEnter={() => enterVault(place.id)} folder={vaultFolder} onFolder={setVaultFolder} onRead={id => openBook(place.id, id)} reading={book?.vault === place.id ? book.note : null} onCreated={id => { vault.reload(); openBook(place.id, id, true); }}/> : place.kind === 'service' ? <ResourcePanel key={place.id} id={place.id} catalog={catalog} onSelect={select} activity={hermesActivity.activity}/> : <HermesPanel key={place.id} id={place.id} catalog={catalog} onSelect={select} status={status} onConnected={() => setConnected(true)} tab={place.id === selected ? profileTab : 'chat'} onTab={setProfileTab} inside={profileRoom === place.id} onEnter={() => enterProfile(place.id)} activity={hermesActivity} document={attachments[place.id]} onDetach={() => attach(place.id)} onChatState={state => reportChat(place.id, state)}/>)}
     </aside>)}
     {waitingPlace && <div className="approval-toast" role="alert"><span>{catalog?.profiles.find(profile => profile.id === waitingPlace.id)?.label ?? 'Luma'} espera tu permiso para usar una herramienta.</span><button onClick={() => openChat(waitingPlace.id)}>Ver conversación</button></div>}
     {firstPerson && kind === 'city' && <CityMinimap places={places} onSelect={select}/>}

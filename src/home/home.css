@@ -1,0 +1,48 @@
+.home { position:absolute; inset:0; overflow-y:auto; padding:18px 18px 120px; display:flex; flex-direction:column; gap:14px; color:var(--c-173d3c) }
+.home-head { display:flex; align-items:center; justify-content:space-between; gap:12px }
+.home-head h2 { margin:0; font-size:15px }
+.home-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; align-items:start }
+.home-block { background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:14px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; min-width:0 }
+.home-block.wide { grid-column:1 / -1 }
+.home-block header { display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+.home-block h3 { margin:0; font-size:13px; display:flex; align-items:center; gap:6px; margin-right:auto }
+.home-count { font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px; background:var(--c-e6eadf); color:var(--c-355a50) }
+.home-alert { font-size:11px; padding:2px 8px; border-radius:999px; background:var(--c-f6ddd4); color:var(--c-8e3d2a) }
+.home-open { border:0; background:none; padding:0; font:inherit; font-size:11px; color:var(--c-355a50); cursor:pointer; text-decoration:underline; text-underline-offset:2px }
+.home-empty { margin:0; font-size:12px; color:var(--c-4c6b62) }
+.home-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; font-size:12px }
+.home-list li { display:flex; gap:8px; align-items:baseline; min-width:0 }
+.home-list li > span:last-child { min-width:0; overflow-wrap:anywhere }
+.home-list small { color:var(--c-4c6b62) }
+.home-list li.soon { background:var(--c-dcebdc); color:var(--c-24563a); border-radius:8px; padding:4px 6px; margin:0 -6px }
+.home-list li.warn { color:var(--c-7a5717) }
+.home-when { flex:0 0 auto; min-width:82px; font-size:11px; color:var(--c-4c6b62) }
+.home-dot { flex:0 0 auto; width:8px; height:8px; border-radius:50%; background:var(--c-c9d3c4); align-self:center }
+.home-dot.red { background:var(--c-8e3d2a) }
+.home-dot.amber { background:var(--c-996a25) }
+.home-dot.green { background:var(--c-24563a) }
+.home-slider { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px }
+.home-slider > .button { padding:6px 11px; font-size:16px; line-height:1 }
+.home-slide { display:flex; flex-direction:column; gap:4px; min-width:0; padding:10px 12px; border-radius:10px; background:var(--c-fffffa); border:1px solid var(--c-e6eadf) }
+.home-slide strong { font-size:13px; overflow-wrap:anywhere }
+.home-slide p { margin:0; font-size:12px; color:var(--c-355a50) }
+.home-meta { font-size:11px; color:var(--c-4c6b62) }
+.home-ask { font-size:11px; color:var(--c-7a5717) }
+.home-pos { grid-column:1 / -1; justify-self:center; font-size:11px; color:var(--c-4c6b62) }
+.brain-view-switch { position:absolute; top:12px; right:12px; z-index:5; display:flex; gap:4px; padding:3px; border-radius:999px; background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6) }
+.brain-view-switch button { border:0; background:none; font:inherit; font-size:12px; padding:5px 12px; border-radius:999px; color:var(--c-355a50); cursor:pointer }
+.brain-view-switch button[aria-pressed="true"] { background:var(--c-173d3c); color:var(--c-fffffa) }
+.brain-stage.panel .home { padding-top:52px }
+/* With the panel at the centre the dock (record, music) sits under the blocks instead of floating over them. */
+@media (min-width:851px) {
+  .brain.centre-panel { grid-template-rows:auto minmax(0,1fr) auto }
+  .brain.centre-panel .brain-panel, .brain.centre-panel > .assistant.embedded { grid-row:2 / 4 }
+  .brain.centre-panel .brain-dock { position:static; grid-column:2; grid-row:3; padding:0 18px 14px; background:var(--c-f1f2ea) }
+  .brain.centre-panel .home { padding-bottom:18px }
+  .brain.centre-panel .dock-card { flex:1 1 240px }
+}
+.home-list small.home-clamp, .home-clamp { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+/* The WhatsApp badge of a received message: a filled pill, never a side stripe. */
+.home-badge { display:inline-block; margin-right:6px; padding:0 6px; border-radius:999px; background:#d4f0dc; color:#1c5a33; font-size:10px; font-weight:600 }
+:root[data-theme="dark"] .home-badge { background:#173d26; color:#b4e6c4 }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .home-badge { background:#173d26; color:#b4e6c4 } }

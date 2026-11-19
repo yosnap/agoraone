@@ -6,7 +6,15 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod addon_window;
+mod central_window;
+mod crmdev_window;
+mod fabrica_window;
+mod youtube_window;
+
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use agora_server::PORT;
@@ -137,42 +145,97 @@ fn listen(app: &AppHandle) {
 }
 
 /// «Oye Watson» (1.5): while the user has it on in Ajustes › Voz, the on-device listener runs and each "wake"
-/// it prints works like ⌃⌥W. Off, or the app closing, stops it (its input pipe closes with the app).
+/// it prints works like ⌃⌥W. Off, or the app closing, stops it (its input pipe closes with the app). How it is
+/// doing goes to the core for Ajustes › Voz: listening, or why it could not start. After a failure it is not
+/// started again (macOS would ask again and again) until the user turns it on again or presses «Reintentar»
+/// (the core's «attempt» grows). If the core cannot be read, nothing changes until the next look.
 fn wake_loop(app: AppHandle, link: agora_server::core::CoreLink) {
-    let Some(helper) = bundle_resources().map(|r| r.join("core/helpers/bin/agora-wake")).filter(|p| p.is_file()) else { return };
+    let helper = bundle_resources().map(|r| r.join("core/helpers/bin/agora-wake")).filter(|p| p.is_file());
     tauri::async_runtime::spawn(async move {
         use tokio::io::AsyncBufReadExt;
         let http = reqwest::Client::new();
         let mut child: Option<tokio::process::Child> = None;
+        let mut failed = false;
+        let mut said_off = false;
+        let mut attempt = 0;
+        let mut alive = Arc::new(AtomicBool::new(false));
         loop {
-            let on = agora_server::core::core_request(&http, &link, "/wake/settings", None).await
-                .ok().and_then(|a| a.get("enabled").and_then(|e| e.as_bool())).unwrap_or(false);
-            let running = child.as_mut().is_some_and(|c| c.try_wait().ok().flatten().is_none());
-            if on && !running {
-                if let Ok(mut started) = tokio::process::Command::new(&helper).stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).kill_on_drop(true).spawn()
-                {
-                    if let Some(out) = started.stdout.take() {
-                        let app = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let mut lines = tokio::io::BufReader::new(out).lines();
-                            while let Ok(Some(line)) = lines.next_line().await {
-                                if line.trim() == "wake" {
-                                    listen(&app);
-                                }
-                            }
-                        });
-                    }
-                    child = Some(started);
-                }
-            } else if !on && running {
+            if let Some(ended) = child.as_mut().and_then(|c| c.try_wait().ok().flatten()) {
+                child = None;
+                failed = true;
+                alive.store(false, Ordering::SeqCst);
+                wake_state(&http, &link, wake_failure(ended.code())).await;
+            }
+            let Ok(settings) = agora_server::core::core_request(&http, &link, "/wake/settings", None).await else {
+                tokio::time::sleep(Duration::from_secs(4)).await;
+                continue;
+            };
+            let on = settings.get("enabled").and_then(|e| e.as_bool()).unwrap_or(false);
+            // Turned on again (or «Reintentar»): a fresh try after a failure.
+            let asked = settings.get("attempt").and_then(|a| a.as_u64()).unwrap_or(0);
+            if asked != attempt {
+                attempt = asked;
+                failed = false;
+            }
+            if !on {
+                // A «ready» still on its way must not say «listening» after this says «off».
+                alive.store(false, Ordering::SeqCst);
                 if let Some(mut stopping) = child.take() {
                     let _ = stopping.kill().await;
+                    said_off = false;
+                }
+                if !said_off || failed {
+                    wake_state(&http, &link, "off").await;
+                    said_off = true;
+                }
+                failed = false;
+            } else if child.is_none() && !failed {
+                said_off = false;
+                match helper.as_ref().map(|h| tokio::process::Command::new(h).stdin(std::process::Stdio::piped())
+                    .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).kill_on_drop(true).spawn())
+                {
+                    Some(Ok(mut started)) => {
+                        wake_state(&http, &link, "starting").await;
+                        alive = Arc::new(AtomicBool::new(true));
+                        if let Some(out) = started.stdout.take() {
+                            let (app, http, link, alive) = (app.clone(), http.clone(), link.clone(), alive.clone());
+                            tauri::async_runtime::spawn(async move {
+                                let mut lines = tokio::io::BufReader::new(out).lines();
+                                while let Ok(Some(line)) = lines.next_line().await {
+                                    match line.trim() {
+                                        "ready" if alive.load(Ordering::SeqCst) => wake_state(&http, &link, "listening").await,
+                                        "wake" => listen(&app),
+                                        _ => {}
+                                    }
+                                }
+                            });
+                        }
+                        child = Some(started);
+                    }
+                    other => {
+                        failed = true;
+                        wake_state(&http, &link, if other.is_none() { "missing" } else { "stopped" }).await;
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_secs(4)).await;
         }
     });
+}
+
+/// What the listener's exit code means (see core/helpers/wake-macos.swift).
+fn wake_failure(code: Option<i32>) -> &'static str {
+    match code {
+        Some(2) => "no_speech_permission",
+        Some(3) => "mic_failed",
+        Some(4) => "no_offline",
+        Some(5) => "no_mic_permission",
+        _ => "stopped",
+    }
+}
+
+async fn wake_state(http: &reqwest::Client, link: &agora_server::core::CoreLink, state: &str) {
+    let _ = agora_server::core::core_request(http, link, "/internal/wake/status", Some(&serde_json::json!({ "state": state }))).await;
 }
 
 fn main() {
@@ -200,12 +263,24 @@ fn main() {
             let _ = app.global_shortcut().register(Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyW));
             if let Some(link) = core_link.clone() {
                 notify_loop(app.handle().clone(), link.clone());
-                wake_loop(app.handle().clone(), link);
+                wake_loop(app.handle().clone(), link.clone());
+                central_window::central_loop(app.handle().clone(), link.clone());
+                crmdev_window::crmdev_loop(app.handle().clone(), link.clone());
+                fabrica_window::fabrica_loop(app.handle().clone(), link.clone());
+                youtube_window::youtube_loop(app.handle().clone(), link);
             }
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(address.clone()))
                 .title("AgoraOne")
                 .inner_size(1440.0, 900.0)
                 .min_inner_size(1024.0, 680.0)
+                // Only this window may hand videos to the hidden YouTube window (a browser tab cannot hear it).
+                .initialization_script("window.__agoraDesktop = true;")
+                // Loading again (or the page failing) leaves nothing playing that it could not stop.
+                .on_page_load(|window, load| {
+                    if load.event() == tauri::webview::PageLoadEvent::Started {
+                        youtube_window::silence(window.app_handle());
+                    }
+                })
                 .on_navigation(|url| {
                     if own(url) {
                         return true;
@@ -231,7 +306,13 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .unwrap_or_else(|_| alert("no se pudo abrir la ventana"));
-    app.run(move |_, event| {
+    app.run(move |app, event| {
+        // Neither the hidden YouTube window nor an add-on's (Central, CRMDev, Mi fábrica) keeps the app open: closing AgoraOne's window closes them too.
+        if let RunEvent::WindowEvent { label, event: tauri::WindowEvent::Destroyed, .. } = &event
+            && label == "main"
+        {
+            app.exit(0);
+        }
         if let RunEvent::Exit = event {
             if let Some(stop) = stop.take() {
                 let _ = stop.send(());
@@ -241,4 +322,20 @@ fn main() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn la_ventana_solo_carga_agoraone_en_127_0_0_1() {
+        let at = |text: &str| own(&Url::parse(text).expect("url"));
+        assert!(at(&format!("http://127.0.0.1:{PORT}/#acceso=abc")));
+        // localhost could resolve to a program on [::1] with the same port and read the token from the address.
+        for other in [format!("http://localhost:{PORT}/"), format!("http://[::1]:{PORT}/"), format!("https://127.0.0.1:{PORT}/"),
+                      format!("http://127.0.0.1:{}/", PORT + 1), format!("http://localhost.:{PORT}/")] {
+            assert!(!at(&other), "{other}");
+        }
+    }
 }

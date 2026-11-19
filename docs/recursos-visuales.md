@@ -38,10 +38,12 @@ dustinc555/mygame (cuerpos Regular de Universal Base Characters).
 | Male_Peasant / Female_Peasant | Modular Character Outfits – Fantasy | WebP 1024, meshopt; ropa teñida con el color del perfil |
 | Hair_SimpleParted, Hair_Long, Hair_Buns, Hair_Beard | Universal Base Characters | WebP 1024, meshopt; teñido de pelo en código |
 | humans-animations.glb | Universal Animation Library 1 | solo Idle_Loop, Walk_Loop y Walk_Formal_Loop, sin malla (150 KB) |
+| humans-work.glb (1.7.0-alpha.32) | Universal Animation Library 1 y 2 (CC0, misma réplica de GitHub) | Sitting_Enter, Sitting_Idle_Loop, Sitting_Talking_Loop e Idle_Talking_Loop de UAL1, e Idle_FoldArms_Loop de UAL2; solo esqueleto y animaciones, sin malla ni compresión (1,1 MB), extraídas con un script propio |
 
 Todas las piezas comparten el esqueleto humanoide de Quaternius; `src/world/human-figure.tsx`
-vuelve a enlazar ropa y pelo a los huesos del cuerpo. Se excluyeron a propósito
-animaciones de conversación o trabajo para no sugerir actividad real de Hermes.
+vuelve a enlazar ropa y pelo a los huesos del cuerpo. Las animaciones de trabajo (sentado tecleando, de brazos
+cruzados) se añadieron en la 1.7.0-alpha.32 y solo se usan cuando el estado real del agente lo dice
+(`src/world/walker.tsx`, `AgentPose`): nunca como paseo ambiental, para no sugerir actividad que no existe.
 
 ## Cómo se usan
 - `src/world/surfaces.tsx`: catálogo de superficies con tamaño real del mosaico y UV en

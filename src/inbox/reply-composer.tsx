@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
 import { useAssistantName } from '../assistant/assistant-name';
-import { composeReply, getReplyDraft, previewMail, sendMail, type InboxItem, type MailDraft, type MailPreview } from '../api/core';
+import { composeReply, getMailAccounts, getReplyDraft, previewMail, sendMail, type InboxItem, type MailAccount, type MailDraft, type MailPreview } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
+import { ModernSelect } from '../ui/modern-select';
+import { ActionButton } from '../ui/action-button';
 
 /** A reply to a received mail: written by hand or drafted by Watson (only for mail the model may read),
  * then the exact preview, and it leaves only with «Enviar» on that preview. Nothing is sent otherwise. */
@@ -14,11 +16,15 @@ export function ReplyComposer({ item, onDone, onCancel }: { item: InboxItem; onD
   const [busy, setBusy] = useState('');
   // Watson's last text, so a second «Redactar» replaces it instead of piling both up.
   const [written, setWritten] = useState('');
+  // The mailbox that received it, and any sending-only account (Resend…) ready to send.
+  const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const asked = useRef(false);
   if (!asked.current) {
     asked.current = true;
     getReplyDraft(item.id).then(setDraft).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo preparar la respuesta.'));
+    getMailAccounts().then(found => setAccounts(found.accounts)).catch(() => setAccounts([]));
   }
+  const [received, setReceived] = useState<number | null>(null);
   const run = async (label: string, work: () => Promise<void>) => {
     setBusy(label); setError('');
     try { await work(); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo completar.'); } finally { setBusy(''); }
@@ -26,7 +32,7 @@ export function ReplyComposer({ item, onDone, onCancel }: { item: InboxItem; onD
   const set = (key: keyof MailDraft) => (event: { target: { value: string } }) => { if (draft) { setDraft({ ...draft, [key]: event.target.value }); setPreview(null); } };
   const modelMay = item.confidentiality === 'normal';
   if (!draft) return error ? <div className="reply-composer"><LoadError message={error}/>
-    <div className="inbox-actions"><button type="button" className="button" onClick={onCancel}>Cancelar</button></div></div>
+    <div className="inbox-actions"><ActionButton icon="close" label="Cancelar" onClick={onCancel}/></div></div>
     : <Loading label="Preparando la respuesta" lines={2}/>;
   if (preview) return <div className="reply-composer" aria-label="Vista previa del correo">
     <p className="muted">Esto es exactamente lo que se enviará. Solo sale si pulsas «Enviar».</p>
@@ -45,10 +51,15 @@ export function ReplyComposer({ item, onDone, onCancel }: { item: InboxItem; onD
         const missing = sent.refused?.length ? ` El servidor no lo entregó a: ${sent.refused.join(', ')}.` : '';
         onDone(`Correo enviado a ${preview.draft.to.join(', ')}${sent.savedToSent ? '' : ' (no se pudo guardar la copia en «Enviados»)'}.${missing} La tarjeta pasa a «Hechos».`);
       })}>{busy === 'send' ? 'Enviando…' : 'Enviar'}</button>
-      <button type="button" className="button" disabled={Boolean(busy)} onClick={() => setPreview(null)}>Volver a editar</button>
+      <ActionButton icon="edit" label="Volver a editar" disabled={Boolean(busy)} onClick={() => setPreview(null)}/>
     </div>
   </div>;
+  const own = received ?? draft.accountId;
+  if (received === null) setReceived(draft.accountId);
+  const senders = accounts.filter(a => a.id === own || (a.kind === 'send' && a.enabled && a.hasPassword));
   return <form className="reply-composer" aria-label="Responder al correo" onSubmit={event => { event.preventDefault(); void run('preview', async () => setPreview(await previewMail(draft))); }}>
+    {senders.length > 1 && <label className="field">Enviar desde<ModernSelect value={String(draft.accountId)} onChange={value => { setDraft({ ...draft, accountId: Number(value) }); setPreview(null); }}
+      options={senders.map(a => ({ value: String(a.id), label: `${a.label ? `${a.label} <${a.address}>` : a.address}${a.kind === 'send' ? ' · solo envío' : ''}` }))}/></label>}
     <div className="project-note-grid">
       <label className="field">Para<input value={draft.to} onChange={set('to')} required/></label>
       <label className="field">Cc<input value={draft.cc} onChange={set('cc')}/></label>

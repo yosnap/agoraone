@@ -112,11 +112,38 @@ def test_turno_con_herramientas_emite_lo_que_hace_y_guarda_lo_citado(tmp_path):
         assert [s["title"] for s in stored["sources"]] == ["Viaje"], "se guardan las notas citadas"
 
 
-def test_claude_code_solo_con_las_herramientas_del_cerebro(toolbox):
+class LateToolEngine:
+    """Like Claude Code: announces the tool round first and the tool runs afterwards, then writes."""
+
+    name = "claude-code"
+
+    def available(self):
+        return True
+
+    async def stream(self, turn: Turn):
+        yield None
+        await turn.toolbox.call("proponer_evento", {"titulo": "Reunión con Acme", "inicio": "2026-11-20T10:00"})
+        yield "Te lo dejo en pantalla para que lo confirmes."
+
+
+def test_la_propuesta_de_la_ultima_herramienta_llega_a_la_pantalla(tmp_path):
+    settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
+    app = create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets(), engines=lambda s, k: [LateToolEngine()])
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        headers = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
+        conversation = client.post("/assistant/conversations", headers=headers).json()
+        response = client.post(f"/assistant/conversations/{conversation['id']}/messages", json={"message": "Apunta la reunión"}, headers=headers)
+        tools = [data for kind, data in events(response.text) if kind == "tool"]
+        assert [t["tool"] for t in tools] == ["event_proposal"], "la tarjeta del evento llega aunque la herramienta corra tras la ronda"
+        assert tools[0]["event"]["title"] == "Reunión con Acme"
+
+
+def test_claude_code_solo_con_las_herramientas_del_cerebro(toolbox, monkeypatch):
+    monkeypatch.setattr(engines, "HIDDEN_TOOLS", set())  # every module on, whatever an earlier test left
     options = ClaudeCodeEngine().options(Turn("s", [{"role": "user", "content": "x"}], "sonnet", toolbox))
     assert options.tools == [] and options.strict_mcp_config is True and options.setting_sources == []
     assert list(options.mcp_servers) == ["cerebro"]
-    assert sorted(options.allowed_tools) == ["mcp__cerebro__buscar_en_cerebro", "mcp__cerebro__consultar_agenda", "mcp__cerebro__consultar_bandeja", "mcp__cerebro__consultar_clientes", "mcp__cerebro__consultar_trabajos", "mcp__cerebro__leer_nota", "mcp__cerebro__proponer_regla", "mcp__cerebro__resumen_del_dia"]
+    assert sorted(options.allowed_tools) == ["mcp__cerebro__buscar_en_cerebro", "mcp__cerebro__consultar_agenda", "mcp__cerebro__consultar_bandeja", "mcp__cerebro__consultar_clientes", "mcp__cerebro__consultar_reuniones", "mcp__cerebro__consultar_trabajos", "mcp__cerebro__leer_nota", "mcp__cerebro__leer_reunion", "mcp__cerebro__proponer_encargo_orca", "mcp__cerebro__proponer_evento", "mcp__cerebro__proponer_issue", "mcp__cerebro__proponer_limpieza", "mcp__cerebro__proponer_nota", "mcp__cerebro__proponer_presupuesto", "mcp__cerebro__proponer_regla", "mcp__cerebro__proponer_reorganizacion", "mcp__cerebro__proponer_respuesta_whatsapp", "mcp__cerebro__resumen_del_dia", "mcp__cerebro__revisar_vault"]
 
 
 def test_proveedor_compatible_con_bucle_de_herramientas(toolbox, monkeypatch):

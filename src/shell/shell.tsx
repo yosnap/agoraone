@@ -12,7 +12,12 @@ import { AlertToasts } from './alert-toasts';
 import { UploadNotice } from '../fiscal/upload-watch';
 import { FirstRun } from './first-run';
 import { requestListen } from '../assistant/listen';
-import { readShell, writeShell, type Section } from './shell-state';
+import { YouTubeMini } from '../brain/youtube-player';
+import { CentralLinkNotice } from '../central/open-in-central';
+import { CrmdevDownloadNotice, CrmdevLinkNotice } from '../connectors/open-in-connector';
+import { FabricaDownloadNotice, FabricaLinkNotice } from '../fabrica/fabrica-notices';
+import { readShell, sectionModule, writeShell, type Section } from './shell-state';
+import { closeConnectorWindows, moduleOn, useModules } from './modules';
 import './shell.css';
 import './page.css';
 
@@ -21,14 +26,23 @@ const SummaryView = lazy(() => import('../summary/summary-view').then(module => 
 const AssistantView = lazy(() => import('../assistant/assistant-view').then(module => ({ default: module.AssistantView })));
 const ConnectorsView = lazy(() => import('../connectors/connectors-view').then(module => ({ default: module.ConnectorsView })));
 const JobsView = lazy(() => import('../jobs/jobs-view').then(module => ({ default: module.JobsView })));
+const AgentsView = lazy(() => import('../agents/agents-view').then(module => ({ default: module.AgentsView })));
 const MeetingsView = lazy(() => import('../meetings/meetings-view').then(module => ({ default: module.MeetingsView })));
+const QuotesView = lazy(() => import('../quotes/quotes-view').then(module => ({ default: module.QuotesView })));
+const CentralView = lazy(() => import('../central/central-view').then(module => ({ default: module.CentralView })));
+const CrmdevView = lazy(() => import('../crmdev/crmdev-view').then(module => ({ default: module.CrmdevView })));
+const FabricaView = lazy(() => import('../fabrica/fabrica-view').then(module => ({ default: module.FabricaView })));
 const SettingsView = lazy(() => import('../settings/settings-view').then(module => ({ default: module.SettingsView })));
 
 /** AgoraOne's frame: the rail with the sections and the section on screen. The office (the city) stays
  * mounted once visited so its chats keep going; everything else mounts only while shown. */
 export function Shell() {
   const [status, setStatus] = useState<Status | null>(null);
-  const [{ section, discreet }, setShell] = useState(readShell);
+  const [{ section: chosen, discreet }, setShell] = useState(readShell);
+  // A section whose module is off (remembered or named by a link) is never mounted: the brain is shown instead.
+  const modules = useModules();
+  const owner = sectionModule[chosen];
+  const section: Section = owner && !moduleOn(modules, owner) ? 'brain' : chosen;
   const [officeVisited, setOfficeVisited] = useState(section === 'office');
   // Notes to point out on the graph (the sources of an answer).
   const [focus, setFocus] = useState<string[]>([]);
@@ -46,27 +60,45 @@ export function Shell() {
     window.addEventListener('agora:listen', () => { setShell(previous => ({ ...previous, section: 'brain' })); window.setTimeout(requestListen, 150); });
   }
   const go = useCallback((next: Section) => { if (next === 'office') setOfficeVisited(true); setShell(previous => ({ ...previous, section: next })); }, []);
-  const setDiscreet = (on: boolean) => setShell(previous => ({ ...previous, discreet: on }));
+  // Discreet mode closes the connectors' windows too (Central, CRMDev, the fábrica): they would keep showing what discreet mode hides.
+  const setDiscreet = (on: boolean) => {
+    setShell(previous => ({ ...previous, discreet: on }));
+    if (on) void closeConnectorWindows();
+  };
   const showOnGraph = (ids: string[]) => { setFocus(ids); go('brain'); };
   const ready = status?.csrf;
   return <div className="shell">
     <ShellNav section={section} onSection={go} discreet={discreet} onDiscreet={setDiscreet} waiting={waiting}/>
-    {ready && <AlertToasts discreet={discreet}/>}
-    <UploadNotice onOpen={() => go('fiscal')}/>
-    {ready && <FirstRun/>}
+    {/* One stack of notices over any section: each one adds its own card, none covers another. */}
+    <div className="alert-toasts" role="status" aria-live="polite">
+      {ready && <AlertToasts discreet={discreet}/>}
+      <UploadNotice onOpen={() => go('fiscal')}/>
+      <CentralLinkNotice discreet={discreet}/>
+      <CrmdevLinkNotice discreet={discreet}/>
+      <CrmdevDownloadNotice discreet={discreet}/>
+      <FabricaLinkNotice discreet={discreet}/>
+      <FabricaDownloadNotice discreet={discreet}/>
+    </div>
+    <YouTubeMini/>
+    {ready && <FirstRun onOpen={go}/>}
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting} onWatson={() => go('brain')}/>}
       {ready && section !== 'office' && <main className="shell-page"><Suspense fallback={<div className="page"><Loading label="Cargando la sección"/></div>}>
-        {section === 'brain' ? <BrainView discreet={discreet} focus={focus} onFocus={setFocus} onRead={setReading} onSummary={() => go('summary')}/>
-          : section === 'summary' ? <SummaryView discreet={discreet} onRead={setReading}/>
+        {section === 'brain' ? <BrainView discreet={discreet} focus={focus} onFocus={setFocus} onRead={setReading} onSummary={() => go('summary')} onOpen={go}/>
+          : section === 'summary' ? <SummaryView discreet={discreet} onRead={setReading} onOpen={go}/>
           : section === 'assistant' ? <AssistantView onRead={setReading} onShowOnGraph={showOnGraph} discreet={discreet}/>
-          : section === 'connectors' ? <ConnectorsView/>
-          : section === 'settings' ? <SettingsView/>
+          : section === 'connectors' ? <ConnectorsView onOpen={go}/>
+          : section === 'settings' ? <SettingsView onOpen={go}/>
           : section === 'inbox' ? <InboxView discreet={discreet}/>
           : section === 'fiscal' ? <FiscalView discreet={discreet}/>
-          : section === 'agenda' ? <AgendaView discreet={discreet}/>
+          : section === 'agenda' ? <AgendaView discreet={discreet} onOpen={go}/>
           : section === 'jobs' ? <JobsView discreet={discreet}/>
           : section === 'meetings' ? <MeetingsView discreet={discreet}/>
+          : section === 'agents' ? <AgentsView discreet={discreet} onOpen={go}/>
+          : section === 'quotes' ? <QuotesView discreet={discreet} onOpen={go}/>
+          : section === 'central' ? <CentralView discreet={discreet} onOpen={go}/>
+          : section === 'crmdev' ? <CrmdevView discreet={discreet} onOpen={go}/>
+          : section === 'fabrica' ? <FabricaView discreet={discreet} onOpen={go}/>
           : <PendingView section={section}/>}
       </Suspense></main>}
       {status?.state === 'offline' && <section className="page" role="alert"><h1>Sin conexión</h1><p>{status.detail}</p></section>}

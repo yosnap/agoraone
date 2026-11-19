@@ -8,6 +8,7 @@ import { DocumentFields, FolderChoice, place } from '../inbox/filing-fields';
 import { BotInbox } from './bot-inbox';
 import { followUpload, RECEIVED, stopFollowing, useUpload } from './upload-watch';
 import '../inbox/inbox.css';
+import { ActionButton } from '../ui/action-button';
 
 const suffixes: Record<string, string> = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/heic': '.heic' };
 const today = () => new Date().toLocaleDateString('sv-SE');
@@ -50,7 +51,7 @@ export function ReceiptsPanel({ onNote }: { onNote: (note: string) => void }) {
   return <div className="inbox-group" ref={holder}>
     <div className="card-head"><h2>Recibos {receipts.length > 0 && <span className="muted">· {receipts.length}</span>}</h2>
       {upload?.open ? <button type="button" className="button" onClick={() => void stop()}>Cerrar la subida</button>
-        : <button type="button" className="button" onClick={() => void start()}>Subir desde el móvil</button>}</div>
+        : <ActionButton icon="upload" label="Subir desde el móvil" onClick={() => void start()}/>}</div>
     {upload?.open && upload.qr && <div className="card receipt-upload">
       <img className="receipt-qr" alt="Código QR para subir el recibo" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(upload.qr)}`}/>
       <div>

@@ -8,23 +8,32 @@ list, and what to play («pon …») is passed as an argument, never written int
 
 import shutil
 import subprocess
+import time
 import sys
+from pathlib import Path
 
-PLAYERS = {"music": {"name": "Apple Music", "process": "Music", "app": "Music"},
-           "spotify": {"name": "Spotify", "process": "Spotify", "app": "Spotify"}}
+from . import music_cover
+
+PLAYERS = {"music": {"name": "Apple Music", "process": "Music", "app": "Music", "bundle": "com.apple.Music"},
+           "spotify": {"name": "Spotify", "process": "Spotify", "app": "Spotify", "bundle": "com.spotify.client"}}
 ACTIONS = {"toggle", "play", "pause", "next", "previous", "louder", "quieter"}
 TIMEOUT = 8
 
 
 class MusicError(RuntimeError):
-    pass
+    """`reason` says why when it matters to the screen: «missing» (the song or the player is not there) or «silent»
+    (the player did not answer in time), so «pon …» may try YouTube; any other failure (a permission) is told as it is."""
+
+    def __init__(self, message: str, reason: str | None = None):
+        super().__init__(message)
+        self.reason = reason
 
 
-def _osascript(script: str, *args: str) -> str:
+def _osascript(script: str, *args: str, timeout: float = TIMEOUT) -> str:
     try:
-        done = subprocess.run(["/usr/bin/osascript", "-e", script, *args], capture_output=True, text=True, timeout=TIMEOUT, check=False)
+        done = subprocess.run(["/usr/bin/osascript", "-e", script, *args], capture_output=True, text=True, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
-        raise MusicError("El reproductor no responde.") from error
+        raise MusicError("El reproductor no responde.", "silent") from error
     if done.returncode != 0:
         if "-1743" in done.stderr or "not allowed" in done.stderr.lower():
             raise MusicError("macOS no deja a AgoraOne controlar la música: dale permiso en Ajustes del Sistema › Privacidad y seguridad › Automatización.")
@@ -39,6 +48,25 @@ def _running(process: str) -> bool:
         return False
 
 
+def _installed(player: str) -> bool:
+    """Whether the player is on this Mac (asking AppleScript for a missing app would open «Where is…?»): the
+    Applications folders first, then Spotlight, never counting a copy in the Bin or on another volume. When Spotlight
+    cannot answer, the player is not blocked."""
+    if player == "music" or _running(PLAYERS[player]["process"]):
+        return True  # Music is part of macOS
+    app = f"{PLAYERS[player]['app']}.app"
+    if any(folder.joinpath(app).is_dir() for folder in (Path("/Applications"), Path.home() / "Applications")):
+        return True
+    try:
+        found = subprocess.run(["/usr/bin/mdfind", f"kMDItemCFBundleIdentifier == '{PLAYERS[player]['bundle']}'"],
+                               capture_output=True, text=True, timeout=3, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return True
+    if found.returncode != 0:
+        return True
+    return any(line and "/.Trash/" not in line and not line.startswith("/Volumes/") for line in found.stdout.splitlines())
+
+
 # --- macOS ---------------------------------------------------------------------------------------------------
 NOW_PLAYING = '''tell application "{app}"
   set s to player state as text
@@ -51,12 +79,94 @@ COMMANDS = {"toggle": "playpause", "play": "play", "pause": "pause", "next": "ne
             "louder": "set sound volume to (sound volume + 10)", "quieter": "set sound volume to (sound volume - 10)"}
 SEARCH_MUSIC = '''on run argv
   tell application "Music"
-    set found to (search playlist "Library" for (item 1 of argv))
+    set found to (search library playlist 1 for (item 1 of argv))  -- by position: its name depends on the language («Biblioteca»)
     if found is {} then return "none"
     play item 1 of found
     return "ok"
   end tell
 end run'''
+# A song of the Apple Music catalogue: its album opens in Music and it plays from that song. Music plays the album
+# from its first track, so it skips (muted) to the song asked for and starts it from the beginning. The song is the
+# first track whose name matches without case, accents or punctuation, or starts with the name asked for («Corazón
+# Partío (Remastered)»). The skipping stops after the seconds given (item 2); the volume always comes back, also when
+# Music fails half way (the error is raised again after restoring it).
+OPEN_IN_MUSIC = '''on run argv
+  tell application "Music" to open location (item 1 of argv)
+  return "opened"
+end run'''
+PLAY_FROM_ALBUM = '''on run argv
+  set wanted to item 1 of argv
+  set limit to (current date) + ((item 2 of argv) as integer)
+  tell application "Music"
+    set v to sound volume
+    try
+      set sound volume to 0
+      play
+      delay 0.6
+      set ok to false
+      repeat 120 times
+        set heard to ""
+        try
+          set heard to name of current track
+        end try
+        if my same_song(heard, wanted) then
+          set ok to true
+          exit repeat
+        end if
+        if my right_now() > limit then exit repeat
+        next track
+        delay 0.25
+      end repeat
+      if ok then set player position to 0
+      if not ok then pause
+      set sound volume to v
+      if ok then return "ok"
+      return "none"
+    on error errMsg number errNum
+      try
+        pause
+      end try
+      set sound volume to v
+      error errMsg number errNum
+    end try
+  end tell
+end run
+
+on right_now()
+  return current date  -- outside the tell block: a scripting addition, not a Music command
+end right_now
+
+on same_song(heard, wanted)
+  if heard is "" then return false
+  ignoring case, diacriticals and punctuation
+    if heard is wanted or heard starts with wanted then return true
+    if (length of heard) >= 4 and wanted starts with heard then return true
+  end ignoring
+  return false
+end same_song'''
+MUSIC_VOLUME = 'tell application "Music" to get sound volume'
+# The whole «pon …» in Music (library, then catalogue) answers within this many seconds: Watson waits for it.
+BUDGET = 20.0
+CATALOG = "https://itunes.apple.com/search"
+
+
+def catalog_song(query: str, fetch=None, timeout: float = 5) -> dict | None:
+    """The first song of the public Apple Music catalogue for these words (only the words go to Apple): its name,
+    artist and the album address that opens it in Music. None when there is nothing or no answer."""
+    import httpx
+
+    try:
+        answer = (fetch or httpx.get)(CATALOG, params={"term": query, "entity": "song", "country": "es", "limit": 5}, timeout=timeout)
+        results = answer.json().get("results", []) if answer.status_code == 200 else []
+    except Exception:  # noqa: BLE001 - an outside service: no answer is «not found»
+        return None
+    for item in results:
+        if isinstance(item, dict) and item.get("trackName") and isinstance(item.get("collectionId"), int) and isinstance(item.get("trackId"), int):
+            return {"name": str(item["trackName"])[:200], "artist": str(item.get("artistName") or "")[:120],
+                    "url": f"music://music.apple.com/es/album/{item['collectionId']}?i={item['trackId']}"}
+    return None
+
+
 SEARCH_SPOTIFY = '''on run argv
   tell application "Spotify" to open location ("spotify:search:" & (item 1 of argv))
   return "opened"
@@ -96,7 +206,7 @@ def _playerctl(*args: str) -> str:
     try:
         done = subprocess.run(["playerctl", *args], capture_output=True, text=True, timeout=TIMEOUT, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
-        raise MusicError("El reproductor no responde.") from error
+        raise MusicError("El reproductor no responde.", "silent") from error
     if done.returncode != 0:
         raise MusicError("El reproductor no pudo hacerlo.")
     return done.stdout.strip()
@@ -140,6 +250,81 @@ def status() -> dict:
     return {"players": players, "note": None if players else "No hay ningún reproductor abierto (Música o Spotify)."}
 
 
+def _player_open(player: str) -> str:
+    where = available()["adapter"]
+    if where == "macos" and (player not in PLAYERS or not _running(PLAYERS[player]["process"])):
+        raise MusicError("Ese reproductor no está abierto.")
+    if where == "linux" and player not in _playerctl("-l").splitlines():
+        raise MusicError("Ese reproductor no está abierto.")
+    if not where:
+        raise MusicError(available()["note"] or "No disponible.")
+    return where
+
+
+def set_level(player: str, what: str, value: float) -> None:
+    """The volume (0-100) or the point of the song (seconds) the user drags to, in Apple Music, Spotify or MPRIS."""
+    if what not in ("volume", "seek") or not isinstance(value, (int, float)) or value != value or value < 0:
+        raise MusicError("Valor no admitido.")
+    where = _player_open(player)
+    if where == "macos":
+        command = f"set sound volume to {round(min(value, 100))}" if what == "volume" else f"set player position to {min(value, 86400):.1f}"
+        _osascript(f'tell application "{PLAYERS[player]["app"]}" to {command}')
+    elif what == "volume":
+        _playerctl("-p", player, "volume", f"{min(value, 100) / 100:.2f}")
+    else:
+        _playerctl("-p", player, "position", f"{min(value, 86400):.1f}")
+
+
+ARTWORK_MUSIC = '''on run argv
+  tell application "Music"
+    if player state is stopped then return "none"
+    if (count of artworks of current track) is 0 then return "none"
+    set a to artwork 1 of current track
+    set d to raw data of a
+    set f to format of a as text
+  end tell
+  set fh to open for access (POSIX file (item 1 of argv)) with write permission
+  set eof fh to 0
+  write d to fh
+  close access fh
+  return f
+end run'''
+ARTWORK_SPOTIFY = 'tell application "Spotify" to if player state is not stopped then return artwork url of current track'
+_covers: dict[str, tuple[bytes, str] | None] = {}
+
+
+def cover(player: str, key: str) -> tuple[bytes, str] | None:
+    """The cover of what Apple Music or Spotify plays now (`key` names the track, so each one is read once):
+    Apple Music's own artwork, or the image Spotify gives for the track (only from its image server)."""
+    if available()["adapter"] != "macos" or player not in PLAYERS or not _running(PLAYERS[player]["process"]):
+        return None
+    cached = f"{player}|{key}"
+    if cached in _covers:
+        return _covers[cached]
+    found = None
+    if player == "music":
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "cover"
+            kind = _osascript(ARTWORK_MUSIC, str(target))
+            if kind != "none" and target.is_file() and target.stat().st_size < 8_000_000:
+                found = music_cover._image(target.read_bytes())
+    else:
+        import httpx
+        url = _osascript(ARTWORK_SPOTIFY)
+        if url.startswith("https://i.scdn.co/image/"):
+            try:
+                answer = httpx.get(url, timeout=8, follow_redirects=False)
+            except httpx.HTTPError:
+                return None  # a passing failure: not remembered, the next look tries again
+            if answer.status_code == 200:
+                found = music_cover._image(answer.content)  # only a real JPEG or PNG, whatever the server says
+    if len(_covers) > 40:
+        _covers.clear()
+    _covers[cached] = found
+    return found
+
+
 def control(player: str, action: str) -> None:
     if action not in ACTIONS:
         raise MusicError("Acción no admitida.")
@@ -165,10 +350,79 @@ def play(player: str, query: str) -> str:
         raise MusicError("Di qué quieres escuchar.")
     if available()["adapter"] != "macos" or player not in PLAYERS:
         raise MusicError("Pedir una canción por su nombre solo funciona de momento con Música y Spotify en macOS.")
+    if not _installed(player):
+        raise MusicError(f"{PLAYERS[player]['name']} no está instalado en este Mac. Prueba con YouTube.", "missing")
     if player == "music":
-        result = _osascript(SEARCH_MUSIC, query)
-        if result == "none":
-            raise MusicError(f"No encuentro «{query}» en tu biblioteca de Música.")
-        return f"Reproduciendo «{query}» en Música."
+        return _play_music(query)
     _osascript(SEARCH_SPOTIFY, query)
     return f"Abierta la búsqueda de «{query}» en Spotify: elige qué poner."
+
+
+def _pause_music() -> None:
+    """Best effort: Music handles Apple events one after another, so this pause lands after a «play» still on its
+    way and Music does not start on its own once YouTube has taken over."""
+    try:
+        _osascript('tell application "Music" to pause', timeout=2)
+    except MusicError:
+        pass
+
+
+def _music_or_pause(script: str, *args: str, timeout: float) -> str:
+    """A Music script; if Music does not answer in time, it is paused so the order still on its way does not make
+    it play on top of YouTube."""
+    try:
+        return _osascript(script, *args, timeout=timeout)
+    except MusicError as error:
+        if error.reason == "silent":
+            _pause_music()
+        raise
+
+
+def _music_volume() -> int | None:
+    try:
+        level = int(float(_osascript(MUSIC_VOLUME, timeout=2).replace(",", ".")))
+    except (MusicError, ValueError):
+        return None
+    return level if 0 <= level <= 100 else None
+
+
+def _play_from_album(name: str, seconds: float) -> str:
+    """Skips to the song in the album Music has open. If AppleScript does not finish in time (it is then killed and
+    cannot restore anything), Music is paused and its volume put back from here."""
+    volume = _music_volume()
+    try:
+        return _osascript(PLAY_FROM_ALBUM, name, str(max(1, int(seconds))), timeout=seconds + 2)
+    except MusicError as error:
+        if error.reason == "silent":
+            _pause_music()
+            if volume is not None:
+                try:
+                    _osascript(f'tell application "Music" to set sound volume to {volume}', timeout=2)
+                except MusicError:
+                    pass
+        raise
+
+
+def _play_music(query: str) -> str:
+    """Apple Music: the user's library first, then the public catalogue (the subscription plays it), all within
+    `BUDGET` seconds. When Music does not answer, it is paused so it does not play on top of YouTube."""
+    start = time.monotonic()
+    left = lambda: BUDGET - (time.monotonic() - start)  # noqa: E731 - a short clock read in several places
+    result = _music_or_pause(SEARCH_MUSIC, query, timeout=min(TIMEOUT, BUDGET))
+    if result != "none":
+        return f"Reproduciendo «{query}» en Música."
+    slow = MusicError(f"Música tarda demasiado en poner «{query}». Prueba con YouTube.", "silent")
+    if left() < 11:  # the library search alone took most of the time: Music is too slow today
+        raise slow
+    song = catalog_song(query, timeout=min(4.0, left() - 10))
+    if not song:
+        raise MusicError(f"No encuentro «{query}» en Apple Music. Prueba con YouTube.", "missing")
+    if left() < 9:
+        raise slow
+    _music_or_pause(OPEN_IN_MUSIC, song["url"], timeout=3)  # the album could still open and play after YouTube
+    time.sleep(1)  # Music shows the album before it can play it
+    # The rest of the budget: AppleScript stops skipping in time, or it is cut 2 s later and Music is put right.
+    if _play_from_album(song["name"], max(2.0, left() - 4)) == "none":
+        raise MusicError(f"Música no pudo poner «{song['name']}». Prueba con YouTube.", "missing")
+    by = f" de {song['artist']}" if song["artist"] else ""
+    return f"Pongo «{song['name']}»{by} en Música, de Apple Music."

@@ -1,13 +1,15 @@
 """HTTP routes of the music: what plays, the controls and «pon …». Only from the owner's screen."""
 
+import struct
+
 from contextlib import contextmanager
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
-from . import music, music_library
+from . import hidden_player, music, music_cover, music_library, youtube
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -15,6 +17,7 @@ from .settings import Settings
 class Control(BaseModel):
     player: str
     action: str
+    value: float | None = None
 
 
 class Play(BaseModel):
@@ -30,8 +33,24 @@ class Query(BaseModel):
     query: str
 
 
-def music_router(settings: Settings) -> APIRouter:
+class HiddenCommand(BaseModel):
+    action: str
+    id: str | None = None
+    volume: float | None = None
+    seconds: float | None = None
+
+
+def _quiet(work):
+    """A cover is a nicety: any failure just means no picture."""
+    try:
+        return work()
+    except (music.MusicError, music_library.LibraryError, OSError, ValueError, struct.error):
+        return None
+
+
+def music_router(settings: Settings, relay: hidden_player.Relay | None = None) -> APIRouter:
     router = APIRouter()
+    relay = relay or hidden_player.Relay()
 
     @contextmanager
     def database():
@@ -45,7 +64,7 @@ def music_router(settings: Settings) -> APIRouter:
         try:
             return await run_in_threadpool(work)
         except (music.MusicError, music_library.LibraryError) as error:
-            return JSONResponse({"error": str(error)}, status_code=422)
+            return JSONResponse({"error": str(error), "reason": getattr(error, "reason", None)}, status_code=422)
 
     def with_db(work):
         def job():
@@ -73,9 +92,41 @@ def music_router(settings: Settings) -> APIRouter:
             return found
         return FileResponse(found[0], media_type=found[1], headers={"Cache-Control": "no-store"})
 
+    @router.get("/music/library/{ident}/cover")
+    async def library_cover(ident: str):
+        def read():
+            with database() as connection:
+                return music_cover.of_track(music_library.file_of(connection, ident)[0])
+        found = await run_in_threadpool(lambda: _quiet(read))
+        return Response(found[0], media_type=found[1], headers={"Cache-Control": "no-store"}) if found else Response(status_code=204)
+
+    @router.get("/music/youtube/search")
+    async def youtube_search(q: str = ""):
+        try:
+            return {"videos": await run_in_threadpool(youtube.search, q)}
+        except youtube.YouTubeError as error:
+            return JSONResponse({"error": str(error)}, status_code=422)
+
     @router.post("/music/youtube")
-    async def youtube(body: Query):
+    async def youtube_in_browser(body: Query):  # not «youtube»: that name is the module used just above
         return await run(lambda: {"done": music_library.youtube(body.query)})
+
+    @router.get("/music/youtube/hidden")
+    async def hidden_available():
+        return {"available": relay.available()}
+
+    @router.post("/music/youtube/hidden")
+    async def hidden_command(body: HiddenCommand):
+        command = hidden_player.valid(body.model_dump(exclude_none=True))
+        if command is None:
+            return JSONResponse({"error": "Orden no válida."}, status_code=400)
+        if not relay.available():
+            return JSONResponse({"error": "La ventana de YouTube solo existe en la app de escritorio."}, status_code=409)
+        return {"seq": relay.push(command)}
+
+    @router.get("/internal/youtube/hidden/next")  # only the desktop app: the browser cannot reach /internal
+    async def hidden_next(after: int = -1):
+        return await relay.next(after)
 
     @router.get("/music/status")
     async def now_playing():
@@ -83,7 +134,14 @@ def music_router(settings: Settings) -> APIRouter:
 
     @router.post("/music/control")
     async def control(body: Control):
+        if body.action in ("volume", "seek"):
+            return await run(lambda: music.set_level(body.player, body.action, body.value if body.value is not None else -1) or music.status())
         return await run(lambda: music.control(body.player, body.action) or music.status())
+
+    @router.get("/music/cover")
+    async def now_cover(player: str, key: str = ""):
+        found = await run_in_threadpool(lambda: _quiet(lambda: music.cover(player, key[:300])))
+        return Response(found[0], media_type=found[1], headers={"Cache-Control": "no-store"}) if found else Response(status_code=204)
 
     @router.post("/music/play")
     async def play(body: Play):

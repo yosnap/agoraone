@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { removeManual, saveManual, type ManualFields, type ManualSaved } from '../api/core';
 import { LoadError } from '../ui/load-state';
+import { ActionButton } from '../ui/action-button';
 
 const percent = (rate: number | null | undefined) => rate === null || rate === undefined ? '' : String(Math.round(rate * 10000) / 100);
 
@@ -45,9 +46,9 @@ export function ManualForm({ folderId, path, saved, onDone, onCancel }: {
     <p className="muted">Sin base ni IVA, se registra como un recibo sin IVA desglosado (base igual al total).</p>
     {error && <LoadError message={error}/>}
     <div className="field-row">
-      <button type="submit" className="button primary" disabled={busy}>Guardar</button>
-      <button type="button" className="button" disabled={busy} onClick={onCancel}>Cancelar</button>
-      {saved && <button type="button" className="button" disabled={busy} onClick={() => void run(() => removeManual(folderId, path), 'Datos a mano quitados: vuelve a contar como sin leer.')}>Quitar los datos</button>}
+      <ActionButton icon="save" label="Guardar" tone="primary" type="submit" disabled={busy}/>
+      <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={onCancel}/>
+      {saved && <ActionButton icon="trash" label="Quitar los datos" disabled={busy} onClick={() => void run(() => removeManual(folderId, path), 'Datos a mano quitados: vuelve a contar como sin leer.')}/>}
     </div>
   </form>;
 }

@@ -51,6 +51,14 @@ export const moveVaultNote = (vaultId: string, noteId: string, target: { folder:
   request<{ id: string; folder: string; title: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes/${encodeURIComponent(noteId)}/move`, target);
 export const createVaultNote =(vaultId: string, folder: string, title: string, content: string) =>
   request<{ id: string; folder: string; title: string }>(`/hermes/vaults/${encodeURIComponent(vaultId)}/notes`, { folder, title, content });
+/** A mail's file saved next to its note in the vault (never over a file that exists). */
+export async function createVaultFile(vaultId: string, folder: string, name: string, data: Blob): Promise<{ id: string; title: string }> {
+  const response = await fetch(`/api/hermes/vaults/${encodeURIComponent(vaultId)}/files?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(name)}`,
+    { method: 'POST', body: data, headers: { 'Content-Type': 'application/octet-stream', ...(csrf ? { 'X-Agora-CSRF': csrf } : {}) } });
+  const answer = await response.json().catch(() => ({}));
+  if (!response.ok) throw new ApiError(answer.error || 'No se pudo guardar el archivo.', response.status, answer);
+  return answer;
+}
 /** A profile's scheduled tasks and kanban cards, managed with Hermes' own functions (user's decision, 18/10/2026). */
 export type JobDetail = { id: string; name: string; schedule: string; once: boolean; prompt: string; revision: string; hidden: number };
 const profilePath = (id: string) => `/hermes/profiles/${encodeURIComponent(id)}`;
