@@ -245,6 +245,18 @@ export const decideChat = (id: number, state: InboxState) => core<{ ok: true }>(
 /** One of a card's latest messages, as AgoraOne keeps it (never asked to Zernio): the text as plain data. */
 export type ChatMessage = { id: number; direction: 'incoming' | 'outgoing'; at: string | null; text: string | null; unsupported: boolean; attachments: string[] };
 export const getChatMessages = (id: number) => core<{ messages: ChatMessage[] }>(`/chat/summaries/${id}/messages`);
+/** Meta's 24 h window for a free reply, from the contact's last message AgoraOne keeps (open only with a minute left). */
+export type ChatWindow = { open: boolean; until: string | null; lastIncomingAt: string | null };
+type ChatPeople = { to: { name: string | null; phone: string | null } | null; from: { phone: string | null; label: string | null } };
+export type ChatReplyDraft = ChatPeople & { conversationId: number; accountId: number; text: string; confidentiality: Level; window: ChatWindow; maxLength: number };
+export type ChatDraft = { conversationId: number; text: string };
+export type ChatPreview = ChatPeople & { draft: ChatDraft; digest: string; confidentiality: Level; attachments: never[]; window: ChatWindow };
+export const getChatReply = (id: number) => core<ChatReplyDraft>(`/chat/summaries/${id}/reply`);
+/** Watson's draft, only for a normal conversation (the core refuses the rest); it never sends. */
+export const composeChat = (id: number, instructions: string) => core<{ text: string }>(`/chat/summaries/${id}/compose`, { instructions });
+export const previewChat = (draft: ChatDraft) => core<ChatPreview>('/chat/drafts/preview', draft);
+/** Sends exactly the sealed preview, once; a second press with the same seal is refused. */
+export const sendChat = (draft: ChatDraft, digest: string) => core<{ sent: boolean; messageId: string | null }>('/chat/send', { draft, digest });
 export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error' | 'cancelled'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
 export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail/microsoft');
 export const putMicrosoftClient = (clientId: string | null) => core<{ clientId: string | null }>('/mail/microsoft', { clientId }, 'PUT');

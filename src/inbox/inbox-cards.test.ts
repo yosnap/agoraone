@@ -63,11 +63,13 @@ test('la tarjeta lleva su distintivo y su nivel; el discreto oculta resumen y n�
   assert.match(open, /Quiere cambiar la cita/);
   assert.match(open, /Crear issue…/);
   assert.match(open, /Llevar a Orca…/);
-  assert.doesNotMatch(open, /Eliminar|Responder/, 'en WhatsApp no se borra ni (aún) se responde');
+  assert.doesNotMatch(open, /Eliminar/, 'en WhatsApp no se borra nada');
+  assert.match(open, /Responder…/);
   const hidden = render(conversation(4, 'Ana', '2026-11-19T09:00:00Z'), true);
   assert.match(hidden, /Ana/);
   assert.match(hidden, /Cliente de Central/);
   assert.doesNotMatch(hidden, /600 111 222|Quiere cambiar|Mover la cita|Cliente: Acme/);
+  assert.match(hidden, /disabled="" title="Sal del modo discreto para responder">Responder…/, 'en discreto no se responde');
   const local = render(conversation(5, 'Ana', '2026-11-19T09:00:00Z', { confidentiality: 'local_only', summary: null }));
   assert.match(local, /Solo en este Mac: sin resumen de modelo/);
   assert.doesNotMatch(local, /Crear issue|Llevar a Orca/, 'lo que no es normal no ofrece issue ni Orca');

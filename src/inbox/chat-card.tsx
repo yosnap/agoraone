@@ -3,18 +3,21 @@ import { getChatMessages, type ChatMessage, type ChatSummary, type InboxState, t
 import { EventForm } from '../calendar/event-form';
 import { OrcaLaunch } from '../orca/orca-launch';
 import { clientProjects } from '../orca/orca-projects';
+import { ChatReply } from './chat-reply';
 import { attachmentName, attachmentsText, chatName, chatOrigin, firstDate } from './inbox-cards';
 import { kindLabels, levelNotes, orcaChatTask, proposalLabels, when, type CardAction } from './inbox-labels';
 import { IssueFromSource } from './issue-from-source';
 import { ProjectNote } from './project-note';
 
 const hidden = { content: 'Sal del modo discreto para ver y escribir la nota', event: 'Sal del modo discreto para crear el evento',
-  orca: 'Sal del modo discreto para ver qué se enviará', issue: 'Sal del modo discreto para escribir la issue', messages: 'Sal del modo discreto para ver los mensajes' };
+  orca: 'Sal del modo discreto para ver qué se enviará', issue: 'Sal del modo discreto para escribir la issue', messages: 'Sal del modo discreto para ver los mensajes',
+  reply: 'Sal del modo discreto para responder' };
 
 /** One WhatsApp conversation's card in the Bandeja. Its latest messages come from AgoraOne's database, never from
  * Zernio, so opening them cannot mark anything as read; their text is shown as plain text. The actions are the
  * mail's (note, event, issue, Orca), each with its form; issue, Orca and a note in the repository only for what is
- * normal (the core checks it again). Nothing is deleted, archived or changed in WhatsApp; there is no reply yet. */
+ * normal (the core checks it again), and a reply that leaves only after its exact preview and «Enviar». Nothing is
+ * deleted, archived or changed in WhatsApp. */
 export function ChatCard({ item, discreet, isOpen, show, orcaProjects, onDecide, onNote }: {
   item: ChatSummary; discreet: boolean; isOpen: (action: CardAction) => boolean; show: (action: CardAction, on: boolean) => void;
   orcaProjects: OrcaProject[]; onDecide: (state: InboxState) => void; onNote: (note: string) => void;
@@ -37,7 +40,7 @@ export function ChatCard({ item, discreet, isOpen, show, orcaProjects, onDecide,
   };
   const issueBody = [item.summary ?? '', ...(item.details.asks?.length ? ['', 'Lo que pide:', ...item.details.asks.map(ask => `- ${ask}`)] : []),
     '', `(Conversación de WhatsApp con ${name}${item.lastIncomingAt ? ` del ${new Date(item.lastIncomingAt).toLocaleDateString('es-ES')}` : ''}.)`].join('\n').trim();
-  return <li className={`card inbox-card chat-card${(isOpen('noting') || isOpen('issue')) && !discreet ? ' wide' : ''}`}>
+  return <li className={`card inbox-card chat-card${(isOpen('noting') || isOpen('issue') || isOpen('replying')) && !discreet ? ' wide' : ''}`}>
     <div className="card-head">
       <div className="inbox-chips"><span className="chip source-whatsapp">WhatsApp</span>
         {item.label && <span className="chip">{item.label}</span>}
@@ -75,6 +78,8 @@ export function ChatCard({ item, discreet, isOpen, show, orcaProjects, onDecide,
     {isOpen('scheduling') && !discreet && <EventForm chatId={item.id} initial={{ title: (item.kind === 'appointment' ? `Cita con ${name}` : `WhatsApp de ${name}`).slice(0, 200),
       start, notes: (item.summary ?? '').slice(0, 4000) }} onCancel={() => close('scheduling')}
       onDone={done => { close('scheduling'); onNote(`${done} La conversación pasa a «Hechos».`); }}/>}
+    {isOpen('replying') && !discreet && <ChatReply item={item} onCancel={() => close('replying')}
+      onDone={done => { close('replying'); onNote(done); }}/>}
     {isOpen('orca') && !discreet && <OrcaLaunch choices={projects} client={item.client?.name} project={item.client?.projects[0]}
       source={{ kind: 'chat', id: item.id }} task={orcaChatTask} onClose={() => close('orca')}/>}
     {isOpen('issue') && !discreet && <IssueFromSource source={{ kind: 'chat', id: item.id }} client={item.client?.name} project={item.client?.projects[0]}
@@ -84,6 +89,8 @@ export function ChatCard({ item, discreet, isOpen, show, orcaProjects, onDecide,
       {pending ? <>
         <button type="button" className="button primary" onClick={() => onDecide('done')}>Hecho</button>
         <button type="button" className="button" onClick={() => onDecide('dismissed')}>Descartar</button>
+        {!isOpen('replying') && <button type="button" className="button" disabled={discreet} title={discreet ? hidden.reply : 'Responder con vista previa y «Enviar»'}
+          onClick={() => show('replying', true)}>Responder…</button>}
       </> : <button type="button" className="button" onClick={() => onDecide('pending')}>Volver a Pendientes</button>}
       <button type="button" className="button" aria-pressed={isOpen('messages')} disabled={discreet} title={discreet ? hidden.messages : 'Los últimos 10 mensajes, como los guarda AgoraOne'}
         onClick={() => void openMessages()}>{isOpen('messages') ? 'Ocultar mensajes' : 'Ver mensajes'}</button>

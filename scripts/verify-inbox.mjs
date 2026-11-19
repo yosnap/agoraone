@@ -148,6 +148,16 @@ await chatPage.route('**/api/core/orca/repo-folders?*', route => route.fulfill({
 await chatPage.route('**/api/core/orca/repo-note', keep('note', { repo: 'acme/web', root: '/tmp/acme-web', path: 'docs/notas/Nota.md' }));
 await chatPage.route('**/api/core/calendar/calendars', route => route.fulfill({ json: { calendars: [], problem: null } }));
 await chatPage.route('**/api/core/calendar/events', keep('event', { id: 'e1', clashes: 0 }));
+// Reply: an open window for the normal card and a closed one for the private card. Nothing is ever sent here.
+const until = new Date(Date.now() + 5 * 3_600_000).toISOString();
+const people = { to: { name: 'Contacto de ejemplo', phone: '+34 600 000 000' }, from: { phone: '+34 600 999 999', label: 'Mi número' } };
+await chatPage.route('**/api/core/chat/summaries/1/reply', route => route.fulfill({ json: { conversationId: 1, accountId: 1, text: '', confidentiality: 'normal',
+  window: { open: true, until, lastIncomingAt: '2026-11-19T08:00:00Z' }, maxLength: 4096, ...people } }));
+await chatPage.route('**/api/core/chat/summaries/2/reply', route => route.fulfill({ json: { conversationId: 2, accountId: 1, text: '', confidentiality: 'private',
+  window: { open: false, until: '2026-11-01T08:00:00Z', lastIncomingAt: '2026-10-31T08:00:00Z' }, maxLength: 4096, to: null, from: people.from } }));
+await chatPage.route('**/api/core/chat/drafts/preview', route => { sent.preview = route.request().postDataJSON(); return route.fulfill({ json: {
+  draft: sent.preview, digest: 'a'.repeat(64), confidentiality: 'normal', attachments: [], window: { open: true, until, lastIncomingAt: '2026-11-19T08:00:00Z' }, ...people } }); });
+await chatPage.route('**/api/core/chat/send', keep('send', { sent: true, messageId: null }));
 await chatPage.goto(sampleUrl('bandeja'));
 const chatCard = chatPage.locator('.chat-card').first();
 await chatCard.waitFor({ timeout: 60_000 });
@@ -174,8 +184,28 @@ await chatPage.getByRole('button', { name: /discreto/i }).first().click();
 await chatCard.getByText('Resumen y mensajes ocultos en modo discreto.').waitFor();
 assert.equal(await chatCard.getByText(/600 000 000|Quiere mover|moverla al lunes/).count(), 0, 'el discreto oculta número, resumen y mensajes');
 assert.ok(await chatCard.getByText('Contacto de ejemplo').count(), 'el nombre se ve, como el remitente de un correo');
+assert.ok(await chatCard.getByRole('button', { name: 'Responder…' }).isDisabled(), 'en discreto no se responde');
 await chatPage.getByRole('button', { name: /discreto/i }).first().click();
 assert.equal(await chatCard.locator('.chat-message').count(), 0, 'al salir del discreto los mensajes no vuelven solos');
+
+// Reply: the exact preview with its notices, never sent; a closed window disables it with its reason.
+await chatCard.getByRole('button', { name: 'Responder…' }).click();
+await chatCard.getByLabel('Mensaje').fill('Sí, el lunes a las 10 me va bien.');
+assert.ok(await chatCard.getByText('33 / 4096').count(), 'contador de caracteres');
+await chatCard.getByRole('button', { name: 'Vista previa' }).click();
+await chatCard.getByText('Esto es exactamente lo que se enviará.', { exact: false }).waitFor();
+assert.deepEqual(sent.preview, { conversationId: 1, text: 'Sí, el lunes a las 10 me va bien.' });
+assert.ok(await chatCard.getByText(/marcar como leídos sus mensajes anteriores/).count() && await chatCard.getByText(/1\.000 mensajes de servicio gratis/).count());
+assert.ok(await chatCard.getByRole('button', { name: 'Enviar', exact: true }).isEnabled(), 'con la ventana abierta se podría enviar');
+if (shots) await chatCard.screenshot({ path: `${shots}/whatsapp-reply-preview.png` });
+await chatCard.getByRole('button', { name: 'Volver a editar' }).click();
+await chatCard.getByRole('button', { name: 'Cancelar' }).click();
+await secret.getByRole('button', { name: 'Responder…' }).click();
+await secret.getByText(/Han pasado más de 24 h desde su último mensaje/).waitFor();
+assert.ok(await secret.getByRole('button', { name: 'Vista previa' }).isDisabled(), 'ventana cerrada: sin vista previa');
+assert.equal(await secret.getByRole('button', { name: /Redactar con/ }).count(), 0, 'lo privado no lo redacta Watson');
+await secret.getByRole('button', { name: 'Cancelar' }).click();
+assert.equal(sent.send, undefined, 'no se ha enviado nada');
 
 // Issue: the conversation is its origin.
 await chatCard.getByRole('button', { name: 'Crear issue…' }).click();
@@ -207,5 +237,5 @@ await chatPage.getByText(/La conversación pasa a «Hechos»/).waitFor();
 assert.deepEqual([sent.event.chatId, sent.event.inboxId], [1, null]);
 assert.deepEqual(outside, [], 'ninguna petición fuera de loopback');
 assert.deepEqual(chatErrors, [], 'sin errores JS');
-console.log('tarjetas de WhatsApp de ejemplo, filtro, mensajes, modo discreto, issue, Orca, nota y evento: correctos');
+console.log('tarjetas de WhatsApp de ejemplo, filtro, mensajes, modo discreto, respuesta (sin enviar), issue, Orca, nota y evento: correctos');
 await browser.close();

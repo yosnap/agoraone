@@ -36,6 +36,29 @@ class ComposeIn(BaseModel):
     instructions: Annotated[str, Field(max_length=2000)] = ""
 
 
+def claude_drafter(settings: Settings, secrets):
+    """`write(system, text)` with the user's Claude Code session, then the API key; SendError when neither answers.
+    Shared by the mail and WhatsApp replies: it only drafts, it never sends."""
+    def write(system: str, text: str) -> str:
+        engines = [e for e in usable([ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)])
+                   if e.name in ("claude-code", "anthropic-api")]
+        error: Exception | None = None
+        for engine in engines:
+            async def run(engine=engine):
+                parts = []
+                async with aclosing(engine.stream(Turn(system, [{"role": "user", "content": text}], "sonnet"))) as stream:
+                    async for piece in stream:
+                        if piece:
+                            parts.append(piece)
+                return "".join(parts)
+            try:
+                return asyncio.run(run())
+            except Exception as failure:  # noqa: BLE001 - try the next engine
+                error = failure
+        raise mail_send.SendError("No hay ningún motor de Claude disponible para redactar." if error is None else "El asistente no ha podido redactar ahora.")
+    return write
+
+
 def mail_send_router(settings: Settings, secrets, drafter=None) -> APIRouter:
     """`drafter(system, text)` writes with a model; by default the user's Claude Code session, then the API key."""
     router = APIRouter()
@@ -57,25 +80,7 @@ def mail_send_router(settings: Settings, secrets, drafter=None) -> APIRouter:
     def refuse(error: Exception, status: int = 422):
         return JSONResponse({"error": str(error)}, status_code=status)
 
-    def default_drafter(system: str, text: str) -> str:
-        engines = [e for e in usable([ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)])
-                   if e.name in ("claude-code", "anthropic-api")]
-        error: Exception | None = None
-        for engine in engines:
-            async def run(engine=engine):
-                parts = []
-                async with aclosing(engine.stream(Turn(system, [{"role": "user", "content": text}], "sonnet"))) as stream:
-                    async for piece in stream:
-                        if piece:
-                            parts.append(piece)
-                return "".join(parts)
-            try:
-                return asyncio.run(run())
-            except Exception as failure:  # noqa: BLE001 - try the next engine
-                error = failure
-        raise mail_send.SendError("No hay ningún motor de Claude disponible para redactar." if error is None else "El asistente no ha podido redactar ahora.")
-
-    write = drafter or default_drafter
+    write = drafter or claude_drafter(settings, secrets)
 
     @router.get("/mail/messages/{message_id}/reply")
     async def reply(message_id: int):
