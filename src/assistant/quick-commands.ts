@@ -22,10 +22,12 @@ const PLAY = /^(?:pon(?:me)?|reproduce(?:me)?|quiero (?:escuchar|oir)|toca)\s+(.
 const CALLED = /^(?:(?:oye|hey|ok|hola)\s+)?watson\s+/;  // on plain text: commas and colons are already gone
 const ASKING = /^(?:me\s+)?(?:puedes|podrias|quieres|podras)\s+(?:poner(?:me)?|reproducir(?:me)?)\s+/;
 const POLITE = /\s+(?:por favor|porfa)$/;
+// Insisting or correcting: «No, te he dicho que pongas…», «te pido que me pongas…», «quiero que pongas…».
+const INSISTING = /^(?:no\s+)?(?:(?:ya\s+)?te\s+(?:he\s+dicho|dije|digo|pido|he\s+pedido)\s+que\s+|quiero\s+que\s+)(?:me\s+)?(?:pongas|reproduzcas|toques)\s+/;
 // «Pon música», «ponme algo»: no song in particular.
 const ANY = /^(?:(?:un poco de|algo de)\s+)?(?:musica|algo|la musica|lo que sea|cualquier cosa|cancion|canciones)$/;
 /** The request as the commands read it: without the call to Watson, the courtesy or a trailing «please». */
-const asked = (said: string) => said.replace(CALLED, '').replace(ASKING, 'pon ').replace(POLITE, '').trim();
+const asked = (said: string) => said.replace(CALLED, '').replace(INSISTING, 'pon ').replace(ASKING, 'pon ').replace(POLITE, '').trim();
 // «Pon» also means other things («pon una regla…», «pon un recordatorio…»): those go to Watson.
 const NOT_MUSIC = /\b(regla|recordatorio|evento|cita|alarma|nota|tarea|correo|reunion|aviso|calendario|agenda|titulo|encargo|resumen|mensaje|borrador|temporizador|ejemplo|lista|informe|modo|whatsapp|atencion)e?s?\b|\b(al dia|al corriente|en contexto|esto|eso)\b/;
 // «¿Me puedes poner…?» is music only when what follows sounds like music: a song or artist, «algo de…», «música…».
@@ -40,6 +42,7 @@ export const isYes = (text: string) => YES.test(plain(text));
  * the courtesy, the question marks, «un poco de» or where to play it. */
 export function musicQuery(text: string): string {
   const original = text.replace(/^[\s¿¡]+/, '').replace(/^(?:(?:oye|hey|ok|hola)[\s,]+)?watson[\s,.:;]+/i, '').replace(/^[\s¿¡]+/, '')
+    .replace(/^(?:no[\s,]+)?(?:(?:ya\s+)?te\s+(?:he\s+dicho|dije|digo|pido|he\s+pedido)\s+que\s+|quiero\s+que\s+)(?:me\s+)?(?:pongas|reproduzcas|toques)\s+/i, 'pon ')
     .replace(/^(?:me\s+)?(?:puedes|podr[ií]as|quieres|podr[aá]s)\s+(?:poner(?:me)?|reproducir(?:me)?)\s+/i, 'pon ')
     .replace(/[\s,]+(?:por favor|porfa)(?=\s+en\s|\s*[.!?]*$)/i, '').replace(/[?!.]+\s*$/, '');
   return original.replace(/^\s*(pon(me)?|reproduce|quiero escuchar|toca)\s+/i, '').replace(/^(?:un poco de|algo de)\s+/i, '')

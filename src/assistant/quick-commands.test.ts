@@ -63,3 +63,10 @@ test('música pedida sin «pon»', () => {
   for (const said of ['Música de la reunión de ayer, ¿qué dijimos?', 'temas de la reunión de ayer'])
     assert.equal(quickCommand(said), null, said);
 });
+
+test('insistir o corregir también pone la música', () => {
+  for (const said of ['No, te he dicho que pongas música de Alejandro Sanz desde YouTube.', 'Te pido que me pongas jazz', 'Quiero que pongas algo de Rosalía en Spotify', 'ya te he dicho que pongas Despechá'])
+    assert.ok(quickCommand(said), said);
+  assert.equal(quickCommand('te he dicho que pongas un recordatorio mañana'), null);
+  assert.equal(musicQuery('No, te he dicho que pongas música de Alejandro Sanz en YouTube.'), 'música de Alejandro Sanz');
+});
