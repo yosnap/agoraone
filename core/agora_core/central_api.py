@@ -16,7 +16,7 @@ from .web_api import Connection, WebApiError
 
 SECRET = "central-api-key"  # account of the key in the secret store
 SETTING = "central.connection"
-SUGGESTED_URL = "https://central.example.com"
+EXAMPLE_URL = "https://central.example.com"
 SCOPES = ("lectura", "presupuestos", "escritura")
 TIMEOUT = web_api.TIMEOUT
 REQUEST_SECONDS = web_api.REQUEST_SECONDS  # a whole request, however slowly Central drips its answer
@@ -28,7 +28,7 @@ TRANSPORT: httpx.BaseTransport | None = None
 
 SPEC = web_api.WebApiSpec(
     secret=SECRET, setting=SETTING, key_pattern=r"cen_[A-Za-z0-9_-]{43}", key_hint="empieza por «cen_»",
-    key_source="Ajustes › Apps conectadas de Central", example_url=SUGGESTED_URL, name="Central", path_prefix="/api/v1/",
+    key_source="Ajustes › Apps conectadas de Central", example_url=EXAMPLE_URL, name="Central", path_prefix="/api/v1/",
     scopes=SCOPES, rate_limited="unreachable", transport=lambda: TRANSPORT)
 
 CentralApiError = WebApiError

@@ -8,7 +8,7 @@ Conectores unificados (19/11/2026, 1.7.0-alpha.66 a 73 y cierre en alpha.77; pla
 
 WhatsApp (18-19/11/2026, 1.7.0-alpha.48 y 49, 74 a 76; plan 261118-0155-whatsapp-zernio-e-instinct): las conversaciones van en la Bandeja junto al correo, se responden desde su tarjeta con vista previa sellada y un solo envío dentro de la ventana de 24 h, y Watson consulta lo normal y propone respuestas que el usuario revisa y envía; la portada mezcla correo y WhatsApp (docs/whatsapp.md).
 
-Siguiente (19/11/2026): el usuario aprueba las líneas nuevas de AGENTS.md, recorrido real en desarrollo de Conectores, CRMDev y WhatsApp, y un único empaquetado de 1.7.0-alpha.77.
+Siguiente (19/11/2026): el usuario aprobó las líneas nuevas de AGENTS.md (Conectores y CRMDev, Central y WhatsApp), que falta escribir en AGENTS.md; después, recorrido real en desarrollo de Conectores, CRMDev y WhatsApp, y un único empaquetado de 1.7.0-alpha.77.
 
 Desde 1.0.0-alpha.12 (14/11/2026) AgoraOne es también una app de macOS autocontenida (Tauri) y el servidor es Rust (`desktop/server`); ya no hay servidor de Node. Datos de la app en ~/Library/Application Support/AgoraOne; en desarrollo, `.agora`. Ver docs/app-escritorio.md.
 

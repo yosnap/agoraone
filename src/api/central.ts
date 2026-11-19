@@ -16,7 +16,7 @@ export type CentralStatus = { version: string | null; api: string | null; scopes
 
 export const scopeLabels: Record<CentralScope, string> = { lectura: 'Lectura', presupuestos: 'Presupuestos', escritura: 'Escritura' };
 
-const SUGGESTED_URL = 'https://central.example.com';
+const EXAMPLE_URL = 'https://central.example.com';
 
 /** Central's connector, in the shape Settings › Central and the «Central» section read. Connected means a URL and a
  * key saved, whatever its status says (saved now; checked statuses such as «responding» later). */
@@ -24,7 +24,7 @@ export function centralConnection(connector: Pick<Connector, 'state' | 'hint'>):
   const { status, configured, storeProblem } = connector.state;
   const url = configured.url ?? null;
   const hasKey = configured.hasKey === true;
-  return { url, hasKey, storeProblem, legacy: status === 'legacy', transport: url && hasKey ? 'http' : null, suggestedUrl: connector.hint ?? SUGGESTED_URL };
+  return { url, hasKey, storeProblem, legacy: status === 'legacy', transport: url && hasKey ? 'http' : null, suggestedUrl: connector.hint ?? EXAMPLE_URL };
 }
 
 export const getCentralConnection = () => getConnector('central').then(centralConnection);

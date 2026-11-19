@@ -163,8 +163,10 @@ y Watson.
   la dirección guardada. Al apagar el módulo o desconectar, la instantánea **se conserva sin usarse** hasta que se
   vuelva a encender, igual que la de Central, y los enlaces del usuario tampoco se borran. Olvidar solo la clave
   sigue usando lo ya leído; «Crear en CRMDev» desaparece porque necesita la clave.
-- Watson ve el nombre, el estado de CRMDev y si está sin ubicar, nunca el correo, el teléfono, el NIF ni los nombres
-  de los contactos.
+- Watson (`consultar_clientes`) recibe de cada cliente su nombre, su empresa, su origen (Central, AgoraOne o ambos),
+  sus dominios, sus webs, sus proyectos activos o en mantenimiento, su estado en CRMDev (si tiene ficha allí) y si
+  está sin ubicar. Nunca recibe el correo, el teléfono, el NIF, las notas, las diferencias entre fuentes ni los
+  nombres o correos de sus contactos de CRMDev.
 
 ## Modo discreto
 

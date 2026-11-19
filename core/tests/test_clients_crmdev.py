@@ -289,7 +289,7 @@ def test_el_directorio_no_abre_el_almacen_en_cada_lectura(tmp_path, fake):  # no
         set_modules(settings, crmdev=True)
         asked = secrets.asked
         assert all(directory(client)["crmdev"]["connected"] for _ in range(3))
-        assert secrets.asked - asked <= 1, "se pregunta al almacén una vez y se recuerda"
+        assert secrets.asked - asked == 1, "se pregunta al almacén una vez y se recuerda"
         assert client.delete("/connectors/crmdev", headers=HEADERS).status_code == 200
         assert directory(client)["crmdev"]["connected"] is False, "olvidar la clave se nota en la siguiente lectura"
         assert client.put("/connectors/crmdev", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
@@ -297,6 +297,11 @@ def test_el_directorio_no_abre_el_almacen_en_cada_lectura(tmp_path, fake):  # no
         asked = secrets.asked
         directory(client)
         assert secrets.asked == asked
+        secrets.put(crmdev_api.SECRET, None)  # removed by hand from the store: still remembered
+        assert directory(client)["crmdev"]["connected"] is True
+        refused = client.put("/connectors/crmdev", json={"url": URL, "key": "no-vale"}, headers=HEADERS)
+        assert refused.status_code == 422
+        assert directory(client)["crmdev"]["connected"] is False, "un guardado, aunque falle, vuelve a preguntar al almacén"
 
 
 def test_un_almacen_que_falla_no_se_recuerda():
