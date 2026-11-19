@@ -8,6 +8,11 @@ client alone (unique over the whole source, not only over the clients still free
 to one that cannot be joined («Son distintos», or already joined to another of that source), stops the weaker ones and
 the pair is at most a suggestion. Names that are only alike (accents, signs) are suggestions too.
 
+A CRMDev client whose company is the name of one client alone is a person of that company: every such person goes with
+it as one of its `contacts` (not as its CRMDev record, so «Crear en CRMDev» of the company itself is still offered), and
+their domains and exact addresses recognise its mail. The entry shows the most advanced commercial state of its CRMDev
+clients (Cliente, then Posible cliente, Contacto, Inactivo and Perdido). «Son distintos» with one of them takes it out.
+
 In the entry of a group, the name is Central's, else the one kept here, else CRMDev's. Central rules in the tax and contact data, its projects and websites; CRMDev adds its
 commercial state and fills what Central has empty; a client kept here fills what is still empty. When Central and
 CRMDev disagree on a field, the entry says so (`differences`) without changing either. Nothing is synchronized.
@@ -18,7 +23,9 @@ from .clients import loose, same_name, tax_key
 
 KINDS = ("central", "crmdev", "local")
 COMPARED = (("name", "Nombre"), ("company", "Empresa"), ("email", "Correo"))
-STOP = object()  # a signal found but not usable: weaker signals are not tried
+STOP = object()
+# CRMDev's commercial states, most advanced first: an entry with several CRMDev clients shows the most advanced one.
+STATUS_ORDER = ("CUSTOMER", "PROSPECT", "LEAD", "INACTIVE", "CHURNED")  # a signal found but not usable: weaker signals are not tried
 
 
 def _email(value) -> str | None:
@@ -48,10 +55,11 @@ class Links:
 
 class Group:
     """At most one client of each source; compared by identity."""
-    __slots__ = ("central", "crmdev", "local", "alive", "order")
+    __slots__ = ("central", "crmdev", "local", "contacts", "alive", "order")
 
     def __init__(self, kind: str, row: dict, order: int):
         self.central = self.crmdev = self.local = None
+        self.contacts: list[dict] = []  # CRMDev clients (people) whose company is this client
         setattr(self, kind, row)
         self.alive, self.order = True, order
 
@@ -170,15 +178,23 @@ def join(central: list[dict], crmdev: list[dict], owns: list[dict], links: Links
             if result is STOP:
                 for row in (r_email.get(own["_email"]) or []) + (r_name.get(own["_name"]) or []):
                     blocked.add(row["_key"])
-    # A CRMDev client whose company is the name of one client of Central or one kept here.
+    # CRMDev clients whose company is the name of one client of Central or one kept here: every one of them (people of
+    # that company) goes with it as a contact, unless the user said it is not or a stronger signal points elsewhere.
     for row in r_rows:
         mine = group("crmdev", row)
         if mine.central is not None or not row["_company"]:
             continue
         found = {id(g): g for g in [group("central", c) for c in c_name.get(row["_company"], ())] + [group("local", o) for o in l_name.get(row["_company"], ())]}
         targets = [g for g in found.values() if g is not mine]
-        if len(targets) == 1 and row["_key"] not in blocked and groups.join(targets[0], mine):
-            continue
+        if len(targets) == 1 and row["_key"] not in blocked:
+            target = targets[0]
+            alone = mine.local is None and not mine.contacts
+            if alone and not any(links.distinct("crmdev", row, kind, other) for kind, other in target.members()):
+                target.contacts.append(row)
+                mine.alive = False
+                continue
+            if not alone and groups.join(target, mine):
+                continue
         for target in targets:
             kind = "central" if target.central is not None else "local"
             suggestions.append((None, ("crmdev", row["_key"]), (kind, target.central["_key"] if kind == "central" else target.local["_key"])))
@@ -189,13 +205,13 @@ def join(central: list[dict], crmdev: list[dict], owns: list[dict], links: Links
         if mine.central is not None or mine.crmdev is not None or not own["_loose"]:
             continue
         cands = [group("central", c) for c in c_loose.get(own["_loose"], ()) if c.get("id")] + [group("crmdev", r) for r in r_loose.get(own["_loose"], ())]
-        target = next((g for g in cands if g.local is None and groups.can_join(g, mine)), None)
+        target = next((g for g in cands if g.alive and g.local is None and groups.can_join(g, mine)), None)
         if target is not None:
             kind = "central" if target.central is not None else "crmdev"
             suggestions.append((None, ("local", own["_key"]), (kind, getattr(target, kind)["_key"])))
     for row in r_rows:
         mine = group("crmdev", row)
-        if mine.central is not None or not row["_loose"]:
+        if not mine.alive or mine.central is not None or not row["_loose"]:
             continue
         target = next((g for g in (group("central", c) for c in c_loose.get(row["_loose"], ()) if c.get("id")) if groups.can_join(g, mine)), None)
         if target is not None:
@@ -204,6 +220,8 @@ def join(central: list[dict], crmdev: list[dict], owns: list[dict], links: Links
     kept, seen = [], set()
     for _, a, b in suggestions:
         ga, gb = groups.of[a], groups.of[b]
+        if not (ga.alive and gb.alive):
+            continue
         pair = _suggestion(a, b, ga, gb)
         if pair is None or not groups.can_join(ga, gb) or tuple(sorted(pair.items())) in seen:
             continue
@@ -251,13 +269,18 @@ def entry(group: Group) -> dict:
             if mine and theirs and same_name(mine) != same_name(theirs):
                 differences.append({"field": field, "label": label, "crmdev": theirs})
     domains = set()
-    for row in rows:
+    for row in (*rows, *group.contacts):
         domains.update(row.get("domains") or ())
+    contacts = sorted(group.contacts, key=lambda c: (c["_name"], str(c["_key"])))
+    statuses = [r.get("status") for r in ([crmdev] if crmdev else []) + contacts if r.get("status") in STATUS_ORDER]
     return {"name": named["name"], "company": first("company"), "email": first("email"),
             "phone": (central and central.get("phone")) or (own and own.get("phone")) or None,
             "taxId": (central and central.get("taxId")) or (own and own.get("taxId")) or None,
             "domains": sorted(domains), "projects": list(central.get("projects") or []) if central else [], "websites": list(central.get("websites") or []) if central else [],
             "source": ("ambos" if own else "central") if central else "local", "sources": [k for k in KINDS if getattr(group, k) is not None],
             "localId": own["localId"] if own else None, "centralId": central["id"] if central else None,
-            "crmdevId": crmdev["id"] if crmdev else None, "crmdevStatus": crmdev.get("status") if crmdev else None,
+            "crmdevId": crmdev["id"] if crmdev else None,
+            "crmdevStatus": min(statuses, key=STATUS_ORDER.index) if statuses else (crmdev.get("status") if crmdev else None),
+            "contacts": [{"id": c["id"], "name": c["name"], "status": c.get("status")} for c in contacts],
+            "contactEmails": sorted({c["_email"] for c in contacts if c["_email"]}),
             "aliases": aliases, "differences": differences, "unplaced": False, "staleLink": None, "repeated": False}

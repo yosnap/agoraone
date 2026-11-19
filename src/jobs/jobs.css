@@ -42,3 +42,4 @@
 .client-pairs summary { cursor: pointer; }
 .vault-cards { display: grid; gap: 10px; }
 .clients-directory > .segmented { margin: 4px 0 10px; }
+.client-contacts { display: grid; gap: 6px; }

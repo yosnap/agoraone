@@ -19,6 +19,8 @@ export type DirectoryClient = {
   unplaced: boolean;
   /** Linked with a client that CRM no longer returns: «sin ubicar» again. */
   staleLink: 'central' | 'crmdev' | null;
+  /** People of CRMDev whose company is this client (never their address); `crmdevStatus` is the most advanced of all. */
+  contacts: { id: string; name: string; status: string | null }[];
   /** Another entry has the same name (two clients of a CRM called the same): the user decides with «Enlazar». */
   repeated: boolean;
 };

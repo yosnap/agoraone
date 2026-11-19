@@ -40,6 +40,19 @@ export function ClientDetail({ client, can, discreet, busy, act, onClose, onDone
     {client.differences.length > 0 && <ul className="client-differences" aria-label="Diferencias con CRMDev">
       {client.differences.map(difference => <li key={difference.field}>{differenceText(difference)}</li>)}
       <li className="muted">Central manda en los datos fiscales y de contacto; no se cambia ninguno de los dos.</li></ul>}
+    {client.contacts.length > 0 && <div className="client-contacts">
+      <strong>Personas de este cliente en CRMDev ({client.contacts.length})</strong>
+      {discreet ? <p className="muted">Sus nombres no se ven en modo discreto.</p>
+        : <ul className="install-list" aria-label="Personas en CRMDev">{client.contacts.map(contact => <li key={contact.id} className="install-row">
+          <span>{contact.name}{contact.status && <small className="muted"> · {labelOf(clientStatusLabels, contact.status)}</small>}</span>
+          <span className="actions">
+            <OpenInCrmdev page={`clientes/${contact.id}`} discreet={discreet}/>
+            {(centralId !== null || localId !== null) && <button type="button" className="button" disabled={busy}
+              onClick={() => act(() => (centralId !== null ? linkClientPair(centralId, contact.id, 'distinct') : linkCrmdevClient(localId!, contact.id, 'distinct')),
+                `«${contact.name}» ya no va con ${client.name}.`)}>No es de este cliente</button>}
+          </span>
+        </li>)}</ul>}
+    </div>}
     {client.sources.includes('central') && <p className="muted">{client.projects.length} {client.projects.length === 1 ? 'proyecto' : 'proyectos'} en Central.</p>}
     {!discreet && separable && <div className="actions">
       {localId !== null && !client.sources.includes('central')

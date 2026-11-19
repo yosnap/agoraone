@@ -29,7 +29,7 @@ export function DirectoryLink({ crmdevId }: { crmdevId: string }) {
   const [entry, setEntry] = useState<DirectoryClient | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const read = () => getClients().then(found => setEntry(found.clients.find(client => client.crmdevId === crmdevId) ?? null)).catch(() => setEntry(null));
+  const read = () => getClients().then(found => setEntry(found.clients.find(client => client.crmdevId === crmdevId || client.contacts.some(contact => contact.id === crmdevId)) ?? null)).catch(() => setEntry(null));
   useEffect(() => { void read(); }, [crmdevId]);  // read again only for another client
   const refresh = async () => {
     setBusy(true); setError('');
@@ -38,7 +38,8 @@ export function DirectoryLink({ crmdevId }: { crmdevId: string }) {
   };
   if (entry === undefined) return <Loading label="Buscándolo en tus clientes" lines={1}/>;
   return <div className="field-row">
-    <span>{entry ? `En tus clientes como «${entry.name}» (${entry.sources.map(origin => originLabels[origin]).join(', ')}).`
+    <span>{entry ? (entry.crmdevId === crmdevId ? `En tus clientes como «${entry.name}» (${entry.sources.map(origin => originLabels[origin]).join(', ')}).`
+      : `En tus clientes como persona de «${entry.name}», por su empresa.`)
       : 'Aún no está en tus clientes de AgoraOne: se lee cada media hora.'}</span>
     <span className="actions"><button type="button" className="button" disabled={busy} onClick={() => void refresh()}>{busy ? 'Leyendo…' : 'Actualizar clientes'}</button></span>
     {error && <p className="error" role="alert">{error}</p>}

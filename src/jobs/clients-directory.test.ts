@@ -16,7 +16,7 @@ const noop = () => {};
 const render = <P extends object>(element: FunctionComponent<P>, props: P) => renderToStaticMarkup(createElement(element, props));
 const client = (over: Partial<DirectoryClient> = {}): DirectoryClient => ({
   name: 'Cliente Uno', company: null, domains: [], projects: [], websites: [], source: 'local', localId: 1, centralId: null, aliases: [],
-  sources: ['local'], crmdevId: null, crmdevStatus: null, differences: [], unplaced: true, staleLink: null, repeated: false, ...over,
+  sources: ['local'], crmdevId: null, crmdevStatus: null, differences: [], unplaced: true, staleLink: null, repeated: false, contacts: [], ...over,
 });
 const cards = (over: Partial<ClientsDirectory['vaultCards']> = {}): ClientsDirectory['vaultCards'] =>
   ({ cards: [{ name: HOSTILE, level: 'normal', notes: 1 }, { name: 'Reservada', level: 'private', notes: 2 }], count: 2, hidden: 0, ...over });
@@ -121,4 +121,17 @@ test('«Enlazar con el existente» espera si CRMDev pide esperar y avisa si sigu
   await refreshForLink(() => (++tries < 2 ? Promise.reject(new ApiError('espera', 409, { status: 'busy' })) : Promise.resolve()), async () => {});
   assert.equal(tries, 2);
   await assert.rejects(refreshForLink(() => Promise.reject(new Error('otro fallo')), async () => {}), /otro fallo/);
+});
+
+test('las personas de CRMDev salen en la ficha y sus nombres se ocultan en modo discreto', () => {
+  const props = { client: client({ name: 'Acme', sources: ['central'], localId: null, centralId: 'c1', unplaced: false, crmdevStatus: 'CUSTOMER',
+    contacts: [{ id: 'k1', name: 'Juan Pérez', status: 'CUSTOMER' }, { id: 'k2', name: HOSTILE, status: 'LEAD' }] }),
+  can: { central: false, crmdev: false }, busy: false, act: noop, onClose: noop, onDone: noop };
+  const html = render(ClientDetail, { ...props, discreet: false });
+  assert.match(html, /Personas de este cliente en CRMDev \(2\)/);
+  assert.match(html, /Juan Pérez/);
+  assert.match(html, /No es de este cliente/);
+  assert.ok(!html.includes('<img'));
+  const discreet = render(ClientDetail, { ...props, discreet: true });
+  assert.ok(!discreet.includes('Juan Pérez') && discreet.includes('Sus nombres no se ven en modo discreto'));
 });

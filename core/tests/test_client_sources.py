@@ -51,11 +51,34 @@ def test_el_nif_gana_al_nombre_y_un_nif_repetido_no_adivina():
     assert ("Acme", ["central"]) in groups(entries) and ("Acme", ["local"]) in groups(entries), "NIF en dos: no se une, ni por el nombre"
 
 
-def test_la_empresa_de_crmdev_une_con_un_solo_candidato():
-    entries, _ = client_sources.join([c("c1", "Acme", domains=["acme.com"])], [r("k1", "Juan Pérez", company="ACME", email="juan@acme.com")], [], Links())
-    assert groups(entries) == [("Acme", ["central", "crmdev"])] and entries[0]["aliases"] == ["Juan Pérez"]
+def test_todas_las_personas_de_esa_empresa_van_con_el_cliente_como_contactos():
+    people = [r("k2", "Luis Gil", company="ACME", status="LEAD", email="luis@acme.com", domains=["acme.com"]),
+              r("k1", "Juan Pérez", company="Acme", status="CUSTOMER", email="juan@gmail.com")]
+    for order in (people, people[::-1]):
+        entries, suggestions = client_sources.join([c("c1", "Acme", domains=["acme.com"])], order, [], Links())
+        assert groups(entries) == [("Acme", ["central"])] and suggestions == []
+        entry = entries[0]
+        assert entry["contacts"] == [{"id": "k1", "name": "Juan Pérez", "status": "CUSTOMER"}, {"id": "k2", "name": "Luis Gil", "status": "LEAD"}]
+        assert entry["crmdevStatus"] == "CUSTOMER", "el estado más avanzado de sus clientes de CRMDev"
+        assert clients.find(entries, address="juan@gmail.com")["name"] == "Acme", "la dirección exacta de un contacto"
+        assert "contactEmails" not in clients.public(entry) and "juan@gmail.com" not in str(clients.public(entry))
+        assert "Juan" not in str(clients.for_model(entry)), "a Watson no le llegan las personas"
     entries, _ = client_sources.join([], [r("k1", "Ana", company="Bravo")], [own(1, "bravo")], Links())
-    assert groups(entries) == [("bravo", ["crmdev", "local"])], "también con un cliente manual"
+    assert entries[0]["sources"] == ["local"] and entries[0]["contacts"][0]["name"] == "Ana", "también con un cliente manual"
+
+
+def test_son_distintos_saca_a_una_persona_de_los_contactos():
+    people = [r("k1", "Juan Pérez", company="Acme"), r("k2", "Luis Gil", company="Acme")]
+    entries, _ = client_sources.join([c("c1", "Acme")], people, [], Links(central_crmdev={("c1", "k2"): "distinct"}))
+    assert [x["id"] for x in entries[0]["contacts"]] == ["k1"] and ("Luis Gil", ["crmdev"]) in groups(entries)
+    entries, _ = client_sources.join([], people, [own(1, "Acme")], Links(local_crmdev={1: {"linked": None, "distinct": {"k1"}}}))
+    assert [x["id"] for x in next(e for e in entries if e["localId"] == 1)["contacts"]] == ["k2"]
+
+
+def test_con_la_ficha_de_la_empresa_y_sus_personas_en_crmdev():
+    entries, _ = client_sources.join([c("c1", "Acme")], [r("k0", "Acme", status="PROSPECT"), r("k1", "Juan", company="Acme", status="CUSTOMER")], [], Links())
+    assert len(entries) == 1 and entries[0]["crmdevId"] == "k0" and [x["id"] for x in entries[0]["contacts"]] == ["k1"]
+    assert entries[0]["crmdevStatus"] == "CUSTOMER"
 
 
 def test_la_empresa_con_dos_candidatos_o_con_una_senal_mas_fuerte_es_solo_sugerencia():
@@ -191,3 +214,21 @@ def test_actualizar_mientras_lee_el_trabajador_espera_su_resultado(setup, fake):
     crmdev_sync._REFRESHING.release()
     thread.join(5)
     assert result["data"]["clients"] and len(fake.seen) == seen, "toma lo que acaba de leer el trabajador, sin otra petición"
+
+
+def test_el_directorio_en_memoria_cambia_al_apagar_un_modulo_y_al_releer(setup):
+    _, settings = setup
+    from agora_core import modules
+    connection = connect(settings.data_dir / DB_NAME)
+    try:
+        assert any(e["crmdevId"] for e in clients.directory(connection))
+        modules.save(connection, {"crmdev": False})
+        assert not any(e["crmdevId"] for e in clients.directory(connection)), "apagar CRMDev cambia el directorio en memoria"
+        modules.save(connection, {"crmdev": True})
+        assert any(e["crmdevId"] for e in clients.directory(connection))
+        central.refresh(connection, None, fetch=lambda origin: {"clients": [{"id": "c7", "name": "Recién Leído"}], "projects": [], "websites": [],
+                                                               "servers": [], "details": {}})
+        names = {e["name"] for e in clients.directory(connection)}
+        assert "Recién Leído" in names and "Dos" not in names, "una lectura nueva de Central también"
+    finally:
+        connection.close()

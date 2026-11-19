@@ -50,7 +50,7 @@ PUBLIC_SUFFIXES = {"github.io", "gitlab.io", "vercel.app", "netlify.app", "pages
                    "wordpress.com", "wixsite.com", "squarespace.com", "myshopify.com", "onrender.com", "fly.dev", "surge.sh",
                    "now.sh", "glitch.me", "replit.app", "framer.website", "webflow.io", "carrd.co", "notion.site", "substack.com",
                    "medium.com", "tumblr.com", "weebly.com", "jimdosite.com", "godaddysites.com", "hostingersite.com"}
-PRIVATE_FIELDS = ("email", "phone", "taxId", "notes")  # never to the screen's lists nor to a model
+PRIVATE_FIELDS = ("email", "phone", "taxId", "notes", "contactEmails")  # never to the screen's lists nor to a model
 LIMITS = {"name": 200, "company": 200, "email": 320, "phone": 40, "taxId": 30, "notes": 4000}
 MAX_DOMAINS = 20
 LOCAL_PHONE_DIGITS = 9  # a number kept without its country prefix (a Spanish one) is matched by its last digits
@@ -475,7 +475,8 @@ def _signature(connection: sqlite3.Connection) -> object:
 
 def _copy(result: tuple[list[dict], list[dict]]) -> tuple[list[dict], list[dict]]:
     """Every caller gets its own entries and lists (the cached ones are never handed out)."""
-    entries = [{**e, **{k: list(e[k]) for k in ("domains", "projects", "websites", "aliases", "differences", "sources")}} for e in result[0]]
+    entries = [{**e, **{k: list(e[k]) for k in ("domains", "projects", "websites", "aliases", "differences", "sources", "contacts", "contactEmails")}}
+               for e in result[0]]
     return entries, [dict(s) for s in result[1]]
 
 
@@ -578,7 +579,7 @@ def find(entries: list[dict], address: str | None = None, phone: str | None = No
     tax id exactly. Nothing by name."""
     if address:
         address = address.strip().lower()
-        exact = [e for e in entries if (e.get("email") or "").lower() == address]
+        exact = [e for e in entries if (e.get("email") or "").lower() == address or address in (e.get("contactEmails") or ())]
         if exact:
             return _one(exact)
         host = domain(address)
