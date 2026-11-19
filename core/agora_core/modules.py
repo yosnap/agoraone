@@ -6,7 +6,7 @@ import json
 import sqlite3
 import threading
 
-from . import addons, engines
+from . import addons, crmdev_api, engines
 from .db import transaction
 
 SETTING = "modules"
@@ -14,7 +14,7 @@ MODULES = {
     "correo": "Correo y Bandeja", "agenda": "Agenda y avisos", "fiscal": "Fiscal", "trabajos": "Trabajos",
     "reuniones": "Reuniones", "voz": "Voz y dictado", "musica": "Música", "oficina": "Oficina 3D", "orca": "Orca",
     "whatsapp": "WhatsApp", "jev": "Jev (decisiones)", "presupuestos": "Presupuestos", "central": "Central",
-    "fabrica": "Mi fábrica",
+    "fabrica": "Mi fábrica", "crmdev": "CRMDev",
 }
 # Modules that no longer exist: dropped from the saved row the next time anything is saved. Any other unknown name is
 # kept, so a newer module's setting survives a run of an older core (or a revert).
@@ -25,6 +25,8 @@ RETIRED = frozenset({"conectores"})
 FOLLOW_CENTRAL = ("central", "presupuestos")
 # «Mi fábrica» follows its folder registered as an add-on in the same way until the user sets it.
 FOLLOW_FABRICA = "fabrica"
+# «CRMDev» follows its connection in the same way: on once a URL is saved, off while there is none.
+FOLLOW_CRMDEV = "crmdev"
 # Watson's tools that belong to a module.
 TOOLS = {"correo": {"consultar_bandeja", "proponer_regla", "proponer_limpieza"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos"}, "presupuestos": {"proponer_presupuesto"},
          "reuniones": {"consultar_reuniones", "leer_reunion", "proponer_issue"}, "orca": {"proponer_encargo_orca"}}
@@ -40,6 +42,8 @@ def state(connection: sqlite3.Connection) -> dict[str, bool]:
         default.update({name: has_central for name in FOLLOW_CENTRAL})
     if FOLLOW_FABRICA not in saved:
         default[FOLLOW_FABRICA] = bool(addons.config(connection, "fabrica").get("path"))
+    if FOLLOW_CRMDEV not in saved:
+        default[FOLLOW_CRMDEV] = crmdev_api.saved_url(connection) is not None
     return {name: saved.get(name, default[name]) is not False for name in MODULES}
 
 

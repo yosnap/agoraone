@@ -15,7 +15,7 @@ from test_central_api import HEADERS, KEY, URL, FakeCentral, app_with, reference
 from test_assistant import MemorySecrets
 
 LOOKS_LIKE_KEY = re.compile(r"cen_[A-Za-z0-9_-]{8,}|crm_[A-Za-z0-9_-]{8,}|Bearer", re.IGNORECASE)
-IDS = ["central", "fabrica", "costguard", "cerebro-mcp"]
+IDS = ["central", "crmdev", "fabrica", "costguard", "cerebro-mcp"]
 
 
 class RecordingSecrets(MemorySecrets):
@@ -57,7 +57,7 @@ def test_todos_los_conectores_con_el_mismo_esquema(tmp_path, fake):
         assert set(entry) == fields, entry["id"]
         assert set(entry["state"]) == {"status", "configured", "notice", "storeProblem"}, entry["id"]
         assert entry["state"]["status"] in connectors.STATUSES
-    assert {e["id"]: e["kind"] for e in found.values()} == {"central": "web_api", "fabrica": "local_port", "costguard": "local_file", "cerebro-mcp": "guide"}
+    assert {e["id"]: e["kind"] for e in found.values()} == {"central": "web_api", "crmdev": "web_api", "fabrica": "local_port", "costguard": "local_file", "cerebro-mcp": "guide"}
     assert set(found["central"]["modules"]) == {"central", "presupuestos"} and found["central"]["scopes"] == list(central_api.SCOPES)
     assert found["central"]["state"]["configured"] == {"url": None, "hasKey": False} and found["central"]["state"]["status"] == "not_configured"
     assert found["fabrica"]["state"]["configured"] == {"path": None, "port": 8742}

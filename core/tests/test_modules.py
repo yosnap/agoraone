@@ -10,7 +10,7 @@ from agora_core.db import DB_NAME, connect, migrate
 def test_modulos(tmp_path, monkeypatch):
     c = connect(tmp_path / DB_NAME)
     migrate(c)
-    assert all(on for name, on in modules.state(c).items() if name not in (*modules.FOLLOW_CENTRAL, modules.FOLLOW_FABRICA))
+    assert all(on for name, on in modules.state(c).items() if name not in (*modules.FOLLOW_CENTRAL, modules.FOLLOW_FABRICA, modules.FOLLOW_CRMDEV))
     modules.save(c, {"correo": False, "inventado": False})
     assert modules.state(c)["correo"] is False and "inventado" not in modules.state(c)
     names = [s["name"] for s in engines._specs()]
@@ -114,11 +114,11 @@ def test_un_modulo_desconocido_que_no_esta_retirado_se_conserva(tmp_path):
 
     c = connect(tmp_path / DB_NAME)
     migrate(c)
-    c.execute("INSERT INTO setting (key, value) VALUES ('modules', ?)", (json.dumps({"crmdev": False, "conectores": False}),))
+    c.execute("INSERT INTO setting (key, value) VALUES ('modules', ?)", (json.dumps({"seo": False, "conectores": False}),))
     modules.save(c, {"correo": True})
     saved = json.loads(c.execute("SELECT value FROM setting WHERE key = 'modules'").fetchone()["value"])
-    assert saved == {"crmdev": False, "correo": True}
-    assert "crmdev" not in modules.state(c), "lo que esta versión no conoce no se enseña"
+    assert saved == {"seo": False, "correo": True}
+    assert "seo" not in modules.state(c), "lo que esta versión no conoce no se enseña"
     c.close()
 
 
@@ -132,7 +132,7 @@ def test_modules_dice_que_conector_tiene_cada_interruptor(tmp_path):
     settings, app = app_with(tmp_path, MemorySecrets())
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
         owners = client.get("/modules", headers=HEADERS).json()["owners"]
-        assert owners == {"central": "central", "presupuestos": "central", "fabrica": "fabrica"}
+        assert owners == {"central": "central", "presupuestos": "central", "crmdev": "crmdev", "fabrica": "fabrica"}
         assert set(owners) <= set(modules.MODULES), "solo módulos que existen"
         assert client.put("/modules", json={"modules": {"correo": True}}, headers=HEADERS).json()["owners"] == owners
     assert owners == connectors.module_owners()

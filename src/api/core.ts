@@ -557,7 +557,7 @@ export type InstallJob = { id: string; name: string; state: 'running' | 'done' |
 export const getInstallJob = () => core<{ job: InstallJob | null }>('/doctor/install');
 export const installPiece = (id: string) => core<{ job: InstallJob }>('/doctor/install', { id });
 /** Modules (1.6): which are on; one off disappears, stops its background work and Watson loses its tools. */
-export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'orca' | 'whatsapp' | 'jev' | 'presupuestos' | 'central' | 'fabrica';
+export type ModuleName = 'correo' | 'agenda' | 'fiscal' | 'trabajos' | 'reuniones' | 'voz' | 'musica' | 'oficina' | 'orca' | 'whatsapp' | 'jev' | 'presupuestos' | 'central' | 'fabrica' | 'crmdev';
 /** `owners`: the connector whose card in Conectores holds the module's switch (absent in an older core). */
 export type ModulesState = { modules: Record<ModuleName, boolean>; labels: Record<ModuleName, string>; owners?: Partial<Record<ModuleName, string>> };
 export const getModules = () => core<ModulesState>('/modules');

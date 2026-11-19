@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from . import addons, central, central_api, modules, web_api
+from . import addons, central, central_api, crmdev_api, modules, web_api
 
 STATUSES = ("not_configured", "legacy", "saved", "responding", "failing", "detected", "recording", "not_found", "unreadable", "guide")
 NEW_ORIGIN = "Para otra dirección (otro servidor, puerto o esquema), escribe otra vez la clave: la guardada no viaja a un servidor nuevo."
@@ -49,13 +49,15 @@ class Adapter(Protocol):
 
 class WebApiAdapter:
     """A service reached through its web API. `probe` asks it with a connection and answers its version and the
-    permissions of the key; `legacy` says whether an older way of connecting is still set (shown, never used), and
-    `after_save` runs once a URL is saved."""
+    permissions of the key; `legacy` says whether an older way of connecting is still set (shown, never used),
+    `after_save` runs once a URL is saved and `after_forget` once the key is forgotten."""
 
     def __init__(self, spec: web_api.WebApiSpec, probe: Callable[[web_api.Connection], dict],
                  legacy: Callable[[sqlite3.Connection], bool] | None = None, notice: str | None = None,
-                 after_save: Callable[[sqlite3.Connection, bool], None] | None = None):
+                 after_save: Callable[[sqlite3.Connection, bool], None] | None = None,
+                 after_forget: Callable[[], None] | None = None):
         self.spec, self.probe, self.legacy, self.notice, self.after_save = spec, probe, legacy, notice, after_save
+        self.after_forget = after_forget
         self.hint = spec.example_url
         self._lock = threading.Lock()  # the origin check, the key and the URL change together
 
@@ -116,7 +118,7 @@ class WebApiAdapter:
                 raise ConnectorError(f"Escribe la dirección y la clave de {self.spec.name}.")
             return self.probe(web_api.Connection(target, key))
         except web_api.WebApiError as error:
-            raise ConnectorError(str(error), 422 if error.status == "config" else 502, error.status) from None
+            raise ConnectorError(str(error), {"config": 422, "busy": 429}.get(error.status, 502), error.status) from None
 
     def forget(self, connection, secrets) -> None:
         """Forgets the key only: the URL is not secret and stays, and so does whatever was read."""
@@ -125,6 +127,8 @@ class WebApiAdapter:
                 web_api.write_key(self.spec, secrets, None)
         except web_api.WebApiError as error:
             raise ConnectorError(str(error), 503) from None
+        if self.after_forget is not None:
+            self.after_forget()
 
 
 class LocalAdapter:
@@ -204,6 +208,10 @@ REGISTRY: dict[str, Connector] = {c.id: c for c in (
     Connector("central", "Central", "Clientes, proyectos, webs, servidores, agenda y presupuestos de Central, leídos de su API.",
               "web_api", ("central", "presupuestos"), ("central", "quotes"), "central", central_api.SCOPES,
               WebApiAdapter(central_api.SPEC, lambda target: central_api.status(target), central.legacy, central.MOVED, _central_saved)),
+    Connector("crmdev", "CRMDev", "CRM de proyectos, tareas, tickets y clientes de tu organización.",
+              "web_api", ("crmdev",), ("crmdev",), "crmdev", crmdev_api.SCOPES,
+              WebApiAdapter(crmdev_api.SPEC, crmdev_api.probe, after_save=lambda connection, connected: crmdev_api.clear_cache(),
+                            after_forget=crmdev_api.clear_cache)),
     Connector("fabrica", "Mi fábrica", "Fábrica de contenido: investiga, produce, espera aprobación, publica y mide.",
               "local_port", ("fabrica",), ("fabrica",), "fabrica", (), LocalAdapter("fabrica")),
     Connector("costguard", "CostGuard", "Mide el gasto de tokens de los agentes (Claude Code, Codex, OpenCode, pi), en solo lectura.",
