@@ -1,4 +1,5 @@
 import type { MouseEvent } from 'react';
+import { SourceIcon } from './inbox-tools';
 import type { InboxItem, InboxState, OrcaProject } from '../api/core';
 import { EventForm } from '../calendar/event-form';
 import { OrcaLaunch } from '../orca/orca-launch';
@@ -22,7 +23,7 @@ export function MailCard({ item, discreet, selected, editing, isOpen, show, orca
   return <li className={`card inbox-card${selected ? ' chosen' : ''}${!item.moved && !editing ? ' pickable' : ''}${(isOpen('noting') || isOpen('issue')) && !discreet ? ' wide' : ''}`}
     onClick={item.moved ? undefined : onPick} onDoubleClick={item.moved ? undefined : onPickWord}>
     <div className="card-head">
-      <div className="inbox-chips">{item.moved ? <span className="chip">{item.moved === 'trash' ? 'En la Papelera' : 'Archivado'}</span> : <label className="check inbox-pick" title="Seleccionar"><input type="checkbox" checked={selected} onChange={onToggle}
+      <div className="inbox-chips"><span className="chip source-mail"><SourceIcon source="mail"/>Correo</span>{item.moved ? <span className="chip">{item.moved === 'trash' ? 'En la Papelera' : 'Archivado'}</span> : <label className="check inbox-pick" title="Seleccionar"><input type="checkbox" checked={selected} onChange={onToggle}
         aria-label={`Seleccionar ${discreet ? 'este correo' : item.subject || 'correo sin asunto'}`}/></label>}<span className={`chip kind-${item.kind}`}>{kindLabels[item.kind]}</span>
         {item.source === 'rule' && item.ruleName && <span className="chip">Regla: {item.ruleName}</span>}
         {item.client && <span className="chip good" title={!discreet && item.client.projects.length ? `Proyectos activos: ${item.client.projects.join(', ')}` : undefined}>
