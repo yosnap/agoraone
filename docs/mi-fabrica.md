@@ -24,8 +24,9 @@ la fábrica. Decisión del usuario del 18/11/2026 (`AGENTS.md`).
 
 ## Módulo
 
-Módulo «Mi fábrica» (`fabrica`) en Ajustes › Módulos. Mientras el usuario no lo fije, está encendido si hay una
-carpeta de la fábrica registrada en Conectores y apagado si no. Apagado: sale del menú, sus rutas dan 404 y la
+Se configura en Conectores › Mi fábrica ([conectores.md](conectores.md)): su carpeta, su puerto («Probar» dice si
+el panel responde sin guardar nada) y el interruptor del módulo «Mi fábrica» (`fabrica`), que ya no está en Ajustes ›
+Módulos. Mientras el usuario no lo fije, está encendido si hay una carpeta de la fábrica registrada y apagado si no. Apagado: sale del menú, sus rutas dan 404 y la
 ventana se cierra al momento. El modo discreto cierra la ventana y la sección no ofrece abrirla.
 
 ## Arrancar la fábrica
@@ -44,7 +45,7 @@ indica `fabrica servicio instalar`; cualquier otro fallo (por ejemplo, el servic
 (`core/agora_core/routes_fabrica_window.py`), con la ruta de una lista cerrada y la dirección
 `http://127.0.0.1:{puerto}` del complemento; la app de escritorio la recoge en `/internal/fabrica/window/next`
 (inalcanzable desde el navegador), revalida el origen y abre o navega la ventana `fabrica`
-(`desktop/app/src/fabrica_window.rs`, sobre la ventana común `addon_window.rs` que comparte con Central). Nada del
+(`desktop/app/src/fabrica_window.rs`, sobre la ventana común `addon_window.rs` que comparte con Central y CRMDev). Nada del
 panel pasa por la API de AgoraOne salvo la comprobación de `/salud`.
 
 ## Seguridad
@@ -53,7 +54,7 @@ panel pasa por la API de AgoraOne salvo la comprobación de `/salud`.
   otro programa podría escuchar en `::1`) y nunca uno de los puertos de AgoraOne (4317 y 4318). Lo comprueban el
   núcleo y la app. Las redirecciones y `target=_blank` pasan por el mismo filtro.
 - **Almacén propio**: la ventana nunca usa el almacén por defecto de la ventana principal, así que la cookie de
-  AgoraOne no llega a la fábrica ni la de la fábrica a AgoraOne o a Central. Identificador propio en macOS 14+,
+  AgoraOne no llega a la fábrica ni la de la fábrica a AgoraOne, a Central o a CRMDev. Identificador propio en macOS 14+,
   privada en macOS 13 (pide la contraseña cada vez) y carpeta `fabrica-web` en Windows y Linux.
 - **Sin comandos ni permisos**: la ventana no tiene órdenes nativas y se le deniegan micrófono, cámara, ubicación,
   notificaciones y cualquier otro permiso.

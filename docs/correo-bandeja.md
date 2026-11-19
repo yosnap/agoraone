@@ -1,6 +1,6 @@
 # Correo y Bandeja (1.1)
 
-AgoraOne lee las cuentas de correo que conectas, las resume y te deja en la Bandeja lo que pide algo de ti. Ningún correo dispara una acción por sí mismo: archivar una factura, crear un evento, añadir algo al vault o responder solo ocurre cuando pulsas el botón de esa acción. El texto de un correo, de un adjunto o de una web es siempre dato, nunca instrucciones.
+AgoraOne lee las cuentas de correo que conectas, las resume y te deja en la Bandeja lo que pide algo de ti. La Bandeja une el correo y las conversaciones de WhatsApp en la misma lista, con el filtro «Fuente» (Todas, Correo, WhatsApp); lo propio de WhatsApp está en [whatsapp.md](whatsapp.md). Ningún correo dispara una acción por sí mismo: archivar una factura, crear un evento, añadir algo al vault o responder solo ocurre cuando pulsas el botón de esa acción. El texto de un correo, de un adjunto o de una web es siempre dato, nunca instrucciones.
 
 ## Cuentas (Ajustes › Correo)
 - IMAP en **solo lectura**: nunca marca como leído, mueve ni borra. Se lee cada cinco minutos y con «Leer ahora».
@@ -33,7 +33,7 @@ Acciones de una tarjeta, siempre con un formulario que revisas antes:
 
 **Chat de la Bandeja**: a la derecha, un chat con Watson para buscar correos («busca la factura de Hostinger») o pedir una limpieza; las limpiezas salen como lista para aprobar y la Bandeja se actualiza al moverlas. Se oculta con «Ocultar chat».
 
-Los clientes y sus proyectos vienen de Central (complemento del usuario), leídos en solo lectura cada 30 minutos: un remitente cuyo dominio o dirección es de un cliente se marca como cliente y la tarjeta muestra sus proyectos activos.
+Los clientes salen del directorio de clientes, con sus tres fuentes: Central, CRMDev y los clientes guardados en AgoraOne ([conectores.md](conectores.md)). Un remitente cuyo dominio o dirección es de un cliente se marca como cliente y la tarjeta muestra sus proyectos activos de Central.
 
 ## Responder
 1. «Responder…» prepara el borrador con la misma cuenta, el remitente, «Re:» y el original citado.

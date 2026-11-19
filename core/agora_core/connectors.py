@@ -50,14 +50,15 @@ class Adapter(Protocol):
 class WebApiAdapter:
     """A service reached through its web API. `probe` asks it with a connection and answers its version and the
     permissions of the key; `legacy` says whether an older way of connecting is still set (shown, never used),
-    `after_save` runs once a URL is saved and `after_forget` once the key is forgotten."""
+    `after_save` runs once a URL is saved, `after_forget` once the key is forgotten and `reset` after any save or
+    forget, also a failed one (a key written before the URL failed must not stay remembered as absent or present)."""
 
     def __init__(self, spec: web_api.WebApiSpec, probe: Callable[[web_api.Connection], dict],
                  legacy: Callable[[sqlite3.Connection], bool] | None = None, notice: str | None = None,
                  after_save: Callable[[sqlite3.Connection, bool], None] | None = None,
-                 after_forget: Callable[[], None] | None = None):
+                 after_forget: Callable[[], None] | None = None, reset: Callable[[], None] | None = None):
         self.spec, self.probe, self.legacy, self.notice, self.after_save = spec, probe, legacy, notice, after_save
-        self.after_forget = after_forget
+        self.after_forget, self.reset = after_forget, reset
         self.hint = spec.example_url
         self._lock = threading.Lock()  # the origin check, the key and the URL change together
 
@@ -77,8 +78,12 @@ class WebApiAdapter:
     def save(self, connection, secrets, body: dict) -> None:
         """`url` is required (a null forgets it); a missing `key` keeps the saved one, which never goes to another
         origin; a null `key` forgets it."""
-        with self._lock:
-            self._save(connection, secrets, body)
+        try:
+            with self._lock:
+                self._save(connection, secrets, body)
+        finally:
+            if self.reset is not None:
+                self.reset()
 
     def _save(self, connection, secrets, body: dict) -> None:
         if "url" not in body:
@@ -127,6 +132,9 @@ class WebApiAdapter:
                 web_api.write_key(self.spec, secrets, None)
         except web_api.WebApiError as error:
             raise ConnectorError(str(error), 503) from None
+        finally:
+            if self.reset is not None:
+                self.reset()
         if self.after_forget is not None:
             self.after_forget()
 
@@ -210,8 +218,7 @@ REGISTRY: dict[str, Connector] = {c.id: c for c in (
               WebApiAdapter(central_api.SPEC, lambda target: central_api.status(target), central.legacy, central.MOVED, _central_saved)),
     Connector("crmdev", "CRMDev", "CRM de proyectos, tareas, tickets y clientes de tu organización.",
               "web_api", ("crmdev",), ("crmdev",), "crmdev", crmdev_api.SCOPES,
-              WebApiAdapter(crmdev_api.SPEC, crmdev_api.probe, after_save=lambda connection, connected: crmdev_api.clear_cache(),
-                            after_forget=crmdev_api.clear_cache)),
+              WebApiAdapter(crmdev_api.SPEC, crmdev_api.probe, reset=crmdev_api.clear_cache)),
     Connector("fabrica", "Mi fábrica", "Fábrica de contenido: investiga, produce, espera aprobación, publica y mide.",
               "local_port", ("fabrica",), ("fabrica",), "fabrica", (), LocalAdapter("fabrica")),
     Connector("costguard", "CostGuard", "Mide el gasto de tokens de los agentes (Claude Code, Codex, OpenCode, pi), en solo lectura.",

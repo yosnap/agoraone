@@ -454,7 +454,7 @@ mod tests {
         let saved = remote_origin(&url("https://crm.example.com/es/panel"), &own);
         let origin = saved.as_ref();
         assert!(allowed(&url("https://crm.example.com/es/proyectos/x"), origin));
-        assert!(allowed(&url("https://KORDIA.tech:443/es/soporte"), origin));
+        assert!(allowed(&url("https://CRM.Example.COM:443/es/soporte"), origin));
         assert!(!allowed(&url("https://otro-crm.example.com/"), origin), "otro host");
         assert!(!allowed(&url("https://evil.crm.example.com/"), origin), "un subdominio es otro host");
         assert!(!allowed(&url("https://crm.example.com:8443/"), origin), "otro puerto");
