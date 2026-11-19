@@ -38,14 +38,16 @@ export function CentralScopes({ tested }: ExtraProps) {
 
 const crmdevTools: Record<string, string> = {
   list_projects: 'Proyectos', list_tasks: 'Tareas', list_tickets: 'Tickets', list_clients: 'Clientes', list_members: 'Miembros',
-  get_project_time_report: 'Horas de un proyecto',
+  get_project_time_report: 'Horas de un proyecto', create_task: 'Crear tareas', update_task: 'Cambiar tareas', update_project: 'Cambiar proyectos',
+  create_client: 'Crear clientes', update_client: 'Cambiar clientes', update_ticket: 'Cambiar tickets',
 };
 
 /** CRMDev: where the organization key is created and, after «Probar», what AgoraOne reads with it. */
 export function CrmdevTools({ tested }: ExtraProps) {
   return <>
-    <p>La clave de organización se crea en <strong>Ajustes › API Keys</strong> de CRMDev (solo propietarios y administradores). AgoraOne solo lee
-      proyectos, tareas, tickets, clientes y miembros, y nunca borra nada en CRMDev.</p>
+    <p>La clave de organización se crea en <strong>Ajustes › API Keys</strong> de CRMDev (solo propietarios y administradores). AgoraOne lee
+      proyectos, tareas, tickets, clientes y miembros; crea o cambia tareas, clientes, proyectos y tickets solo después de enseñarte el cambio
+      exacto y de que lo confirmes, y nunca borra nada en CRMDev.</p>
     <p className="muted">CRMDev admite 10 consultas cada 10 segundos por clave, compartidas con cualquier otra app que use la misma clave (por
       ejemplo, Claude Code). AgoraOne guarda cada lista un minuto y, si CRMDev pide esperar, espera sin volver a preguntar.</p>
     {isCrmdevProbe(tested) && <div>

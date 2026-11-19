@@ -36,9 +36,11 @@ TRANSPORT: httpx.BaseTransport | None = None
 
 # The closed list: the only tools AgoraOne ever sends. Nothing that deletes is or will be here.
 READ_TOOLS = frozenset({"list_projects", "list_tasks", "list_clients", "list_tickets", "list_members", "get_project_time_report"})
-WRITE_TOOLS: frozenset[str] = frozenset()
+# What AgoraOne may create or change, only from a form the user confirms (crmdev_write); never `delete_*`, never
+# `create_project` (CRMDev's own form) nor `create_ticket` (tickets come from clients).
+WRITE_TOOLS = frozenset({"create_task", "update_task", "update_project", "create_client", "update_client", "update_ticket"})
 # Tools that also need a module of the organization's plan, which only a call reveals.
-MODULE_TOOLS = frozenset({"list_tickets"})
+MODULE_TOOLS = frozenset({"list_tickets", "update_ticket"})
 NOT_ALLOWED = "Herramienta de CRMDev no permitida."
 FORBIDDEN = "La clave no vale o tu plan de CRMDev no incluye la API (módulo MCP)."
 BUSY = "CRMDev pide esperar unos segundos (demasiadas peticiones seguidas): vuelve a intentarlo en un momento."
@@ -47,11 +49,16 @@ REVOKED = "CRMDev no acepta la clave: puede estar revocada o caducada. Crea otra
 NOT_MEMBER = "Quien creó la clave ya no es miembro de la organización en CRMDev: crea otra clave en Ajustes › API Keys."
 NO_PLAN = "Tu plan de CRMDev no incluye la API (módulo MCP)."
 TICKETS_OFF = "Los tickets no están activos en tu plan de CRMDev (módulo de soporte)."
+NO_WRITE = ("Quien creó la clave en CRMDev no tiene permiso para cambiar esto (el proyecto, la tarea, el ticket o la persona asignada): "
+            "pide ese permiso a un administrador de CRMDev o hazlo allí.")
+# CRMDev's own reasons when the creator of the key may not change that record (its live project permissions).
+NO_WRITE_REASONS = frozenset({"FORBIDDEN", "PROJECT_UNAVAILABLE", "RESPONSIBLE_UNAVAILABLE", "PARENT_UNAVAILABLE", "CONSULTATION_UNAVAILABLE"})
 TOO_BIG = "CRMDev devolvió una respuesta demasiado grande."  # web_api's own sentence for an answer over the cap
 HOURS_TOO_BIG = "El informe de horas de este proyecto es demasiado grande para leerlo aquí: míralo en CRMDev."
 DEFAULT_WAIT = 10.0  # seconds, when CRMDev does not say how long
 
 ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 PRIORITIES = ("LOW", "MEDIUM", "HIGH", "URGENT")
 STATUSES = {
     "list_projects": ("NOT_STARTED", "IN_PROGRESS", "ON_HOLD", "COMPLETED", "CANCELLED"),
@@ -82,6 +89,32 @@ def _one_of(options: tuple[str, ...]) -> Callable[[object], str]:
     return check
 
 
+def _words(limit: int, lines: bool = False, empty: bool = False) -> Callable[[object], object]:
+    """A text as crmdev_write leaves it (trimmed, within its limit, no control characters); None only where CRMDev
+    empties the field with it. Answered unchanged, so the transport's last check sees the same body."""
+    def check(value: object) -> object:
+        if value is None and empty:
+            return None
+        allowed = "\n\t" if lines else ""
+        if not isinstance(value, str) or not value or value != value.strip() or len(value) > limit \
+                or any((ord(c) < 32 and c not in allowed) or c == "\x7f" for c in value):
+            raise WebApiError("invalid", "Un texto para CRMDev no es válido.")
+        return value
+    return check
+
+
+def _day(value: object) -> str:
+    if not isinstance(value, str) or not DAY.fullmatch(value):
+        raise WebApiError("invalid", "La fecha tiene que ser un día AAAA-MM-DD.")
+    return value
+
+
+def _progress(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
+        raise WebApiError("invalid", "El progreso va de 0 a 100.")
+    return value
+
+
 ARGUMENTS: dict[str, dict[str, Callable[[object], object]]] = {
     "list_projects": {"limit": _limit, "status": _one_of(STATUSES["list_projects"])},
     "list_tasks": {"limit": _limit, "status": _one_of(STATUSES["list_tasks"]), "projectId": _id, "assigneeId": _id},
@@ -90,8 +123,22 @@ ARGUMENTS: dict[str, dict[str, Callable[[object], object]]] = {
                      "category": _one_of(CATEGORIES), "clientId": _id},
     "list_members": {"limit": _limit},
     "get_project_time_report": {"projectId": _id},
+    "create_task": {"title": _words(300), "description": _words(4000, lines=True), "projectId": _id, "assigneeId": _id,
+                    "status": _one_of(STATUSES["list_tasks"]), "priority": _one_of(PRIORITIES), "dueDate": _day},
+    "update_task": {"taskId": _id, "title": _words(300), "description": _words(4000, lines=True, empty=True),
+                    "status": _one_of(STATUSES["list_tasks"]), "priority": _one_of(PRIORITIES)},
+    # Never `description`: the list does not give it, so its current value could not be shown.
+    "update_project": {"projectId": _id, "name": _words(300), "status": _one_of(STATUSES["list_projects"]), "progress": _progress},
+    "create_client": {"name": _words(300), "email": _words(200), "company": _words(300), "phone": _words(40),
+                      "status": _one_of(STATUSES["list_clients"])},
+    # Never `notes`: the list does not give them and CRMDev would overwrite them whole.
+    "update_client": {"clientId": _id, "name": _words(300), "email": _words(200), "company": _words(300, empty=True),
+                      "status": _one_of(STATUSES["list_clients"])},
+    "update_ticket": {"ticketId": _id, "status": _one_of(STATUSES["list_tickets"]), "priority": _one_of(PRIORITIES),
+                      "category": _one_of(CATEGORIES)},
 }
-REQUIRED = {"get_project_time_report": ("projectId",)}
+REQUIRED = {"get_project_time_report": ("projectId",), "create_task": ("title",), "update_task": ("taskId",),
+            "update_project": ("projectId",), "create_client": ("name",), "update_client": ("clientId",), "update_ticket": ("ticketId",)}
 
 
 def checked_arguments(tool: str, arguments: object) -> dict:
@@ -177,6 +224,16 @@ def clear_cache() -> None:
         _generation += 1
 
 
+def forget_reads(tools: frozenset[str] | set[str]) -> None:
+    """After a change: forgets the readings of those tools (never a «wait» after a 429), and a reading begun before
+    never fills the cache afterwards with what CRMDev had before the change."""
+    global _generation
+    with _cache_lock:
+        for key in [k for k in _cache if k[2] in tools]:
+            del _cache[key]
+        _generation += 1
+
+
 def _who(target: Connection) -> tuple:
     # The key is part of it only as a digest, so another key never reads what this one did.
     return target.url, hashlib.sha256(target.key.encode()).hexdigest()
@@ -231,6 +288,8 @@ def _forbidden(text: str, key: str) -> WebApiError:
         return WebApiError("auth", NOT_MEMBER)
     if reason == "MODULE_DISABLED":
         return WebApiError("forbidden", TICKETS_OFF)
+    if reason in NO_WRITE_REASONS:
+        return WebApiError("forbidden", NO_WRITE)
     if "plan" in reason.lower():
         return WebApiError("forbidden", NO_PLAN)
     return WebApiError("forbidden", FORBIDDEN)

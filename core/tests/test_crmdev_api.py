@@ -93,7 +93,7 @@ def test_ninguna_herramienta_permitida_borra():
     assert allowed <= set(ALL_TOOLS), "solo herramientas que CRMDev tiene"
 
 
-@pytest.mark.parametrize("tool", ["create_project", "update_task", "otra", "", None, "list_projects ", "LIST_PROJECTS"])
+@pytest.mark.parametrize("tool", ["create_project", "create_ticket", "otra", "", None, "list_projects ", "LIST_PROJECTS"])
 def test_fuera_de_la_lista_no_sale_nada(fake, tool):
     with pytest.raises(WebApiError, match="no permitida"):
         crmdev_api.call(TARGET, tool)
@@ -259,15 +259,16 @@ def test_direccion_y_clave():
 
 
 def test_probar(fake):
-    assert crmdev_api.probe(TARGET) == {"version": None, "scopes": ["organizacion"], "tools": sorted(crmdev_api.READ_TOOLS - {"list_tickets"}),
-                                        "unverified": ["list_tickets"]}, "los tickets no se dan por disponibles"
+    allowed = crmdev_api.READ_TOOLS | crmdev_api.WRITE_TOOLS
+    assert crmdev_api.probe(TARGET) == {"version": None, "scopes": ["organizacion"], "tools": sorted(allowed - {"list_tickets", "update_ticket"}),
+                                        "unverified": ["list_tickets", "update_ticket"]}, "los tickets no se dan por disponibles"
     assert fake.seen[-1].method == "GET" and fake.tools() == []
 
 
 def test_probar_no_ensena_lo_que_no_esta_en_la_lista(monkeypatch):
     found = FakeCrmdev(announced=("list_projects", "delete_project", "create_task", "nueva_herramienta"))
     monkeypatch.setattr(crmdev_api, "TRANSPORT", httpx.MockTransport(found))
-    assert crmdev_api.probe(TARGET)["tools"] == ["list_projects"]
+    assert crmdev_api.probe(TARGET)["tools"] == ["create_task", "list_projects"], "ni borrar ni lo que no está en la lista"
     monkeypatch.setattr(crmdev_api, "TRANSPORT", httpx.MockTransport(lambda r: httpx.Response(200, json={"success": True, "tools": ["list_tasks", "delete_task", 5]})))
     assert crmdev_api.probe(TARGET)["tools"] == ["list_tasks"]
 
@@ -275,7 +276,9 @@ def test_probar_no_ensena_lo_que_no_esta_en_la_lista(monkeypatch):
 @pytest.mark.parametrize("error, status, message", [
     ("Invalid API Key", "auth", crmdev_api.REVOKED), ("MCP no está incluido en el plan de esta organización", "forbidden", crmdev_api.NO_PLAN),
     ("MODULE_DISABLED", "forbidden", crmdev_api.TICKETS_OFF), ("MCP_UNAUTHORIZED", "auth", crmdev_api.NOT_MEMBER),
-    ("FORBIDDEN", "forbidden", crmdev_api.FORBIDDEN), (None, "forbidden", crmdev_api.FORBIDDEN),
+    ("FORBIDDEN", "forbidden", crmdev_api.NO_WRITE), ("PROJECT_UNAVAILABLE", "forbidden", crmdev_api.NO_WRITE),
+    ("RESPONSIBLE_UNAVAILABLE", "forbidden", crmdev_api.NO_WRITE), ("Otra cosa", "forbidden", crmdev_api.FORBIDDEN),
+    (None, "forbidden", crmdev_api.FORBIDDEN),
 ])
 def test_cada_403_dice_su_causa(monkeypatch, error, status, message):
     body = {"error": error} if error else {}

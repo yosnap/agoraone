@@ -3,8 +3,10 @@ import { getCrmdevView, type CrmdevFilters, type CrmdevTicket } from '../api/crm
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
-import { Badge, CrmdevProblem, LongText, OpenInCrmdev, OrderNote, ReadAgain } from './crmdev-common';
+import { Badge, CrmdevProblem, LongText, OpenInCrmdev, OrderNote, ReadAgain, Said } from './crmdev-common';
+import { CrmdevEditTicket } from './crmdev-edit-ticket';
 import { categoryLabels, dayLabel, filterOptions, labelOf, priorityLabels, ticketStatusLabels } from './crmdev-labels';
+import { changeKey, resetChange, useEditing } from './use-crmdev-change';
 import { namesOf, readKey, useCrmdevRead } from './use-crmdev-view';
 
 /** What the screen filters itself, over the tickets that came: CRMDev's API filters tickets only by state and client. */
@@ -12,9 +14,11 @@ export type ScreenFilters = { prioridad?: string; proyecto?: string };
 export const screenFiltered = (tickets: CrmdevTicket[], { prioridad, proyecto }: ScreenFilters) =>
   tickets.filter(t => (!prioridad || t.priority === prioridad) && (!proyecto || t.project === proyecto));
 
-/** Some tickets: title (and description), state, priority, category, who opened it, client, project and date. In
- * discreet mode neither descriptions nor the column of who opened it are shown. */
-export function TicketsTable({ tickets, discreet, withClient = true }: { tickets: CrmdevTicket[]; discreet: boolean; withClient?: boolean }) {
+/** Some tickets: title (and description), state, priority, category, who opened it, client, project and date; with
+ * `onEdit`, an «Editar» button on each. In discreet mode neither descriptions nor the column of who opened it are shown. */
+export function TicketsTable({ tickets, discreet, withClient = true, onEdit }: {
+  tickets: CrmdevTicket[]; discreet: boolean; withClient?: boolean; onEdit?: (id: string) => void;
+}) {
   if (!tickets.length) return <p className="muted">Ningún ticket.</p>;
   return <table className="data-table central-table">
     <thead><tr><th>Ticket</th><th>Estado</th><th>Prioridad</th><th>Categoría</th>{!discreet && <th>Abierto por</th>}{withClient && <th>Cliente</th>}<th>Proyecto</th><th>Fecha</th>
@@ -28,7 +32,9 @@ export function TicketsTable({ tickets, discreet, withClient = true }: { tickets
       {withClient && <td>{t.client ?? '—'}</td>}
       <td>{t.project ?? '—'}</td>
       <td className="central-date">{dayLabel(t.createdAt)}</td>
-      <td className="central-row-actions">{t.id && <OpenInCrmdev page={`tickets/${t.id}`} discreet={discreet}/>}</td>
+      <td className="central-row-actions">{t.id && <span className="actions">
+        {onEdit && <button type="button" className="button" aria-label={`Editar el ticket ${t.title ?? ''}`} onClick={() => onEdit(t.id as string)}>Editar</button>}
+        <OpenInCrmdev page={`tickets/${t.id}`} discreet={discreet}/></span>}</td>
     </tr>)}</tbody>
   </table>;
 }
@@ -38,6 +44,7 @@ export function TicketsTable({ tickets, discreet, withClient = true }: { tickets
 export function CrmdevTickets({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   const [filters, setFilters] = useState<CrmdevFilters['tickets']>({});
   const [local, setLocal] = useState<ScreenFilters>({});
+  const [said, setSaid] = useState('');
   const read = useCrmdevRead(readKey('tickets', filters), fresh => getCrmdevView('tickets', filters, fresh));
   const clients = useCrmdevRead(readKey('clientes'), fresh => getCrmdevView('clientes', {}, fresh));
   // The projects offered come from the tickets read: a new state or client starts again from all projects.
@@ -47,6 +54,8 @@ export function CrmdevTickets({ discreet, onOpen }: { discreet: boolean; onOpen:
   const projects = namesOf((read.data?.items ?? []).map(t => t.project));
   const shown = read.data ? screenFiltered(read.data.items, local) : [];
   const narrowed = Boolean(local.prioridad || local.proyecto);
+  const editing = useEditing(read.data?.items);
+  const picked = editing.row;
   return <>
     <div className="field-row central-filters">
       <label className="field">Estado<ModernSelect value={filters.estado ?? ''} onChange={value => remote({ ...filters, estado: value || undefined })}
@@ -65,7 +74,10 @@ export function CrmdevTickets({ discreet, onOpen }: { discreet: boolean; onOpen:
         <p className="muted crmdev-order">La prioridad y el proyecto se filtran aquí, sobre los tickets leídos{read.data.more ? ` (los ${read.data.limit} más recientes)` : ''}: la API de CRMDev solo filtra los tickets por estado y por cliente.</p>
         <OrderNote page={read.data}/>
         {narrowed && <p className="muted" role="status">{shown.length} de {read.data.items.length} tickets leídos.</p>}
-        <TicketsTable tickets={shown} discreet={discreet}/>
+        <Said text={said}/>
+        {picked && <CrmdevEditTicket key={picked.id} ticket={picked} list={editing.gone ? {} : filters} gone={editing.gone} onCancel={editing.close}
+          onDone={text => { editing.close(); setSaid(text); }}/>}
+        <TicketsTable tickets={shown} discreet={discreet} onEdit={id => { setSaid(''); resetChange(changeKey('ticket', id)); editing.open(id, read.data?.items.find(t => t.id === id)); }}/>
       </>}
   </>;
 }

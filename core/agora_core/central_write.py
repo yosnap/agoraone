@@ -16,6 +16,7 @@ from datetime import date
 
 from . import central_api, clients
 from .central_views import ID, project_revision, revision
+from .confirmed_change import ChangeError
 
 READ_SECONDS = 20
 NOTE_MAX = 5000
@@ -35,10 +36,6 @@ MARKS = ("[ruta oculta]", "[IP oculta]")
 _DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
 UNFIXED = "Sin fijarlo, el escáner de Central puede volver a calcular el estado en su próxima pasada."
 FIXED = "El estado está fijado a mano en Central: seguirá fijado con el estado nuevo."
-
-
-class ChangeError(ValueError):
-    """A change that cannot be asked (a field not allowed, a value out of range): 422, Central is not asked."""
 
 
 class ExistsError(Exception):
