@@ -3,13 +3,13 @@
 //! this collects them by asking and waiting; how the video goes is read from the window every second and handed to
 //! AgoraOne's window as an event. The YouTube window has no native commands (the app grants none to any window), is
 //! refused the microphone, camera and every other permission, keeps nothing between launches (private data store),
-//! only goes to YouTube's pages and opens no other window. Stopping leaves it on an empty page (never destroyed while
+//! only goes to YouTube's pages, opens no other window and downloads nothing. Stopping leaves it on an empty page (never destroyed while
 //! orders may follow), and it goes blank too whenever AgoraOne's window loads again, so it never plays unseen.
 
 use std::sync::Mutex;
 use std::time::Duration;
 
-use tauri::webview::NewWindowResponse;
+use tauri::webview::{DownloadEvent, NewWindowResponse};
 use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const LABEL: &str = "youtube";
@@ -63,6 +63,11 @@ fn tell(app: &AppHandle, state: &serde_json::Value) {
     }
 }
 
+/// The hidden window never downloads: a download started from a page would go unseen, so every one is refused.
+fn allow_download(_event: &DownloadEvent) -> bool {
+    false
+}
+
 fn open(app: &AppHandle, url: Url) -> tauri::Result<WebviewWindow> {
     WebviewWindowBuilder::new(app, LABEL, WebviewUrl::External(url))
         .title("YouTube (AgoraOne)")
@@ -75,6 +80,7 @@ fn open(app: &AppHandle, url: Url) -> tauri::Result<WebviewWindow> {
         .on_navigation(youtube_page)
         .on_permission_request(|_, _| tauri::webview::PermissionResponse::Deny)
         .on_new_window(|_, _| NewWindowResponse::Deny)
+        .on_download(|_, event| allow_download(&event))
         .build()
 }
 
@@ -170,6 +176,14 @@ mod tests {
         assert!(!youtube_page(&Url::parse("http://www.youtube.com/").unwrap()));
         assert!(!youtube_page(&Url::parse("https://evil.example/youtube.com").unwrap()));
         assert!(!youtube_page(&Url::parse("http://127.0.0.1:4318/").unwrap()));
+    }
+
+    #[test]
+    fn no_descarga_nada() {
+        let mut destination = std::path::PathBuf::from("descarga.bin");
+        let url = Url::parse("https://www.youtube.com/archivo.bin").unwrap();
+        assert!(!allow_download(&DownloadEvent::Requested { url: url.clone(), destination: &mut destination }));
+        assert!(!allow_download(&DownloadEvent::Finished { url, path: None, success: true }));
     }
 
     #[test]
