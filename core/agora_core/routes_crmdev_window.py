@@ -21,6 +21,8 @@ from .settings import Settings
 LOCALE = "es"
 PAGES = {"panel", "proyectos", "tareas", "clientes", "soporte"}
 ITEMS = {"proyectos": "proyectos", "clientes": "clientes", "tickets": "soporte/tickets"}
+# Fixed pages of CRMDev where an id would go (`projects/wordpress`, and «edit»/«details» in both languages): never an id.
+RESERVED = frozenset({"wordpress", "editar", "edit", "detalles", "details", "nuevo", "new"})
 TEXTS = WindowTexts(
     off={"crmdev": "El módulo CRMDev está apagado."},
     not_connected="Falta la dirección de CRMDev: escríbela en Conectores › CRMDev.",
@@ -40,7 +42,7 @@ def route_of(value: object) -> tuple[str, str] | None:
     if route in PAGES:
         return f"{LOCALE}/{route}", "crmdev"
     kind, _, item = route.partition("/")
-    if kind in ITEMS and crmdev_api.ID.fullmatch(item):
+    if kind in ITEMS and crmdev_api.ID.fullmatch(item) and item.lower() not in RESERVED:
         return f"{LOCALE}/{ITEMS[kind]}/{item}", "crmdev"
     return None
 

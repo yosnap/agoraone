@@ -12,6 +12,11 @@ type Said = { ok: boolean; text: string; browser?: boolean };
 
 export const windowNames: Record<WindowLabel, string> = { central: 'Central', crmdev: 'CRMDev' };
 
+/** CRMDev treats its support pages as public, so when it asks to sign in there it does not come back to the page
+ * afterwards but to its panel: the user is told to press the button again. */
+export const pageNote = (connector: WindowLabel, page: string) => connector === 'crmdev' && (page === 'soporte' || page.startsWith('tickets/'))
+  ? ' Si CRMDev te pide entrar, después puede llevarte a su panel: vuelve a pulsar el botón.' : '';
+
 const message = (error: unknown, fallback: string) => error instanceof ApiError || error instanceof Error ? error.message : fallback;
 
 /** What the button does, apart from the screen so it can be checked: opens the page in the window or the browser and
@@ -25,7 +30,7 @@ export async function openPage(connector: WindowLabel, page: string, inBrowser: 
       return { ok: true, text: 'Abierto en tu navegador.' };
     }
     await deps.window(connector, page);
-    return { ok: true, text: `Abierto en la ventana de ${name}. La primera vez, inicia sesión con tu usuario de ${name}: se recuerda.` };
+    return { ok: true, text: `Abierto en la ventana de ${name}. La primera vez, inicia sesión con tu usuario de ${name}: se recuerda.${pageNote(connector, page)}` };
   } catch (error) {
     const noWindow = error instanceof ApiError && error.data?.status === 'no_window';
     return { ok: false, text: message(error, `No se pudo abrir ${name}.`), browser: noWindow };
@@ -73,6 +78,35 @@ export function crmdevNotice(found: WindowLink, deps = { link: openConnectorLink
     action: oauth ? 'Abrir CRMDev en el navegador' : found.kind === 'http' ? 'Abrir igualmente en el navegador' : 'Abrir en el navegador',
     onAction: () => oauth ? deps.browser('crmdev', 'panel') : deps.link('crmdev', found.url),
   };
+}
+
+// CRMDev's window never downloads (the user's decision, 19/11/2026): a download or an export (`blob:`, `data:`) is
+// refused there and the desktop app says so, with the page the window was on when it is CRMDev's own.
+export type RefusedDownload = { url: string | null };
+export const refusedDownload = (detail: unknown): RefusedDownload | null => {
+  if (typeof detail !== 'object' || detail === null) return null;
+  const link = windowExternalLink(detail);
+  return { url: link && link.kind !== 'oauth' ? link.url : null };
+};
+const crmdevDownloads = eventStore<RefusedDownload>('agora:crmdev-download-refused', refusedDownload);
+
+/** What the notice of a refused download says and does: the same page in the browser, or CRMDev's panel. */
+export function crmdevDownloadNotice(found: RefusedDownload, deps = { link: openConnectorLink, browser: openConnectorInBrowser }) {
+  return {
+    title: 'Las descargas de CRMDev se hacen en tu navegador',
+    body: <p>La ventana de CRMDev no descarga archivos ni exportaciones. Abre la página en tu navegador, inicia sesión allí si hace falta y descárgalo
+      desde ahí.</p>,
+    url: found.url ?? undefined,
+    action: 'Abrir en el navegador',
+    onAction: () => found.url ? deps.link('crmdev', found.url) : deps.browser('crmdev', 'panel'),
+  };
+}
+
+/** «Las descargas de CRMDev se hacen en tu navegador», over any section. In discreet mode the address is not shown. */
+export function CrmdevDownloadNotice({ discreet }: { discreet: boolean }) {
+  const found = crmdevDownloads.use();
+  if (!found) return null;
+  return <WindowLinkNotice key={found.url ?? 'panel'} discreet={discreet} onClose={() => crmdevDownloads.set(null)} {...crmdevDownloadNotice(found)}/>;
 }
 
 /** «Esto se abre en tu navegador» for CRMDev's window, over any section. In discreet mode the address is not shown. */

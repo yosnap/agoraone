@@ -1,18 +1,17 @@
 import { useSyncExternalStore } from 'react';
 import { getModules, putModules, type ModuleName, type ModulesState } from '../api/core';
-import { checkCentralWindow } from '../api/central';
-import { checkConnectorWindow } from '../api/connector-window';
-import { checkFabricaWindow } from '../api/fabrica';
+import { checkConnectorWindow, closeConnectorWindow } from '../api/connector-window';
 
 /** Which modules are on, shared by the whole screen (1.6). Until read, everything counts as on. */
 let on: Partial<Record<ModuleName, boolean>> = {};
 let labels: Partial<Record<ModuleName, string>> = {};
 let owners: Partial<Record<ModuleName, string>> | null = null;
+let windows: Partial<Record<ModuleName, string>> | null = null;
 let read = false;
 let asked = false;
 const listeners = new Set<() => void>();
 const publish = (next: ModulesState) => {
-  on = next.modules; labels = next.labels; owners = next.owners ?? null; read = true;
+  on = next.modules; labels = next.labels; owners = next.owners ?? null; windows = next.windows ?? null; read = true;
   listeners.forEach(listener => listener());
 };
 const snapshot = () => on;
@@ -32,16 +31,18 @@ export const moduleLabels = () => labels;
 export const moduleOwners = () => owners;
 /** Whether the modules have been read once. */
 export const modulesRead = () => read;
-/** By the connector's window label (`Connector.window`, today the connector's id too): makes the desktop app look again
- * whether that window may stay open. */
-export const windowChecks: Record<string, () => Promise<unknown>> = {
-  central: checkCentralWindow, crmdev: () => checkConnectorWindow('crmdev'), fabrica: checkFabricaWindow,
-};
-/** Before the owners are read (or with an older core): the modules whose connector is not named like them. */
-const OWNER_FALLBACK: Partial<Record<ModuleName, string>> = { presupuestos: 'central' };
-const windowOf = (name: ModuleName) => owners?.[name] ?? OWNER_FALLBACK[name] ?? name;
+/** Before the modules are read, or with an older core that does not say which windows there are. */
+const KNOWN_WINDOWS = ['central', 'crmdev', 'fabrica'];
+/** Discreet mode turned on: every connector's window closes (it would keep showing what discreet mode hides). The
+ * labels are those the core gives for the modules (`Connector.window`). */
+export function closeConnectorWindows(close: (label: string) => Promise<unknown> = closeConnectorWindow) {
+  const labels = windows ? [...new Set(Object.values(windows))] : KNOWN_WINDOWS;
+  return Promise.all(labels.map(label => close(label).catch(() => undefined)));
+}
 export async function setModule(name: ModuleName, value: boolean) {
   publish(await putModules({ [name]: value }));
-  // A connector's window closes at once when no module that uses it is left on (Central with Presupuestos, CRMDev, the fábrica).
-  if (!value) void windowChecks[windowOf(name)]?.().catch(() => undefined);
+  // The window of the connector that holds the module (`Connector.window`, as the core says) closes at once when no
+  // module that uses it is left on: Central with Presupuestos, CRMDev, the fábrica…
+  const label = windows?.[name];
+  if (!value && label) void checkConnectorWindow(label).catch(() => undefined);
 }

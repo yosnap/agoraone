@@ -54,7 +54,8 @@ def test_lista_cerrada_de_paginas():
     assert route_of("tickets/k1") == ("es/soporte/tickets/k1", "crmdev"), "un ticket vive bajo soporte"
     for wrong in ("", "acceso", "configuracion/claves-api", "api/mcp/rest", "proyectos//x", "proyectos/../configuracion", "proyectos/a/b",
                   "proyectos/a%2Fb", "proyectos/x y", "tareas/t1", "soporte/tickets/k1", "es/panel", "panel?x=1", "panel#x",
-                  "//evil.example", "https://evil.example", "proyectos/" + "a" * 65, None, 3, "a" * 200):
+                  "//evil.example", "https://evil.example", "proyectos/" + "a" * 65, "proyectos/wordpress", "proyectos/editar", "clientes/Edit", "tickets/detalles",
+                  None, 3, "a" * 200):
         assert route_of(wrong) is None, wrong
 
 
@@ -137,3 +138,12 @@ def test_cada_ventana_con_su_cola(client):
     central = client.get("/internal/central/window/next", params={"after": 0}, headers=HEADERS).json()["commands"]
     assert [c["action"] for c in crmdev] == ["open"]
     assert [c["action"] for c in central] == ["close"]
+
+
+def test_alias_de_este_equipo_son_el_host_de_agoraone():
+    from agora_core.window_links import agora_host
+    for alias in ("http://127.0.0.1:3000", "http://127.1.2.3", "http://[::1]:3000", "https://[::ffff:7f00:1]:4317", "https://[::ffff:127.0.0.1]",
+                  "https://0.0.0.0:4317", "https://[::]:4317", "https://foo.localhost", "https://foo.localhost.", "https://localhost.:4317"):
+        assert agora_host(alias), alias
+    for other in ("http://localhost:3099", "https://crm.example.com", "https://localhost.example.com", "https://10.0.0.1", "nada"):
+        assert not agora_host(other), other

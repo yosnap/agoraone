@@ -156,7 +156,7 @@ const fakeDeps = () => {
     put: async (id, changes) => { calls.push(`put ${id} ${JSON.stringify(changes)}`); return central({ url: 'https://central.example.com', hasKey: true }, 'saved'); },
     remove: async id => { calls.push(`delete ${id}`); return central({ url: 'https://central.example.com', hasKey: false }); },
     refresh: async () => { calls.push('refresh'); },
-    windows: { central: async () => { calls.push('window central'); }, fabrica: async () => { calls.push('window fabrica'); } },
+    checkWindow: async label => { calls.push(`window ${label}`); },
   };
   return { calls, deps };
 };

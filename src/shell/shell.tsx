@@ -14,13 +14,10 @@ import { FirstRun } from './first-run';
 import { requestListen } from '../assistant/listen';
 import { YouTubeMini } from '../brain/youtube-player';
 import { CentralLinkNotice } from '../central/open-in-central';
-import { closeCentralWindow } from '../api/central';
-import { closeFabricaWindow } from '../api/fabrica';
-import { closeConnectorWindow } from '../api/connector-window';
-import { CrmdevLinkNotice } from '../connectors/open-in-connector';
+import { CrmdevDownloadNotice, CrmdevLinkNotice } from '../connectors/open-in-connector';
 import { FabricaDownloadNotice, FabricaLinkNotice } from '../fabrica/fabrica-notices';
 import { readShell, sectionModule, writeShell, type Section } from './shell-state';
-import { moduleOn, useModules } from './modules';
+import { closeConnectorWindows, moduleOn, useModules } from './modules';
 import './shell.css';
 import './page.css';
 
@@ -66,10 +63,7 @@ export function Shell() {
   // Discreet mode closes the connectors' windows too (Central, CRMDev, the fábrica): they would keep showing what discreet mode hides.
   const setDiscreet = (on: boolean) => {
     setShell(previous => ({ ...previous, discreet: on }));
-    if (on) {
-      void closeCentralWindow().catch(() => undefined); void closeConnectorWindow('crmdev').catch(() => undefined);
-      void closeFabricaWindow().catch(() => undefined);
-    }
+    if (on) void closeConnectorWindows();
   };
   const showOnGraph = (ids: string[]) => { setFocus(ids); go('brain'); };
   const ready = status?.csrf;
@@ -81,6 +75,7 @@ export function Shell() {
       <UploadNotice onOpen={() => go('fiscal')}/>
       <CentralLinkNotice discreet={discreet}/>
       <CrmdevLinkNotice discreet={discreet}/>
+      <CrmdevDownloadNotice discreet={discreet}/>
       <FabricaLinkNotice discreet={discreet}/>
       <FabricaDownloadNotice discreet={discreet}/>
     </div>

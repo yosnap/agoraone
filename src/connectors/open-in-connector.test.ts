@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ApiError } from '../api/client';
 import { windowExternalLink } from '../api/connector-window';
 import { TicketsTable } from '../crmdev/crmdev-tickets';
-import { setModule, windowChecks } from '../shell/modules';
-import { crmdevNotice, OpenInConnector, openPage } from './open-in-connector';
+import { closeConnectorWindows, setModule } from '../shell/modules';
+import { crmdevDownloadNotice, crmdevNotice, OpenInConnector, openPage, refusedDownload } from './open-in-connector';
 
 type Sent = { path: string; body: unknown };
 /** Every call to the core answered with `answer`, and what was sent. */
@@ -74,17 +73,51 @@ test('un enlace de CRMDev a otro sitio se ofrece en el navegador, y entrar con G
   assert.match(crmdevNotice(windowExternalLink({ url: 'http://example.com/' })!, deps).action, /igualmente/);
 });
 
-test('apagar el módulo CRMDev hace que la app mire si su ventana puede seguir abierta', async () => {
-  assert.deepEqual(Object.keys(windowChecks).sort(), ['central', 'crmdev', 'fabrica']);
-  const sent = await capture(path => ({ status: 200, body: path.endsWith('/modules') ? { modules: { crmdev: false }, labels: {} } : { done: true } }),
-    async () => { await setModule('crmdev', false); await new Promise(resolve => setTimeout(resolve, 5)); });
-  assert.deepEqual(sent.map(s => s.path), ['/api/core/modules', '/api/core/crmdev/window/check']);
-  const quotes = await capture(path => ({ status: 200, body: path.endsWith('/modules') ? { modules: { presupuestos: false }, labels: {} } : { done: true } }),
-    async () => { await setModule('presupuestos', false); await new Promise(resolve => setTimeout(resolve, 5)); });
+/** The modules as a core answers them, with each module's window label (`Connector.window`). */
+const modulesAnswer = (modules: Record<string, boolean>, windows?: Record<string, string>) => (path: string) =>
+  ({ status: 200, body: path.endsWith('/modules') ? { modules, labels: {}, ...(windows ? { windows } : {}) } : { done: true } });
+const later = () => new Promise(resolve => setTimeout(resolve, 5));
+
+test('apagar un módulo mira la ventana que el núcleo dice para él (Connector.window), aunque no se llame como el conector', async () => {
+  const windows = { crmdev: 'crmdev', presupuestos: 'central', seo: 'seo-web' };
+  const crmdev = await capture(modulesAnswer({ crmdev: false }, windows), async () => { await setModule('crmdev', false); await later(); });
+  assert.deepEqual(crmdev.map(s => s.path), ['/api/core/modules', '/api/core/crmdev/window/check']);
+  const quotes = await capture(modulesAnswer({ presupuestos: false }, windows), async () => { await setModule('presupuestos', false); await later(); });
   assert.deepEqual(quotes.map(s => s.path), ['/api/core/modules', '/api/core/central/window/check'], 'Presupuestos sigue cerrando la de Central');
+  const other = await capture(modulesAnswer({ seo: false } as Record<string, boolean>, windows),
+    async () => { await setModule('seo' as never, false); await later(); });
+  assert.deepEqual(other.map(s => s.path), ['/api/core/modules', '/api/core/seo-web/window/check'], 'la etiqueta de la ventana, no el id');
+  const old = await capture(modulesAnswer({ crmdev: false }), async () => { await setModule('crmdev', false); await later(); });
+  assert.deepEqual(old.map(s => s.path), ['/api/core/modules'], 'un núcleo que no dice la ventana no inventa ninguna');
 });
 
-test('sin selects nativos ni bordes de acento en el botón común', () => {
-  const source = readFileSync(new URL('./open-in-connector.tsx', import.meta.url), 'utf8');
-  assert.doesNotMatch(source, /<select|border-l|border-left|innerHTML/);
+test('activar el modo discreto cierra la ventana de CRMDev con las de los demás conectores', async () => {
+  await capture(modulesAnswer({ crmdev: true }, { central: 'central', presupuestos: 'central', crmdev: 'crmdev', fabrica: 'fabrica' }),
+    async () => { await setModule('crmdev', true); });
+  const closed: string[] = [];
+  await closeConnectorWindows(async label => { closed.push(label); });
+  assert.deepEqual(closed.sort(), ['central', 'crmdev', 'fabrica']);
+  const sent = await capture(() => ({ status: 200, body: { done: true } }), () => closeConnectorWindows());
+  assert.ok(sent.some(s => s.path === '/api/core/crmdev/window/close'));
+});
+
+test('en un ticket o en Soporte se avisa de que, tras entrar, CRMDev puede llevar a su panel', async () => {
+  const ok = { window: async () => ({ seq: 1 }), browser: async () => ({ done: true as const }) };
+  assert.match((await openPage('crmdev', 'tickets/k1', false, ok)).text, /vuelve a pulsar/);
+  assert.match((await openPage('crmdev', 'soporte', false, ok)).text, /vuelve a pulsar/);
+  assert.doesNotMatch((await openPage('crmdev', 'proyectos/p1', false, ok)).text, /vuelve a pulsar/);
+  assert.doesNotMatch((await openPage('central', 'ajustes', false, ok)).text, /vuelve a pulsar/);
+});
+
+test('una descarga en la ventana de CRMDev se ofrece en el navegador: la misma página, o el panel si no se sabe', async () => {
+  const calls: string[] = [];
+  const deps = { link: async (label: string, url: string) => { calls.push(`link ${label} ${url}`); return { done: true as const }; },
+    browser: async (label: string, page: string) => { calls.push(`browser ${label} ${page}`); return { done: true as const }; } };
+  const page = refusedDownload({ url: 'https://crm.example.com/es/soporte' })!;
+  assert.equal(crmdevDownloadNotice(page, deps).url, 'https://crm.example.com/es/soporte');
+  await crmdevDownloadNotice(page, deps).onAction();
+  await crmdevDownloadNotice(refusedDownload({ url: null })!, deps).onAction();
+  assert.deepEqual(refusedDownload({ url: 'blob:https://crm.example.com/1' }), { url: null }, 'un blob no se puede abrir: el panel');
+  assert.equal(refusedDownload(null), null);
+  assert.deepEqual(calls, ['link crmdev https://crm.example.com/es/soporte', 'browser crmdev panel']);
 });

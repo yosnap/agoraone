@@ -53,16 +53,22 @@ pub struct State {
     last_focus: Mutex<Option<Instant>>,
     /// Downloads let through and not finished yet: their address and where they go.
     downloads: Mutex<Vec<(String, PathBuf)>>,
+    /// The last page of the open origin the window went to, for «Abrir en el navegador» after a refused download.
+    page: Mutex<Option<String>>,
 }
 
 impl State {
     pub const fn new() -> Self {
-        Self { origin: Mutex::new(None), last_told: Mutex::new(None), last_focus: Mutex::new(None), downloads: Mutex::new(Vec::new()) }
+        Self {
+            origin: Mutex::new(None), last_told: Mutex::new(None), last_focus: Mutex::new(None), downloads: Mutex::new(Vec::new()),
+            page: Mutex::new(None),
+        }
     }
 
     /// A closed window: no address open and no download on its way (a closed window may never say they ended).
     fn forget(&self) {
         *lock(&self.origin) = None;
+        *lock(&self.page) = None;
         lock(&self.downloads).clear();
     }
 }
@@ -94,9 +100,20 @@ pub fn origin_of(url: &Url) -> Option<Origin> {
     Some((url.scheme().to_string(), url.host_str()?.to_ascii_lowercase(), url.port_or_known_default()?))
 }
 
-/// AgoraOne's own host: any 127.x address or ::1, which share cookies with AgoraOne's window whatever the port.
+/// AgoraOne's own host, or a name for this machine that could reach it: any loopback or unspecified address (127.x,
+/// ::1, 0.0.0.0, ::, and those written as IPv4 inside IPv6), `localhost.` with its final dot and any `*.localhost`.
+/// Plain `localhost` is another host for cookies and stays allowed (over http, never on one of AgoraOne's ports).
 fn agora_host(host: &str) -> bool {
-    host == "[::1]" || host.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_loopback())
+    use std::net::{Ipv4Addr, Ipv6Addr};
+    let local_v4 = |ip: Ipv4Addr| ip.is_loopback() || ip.is_unspecified();
+    if let Some(inner) = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        return inner.parse::<Ipv6Addr>().is_ok_and(|ip| ip.is_loopback() || ip.is_unspecified() || ip.to_ipv4_mapped().is_some_and(local_v4));
+    }
+    if host.parse::<Ipv4Addr>().is_ok_and(local_v4) {
+        return true;
+    }
+    let name = host.trim_end_matches('.');
+    (name != host && name == "localhost") || name.ends_with(".localhost")
 }
 
 /// The origin of a remote add-on's address (a connector's web: Central, CRMDev) handed over by the core, checked again
@@ -155,6 +172,28 @@ fn tell_external(spec: &Spec, app: &AppHandle, url: &Url) {
         let _ = main.unminimize();
         let _ = main.set_focus();
     }
+}
+
+/// A navigation that is really a download made in the page (`blob:` or `data:`, as an export does): never followed.
+pub fn download_like(url: &Url) -> bool {
+    matches!(url.scheme(), "blob" | "data")
+}
+
+/// What AgoraOne's window is told of a refused download: the page the window was on, only when it is of the open origin
+/// (to open it in the browser, where downloads work), otherwise nothing.
+pub fn refused_detail(page: Option<&str>, origin: Option<&Origin>) -> serde_json::Value {
+    let page = page.filter(|page| page.len() <= MAX_URL).and_then(|page| Url::parse(page).ok()).filter(|url| allowed(url, origin));
+    serde_json::json!({ "url": page.map(|url| url.to_string()) })
+}
+
+/// A download the window does not make (none at all, or not one the spec lets through): AgoraOne's window says so and
+/// offers the page in the browser. Limited in time like the links, so a page cannot flood AgoraOne.
+fn tell_refused_download(spec: &Spec, app: &AppHandle) {
+    if !due(&spec.state.last_told, TELL_EVERY, Instant::now()) {
+        return;
+    }
+    let detail = refused_detail(lock(&spec.state.page).as_deref(), current_origin(spec).as_ref());
+    tell_main(app, &format!("{}-download-refused", spec.label), &detail);
 }
 
 /// Whether this Mac gives the window a store of its own (macOS 14+); Windows and Linux do when there is a folder.
@@ -294,7 +333,11 @@ fn open(spec: &'static Spec, app: &AppHandle, url: Url) {
         .focused(true)
         .on_navigation(move |url| {
             let ok = allowed(url, current_origin(spec).as_ref());
-            if !ok {
+            if ok {
+                *lock(&spec.state.page) = Some(url.as_str().to_string());
+            } else if download_like(url) {
+                tell_refused_download(spec, &navigation);
+            } else {
                 tell_external(spec, &navigation, url);
             }
             ok
@@ -308,6 +351,8 @@ fn open(spec: &'static Spec, app: &AppHandle, url: Url) {
                         let _ = window.navigate(url);
                     }
                 });
+            } else if download_like(&url) {
+                tell_refused_download(spec, &new_window);
             } else {
                 tell_external(spec, &new_window, &url);
             }
@@ -315,7 +360,13 @@ fn open(spec: &'static Spec, app: &AppHandle, url: Url) {
         })
         .on_permission_request(|_, _| PermissionResponse::Deny)
         .on_download(move |webview, event| match event {
-            DownloadEvent::Requested { url, destination } => start_download(spec, webview.app_handle(), &url, destination),
+            DownloadEvent::Requested { url, destination } => {
+                let started = start_download(spec, webview.app_handle(), &url, destination);
+                if !started {
+                    tell_refused_download(spec, webview.app_handle());
+                }
+                started
+            }
             DownloadEvent::Finished { url, success, .. } => {
                 finish_download(spec, webview.app_handle(), &url, success);
                 true
@@ -417,8 +468,30 @@ mod tests {
             assert!(remote_origin(&url(wrong), &own).is_none(), "{wrong}");
         }
         assert_eq!(remote_origin(&url("http://localhost:3099/"), &own), Some(("http".into(), "localhost".into(), 3099)));
+        for alias in ["https://[::ffff:7f00:1]:4317/", "https://[::ffff:127.0.0.1]/", "https://0.0.0.0:4317/", "https://[::]:4317/",
+                      "https://127.1/", "https://foo.localhost:4317/", "https://foo.localhost./", "https://localhost.:4317/", "http://localhost.:3099/"] {
+            assert!(remote_origin(&url(alias), &own).is_none(), "alias de este equipo: {alias}");
+        }
+        assert!(remote_origin(&url("https://localhost.example.com/"), &own).is_some(), "un dominio que solo empieza por localhost no es este equipo");
         let long = format!("https://crm.example.com/{}", "a".repeat(MAX_URL));
         assert!(remote_origin(&url(&long), &own).is_none(), "dirección demasiado larga");
+    }
+
+    #[test]
+    fn descarga_rechazada_ofrece_la_pagina_solo_de_su_origen() {
+        let url = |text: &str| Url::parse(text).unwrap();
+        assert!(download_like(&url("blob:https://crm.example.com/0b8c")));
+        assert!(download_like(&url("data:text/csv,a,b")));
+        assert!(!download_like(&url("https://crm.example.com/es/panel")));
+        let origin = remote_origin(&url("https://crm.example.com/"), &[4317]);
+        assert_eq!(refused_detail(Some("https://crm.example.com/es/soporte"), origin.as_ref()), serde_json::json!({ "url": "https://crm.example.com/es/soporte" }));
+        assert_eq!(refused_detail(Some("https://evil.example/x"), origin.as_ref()), serde_json::json!({ "url": null }), "otra web no se ofrece");
+        assert_eq!(refused_detail(None, origin.as_ref()), serde_json::json!({ "url": null }));
+        assert_eq!(refused_detail(Some("https://crm.example.com/"), None), serde_json::json!({ "url": null }), "sin ventana abierta no hay página");
+        let state = State::new();
+        *lock(&state.page) = Some("https://crm.example.com/es/panel".into());
+        state.forget();
+        assert!(lock(&state.page).is_none(), "al cerrar se olvida la página");
     }
 
     #[test]
