@@ -5,7 +5,7 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { dateLabel, forgetCentral, useCentralRead } from '../central/use-central-view';
 import { useWritePermissions } from '../central/central-change';
-import { Block, Facts, RecordLayout } from '../central/central-record';
+import { Block, Facts, RecordLayout } from '../ui/record-layout';
 import { QuotePhaseEdit } from './quote-phase-edit';
 import { HIDDEN, QuotesProblem, StatusBadge } from './quotes-common';
 import { OpenInCentral } from '../central/open-in-central';

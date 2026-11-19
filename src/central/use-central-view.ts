@@ -1,62 +1,41 @@
-import { useSyncExternalStore } from 'react';
-import { ApiError } from '../api/client';
 import type { CentralEvent, CentralLevel, CentralViewName } from '../api/central';
+import { createReadStore, type Read, type ReadFailure } from '../ui/read-store';
 
-// What the «Central» section has read, shared by its tabs: each view (or record) is asked once, when it is first
-// shown, and kept while the section lives, so going back to a tab does not ask Central again. «Volver a leer»
-// forgets everything and the views on screen ask again. Only the latest answer for a view counts.
+// What the «Central» section (and Presupuestos) has read, shared by its tabs: each view (or record) is asked once, when
+// it is first shown, and kept while the section lives, so going back to a tab does not ask Central again. «Volver a
+// leer» forgets everything and the views on screen ask again. Only the latest answer for a view counts. The store is
+// the shared one of src/ui/read-store.ts.
 
 /** Why a read failed: `kind` is the core's (`not_connected`, `off`, `forbidden`, `unreachable`…). */
-export type CentralFailure = { message: string; kind: string | null; status: number };
-export type CentralRead<T> = { data: T | null; failure: CentralFailure | null; loading: boolean };
+export type CentralFailure = ReadFailure;
+export type CentralRead<T> = Read<T>;
 
 /** The key of the connection's read, kept by «Volver a leer». */
 export const CONNECTION = 'conexion';
-const EMPTY: CentralRead<never> = { data: null, failure: null, loading: false };
-const entries = new Map<string, CentralRead<unknown>>();
-const generations = new Map<string, number>();
-const listeners = new Set<() => void>();
-let readings = 0;
-const notify = () => listeners.forEach(listener => listener());
-const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+const store = createReadStore('No se pudo leer Central.');
 
-export function failureOf(error: unknown): CentralFailure {
-  if (error instanceof ApiError) {
-    const kind = typeof error.data?.status === 'string' ? error.data.status : null;
-    return { message: error.message, kind, status: error.status };
-  }
-  return { message: error instanceof Error ? error.message : 'No se pudo leer Central.', kind: null, status: 0 };
-}
+export const failureOf = store.failureOf;
 
-/** Asks for `key` unless it is already read or being read. Called while rendering: it never notifies right away. */
+/** Asks for `key` unless it is already read or being read. */
 export function ensureCentral<T>(key: string, fetcher: () => Promise<T>, again = false) {
-  if (!again && entries.has(key)) return;
-  const mine = (generations.get(key) ?? 0) + 1;
-  generations.set(key, mine);
-  const before = entries.get(key) as CentralRead<T> | undefined;
-  entries.set(key, { data: before?.data ?? null, failure: null, loading: true });
-  void fetcher().then(data => { if (generations.get(key) === mine) entries.set(key, { data, failure: null, loading: false }); },
-    error => { if (generations.get(key) === mine) entries.set(key, { data: null, failure: failureOf(error), loading: false }); })
-    .finally(() => { if (generations.get(key) === mine) notify(); });
-  if (again) notify();
+  store.ensure(key, fetcher, again);
 }
 
-/** The read of `key` (null: nothing to read), asked on first use. */
+/** The read of `key` (null: nothing to read), asked once it is on screen. */
 export function useCentralRead<T>(key: string | null, fetcher: () => Promise<T>): CentralRead<T> & { reload: () => void } {
-  if (key) ensureCentral(key, fetcher);
-  const read = useSyncExternalStore(subscribe, () => (key ? entries.get(key) ?? EMPTY : EMPTY)) as CentralRead<T>;
-  return { ...read, reload: () => { if (key) ensureCentral(key, fetcher, true); } };
+  return store.useRead(key, fetcher);
 }
 
 /** «Volver a leer»: forgets every view (not the connection, so the tabs stay); the ones on screen are asked again. */
 export function forgetCentral() {
-  for (const key of [...entries.keys()]) if (key !== CONNECTION) entries.delete(key);
-  readings++;
-  notify();
+  store.forget({ except: [CONNECTION] });
 }
 
 /** How many times «Volver a leer» was pressed: what depends on earlier pages (the cursors) starts again with it. */
-export const useCentralReadings = () => useSyncExternalStore(subscribe, () => readings);
+export const useCentralReadings = () => store.useReadings();
+
+/** Whether a «Volver a leer» is still waiting for its answers. */
+export const useCentralRereading = () => store.useRereading();
 
 /** A key for a view and its parameters, the same whatever the order of the parameters. */
 export const viewKey = (view: CentralViewName, params: Record<string, string | undefined> = {}) =>
@@ -96,7 +75,7 @@ export function dateLabel(iso: string | null | undefined) {
 /** A fresh start each time the section opens: whatever was read on a previous visit (or before connecting) is
  * forgotten without notifying, since nothing of the section is on screen yet. */
 export function startCentral() {
-  entries.clear();
+  store.start();
 }
 
 const madridParts = new Intl.DateTimeFormat('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Europe/Madrid' });

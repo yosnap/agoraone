@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
+import './record-layout.css';
 
-// The layout of a record of Central (client, project, server, quote): the whole width of the section, a head with
-// the name, its badges and its actions on the right, and its parts in blocks that sit side by side when they fit.
+// The layout of a record (a client, project, server or quote of Central, or of CRMDev): the whole width of the
+// section, a head with the name, its badges and its actions on the right, and its parts in blocks that sit side by
+// side when they fit.
 
 export function RecordLayout({ titleId, title, subtitle, badges, actions, children }: {
   titleId: string; title: ReactNode; subtitle?: ReactNode; badges?: ReactNode; actions?: ReactNode; children: ReactNode;

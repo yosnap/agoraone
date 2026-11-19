@@ -18,7 +18,7 @@ def _text(value: object, limit: int = SHORT) -> str | None:
     return text[:limit] if text else None
 
 
-def _row_id(value: object) -> str | None:
+def row_id(value: object) -> str | None:
     return value if isinstance(value, str) and ID.fullmatch(value) else None
 
 
@@ -32,27 +32,27 @@ def _name_of(value: object) -> str | None:
 
 def shape_project(row: dict) -> dict:
     progress = _number(row.get("progress"))
-    return {"id": _row_id(row.get("id")), "name": _text(row.get("name"), TITLE), "status": _text(row.get("status")),
+    return {"id": row_id(row.get("id")), "name": _text(row.get("name"), TITLE), "status": _text(row.get("status")),
             "progress": progress if progress is not None and 0 <= progress <= 100 else None, "type": _text(row.get("type")),
             "deadline": _text(row.get("deadline"))}
 
 
 def shape_task(row: dict) -> dict:
     assignee = row.get("assignee") if isinstance(row.get("assignee"), dict) else {}
-    return {"id": _row_id(row.get("id")), "title": _text(row.get("title"), TITLE), "description": _text(row.get("description"), DESCRIPTION),
+    return {"id": row_id(row.get("id")), "title": _text(row.get("title"), TITLE), "description": _text(row.get("description"), DESCRIPTION),
             "status": _text(row.get("status")), "priority": _text(row.get("priority")), "dueDate": _text(row.get("dueDate")),
-            "assignee": {"id": _row_id(assignee.get("id")), "name": _text(assignee.get("name"))} if assignee else None,
+            "assignee": {"id": row_id(assignee.get("id")), "name": _text(assignee.get("name"))} if assignee else None,
             "project": _name_of(row.get("project"))}
 
 
 def shape_client(row: dict, contact: bool = False) -> dict:
-    shaped = {"id": _row_id(row.get("id")), "name": _text(row.get("name"), TITLE), "company": _text(row.get("company"), TITLE),
+    shaped = {"id": row_id(row.get("id")), "name": _text(row.get("name"), TITLE), "company": _text(row.get("company"), TITLE),
               "status": _text(row.get("status"))}
     return {**shaped, "email": _text(row.get("email"), TITLE)} if contact else shaped
 
 
 def shape_ticket(row: dict) -> dict:
-    return {"id": _row_id(row.get("id")), "title": _text(row.get("title"), TITLE), "description": _text(row.get("description"), DESCRIPTION),
+    return {"id": row_id(row.get("id")), "title": _text(row.get("title"), TITLE), "description": _text(row.get("description"), DESCRIPTION),
             "status": _text(row.get("status")), "priority": _text(row.get("priority")), "category": _text(row.get("category")),
             "requester": _text(row.get("guestName"), TITLE), "client": _name_of(row.get("client")), "project": _name_of(row.get("project")),
             "createdAt": _text(row.get("createdAt")), "updatedAt": _text(row.get("updatedAt"))}
@@ -60,7 +60,7 @@ def shape_ticket(row: dict) -> dict:
 
 def shape_member(row: dict) -> dict:
     user = row.get("user") if isinstance(row.get("user"), dict) else {}
-    return {"id": _row_id(user.get("id")), "name": _text(user.get("name"), TITLE), "role": _text(row.get("role"))}
+    return {"id": row_id(user.get("id")), "name": _text(user.get("name"), TITLE), "role": _text(row.get("role"))}
 
 
 def shape_hours(data: object) -> dict:

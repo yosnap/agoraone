@@ -3,7 +3,7 @@ import { amountRange, getQuotes, quoteStatusLabels, quotesKey, type QuoteFilters
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
-import { dateLabel, forgetCentral, startCentral, useCentralRead } from '../central/use-central-view';
+import { dateLabel, forgetCentral, startCentral, useCentralRead, useCentralRereading } from '../central/use-central-view';
 import { HIDDEN, QuotesProblem, StatusBadge } from './quotes-common';
 import { QuoteDetail } from './quote-detail';
 import { QuoteDraftForm } from './quote-draft-form';
@@ -21,6 +21,7 @@ type Mode = { kind: 'list' } | { kind: 'record'; id: string } | { kind: 'new' };
  * created nor opened. */
 export function QuotesView({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   useState(startCentral);  // once per visit: nothing read before is shown as current
+  const rereading = useCentralRereading();
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [filters, setFilters] = useState<QuoteFilters>({});
   const [made, setMade] = useState<string | null>(null);
@@ -34,7 +35,7 @@ export function QuotesView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
     <div className="central-head">
       <h1 id="quotes-title">Presupuestos</h1>
       {ready && mode.kind === 'list' && <div className="actions central-actions">
-        <button type="button" className="button" onClick={() => { setMade(null); forgetCentral(); }}>Volver a leer</button>
+        <button type="button" className="button" disabled={rereading} onClick={() => { setMade(null); forgetCentral(); }}>{rereading ? 'Leyendo…' : 'Volver a leer'}</button>
         {!discreet && <button type="button" className="button primary" onClick={() => { setMade(null); setMode({ kind: 'new' }); }}>Nuevo borrador</button>}
       </div>}
     </div>

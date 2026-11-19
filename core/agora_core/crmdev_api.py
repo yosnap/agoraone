@@ -157,7 +157,7 @@ SPEC = web_api.WebApiSpec(
     path_prefix=PATH, scopes=SCOPES, transport=_guarded)
 
 
-_cache: dict[tuple, tuple[float, object]] = {}
+_cache: dict[tuple, tuple[float, object, float]] = {}  # key → (when on _clock, data, when on the wall clock)
 _flights: dict[tuple, threading.Lock] = {}  # one reading at a time per cache key: the second waits for the first
 _busy_until: dict[tuple, float] = {}  # per connection: CRMDev asked to wait until then
 _generation = 0  # bumped when the cache is emptied: a reading begun before never fills it afterwards
@@ -182,25 +182,29 @@ def _who(target: Connection) -> tuple:
     return target.url, hashlib.sha256(target.key.encode()).hexdigest()
 
 
-def _kept(key: tuple) -> object | None:
+def _wall() -> float:
+    return time.time()
+
+
+def _kept(key: tuple) -> tuple[float, object, float] | None:
     with _cache_lock:
         found = _cache.get(key)
         if found and _clock() - found[0] < CACHE_SECONDS:
-            return found[1]
+            return found
         _cache.pop(key, None)
         return None
 
 
-def _keep(key: tuple, data: object, generation: int) -> None:
+def _keep(key: tuple, data: object, generation: int, wall: float) -> None:
     with _cache_lock:
         if generation != _generation:
             return
         now = _clock()
-        for old in [k for k, (at, _) in _cache.items() if now - at >= CACHE_SECONDS]:
+        for old in [k for k, entry in _cache.items() if now - entry[0] >= CACHE_SECONDS]:
             del _cache[old]
         while len(_cache) >= CACHE_ENTRIES:
             del _cache[next(iter(_cache))]
-        _cache[key] = (now, data)
+        _cache[key] = (now, data, wall)
 
 
 def _flight(key: tuple) -> threading.Lock:
@@ -256,25 +260,35 @@ def _send(target: Connection, method: str, body: dict | None, who: tuple) -> dic
     return web_api.json_object(SPEC, text)
 
 
-def call(target: Connection, tool: str, arguments: dict | None = None) -> object:
+def call(target: Connection, tool: str, arguments: dict | None = None, fresh: bool = False) -> object:
     """The only way AgoraOne runs a tool of CRMDev: the tool must be in the closed list and its arguments valid
     before any connection is opened. Answers the `data` CRMDev returns (cached 60 s for reads, one reading at a time
     for the same question) or a WebApiError without the key; a 429 is `busy`, remembered for the time CRMDev says
-    and never retried here."""
+    and never retried here. `fresh` («Volver a leer») skips the cache, never the wait after a 429."""
+    return call_at(target, tool, arguments, fresh)[0]
+
+
+def call_at(target: Connection, tool: str, arguments: dict | None = None, fresh: bool = False) -> tuple[object, float]:
+    """`call`, plus when CRMDev gave that answer (seconds since the epoch): a cached answer keeps its own time, so the
+    screen never says «just read» of something read a minute ago."""
     if not isinstance(tool, str) or tool not in READ_TOOLS | WRITE_TOOLS:
         raise WebApiError("error", NOT_ALLOWED)
     arguments = checked_arguments(tool, arguments if arguments is not None else {})
     who = _who(target)
     key = (*who, tool, json.dumps(arguments, sort_keys=True))
     if tool not in READ_TOOLS:
-        return _run(target, tool, arguments, who)
+        return _run(target, tool, arguments, who), _wall()
+    asked = _clock()
     with _flight(key):
-        if (kept := _kept(key)) is not None:
-            return kept
+        kept = _kept(key)
+        # A fresh reading still takes an answer of the same question that finished while it waited its turn.
+        if kept is not None and (not fresh or kept[0] >= asked):
+            return kept[1], kept[2]
         generation = _generation
         data = _run(target, tool, arguments, who)
-        _keep(key, data, generation)
-        return data
+        wall = _wall()
+        _keep(key, data, generation, wall)
+        return data, wall
 
 
 def _run(target: Connection, tool: str, arguments: dict, who: tuple) -> object:

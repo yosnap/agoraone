@@ -7,7 +7,7 @@ import { OpenInCentral } from './open-in-central';
 import { useWritePermissions } from './central-change';
 import { CentralEditClient } from './central-edit-client';
 import { CentralNote } from './central-note';
-import { Block, Facts, RecordLayout } from './central-record';
+import { Block, Facts, RecordLayout } from '../ui/record-layout';
 import { dateLabel, forgetCentral, useCentralRead, viewKey } from './use-central-view';
 
 const HIDDEN = 'Oculto en modo discreto';
