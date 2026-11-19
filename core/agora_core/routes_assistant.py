@@ -5,7 +5,6 @@ import re
 import sqlite3
 import sys
 import time
-from pathlib import Path
 from collections.abc import Callable
 from contextlib import aclosing, contextmanager
 from typing import Literal
@@ -227,8 +226,8 @@ def assistant_router(
     async def create_quote(proposal_id: str, request: Request):
         """Creates in Central, as a draft, the very quote Watson proposed, once, for the owner it was proposed to.
         Needs the «Presupuestos» module on (404 otherwise) and a connection whose key has the `presupuestos`
-        permission (or the old Central folder); the «Central» module may be off."""
-        from . import addons, central, modules
+        permission; the «Central» module may be off."""
+        from . import central, modules
         owner = owner_of(request)
         found = proposals.get(proposal_id)
         if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "quote" not in found:
@@ -240,13 +239,14 @@ def assistant_router(
         if not await run_in_threadpool(quotes_on):
             proposals.setdefault(proposal_id, found)  # not spent: it may be created once the module is on again
             return JSONResponse({"error": "El módulo Presupuestos está apagado."}, status_code=404)
-        def work():
+        def connected():
             with database() as connection:
-                path = addons.config(connection, "central").get("path")
-                folder = Path(path) if path and addons.recognised("central", Path(path)) else None
-                origin = central.source(connection, secrets, folder)
-            if origin is None:
-                raise central.CentralError("Central no está conectado: conéctalo en Ajustes › Central.")
+                return central.source(connection, secrets)
+        origin = await run_in_threadpool(connected)
+        if origin is None:
+            proposals.setdefault(proposal_id, found)  # not spent: it may be created once Central is connected
+            return JSONResponse({"error": "Central no está conectado: conéctalo con su dirección y su clave."}, status_code=422)
+        def work():
             return central.create_quote(origin, found["quote"])
         try:
             made = await run_in_threadpool(work)

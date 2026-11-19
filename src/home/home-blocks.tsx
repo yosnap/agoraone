@@ -4,6 +4,7 @@ import type { Section } from '../shell/shell-state';
 import { moduleOn, useModules } from '../shell/modules';
 import { doneButOpen, invoicesToFile, latestMail, openDates, serversByTrouble, systemNotes, upcoming } from './home-data';
 import { Block, MailSlider } from './home-parts';
+import { hasCentralData } from '../summary/central-card-state';
 import './home.css';
 
 type Data = {
@@ -109,7 +110,7 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
           <span>{note.text}{note.detail && <small> · {note.detail}</small>}</span>
         </li>)}</ul>}
       </Block>
-      {centralOn && data.central?.configured && <Block title="Servidores" count={servers.length} alert={down > 0 ? `${down} con problemas` : undefined} onOpen={() => onOpen(jobsOn ? 'jobs' : 'summary')} openLabel={jobsOn ? 'Abrir Trabajos' : 'Abrir Resumen'}
+      {centralOn && hasCentralData(data.central) && <Block title="Servidores" count={servers.length} alert={down > 0 ? `${down} con problemas` : undefined} onOpen={() => onOpen(jobsOn ? 'jobs' : 'summary')} openLabel={jobsOn ? 'Abrir Trabajos' : 'Abrir Resumen'}
         empty="Central no tiene servidores.">
         {servers.length > 0 && <ul className="home-list">{servers.slice(0, 6).map((server, index) => <li key={`${server.name}-${index}`} className={server.status === 'red' ? 'warn' : ''}>
           <span className={`home-dot ${server.status ?? 'grey'}`} aria-hidden="true"/>

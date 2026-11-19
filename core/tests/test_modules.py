@@ -40,7 +40,7 @@ def test_central_y_presupuestos_siguen_a_la_fuente_de_central(tmp_path):
     Central exists (folder, connection or a snapshot already read), even with Trabajos off, and off without one."""
     import json
 
-    from agora_core import addons, central_api
+    from agora_core import central_api
 
     c = connect(tmp_path / DB_NAME)
     migrate(c)
@@ -49,11 +49,10 @@ def test_central_y_presupuestos_siguen_a_la_fuente_de_central(tmp_path):
     assert on["trabajos"] is False and on["central"] is False and on["presupuestos"] is False, "sin Central, apagados"
     c.execute("INSERT INTO setting (key, value) VALUES ('addons.central', ?)", (json.dumps({"path": "/ruta/de/central"}),))
     on = modules.state(c)
-    assert on["trabajos"] is False and on["central"] is True and on["presupuestos"] is True, "con la carpeta, nadie pierde Central"
+    assert on["trabajos"] is False and on["central"] is True and on["presupuestos"] is True, "con la carpeta antigua, nadie pierde Central"
     c.execute("DELETE FROM setting WHERE key = 'addons.central'")
     central_api.save_url(c, "https://central.example.com")
     assert modules.state(c)["central"] is True, "con una conexión, también"
-    assert addons.config(c, "central").get("path") is None
     # Saving one module keeps only that one: the others keep following their default.
     modules.save(c, {"correo": True})
     assert json.loads(c.execute("SELECT value FROM setting WHERE key = 'modules'").fetchone()["value"]) == {"trabajos": False, "correo": True}

@@ -34,7 +34,7 @@ export const getBackups = () => core<{ backups: Backup[]; recoveryKeyPending: bo
 export const createBackup = () => core<{ name: string; kind: string }>('/backups', {});
 
 export type AddonStatus = 'not_configured' | 'not_found' | 'unreadable' | 'detected' | 'responding' | 'recording';
-export type Addon = { id: 'central' | 'costguard' | 'fabrica'; name: string; description: string; offers: string[]; status: AddonStatus; configured: { path?: string | null; dataPath?: string | null; port?: number | null } };
+export type Addon = { id: 'costguard' | 'fabrica'; name: string; description: string; offers: string[]; status: AddonStatus; configured: { path?: string | null; dataPath?: string | null; port?: number | null } };
 export const getAddons = () => core<{ addons: Addon[] }>('/addons');
 export const putAddon = (id: Addon['id'], changes: Addon['configured']) => core<{ addons: Addon[] }>(`/addons/${id}`, changes, 'PUT');
 export type AgentUsage = { agent: string; input: number; output: number; cacheRead: number; cacheWrite: number; turns: number };
@@ -323,7 +323,7 @@ export const openFiscalFile = (folderId: number, path: string | null, reveal = f
 export type CentralClient = { name: string; company: string | null; domains: string[];
   projects: { name: string; status: string; phase: string | null; repo?: string | null }[]; websites: { url: string; status: string | null }[] };
 export type CentralServer = { name: string; status: string | null; provider: string | null; projects: string[] };
-export type CentralState = { configured: boolean; transport?: 'http' | 'stdio' | null; notice?: string | null; snapshot: { clients: CentralClient[]; servers: CentralServer[]; fetchedAt: string } | null; problem: string | null };
+export type CentralState = { configured: boolean; transport?: 'http' | null; notice?: string | null; snapshot: { clients: CentralClient[]; servers: CentralServer[]; fetchedAt: string } | null; problem: string | null };
 export const getCentral = () => core<CentralState>('/central');
 export const refreshCentral = () => core<CentralState>('/central/refresh', {});
 /** Data typed by hand, only for an invoice of the folder that could not be read in any way (rates in percent). */

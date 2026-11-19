@@ -112,3 +112,9 @@ test('los enlaces de la ventana de Central: web, sin cifrar o inicio de sesión 
     assert.equal(centralExternalLink(wrong), null, JSON.stringify(wrong));
   }
 });
+
+test('quien solo tenía la carpeta de Central ve cómo conectarlo ahora', async () => {
+  const { centralMoved } = await import('../settings/settings-central');
+  assert.equal(centralMoved, 'Ahora Central se conecta con su dirección y una clave de acceso: créala en Ajustes › Apps conectadas de Central.');
+  assert.doesNotMatch(centralMoved, /carpeta|bun|stdio/i);
+});

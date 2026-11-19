@@ -33,7 +33,7 @@ export function CentralView({ discreet, onOpen }: { discreet: boolean; onOpen: (
     <p className="page-lead">Lo que tienes en Central, leído ahora mismo de su API. Con una clave con permiso «escritura», los datos de un cliente, sus notas y el estado y la fase de un proyecto se cambian desde su ficha, viendo antes el cambio exacto; lo demás, con «Abrir en Central».</p>
     {connection.failure ? <CentralProblem failure={connection.failure} onRetry={connection.reload} onOpen={onOpen}/>
       : !connection.data ? <Loading label="Comprobando la conexión con Central" lines={2}/>
-      : !connected ? <CentralConnect onOpen={onOpen} legacy={connection.data.transport === 'stdio'}/>
+      : !connected ? <CentralConnect onOpen={onOpen}/>
       : <>
         <div className="segmented central-tabs" role="group" aria-label="Pestañas de Central">
           {centralTabs.map(t => <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}>{t.label}</button>)}
