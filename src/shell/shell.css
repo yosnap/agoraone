@@ -73,4 +73,8 @@ body { background:var(--c-eef0e6) }
 .yt-head { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--c-173d3c) }
 .yt-head strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
 .yt-mini iframe { width:100%; aspect-ratio:16 / 9; border:0; border-radius:8px; background:#000 }
+.yt-mini.folded { width:auto; max-width:320px; padding:4px 6px }
+.yt-mini.folded .yt-head strong { max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+/* Out of sight but still in the page, so the music keeps playing. */
+.yt-mini.folded iframe { position:absolute; width:2px; height:2px; opacity:0; pointer-events:none; aspect-ratio:auto }
 @media (max-width:850px) { .yt-mini { left:auto; right:12px; bottom:76px; width:200px } }
