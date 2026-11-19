@@ -23,6 +23,7 @@ from .db import DB_NAME, connect, migrate
 from .embed import DEFAULT_MODEL, DEFAULT_URL, Embedder, OllamaEmbedder, VectorCache
 from .keystore import KeychainStore, KeyStore, recovery_pending
 from .routes_addons import addons_router
+from .routes_connectors import connectors_router
 from .routes_assistant import KeychainSecrets, assistant_router, default_engines
 from .entity_worker import ExtractHealth, entity_worker
 from .engines import AnthropicApiEngine, ClaudeCodeEngine
@@ -214,6 +215,7 @@ def create_app(
 
     app.include_router(index_router(settings, embedder, cache, embed_health, extract_health))
     app.include_router(addons_router(settings))
+    app.include_router(connectors_router(settings, secrets))
     app.include_router(summary_router(settings, time.time()))
     app.include_router(assistant_router(settings, embedder, cache, secrets, engines))
     app.include_router(mail_router(settings, secrets))

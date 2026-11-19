@@ -1,14 +1,14 @@
 import { useSyncExternalStore } from 'react';
-import { getAddons, type Addon, type AddonStatus } from '../api/core';
+import { getConnectors, type Connector, type ConnectorState, type ConnectorStatus } from '../api/core';
 import type { FabricaPage } from '../api/fabrica';
 
-// What the «Mi fábrica» section knows: the add-on's status as Conectores reads it (its folder and whether its panel
+// What the «Mi fábrica» section knows: its connector's state as Conectores reads it (its folder and whether its panel
 // answers at /salud). Read when the section opens and with «Volver a comprobar»; never on a timer, except a few
 // checks right after «Arrancar la fábrica», to say whether it came up.
 
 export type FabricaState = 'running' | 'stopped' | 'missing' | 'wrong' | 'unreadable';
 
-export function fabricaState(status: AddonStatus): FabricaState {
+export function fabricaState(status: ConnectorStatus): FabricaState {
   return status === 'responding' ? 'running' : status === 'detected' ? 'stopped' : status === 'not_configured' ? 'missing'
     : status === 'not_found' ? 'wrong' : 'unreadable';
 }
@@ -47,8 +47,9 @@ export const PANEL_PAGES: { page: FabricaPage; label: string; what: string }[] =
   { page: 'ajustes', label: 'Ajustes', what: 'cambiar los ajustes de la fábrica, con su confirmación' },
 ];
 
-export type FabricaRead = { addon: Addon | null; failure: string; loading: boolean };
-type Fetcher = () => Promise<{ addons: Addon[] }>;
+/** `addon`: the state of the connector «fabrica» (its status and its folder and port). */
+export type FabricaRead = { addon: ConnectorState | null; failure: string; loading: boolean };
+type Fetcher = () => Promise<{ connectors: Connector[] }>;
 
 const EMPTY: FabricaRead = { addon: null, failure: '', loading: false };
 let read = EMPTY;
@@ -59,14 +60,14 @@ const notify = () => listeners.forEach(listener => listener());
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 
 /** Reads the status unless it is read already (`again`: read anew). Called while rendering: it never notifies right away. */
-export function readFabrica(again = false, fetcher: Fetcher = getAddons): Promise<FabricaRead> {
+export function readFabrica(again = false, fetcher: Fetcher = getConnectors): Promise<FabricaRead> {
   if (asked && !again) return Promise.resolve(read);
   asked = true;
   const mine = ++generation;
   read = { ...read, failure: '', loading: true };
   if (again) notify();
   return fetcher().then(answer => {
-    const addon = answer.addons.find(item => item.id === 'fabrica') ?? null;
+    const addon = answer.connectors.find(item => item.id === 'fabrica')?.state ?? null;
     if (generation === mine) read = addon ? { addon, failure: '', loading: false } : { addon: null, failure: 'AgoraOne no conoce la fábrica.', loading: false };
   }, (error: unknown) => {
     if (generation === mine) read = { addon: null, failure: error instanceof Error ? error.message : 'No se pudo comprobar la fábrica.', loading: false };
@@ -87,7 +88,7 @@ export function useFabricaRead(): FabricaRead & { reload: () => void } {
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /** After «Arrancar»: checks a few times whether the panel answers; true as soon as it does. */
-export async function waitUntilRunning(tries = 6, every = 2500, fetcher: Fetcher = getAddons): Promise<boolean> {
+export async function waitUntilRunning(tries = 6, every = 2500, fetcher: Fetcher = getConnectors): Promise<boolean> {
   for (let attempt = 0; attempt < tries; attempt++) {
     await pause(every);
     const found = await readFabrica(true, fetcher);

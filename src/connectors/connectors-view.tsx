@@ -1,37 +1,39 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { getAddons, getBrainMcpSetup, getCostguardUsage, putAddon, type Addon, type AddonStatus, type AgentUsage, type BrainMcpSetup } from '../api/core';
+import { deleteConnector, getBrainMcpSetup, getConnectors, getCostguardUsage, putConnector, type AgentUsage, type BrainMcpSetup, type Connector, type ConnectorChanges,
+  type ConnectorStatus } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 
-const statusText: Record<AddonStatus, [string, '' | 'good' | 'warn' | 'bad']> = {
+const statusText: Record<ConnectorStatus, [string, '' | 'good' | 'warn' | 'bad']> = {
   not_configured: ['Sin configurar', ''], not_found: ['No encontrado', 'bad'], unreadable: ['No se puede leer', 'bad'],
   detected: ['Detectado', 'warn'], responding: ['En marcha · responde', 'good'], recording: ['Registrando consumo', 'good'],
+  legacy: ['Hay que volver a conectarlo', 'warn'], saved: ['Dirección y clave guardadas', 'good'], failing: ['No responde', 'bad'], guide: ['Guía', ''],
 };
 const tokens = (value: number) => value.toLocaleString('es-ES');
 const quote = (value: string) => /^[\w./:=@-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
 
-function AddonCard({ addon, onSaved }: { addon: Addon; onSaved: (addons: Addon[]) => void }) {
-  const pathKey = addon.id === 'costguard' ? 'dataPath' : 'path';
-  const [path, setPath] = useState(addon.configured[pathKey] ?? '');
-  const [port, setPort] = useState(addon.configured.port ? String(addon.configured.port) : '');
+/** A connector of this computer: a panel on a local port (Mi fábrica) or a data file (CostGuard). */
+function AddonCard({ addon, onSaved }: { addon: Connector; onSaved: (connector: Connector) => void }) {
+  const file = addon.kind === 'local_file';
+  const pathKey = file ? 'dataPath' : 'path';
+  const [path, setPath] = useState(addon.state.configured[pathKey] ?? '');
+  const [port, setPort] = useState(addon.state.configured.port ? String(addon.state.configured.port) : '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const save = async (event: FormEvent, forget = false) => {
     event.preventDefault(); setBusy(true); setError('');
-    const changes: Addon['configured'] = forget ? { [pathKey]: null, ...(addon.id !== 'costguard' ? { port: null } : {}) }
-      : { [pathKey]: path.trim() || null, ...(addon.id !== 'costguard' ? { port: port.trim() ? Number(port) : null } : {}) };
-    try { onSaved((await putAddon(addon.id, changes)).addons); }
+    const changes: ConnectorChanges = { [pathKey]: path.trim() || null, ...(!file ? { port: port.trim() ? Number(port) : null } : {}) };
+    try { onSaved(await (forget ? deleteConnector(addon.id) : putConnector(addon.id, changes))); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
     finally { setBusy(false); }
   };
-  const [label, tone] = statusText[addon.status];
+  const [label, tone] = statusText[addon.state.status];
   return <article className="card" aria-labelledby={`addon-${addon.id}`}>
     <div className="card-head"><h2 id={`addon-${addon.id}`}>{addon.name}</h2><span className={`chip ${tone}`}>{label}</span></div>
     <p>{addon.description}</p>
-    <ul>{addon.offers.map(offer => <li key={offer}>{offer}</li>)}</ul>
     <form className="field-row" onSubmit={save}>
-      <label className="field">{addon.id === 'costguard' ? 'Archivo de datos' : 'Carpeta del proyecto'}
+      <label className="field">{file ? 'Archivo de datos' : 'Carpeta del proyecto'}
         <input value={path} onChange={event => setPath(event.target.value)} placeholder="/ruta/absoluta" spellCheck={false}/></label>
-      {addon.id !== 'costguard' && <label className="field" style={{ flex: '0 1 110px' }}>Puerto
+      {!file && <label className="field" style={{ flex: '0 1 110px' }}>Puerto
         <input value={port} onChange={event => setPort(event.target.value.replace(/\D/g, ''))} inputMode="numeric" maxLength={5}/></label>}
       <div className="actions"><button className="button primary" disabled={busy}>Guardar</button>
         <button type="button" className="button" disabled={busy} onClick={event => void save(event, true)}>Olvidar</button></div>
@@ -88,12 +90,16 @@ function BrainMcp() {
   </article>;
 }
 
-/** The add-ons AgoraOne knows (CostGuard, my factory) and how to plug the brain into Hermes. */
+const local = (connector: Connector) => connector.kind === 'local_port' || connector.kind === 'local_file';
+
+/** The connectors of this computer (CostGuard, my factory) and how to plug the brain into Hermes. */
 export function ConnectorsView() {
-  const [addons, setAddons] = useState<Addon[] | null>(null);
+  const [found, setFound] = useState<Connector[] | null>(null);
   const [error, setError] = useState('');
-  const load = useCallback(() => { setError(''); getAddons().then(data => setAddons(data.addons)).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo leer el registro.')); }, []);
+  const load = useCallback(() => { setError(''); getConnectors().then(data => setFound(data.connectors)).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo leer el registro.')); }, []);
   useEffect(load, [load]);
+  const saved = (connector: Connector) => setFound(current => current?.map(item => item.id === connector.id ? connector : item) ?? null);
+  const addons = found?.filter(local) ?? null;
   const costguard = addons?.find(addon => addon.id === 'costguard');
   return <section className="page" aria-labelledby="connectors-title">
     <div className="eyebrow">CONECTORES</div>
@@ -101,8 +107,8 @@ export function ConnectorsView() {
     <p className="page-lead">Lo que AgoraOne sabe de tus otras herramientas y cómo conectar el cerebro a Hermes. Las rutas y puertos se guardan solo en este Mac.</p>
     <div className="actions page-actions"><button className="button" onClick={load}>Comprobar de nuevo</button></div>
     {error ? <LoadError message={error} onRetry={load}/> : !addons ? <Loading label="Leyendo los complementos"/> : <div className="page-grid">
-      {addons.map(addon => <AddonCard key={`${addon.id}:${addon.configured.path ?? addon.configured.dataPath ?? ''}`} addon={addon} onSaved={setAddons}/>)}
-      {costguard && ['detected', 'recording'].includes(costguard.status) && <CostguardUsage/>}
+      {addons.map(addon => <AddonCard key={`${addon.id}:${addon.state.configured.path ?? addon.state.configured.dataPath ?? ''}`} addon={addon} onSaved={saved}/>)}
+      {costguard && ['detected', 'recording'].includes(costguard.state.status) && <CostguardUsage/>}
       <BrainMcp/>
     </div>}
   </section>;

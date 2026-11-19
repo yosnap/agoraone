@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Addon, AddonStatus } from '../api/core';
+import type { Connector, ConnectorStatus } from '../api/core';
 import { fabricaDownload, fabricaExternalLink } from '../api/fabrica';
 import { menu, sectionModule } from '../shell/shell-state';
 import { PANEL_PAGES, canStart, fabricaState, freshFabrica, readFabrica, stateLabels, stateText, waitUntilRunning } from './fabrica-state';
 
-const addon = (status: AddonStatus): Addon => ({ id: 'fabrica', name: 'Mi fábrica', description: '', offers: [], status, configured: { path: '/x', port: 8742 } });
+const addon = (status: ConnectorStatus): Connector => ({ id: 'fabrica', name: 'Mi fábrica', description: '', kind: 'local_port', modules: { fabrica: true }, views: ['fabrica'],
+  window: 'fabrica', scopes: [], hint: null, state: { status, configured: { path: '/x', port: 8742 }, notice: null, storeProblem: null } });
 
 test('«Mi fábrica» va en el menú justo antes de Presupuestos y sigue a su módulo', () => {
   const ids = menu.map(item => item.id);
@@ -56,14 +57,16 @@ test('los avisos de la ventana solo aceptan direcciones web y nombres sin ruta',
 
 test('el estado se lee una vez por visita y «Volver a comprobar» lo lee de nuevo', async () => {
   let asked = 0;
-  const fetcher = async () => { asked++; return { addons: [addon('detected')] }; };
+  const central: Connector = { ...addon('saved'), id: 'central', kind: 'web_api', window: 'central' };
+  const fetcher = async () => { asked++; return { connectors: [central, addon('detected')] }; };
   freshFabrica();
   await readFabrica(false, fetcher);
   await readFabrica(false, fetcher);
   assert.equal(asked, 1);
   const again = await readFabrica(true, fetcher);
   assert.equal(asked, 2);
-  assert.equal(again.addon?.status, 'detected');
+  assert.equal(again.addon?.status, 'detected', 'busca el conector de la fábrica entre todos');
+  assert.equal(again.addon?.configured.port, 8742);
   freshFabrica();
   const failed = await readFabrica(false, async () => { throw new Error('sin núcleo'); });
   assert.equal(failed.failure, 'sin núcleo');
@@ -71,12 +74,12 @@ test('el estado se lee una vez por visita y «Volver a comprobar» lo lee de nue
 });
 
 test('tras «Arrancar» se comprueba unas pocas veces y dice si respondió', async () => {
-  const answers: AddonStatus[] = ['detected', 'detected', 'responding'];
+  const answers: ConnectorStatus[] = ['detected', 'detected', 'responding'];
   let asked = 0;
-  assert.equal(await waitUntilRunning(5, 1, async () => ({ addons: [addon(answers[Math.min(asked++, 2)])] })), true);
+  assert.equal(await waitUntilRunning(5, 1, async () => ({ connectors: [addon(answers[Math.min(asked++, 2)])] })), true);
   assert.equal(asked, 3, 'para en cuanto responde');
   let tries = 0;
-  assert.equal(await waitUntilRunning(3, 1, async () => { tries++; return { addons: [addon('detected')] }; }), false);
+  assert.equal(await waitUntilRunning(3, 1, async () => { tries++; return { connectors: [addon('detected')] }; }), false);
   assert.equal(tries, 3, 'un número acotado de comprobaciones');
   freshFabrica();
 });

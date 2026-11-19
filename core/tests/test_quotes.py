@@ -102,7 +102,7 @@ def opened(monkeypatch):
 def setup(tmp_path, fake, opened):
     settings, app = app_with(tmp_path, MemorySecrets())
     with TestClient(app, base_url=f"http://{settings.authority}") as test_client:
-        assert test_client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
+        assert test_client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
         # Only the «presupuestos» permission and the «Central» module off: Presupuestos works on its own.
         assert test_client.put("/modules", json={"modules": {"central": False, "presupuestos": True}}, headers=HEADERS).status_code == 200
         yield test_client, settings
@@ -282,7 +282,7 @@ def test_clave_sin_permiso_presupuestos(client, fake):
 
 
 def test_sin_conexion_pide_conectar(client, fake):
-    client.delete("/central/connection", headers=HEADERS)
+    client.delete("/connectors/central", headers=HEADERS)
     answer = client.get("/quotes", headers=HEADERS)
     assert answer.status_code == 409 and answer.json()["status"] == "not_connected" and paths(fake) == []
 
@@ -396,7 +396,7 @@ def test_dos_confirmaciones_a_la_vez_de_watson_crean_un_solo_borrador(tmp_path, 
     monkeypatch.setattr(central_api, "TRANSPORT", httpx.MockTransport(found))
     settings, app = app_with(tmp_path, MemorySecrets(), QuoteEngine())
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
-        client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS)
+        client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS)
         proposal = propose(client)
         state = modules.state
 

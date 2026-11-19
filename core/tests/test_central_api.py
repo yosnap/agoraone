@@ -234,27 +234,37 @@ def app_with(tmp_path, secrets, engine=None):
 HEADERS = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
 
 
+def central_state(answer: dict) -> dict:
+    """Central's connector state (an entry of `/connectors` or the list), with the same rule as `centralConnection`
+    in src/api/central.ts: connected means a URL and a key saved."""
+    entry = answer if "state" in answer else next(c for c in answer["connectors"] if c["id"] == "central")
+    state, configured = entry["state"], entry["state"]["configured"]
+    return {"url": configured["url"], "hasKey": configured["hasKey"], "storeProblem": state["storeProblem"],
+            "legacy": state["status"] == "legacy", "transport": "http" if configured["url"] and configured["hasKey"] else None,
+            "suggestedUrl": entry["hint"]}
+
+
 def test_rutas_de_la_conexion_nunca_devuelven_la_clave(tmp_path, fake, caplog):
     caplog.set_level(logging.DEBUG)
     secrets = MemorySecrets()
     settings, app = app_with(tmp_path, secrets)
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
-        first = client.get("/central/connection", headers=HEADERS).json()
+        first = central_state(client.get("/connectors", headers=HEADERS).json())
         assert first == {"url": None, "hasKey": False, "storeProblem": None, "legacy": False, "transport": None, "suggestedUrl": "https://central.example.com"}
         assert client.get("/central", headers=HEADERS).status_code == 404, "sin ninguna fuente, Central empieza apagado"
         for wrong in ({"url": "http://central.example.com", "key": KEY}, {"url": URL, "key": "cen_mala"}, {"url": URL, "key": 123}):
-            answer = client.put("/central/connection", json=wrong, headers=HEADERS)
+            answer = client.put("/connectors/central", json=wrong, headers=HEADERS)
             assert answer.status_code == 422 and KEY not in answer.text and "cen_mala" not in answer.text, wrong
         assert secrets.get(central_api.SECRET) is None
-        tested = client.post("/central/connection/test", json={"url": URL, "key": KEY}, headers=HEADERS)
+        tested = client.post("/connectors/central/test", json={"url": URL, "key": KEY}, headers=HEADERS)
         assert tested.status_code == 200 and tested.json()["scopes"] == ["lectura", "presupuestos"] and KEY not in tested.text
         assert secrets.get(central_api.SECRET) is None, "probar no guarda"
-        saved = client.put("/central/connection", json={"url": URL + "/", "key": KEY}, headers=HEADERS)
+        saved = client.put("/connectors/central", json={"url": URL + "/", "key": KEY}, headers=HEADERS)
         assert saved.status_code == 200 and KEY not in saved.text
-        assert saved.json()["url"] == URL and saved.json()["hasKey"] is True and saved.json()["transport"] == "http"
+        assert central_state(saved.json())["url"] == URL and central_state(saved.json())["hasKey"] is True and central_state(saved.json())["transport"] == "http"
         assert secrets.get(central_api.SECRET) == KEY
-        assert client.put("/central/connection", json={"url": URL}, headers=HEADERS).json()["hasKey"] is True, "sin clave nueva, se conserva"
-        assert client.post("/central/connection/test", headers=HEADERS).json()["version"] == "0.5.0", "con lo guardado"
+        assert central_state(client.put("/connectors/central", json={"url": URL}, headers=HEADERS).json())["hasKey"] is True, "sin clave nueva, se conserva"
+        assert client.post("/connectors/central/test", headers=HEADERS).json()["version"] == "0.5.0", "con lo guardado"
         refreshed = client.post("/central/refresh", headers=HEADERS)
         assert refreshed.status_code == 200 and refreshed.json()["transport"] == "http"
         shown = client.get("/central", headers=HEADERS)
@@ -262,13 +272,13 @@ def test_rutas_de_la_conexion_nunca_devuelven_la_clave(tmp_path, fake, caplog):
         assert all(set(c) & {"email", "phone", "taxId"} == set() for c in shown.json()["snapshot"]["clients"]), "sin contacto en pantalla"
         fake.scopes = []
         secrets.put(central_api.SECRET, "cen_" + "z" * 43)
-        refused = client.post("/central/connection/test", headers=HEADERS)
+        refused = client.post("/connectors/central/test", headers=HEADERS)
         assert refused.status_code == 502 and refused.json()["status"] == "auth"
         secrets.put(central_api.SECRET, KEY)
-        gone = client.delete("/central/connection", headers=HEADERS).json()
+        gone = central_state(client.delete("/connectors/central", headers=HEADERS).json())
         assert gone["hasKey"] is False and gone["url"] == URL and secrets.get(central_api.SECRET) is None
         assert client.post("/central/refresh", headers=HEADERS).status_code == 502
-        for path in ("/central", "/central/connection"):
+        for path in ("/central", "/connectors"):
             assert KEY not in client.get(path, headers=HEADERS).text
     c = connect(settings.data_dir / DB_NAME)
     try:
@@ -290,9 +300,9 @@ class BrokenStore:
 def test_sin_almacen_de_secretos_se_dice_claro(tmp_path, fake):
     settings, app = app_with(tmp_path, BrokenStore())
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
-        shown = client.get("/central/connection", headers=HEADERS).json()
+        shown = central_state(client.get("/connectors", headers=HEADERS).json())
         assert shown["hasKey"] is False and "Secret Service" in shown["storeProblem"]
-        saved = client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS)
+        saved = client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS)
         assert saved.status_code == 503 and "Secret Service" in saved.json()["error"] and KEY not in saved.text
 
 
@@ -300,14 +310,14 @@ def test_central_apagado_sin_rutas_ni_instantanea(tmp_path, fake):
     secrets = MemorySecrets()
     settings, app = app_with(tmp_path, secrets)
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
-        client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS)
+        client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS)
         assert client.post("/central/refresh", headers=HEADERS).status_code == 200
         client.put("/modules", json={"modules": {"central": False}}, headers=HEADERS)
         seen = len(fake.seen)
         assert client.get("/central", headers=HEADERS).status_code == 404
         assert client.post("/central/refresh", headers=HEADERS).status_code == 404
         assert len(fake.seen) == seen, "apagado no pide nada a Central"
-        assert client.get("/central/connection", headers=HEADERS).status_code == 200, "Ajustes › Central sigue disponible"
+        assert client.get("/connectors", headers=HEADERS).status_code == 200, "Ajustes › Central sigue disponible"
         c = connect(settings.data_dir / DB_NAME)
         try:
             assert central.stored(c) is not None and central.snapshot(c) is None, "se conserva pero no se usa"
@@ -342,7 +352,7 @@ def test_presupuesto_por_http_solo_con_presupuestos_y_sin_lectura(tmp_path, fake
     secrets = MemorySecrets()
     settings, app = app_with(tmp_path, secrets, QuoteEngine())
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
-        client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS)
+        client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS)
         client.put("/modules", json={"modules": {"central": False}}, headers=HEADERS)
         proposal = propose(client)
         assert proposal["quote"]["client"] == "Cliente Uno", "sin instantánea, el nombre va tal cual y Central lo comprueba"
@@ -356,7 +366,7 @@ def test_presupuestos_apagado(tmp_path, fake):
     secrets = MemorySecrets()
     settings, app = app_with(tmp_path, secrets, QuoteEngine())
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
-        client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS)
+        client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS)
         proposal = propose(client)
         client.put("/modules", json={"modules": {"presupuestos": False}}, headers=HEADERS)
         assert "proponer_presupuesto" in engines.HIDDEN_TOOLS and "proponer_presupuesto" not in [s["name"] for s in engines._specs()]
@@ -367,7 +377,7 @@ def test_presupuestos_apagado(tmp_path, fake):
 
 
 def connected(client, secrets):
-    assert client.put("/central/connection", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
+    assert client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
     assert secrets.get(central_api.SECRET) == KEY
 
 
@@ -375,21 +385,21 @@ def test_la_clave_guardada_nunca_va_a_otro_servidor(tmp_path, fake):
     secrets = MemorySecrets()
     settings, app = app_with(tmp_path, secrets)
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
-        assert client.put("/central/connection", json={"url": URL}, headers=HEADERS).status_code == 422, "la primera vez, con clave"
+        assert client.put("/connectors/central", json={"url": URL}, headers=HEADERS).status_code == 422, "la primera vez, con clave"
         connected(client, secrets)
         before = len(fake.seen)
         for other in ("https://central.example.net", "https://central.example.com:8443", "http://localhost:3099"):
-            tested = client.post("/central/connection/test", json={"url": other}, headers=HEADERS)
+            tested = client.post("/connectors/central/test", json={"url": other}, headers=HEADERS)
             assert tested.status_code == 422 and "escribe otra vez la clave" in tested.json()["error"], other
-            saved = client.put("/central/connection", json={"url": other}, headers=HEADERS)
+            saved = client.put("/connectors/central", json={"url": other}, headers=HEADERS)
             assert saved.status_code == 422 and "escribe otra vez la clave" in saved.json()["error"], other
         assert len(fake.seen) == before, "nada salió hacia otra dirección"
-        assert client.get("/central/connection", headers=HEADERS).json()["url"] == URL
-        assert client.post("/central/connection/test", json={"url": URL + "/"}, headers=HEADERS).status_code == 200, "mismo origen, vale"
-        assert client.put("/central/connection", json={"url": "https://CENTRAL.example.com:443"}, headers=HEADERS).status_code == 200
-        moved = client.put("/central/connection", json={"url": "https://central.example.net", "key": KEY}, headers=HEADERS)
-        assert moved.status_code == 200 and moved.json()["url"] == "https://central.example.net", "con la clave escrita, sí"
-        assert client.post("/central/connection/test", json={"url": "https://a..b", "key": KEY}, headers=HEADERS).status_code == 422, "nunca un 500"
+        assert central_state(client.get("/connectors", headers=HEADERS).json())["url"] == URL
+        assert client.post("/connectors/central/test", json={"url": URL + "/"}, headers=HEADERS).status_code == 200, "mismo origen, vale"
+        assert client.put("/connectors/central", json={"url": "https://CENTRAL.example.com:443"}, headers=HEADERS).status_code == 200
+        moved = client.put("/connectors/central", json={"url": "https://central.example.net", "key": KEY}, headers=HEADERS)
+        assert moved.status_code == 200 and central_state(moved.json())["url"] == "https://central.example.net", "con la clave escrita, sí"
+        assert client.post("/connectors/central/test", json={"url": "https://a..b", "key": KEY}, headers=HEADERS).status_code == 422, "nunca un 500"
 
 
 def test_plazos_de_cada_peticion_y_de_toda_la_lectura(monkeypatch):
@@ -500,7 +510,7 @@ def test_solo_con_la_carpeta_antigua_se_ve_la_instantanea_y_el_aviso(tmp_path, f
         body = shown.json()
         assert body["configured"] is False and body["transport"] is None and body["notice"] == central.MOVED
         assert body["snapshot"]["clients"][0]["name"] == "Cliente Uno" and body["snapshot"]["fetchedAt"]
-        described = client.get("/central/connection", headers=HEADERS).json()
+        described = central_state(client.get("/connectors", headers=HEADERS).json())
         assert described["legacy"] is True and described["transport"] is None
         assert client.post("/central/refresh", headers=HEADERS).status_code == 502, "sin dirección ni clave no se lee nada"
         assert client.get("/central", headers=HEADERS).json()["problem"] is None, "falta conectar: no es una avería"
@@ -517,7 +527,7 @@ def test_solo_con_la_carpeta_antigua_se_ve_la_instantanea_y_el_aviso(tmp_path, f
             assert central.stored(c) == before, "la instantánea sigue intacta"
         finally:
             c.close()
-        described = client.get("/central/connection", headers=HEADERS).json()
+        described = central_state(client.get("/connectors", headers=HEADERS).json())
         assert described["legacy"] is False and described["transport"] == "http"
         assert client.get("/central", headers=HEADERS).json()["notice"] is None
 
@@ -527,10 +537,10 @@ def test_la_carpeta_antigua_solo_se_olvida_al_guardar_una_conexion(tmp_path, fak
     settings, app = app_with(tmp_path, secrets)
     keep_snapshot(settings, legacy=True)
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
-        assert client.put("/central/connection", json={"url": "http://central.example.com", "key": KEY}, headers=HEADERS).status_code == 422
-        assert client.delete("/central/connection", headers=HEADERS).status_code == 200
+        assert client.put("/connectors/central", json={"url": "http://central.example.com", "key": KEY}, headers=HEADERS).status_code == 422
+        assert client.delete("/connectors/central", headers=HEADERS).status_code == 200
         assert client.post("/central/refresh", headers=HEADERS).status_code == 502
-        assert client.get("/central/connection", headers=HEADERS).json()["legacy"] is True, "sin conexión sigue el aviso"
+        assert central_state(client.get("/connectors", headers=HEADERS).json())["legacy"] is True, "sin conexión sigue el aviso"
         c = connect(settings.data_dir / DB_NAME)
         try:
             assert central.legacy(c), "la fila se conserva mientras no haya conexión"

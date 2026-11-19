@@ -8,21 +8,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from agora_core import addons
+from agora_core import addons, connectors
 from agora_core.app import SECRET_HEADER, create_app
 from agora_core.db import DB_NAME, connect, migrate
 from agora_core.keystore import MemoryStore
 from agora_core.settings import load_settings
+from test_assistant import MemorySecrets
 
 SECRET = "a" * 64
-
-
-@pytest.fixture(autouse=True)
-def no_real_costguard(tmp_path, monkeypatch):
-    """The default points at the user's real CostGuard data: tests never touch it."""
-    manifest = addons.MANIFESTS["costguard"]
-    fake = addons.Manifest(manifest.id, manifest.name, manifest.description, manifest.offers, {"dataPath": str(tmp_path / "sin-costguard.sqlite")})
-    monkeypatch.setitem(addons.MANIFESTS, "costguard", fake)
 
 
 @pytest.fixture
@@ -31,6 +24,10 @@ def db(tmp_path):
     migrate(connection)
     yield connection
     connection.close()
+
+
+def statuses(db) -> dict[str, str]:
+    return {c["id"]: c["state"]["status"] for c in connectors.describe_all(db, MemorySecrets())}
 
 
 def fabrica(folder):
@@ -66,23 +63,23 @@ def test_reconoce_solo_la_carpeta_correcta(tmp_path, db):
 def test_central_ya_no_es_un_complemento(db):
     """Central is connected only through its web API: no folder, no port and no add-on card."""
     assert "central" not in addons.MANIFESTS and "central" not in addons.ALLOWED
-    assert "central" not in {a["id"] for a in addons.describe(db)}
+    assert connectors.REGISTRY["central"].kind == "web_api", "su tarjeta es la de una web API"
     assert addons.recognised("central", Path("/")) is False
     with pytest.raises(addons.AddonError):
         addons.save_config(db, "central", {"port": 3099})
 
 
 def test_estados(tmp_path, db):
-    listed = {a["id"]: a["status"] for a in addons.describe(db)}
+    listed = statuses(db)
     assert listed["fabrica"] == "not_configured"
     folder = fabrica(tmp_path / "fabrica")
     with socket.socket() as free:
         free.bind(("127.0.0.1", 0))
         unused = free.getsockname()[1]
     addons.save_config(db, "fabrica", {"path": str(folder), "port": unused})
-    assert {a["id"]: a["status"] for a in addons.describe(db)}["fabrica"] == "detected"
+    assert statuses(db)["fabrica"] == "detected"
     (folder / "pyproject.toml").unlink()
-    assert {a["id"]: a["status"] for a in addons.describe(db)}["fabrica"] == "not_found"
+    assert statuses(db)["fabrica"] == "not_found"
 
 
 def test_fabrica_en_marcha_si_su_panel_responde(tmp_path, db):
@@ -102,7 +99,7 @@ def test_fabrica_en_marcha_si_su_panel_responde(tmp_path, db):
     threading.Thread(target=panel.serve_forever, daemon=True).start()
     try:
         addons.save_config(db, "fabrica", {"path": str(folder), "port": panel.server_port})
-        assert {a["id"]: a["status"] for a in addons.describe(db)}["fabrica"] == "responding"
+        assert statuses(db)["fabrica"] == "responding"
     finally:
         panel.shutdown()
 
@@ -124,25 +121,26 @@ def test_rutas(tmp_path):
     data = tmp_path / "consumo.sqlite"
     costguard_db(data, now)
     settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
-    app = create_app(settings, MemoryStore(), scheduler=False, embedder=None)
+    app = create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets())
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
         headers = {SECRET_HEADER: SECRET}
         assert client.get("/addons/costguard/usage", headers=headers).status_code == 404
-        assert client.put("/addons/costguard", json={"dataPath": "/no/existe.sqlite"}, headers=headers).status_code == 422
+        assert client.put("/connectors/costguard", json={"dataPath": "/no/existe.sqlite"}, headers=headers).status_code == 422
         text = tmp_path / "nota.txt"
         text.write_text("no soy una base")
         other = tmp_path / "otra.sqlite"
         sqlite3.connect(other).execute("CREATE TABLE x (a)").connection.commit()
         for bad in (text, other):
-            assert client.put("/addons/costguard", json={"dataPath": str(bad)}, headers=headers).status_code == 422
-        assert client.get("/addons", headers=headers).status_code == 200, "el registro sigue funcionando"
-        assert client.put("/addons/central", json={"port": 3099}, headers=headers).status_code == 422, "Central ya no es un complemento"
-        assert client.put("/addons/otro", json={}, headers=headers).status_code == 422
-        listed = client.put("/addons/costguard", json={"dataPath": str(data)}, headers=headers).json()["addons"]
-        assert {a["id"]: a["status"] for a in listed}["costguard"] == "recording"
+            assert client.put("/connectors/costguard", json={"dataPath": str(bad)}, headers=headers).status_code == 422
+        assert client.get("/connectors", headers=headers).status_code == 200, "el registro sigue funcionando"
+        assert client.get("/addons", headers=headers).status_code == 404, "el registro antiguo ya no existe"
+        assert client.put("/connectors/central", json={"port": 3099}, headers=headers).status_code == 422, "Central ya no es un complemento"
+        assert client.put("/connectors/otro", json={}, headers=headers).status_code == 404
+        listed = client.put("/connectors/costguard", json={"dataPath": str(data)}, headers=headers).json()
+        assert listed["state"]["status"] == "recording"
         assert client.get("/addons/costguard/usage", headers=headers).json()["turns"] == 4
-        forgotten = client.put("/addons/costguard", json={"dataPath": None}, headers=headers).json()["addons"]
-        assert {a["id"]: a["status"] for a in forgotten}["costguard"] == "not_found", "vuelve al valor por defecto"
+        forgotten = client.put("/connectors/costguard", json={"dataPath": None}, headers=headers).json()
+        assert forgotten["state"]["status"] == "not_found", "vuelve al valor por defecto"
 
 
 def test_ventana_exacta_de_horas(tmp_path):
@@ -163,7 +161,7 @@ def test_un_complemento_roto_no_rompe_el_registro(tmp_path, db):
     folder = fabrica(tmp_path / "fabrica")
     addons.save_config(db, "fabrica", {"path": str(folder)})
     (folder / "pyproject.toml").write_bytes(b"\xff\xfe no es texto")
-    listed = {a["id"]: a["status"] for a in addons.describe(db)}
+    listed = statuses(db)
     assert listed["fabrica"] == "not_found"
 
 
@@ -186,4 +184,4 @@ def test_olvidar_ajustes_y_solo_los_propios(tmp_path, db):
         addons.save_config(db, "fabrica", {"dataPath": str(tmp_path)})
     forgotten = addons.save_config(db, "fabrica", {"path": None, "port": None})
     assert "path" not in forgotten and forgotten["port"] == 8742
-    assert {a["id"]: a["status"] for a in addons.describe(db)}["fabrica"] == "not_configured"
+    assert statuses(db)["fabrica"] == "not_configured"

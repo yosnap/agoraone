@@ -2,256 +2,101 @@
 conectadas». The URL is not secret and lives in `setting`; the key lives only in the system's secret store
 (Keychain, Windows Credential Manager or Secret Service) under `central-api-key`.
 
-Safety of the key: https is required except on loopback (`localhost`, `127.0.0.1`, `::1`); redirections are never
-followed, so a 30x can never carry the key to another host; the key goes only in the Authorization header and is
-scrubbed from any text of Central that ends up in an error; answers are size-capped. Errors say what happened in
-plain words and never include the key, the request headers or the raw answer."""
+The safety of the key (https except on loopback, no redirections, the key only in the Authorization header and
+scrubbed from errors, size-capped answers) is the shared one of `web_api.py`; this module names Central's own
+`SPEC` and keeps its public names, plus what only Central has: its writes, documents, status and snapshot."""
 
-import json
 import re
-import sqlite3
-import time
 from contextlib import contextmanager
-from dataclasses import dataclass
-from urllib.parse import urlsplit
 
 import httpx
 
-from .db import transaction
+from . import web_api
+from .web_api import Connection, WebApiError
 
 SECRET = "central-api-key"  # account of the key in the secret store
 SETTING = "central.connection"
 SUGGESTED_URL = "https://central.example.com"
 SCOPES = ("lectura", "presupuestos", "escritura")
-TIMEOUT = httpx.Timeout(15, connect=5)  # per operation (connect, each read)
-REQUEST_SECONDS = 60  # a whole request, however slowly Central drips its answer
-TOTAL_SECONDS = 180  # a whole reading of the snapshot, like the stdio way
-MAX_BYTES = 8 * 1024 * 1024
-_KEY = re.compile(r"cen_[A-Za-z0-9_-]{43}")
-_LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+TIMEOUT = web_api.TIMEOUT
+REQUEST_SECONDS = web_api.REQUEST_SECONDS  # a whole request, however slowly Central drips its answer
+TOTAL_SECONDS = 180  # a whole reading of the snapshot
+MAX_BYTES = web_api.MAX_BYTES
+NO_STORE = web_api.NO_STORE
 # Tests replace it with an httpx.MockTransport; None is the real network.
 TRANSPORT: httpx.BaseTransport | None = None
-NO_STORE = "No hay un almacén de secretos activo (Secret Service, Llavero o Administrador de credenciales): sin él no se guarda la clave."
 
+SPEC = web_api.WebApiSpec(
+    secret=SECRET, setting=SETTING, key_pattern=r"cen_[A-Za-z0-9_-]{43}", key_hint="empieza por «cen_»",
+    key_source="Ajustes › Apps conectadas de Central", example_url=SUGGESTED_URL, name="Central", path_prefix="/api/v1/",
+    scopes=SCOPES, rate_limited="unreachable", transport=lambda: TRANSPORT)
 
-class CentralApiError(RuntimeError):
-    """`status`: 'config' (URL or key not valid), 'auth' (key refused), 'forbidden' (key without that permission),
-    'not_found', 'invalid' (Central refused the data), 'unreachable' or 'error'."""
-
-    def __init__(self, status: str, message: str):
-        super().__init__(message)
-        self.status = status
+CentralApiError = WebApiError
 
 
 def url_problem(value: object) -> str | None:
-    try:
-        normalize_url(value)
-    except CentralApiError as error:
-        return str(error)
-    return None
+    return web_api.url_problem(SPEC, value)
 
 
 def normalize_url(value: object) -> str:
     """The base URL of Central (scheme, host, port and an optional path, without a trailing «/»)."""
-    if not isinstance(value, str) or not value.strip() or len(value.strip()) > 300:
-        raise CentralApiError("config", "Escribe la dirección de Central, por ejemplo https://central.example.com.")
-    try:
-        parts = urlsplit(value.strip())
-        host = (parts.hostname or "").lower()
-        port = parts.port  # raises on a port that is not a number or out of range
-    except ValueError:
-        raise CentralApiError("config", "La dirección de Central no es válida.") from None
-    if port is not None and not 1 <= port <= 65535:
-        raise CentralApiError("config", "La dirección de Central no es válida: el puerto va de 1 a 65535.")
-    if host and ":" not in host and not _valid_host(host):
-        raise CentralApiError("config", "La dirección de Central no es válida: revisa el nombre del servidor.")
-    if parts.scheme not in ("https", "http") or not host or parts.username or parts.password or parts.query or parts.fragment:
-        raise CentralApiError("config", "La dirección de Central no es válida: solo https://servidor (sin usuario, ? ni #).")
-    if parts.scheme == "http" and host not in _LOOPBACK:
-        raise CentralApiError("config", "Fuera de este equipo, Central solo se conecta por https: la clave nunca viaja sin cifrar.")
-    if not all(c.isascii() and c.isprintable() and not c.isspace() for c in value.strip()):
-        raise CentralApiError("config", "La dirección de Central no es válida.")
-    netloc = parts.netloc.rsplit("@", 1)[-1]
-    return f"{parts.scheme}://{netloc}{parts.path.rstrip('/')}"
-
-
-_LABEL = re.compile(r"(?!-)[a-z0-9-]{1,63}(?<!-)")
-
-
-def _valid_host(host: str) -> bool:
-    """A host name made of valid labels (international names through idna), never empty labels like «a..b»."""
-    try:
-        ascii_host = host.encode("idna").decode("ascii")
-    except UnicodeError:
-        return False
-    return len(ascii_host) <= 253 and all(_LABEL.fullmatch(label) for label in ascii_host.split("."))
+    return web_api.normalize_url(SPEC, value)
 
 
 def origin(url: str) -> tuple[str, str, int]:
-    """Scheme, host and port of a valid URL: a key saved for one origin never travels to another one unasked."""
-    parts = urlsplit(normalize_url(url))
-    return parts.scheme, (parts.hostname or "").lower(), parts.port or (443 if parts.scheme == "https" else 80)
+    return web_api.origin(SPEC, url)
 
 
 def same_origin(a: str | None, b: str | None) -> bool:
-    try:
-        return bool(a and b) and origin(a) == origin(b)
-    except CentralApiError:
-        return False
+    return web_api.same_origin(SPEC, a, b)
 
 
 def key_problem(key: object) -> str | None:
-    if not isinstance(key, str):
-        return "La clave de Central debe ser texto."
-    if not _KEY.fullmatch(key.strip()):
-        return "La clave de Central no parece válida: empieza por «cen_»; cópiala entera desde Ajustes › Apps conectadas de Central."
-    return None
+    return web_api.key_problem(SPEC, key)
 
 
-def saved_url(connection: sqlite3.Connection) -> str | None:
-    row = connection.execute("SELECT value FROM setting WHERE key = ?", (SETTING,)).fetchone()
-    if not row:
-        return None
-    try:
-        url = json.loads(row["value"]).get("url")
-    except (ValueError, AttributeError):
-        return None
-    return url if isinstance(url, str) and url_problem(url) is None else None
+def saved_url(connection) -> str | None:
+    return web_api.saved_url(SPEC, connection)
 
 
-def save_url(connection: sqlite3.Connection, url: str | None) -> None:
-    with transaction(connection):
-        if url is None:
-            connection.execute("DELETE FROM setting WHERE key = ?", (SETTING,))
-        else:
-            connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-                               (SETTING, json.dumps({"url": normalize_url(url)})))
+def save_url(connection, url: str | None) -> None:
+    web_api.save_url(SPEC, connection, url)
 
 
 def read_key(secrets) -> str | None:
-    """The key from the secret store; a store that does not work is said plainly (never stored in plain text)."""
-    try:
-        key = secrets.get(SECRET)
-    except Exception:  # noqa: BLE001 - keyring raises its own kinds per system; none of them carries the key
-        raise CentralApiError("config", NO_STORE) from None
-    return key if isinstance(key, str) and key else None
+    return web_api.read_key(SPEC, secrets)
 
 
 def write_key(secrets, key: str | None) -> None:
-    try:
-        secrets.put(SECRET, key)
-    except Exception:  # noqa: BLE001 - as in read_key
-        raise CentralApiError("config", NO_STORE) from None
+    web_api.write_key(SPEC, secrets, key)
 
 
-@dataclass(frozen=True)
-class Connection:
-    """URL and key of a Central reached over HTTP. `repr` never shows the key."""
-    url: str
-    key: str
-
-    def __repr__(self) -> str:
-        return f"Connection(url={self.url!r})"
-
-
-def connection_of(connection: sqlite3.Connection, secrets) -> Connection | None:
-    """The saved connection when there are both a URL and a key; None otherwise (or with no working store)."""
-    url = saved_url(connection)
-    if not url:
-        return None
-    try:
-        key = read_key(secrets)
-    except CentralApiError:
-        return None
-    return Connection(url, key) if key else None
+def connection_of(connection, secrets) -> Connection | None:
+    return web_api.connection_of(SPEC, connection, secrets)
 
 
 def _said(answer_text: str, key: str) -> str:
-    """Central's own short reason (`detail` or `error`), without the key should it ever echo it."""
-    try:
-        data = json.loads(answer_text)
-    except ValueError:
-        return ""
-    if not isinstance(data, dict):
-        return ""
-    reason = data.get("detail") or data.get("error") or ""
-    text = " ".join(str(reason).split())[:200]
-    return text.replace(key, "***") if key else text
+    return web_api.said(answer_text, key)
 
 
 @contextmanager
 def session(seconds: float = TOTAL_SECONDS):
     """One connection to Central for several requests, with a deadline for all of them."""
-    with httpx.Client(transport=TRANSPORT, timeout=TIMEOUT, follow_redirects=False) as client:
-        yield client, time.monotonic() + seconds
+    with web_api.session(SPEC, seconds) as opened:
+        yield opened
 
 
 def _exchange(target: Connection, method: str, path: str, params: dict | None, body: dict | None, client: httpx.Client,
               deadline: float | None, max_bytes: int, accept: str) -> tuple[int, str, bytes]:
-    """One call: status, content type and the bytes of the answer (at most `max_bytes`), or a CentralApiError."""
-    if not path.startswith("/api/v1/"):
-        raise CentralApiError("error", "Ruta de Central no permitida.")
-    url = normalize_url(target.url)
-    headers = {"Authorization": f"Bearer {target.key}", "Accept": accept, "User-Agent": "AgoraOne"}
-    until = min(deadline or float("inf"), time.monotonic() + REQUEST_SECONDS)
-    late = CentralApiError("unreachable", "Central no respondió a tiempo.")
-    too_big = CentralApiError("error", "Central devolvió una respuesta demasiado grande.")
-    if time.monotonic() >= until:
-        raise late
-    try:
-        with client.stream(method, f"{url}{path}", params=params, json=body, headers=headers) as answer:
-            declared = answer.headers.get("content-length") or "0"
-            if not (declared.isascii() and declared.isdigit()) or int(declared) > max_bytes:
-                raise too_big
-            chunks, read = [], 0
-            for chunk in answer.iter_bytes():
-                read += len(chunk)
-                if read > max_bytes:
-                    raise too_big
-                if time.monotonic() > until:
-                    raise late
-                chunks.append(chunk)
-            return answer.status_code, answer.headers.get("content-type") or "", b"".join(chunks)
-    except CentralApiError:
-        raise
-    except httpx.TimeoutException:
-        raise late from None
-    except (httpx.InvalidURL, UnicodeError, ValueError):
-        raise CentralApiError("config", "La dirección de Central no es válida.") from None
-    except httpx.HTTPError:
-        raise CentralApiError("unreachable", "No se pudo conectar con Central: comprueba la dirección y que esté en marcha.") from None
+    return web_api.exchange(SPEC, target, method, path, params, body, client, deadline, max_bytes, accept, REQUEST_SECONDS)
 
 
 def _refuse(status: int, text: str, key: str) -> None:
-    """Raises the CentralApiError of an answer that is not a 2xx, in plain words and without the key."""
-    if 300 <= status < 400:
-        raise CentralApiError("error", "Central respondió con una redirección, que no se sigue: revisa la dirección (¿falta https o sobra una ruta?).")
-    if status == 401:
-        raise CentralApiError("auth", "Central no acepta la clave: puede estar revocada. Crea otra en Ajustes › Apps conectadas de Central.")
-    if status == 403:
-        scope = ""
-        try:
-            scope = str(json.loads(text).get("scope") or "")
-        except (ValueError, AttributeError):
-            pass
-        named = f" «{scope}»" if scope in SCOPES else ""
-        raise CentralApiError("forbidden", f"La clave de Central no tiene el permiso{named} para esto.")
-    if status == 404:
-        raise CentralApiError("not_found", "Central no tiene eso (o la dirección no es la de su API).")
-    if status == 429:
-        raise CentralApiError("unreachable", "Central pide esperar un poco (demasiadas peticiones).")
-    if status in (400, 409, 422):
-        said = _said(text, key)
-        raise CentralApiError("invalid", f"Central no aceptó los datos{': ' + said if said else ''}.")
-    if status >= 500:
-        raise CentralApiError("unreachable", f"Central no responde bien ahora ({status}).")
-    if not 200 <= status < 300:
-        raise CentralApiError("error", f"Central respondió con un error ({status}).")
+    web_api.refuse(SPEC, status, text, key)
 
 
-def _no_constant(name: str):
-    """NaN and Infinity are not JSON: an answer with them is not understood (it could not be answered on either)."""
-    raise CentralApiError("error", "Central devolvió una respuesta que no se entiende.")
+def _object(text: str) -> dict:
+    return web_api.json_object(SPEC, text)
 
 
 def request(target: Connection, method: str, path: str, params: dict | None = None, body: dict | None = None,
@@ -261,20 +106,7 @@ def request(target: Connection, method: str, path: str, params: dict | None = No
     if client is None:
         with session(REQUEST_SECONDS) as (own, own_deadline):
             return request(target, method, path, params, body, own, own_deadline)
-    status, _, raw = _exchange(target, method, path, params, body, client, deadline, MAX_BYTES, "application/json")
-    text = raw.decode("utf-8", errors="replace")
-    _refuse(status, text, target.key)
-    return _object(text)
-
-
-def _object(text: str) -> dict:
-    try:
-        data = json.loads(text, parse_constant=_no_constant)
-    except ValueError:
-        raise CentralApiError("error", "Central devolvió una respuesta que no se entiende (¿es la dirección de Central?).") from None
-    if not isinstance(data, dict):
-        raise CentralApiError("error", "Central devolvió una respuesta que no se entiende.")
-    return data
+    return web_api.request(SPEC, target, method, path, params, body, client, deadline, MAX_BYTES, REQUEST_SECONDS)
 
 
 CONFLICTS = ("conflict", "duplicate", "status_locked")
@@ -305,8 +137,8 @@ def write(target: Connection, method: str, path: str, body: dict, client: httpx.
     text = raw.decode("utf-8", errors="replace")
     if status == 409:
         try:
-            data = json.loads(text, parse_constant=_no_constant)
-        except (ValueError, CentralApiError):
+            data = _object(text)
+        except CentralApiError:
             data = None
         data = data if isinstance(data, dict) else {}
         kind = data.get("error") if data.get("error") in CONFLICTS else "conflict"
