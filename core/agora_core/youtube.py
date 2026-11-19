@@ -120,7 +120,37 @@ def search(query: str) -> list[dict]:
         raise YouTubeError("No he podido leer la respuesta de YouTube. Prueba otra vez en un momento.")
     if not found:
         raise YouTubeError(f"No encuentro «{query}» en YouTube.")
-    return found
+    return embeddable_first(found, lambda ident: _embeddable(ident))  # looked up at call time (tests replace it)
+
+
+OEMBED = "https://www.youtube.com/oembed"
+
+
+def _embeddable(ident: str) -> bool | None:
+    """Whether YouTube lets this video play outside its site: its oEmbed answers 401 when the owner forbids it
+    (record labels often do). None when it cannot be told (no answer): the video keeps its place."""
+    try:
+        answer = httpx.get(OEMBED, params={"url": f"https://www.youtube.com/watch?v={ident}", "format": "json"},
+                           timeout=4, follow_redirects=False, headers={"User-Agent": AGENT})
+    except httpx.HTTPError:
+        return None
+    if answer.status_code == 200:
+        return True
+    if answer.status_code in (401, 403):
+        return False
+    return None
+
+
+def embeddable_first(found: list[dict], check=_embeddable) -> list[dict]:
+    """The videos that can play inside AgoraOne go first, in YouTube's order; the refused ones stay at the end
+    (the desktop app can still play them in its hidden window). Only video ids are sent, to YouTube itself."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=min(8, len(found) or 1)) as pool:
+        verdicts = list(pool.map(lambda video: check(video["id"]), found))
+    for video, verdict in zip(found, verdicts):
+        video["embeddable"] = verdict
+    return [v for v in found if v["embeddable"] is not False] + [v for v in found if v["embeddable"] is False]
 
 
 def _page(query: str) -> str:
