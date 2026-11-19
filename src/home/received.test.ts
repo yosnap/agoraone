@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ChatSummary, ProposedChatReply } from '../api/core';
 import { ChatReplyProposals, type useChatReplyProposals } from '../assistant/chat-reply-proposals';
+import { announceNote } from '../assistant/announce-note';
 import { chatAnnouncement } from '../inbox/inbox-labels';
 import { ReceivedSlide } from './home-parts';
 
@@ -43,4 +44,16 @@ test('la respuesta propuesta solo ofrece revisarla o descartarla, y en discreto 
   const hidden = renderToStaticMarkup(createElement(ChatReplyProposals, { state, discreet: true }));
   assert.doesNotMatch(hidden, /Ana Prueba|Te lo mando/);
   assert.match(hidden, /<button[^>]*disabled=""[^>]*>Revisar y enviar…/, 'en discreto no se abre la revisión');
+});
+
+test('la nota tras responder a un aviso no nombra a nadie en discreto, y lo privado nunca', () => {
+  const normal = { ...chat(), channel: 'chat' as const };
+  const hidden = { ...chat({ confidentiality: 'private', participant: null }), channel: 'chat' as const };
+  const mail = { id: 1, subject: 'Factura de Hostinger', channel: 'mail' as const } as never;
+  assert.equal(announceNote(normal, 'done', false), 'El WhatsApp de Ana Prueba: marcado como hecho en la Bandeja.');
+  assert.equal(announceNote(normal, 'done', true), 'Un WhatsApp: marcado como hecho en la Bandeja.');
+  assert.equal(announceNote(hidden, 'dismissed', false), 'Un WhatsApp privado: descartado en la Bandeja.');
+  assert.doesNotMatch(announceNote(hidden, null, false), /Conversación privada/);
+  assert.equal(announceNote(mail, null, true), 'Un correo: lo dejo en la Bandeja.');
+  assert.equal(announceNote(mail, 'done', false), '«Factura de Hostinger»: marcado como hecho en la Bandeja.');
 });

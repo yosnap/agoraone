@@ -13,7 +13,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from agora_core import brain_chat, brain_tools, chat_inbox, chat_send, clients, modules, routes_assistant, zernio
+from agora_core import brain_chat, brain_tools, chat_inbox, chat_send, clients, engines, modules, routes_assistant, zernio
 from agora_core.app import SECRET_HEADER, create_app
 from agora_core.brain_tools import SPECS, Toolbox
 from agora_core.db import DB_NAME, connect, migrate
@@ -306,3 +306,78 @@ def test_con_el_modulo_apagado_no_se_anuncia_y_algo_nuevo_lo_vuelve_a_anunciar(t
     run(db, asker(reply_all())[0])
     assert [i["id"] for i in chat_inbox.claim_announcements(db)] == [conv], "algo nuevo recibido lo abre otra vez"
     db.close()
+
+
+def mail_card(db, summary: str = "Factura del proveedor.") -> None:
+    """A normal invoice mail, classified as the summarizer leaves it."""
+    from agora_core.mail_summarizer import summarize_once
+    from test_mail_inbox import FakeEngine as MailEngine, account as mail_account, add, asker as mail_asker
+
+    add(db, mail_account(db, "yo@gmail.com"), "a@proveedor.com", "Invoice", "x")
+    ask_model, _ = mail_asker(lambda messages: json.dumps({"correos": [{"n": 1, "tipo": "factura", "resumen": summary}]}))
+    summarize_once(db, [MailEngine()], ask_model)
+
+
+def test_con_el_correo_apagado_watson_ve_whatsapp_y_ningun_correo(box):
+    toolbox, db = box
+    mail_card(db, summary=f"Factura {CANARY}")
+    conv = chat(db)
+    modules.save(db, {"correo": False})
+    modules.apply(db)
+    try:
+        assert "consultar_bandeja" not in engines.HIDDEN_TOOLS
+        out = ask(toolbox, "consultar_bandeja", {})
+        found = json.loads(out)
+        assert [c["id"] for c in found["whatsapp"]] == [conv] and found["correos"] == [] and CANARY not in out
+        assert "Correo está apagado" in json.loads(ask(toolbox, "consultar_bandeja", {"fuente": "correo"}))["error"]
+        assert "estado" in json.loads(ask(toolbox, brain_chat.NAME, {"id": conv, "texto": "Vale, gracias."})), "y propone respuestas"
+    finally:
+        modules.save(db, {"correo": True})
+        modules.apply(db)
+
+
+def test_las_indicaciones_hablan_de_whatsapp_solo_con_el_modulo_encendido():
+    from agora_core import assistant
+
+    base = {"persona": next(iter(assistant.PERSONAS)), "tone": {k: next(iter(v)) for k, v in assistant.TONE_OPTIONS.items()}}
+    engines.HIDDEN_TOOLS.discard(brain_chat.NAME)
+    assert brain_chat.NAME in assistant.system_prompt(base)
+    engines.HIDDEN_TOOLS.add(brain_chat.NAME)
+    try:
+        assert brain_chat.NAME not in assistant.system_prompt(base) and "WhatsApp" not in assistant.system_prompt(base)
+    finally:
+        engines.HIDDEN_TOOLS.discard(brain_chat.NAME)
+
+
+def test_un_privado_se_anuncia_por_su_numero_del_directorio_y_sin_nombre(box):
+    _, db = box
+    private = chat(db, kind="other", account_level="private", name="Secreta", phone="+34 600 111 222")
+    chat(db, kind="other", name="Desconocido", phone="+34 699 999 999")
+    clients.create(db, {"name": "Café Web", "phone": "600 111 222"})
+    (item,) = chat_inbox.claim_announcements(db)
+    assert item["id"] == private and item["participant"] is None and item["client"] is None and item["summary"] is None
+
+
+def test_una_regla_de_hoy_esconde_el_nombre_en_el_anuncio_y_en_la_lista(box):
+    _, db = box
+    conv = chat(db, kind="client", body="Te paso lo de la herencia")
+    db.execute("INSERT INTO chat_rule (name, words, action, confidentiality, created_at) VALUES ('Hoy', 'herencia', 'personal', 'private', ?)", (_stamp(),))
+    db.commit()
+    (listed,) = chat_inbox.summaries(db)
+    assert (listed["confidentiality"], listed["participant"], listed["summary"], listed["client"]) == ("private", None, None, None)
+    (item,) = chat_inbox.claim_announcements(db)
+    assert item["id"] == conv and item["participant"] is None and item["confidentiality"] == "private"
+
+
+def test_el_anuncio_devuelve_el_correo_con_su_canal_aunque_falle_whatsapp(app, monkeypatch):
+    client, db, _ = app
+    mail_card(db)
+    chat(db, kind="incident")
+
+    def broken(connection, limit=3):
+        raise RuntimeError("instantánea rota")
+    monkeypatch.setattr(chat_inbox, "claim_announcements", broken)
+    items = client.post("/mail/inbox/announce", headers=HEADERS).json()["items"]
+    assert [(i["channel"], i["summary"]) for i in items] == [("mail", "Factura del proveedor.")], "el correo no se pierde"
+    monkeypatch.undo()
+    assert [i["channel"] for i in client.post("/mail/inbox/announce", headers=HEADERS).json()["items"]] == ["chat"]

@@ -7,11 +7,6 @@ import { cardDate, type Card } from '../inbox/inbox-cards';
 const DAY = 86_400_000;
 const shownLevel = (discreet: boolean) => (item: { confidentiality: string }) => !discreet || item.confidentiality === 'normal';
 
-/** The mail waiting for the user, newest first. */
-export function latestMail(items: InboxItem[], discreet: boolean, limit = 8): InboxItem[] {
-  return items.filter(shownLevel(discreet)).sort((a, b) => b.sentAt.localeCompare(a.sentAt)).slice(0, limit);
-}
-
 /** «Mensajes recibidos»: the mail and the WhatsApp conversations waiting for the user in one list, newest first, with
  * the same limit as the mail alone; in discreet mode only what is normal (the screen also hides their summaries). */
 export function latestReceived(mails: InboxItem[], chats: ChatSummary[], discreet: boolean, limit = 8): Card[] {

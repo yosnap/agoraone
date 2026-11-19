@@ -123,7 +123,12 @@ Meta corta la conexión si la app del móvil no se abre en 14 días.
 - Anuncio al abrir el chat (decisión del usuario, 19/11/2026): las conversaciones pendientes de clase cliente,
   incidencia, cita, factura o pago, o de un cliente del directorio, una sola vez cada una (`chat_summary.announced_at`,
   migración `0035_chat_announced.sql`; algo nuevo recibido la vuelve a anunciar). Lo privado sale sin nombre, y en modo
-  discreto ningún detalle. «Sí» la marca como hecha y «no» la descarta, sin modelo.
+  discreto ningún detalle, tampoco en la nota tras responder. «Sí» la marca como hecha y «no» la descarta, sin modelo.
+  Si la parte de WhatsApp falla, el anuncio sigue devolviendo los correos.
+- Con el correo apagado y WhatsApp encendido, Watson sigue viendo WhatsApp y proponiendo respuestas (decisión del
+  usuario, 19/11/2026): `consultar_bandeja` solo se oculta con los dos módulos apagados y cada parte mira su módulo.
+- La lista de la Bandeja, la portada y el anuncio usan el nivel de ahora, con las reglas que casan hoy: una regla nueva
+  que vuelve privada una conversación quita al momento su nombre, su cliente y su resumen.
 - Portada (decisión del usuario, 19/11/2026): un solo bloque «Mensajes recibidos» con correo y WhatsApp mezclados por
   fecha, con distintivo «WhatsApp», contacto, hora, clase, resumen y lo que piden, y el mismo tope que el correo. En
   modo discreto solo lo normal y sin resumen ni peticiones. Con el módulo apagado no se pide nada.

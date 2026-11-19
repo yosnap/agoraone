@@ -494,9 +494,14 @@ class Toolbox:
             return all(word in seen for word in words)
 
         def run():
+            from . import modules
+
             items, chats = [], None
             with self.database() as connection:
-                if source != "whatsapp":
+                mail_on = modules.state(connection)["correo"]
+                if source == "correo" and not mail_on:
+                    return None, None
+                if source != "whatsapp" and mail_on:  # mail only with its module on, even if the tool is shown for WhatsApp
                     items = mail_inbox.inbox(connection, "pending", 200, audience=AUDIENCE)
                     if wanted or words:  # «what has X asked me?» or a search covers what was already handled too
                         items += mail_inbox.inbox(connection, "done", 200, audience=AUDIENCE)
@@ -504,6 +509,8 @@ class Toolbox:
                     chats = brain_chat.items(connection, kind, wanted, words, INBOX_LIMIT)
             return [i for i in items if not i["moved"] and (kind is None or i["kind"] == kind) and matches(i)][:INBOX_LIMIT], chats
         items, chats = await run_in_threadpool(run)
+        if items is None:
+            return json.dumps({"error": "El módulo Correo está apagado en Ajustes: no hay correos en la Bandeja."}, ensure_ascii=False)
         chat_off = "El módulo WhatsApp está apagado en Ajustes: no hay WhatsApp en la Bandeja."
         self.chats_seen.update(chat["id"] for chat in chats or [])
         self._record({"tool": "inbox", "filter": tipo, "sender": bool(wanted), "text": bool(words), "count": len(items),

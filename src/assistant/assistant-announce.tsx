@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { claimAnnouncements, decideChat, decideInbox, type Announcement, type InboxItem } from '../api/core';
-import { chatName } from '../inbox/inbox-cards';
+import { announceNote } from './announce-note';
 import { announcement, chatAnnouncement, proposalLabels } from '../inbox/inbox-labels';
 import { InvoiceFiling } from '../inbox/invoice-filing';
 import { replyState } from './assistant-reply';
@@ -8,7 +8,7 @@ import { replyState } from './assistant-reply';
 /** What the Bandeja has waiting, mail and WhatsApp, announced by the assistant when the chat opens. Each announcement
  * is shown once; the user answers with the buttons or with a plain «sí» / «no» when only one is open. The answer
  * is read here, never by a model, so no text in a message can answer for the user. */
-export function useAnnouncements() {
+export function useAnnouncements(discreet = false) {
   const [items, setItems] = useState<Announcement[]>([]);
   const [note, setNote] = useState('');
   const asked = useRef(false);
@@ -22,8 +22,7 @@ export function useAnnouncements() {
     try {
       if (state) await (item.channel === 'chat' ? decideChat(item.id, state) : decideInbox(item.id, state));
       setItems(current => current.filter(other => !same(other, item)));
-      const what = item.channel === 'chat' ? `El WhatsApp de ${chatName(item)}` : `«${item.subject || 'sin asunto'}»`;
-      setNote(state === 'done' ? `${what}: marcado como hecho en la Bandeja.` : state === 'dismissed' ? `${what}: descartado en la Bandeja.` : `${what}: lo dejo en la Bandeja.`);
+      setNote(announceNote(item, state, discreet));
     } catch { setNote('No se pudo guardar; inténtalo desde la Bandeja.'); }
   };
   /** A short «sí» or «no» answers the only open announcement, and only before anything else was said in the

@@ -3,6 +3,7 @@ the assistant announces. Deciding a card only records the user's choice; no rout
 message asks for."""
 
 import sqlite3
+import sys
 from contextlib import contextmanager
 from typing import Literal
 
@@ -170,7 +171,14 @@ def inbox_router(settings: Settings, health, secrets=None) -> APIRouter:
         classified it); each card is handed out once."""
         def work(connection):
             mails = [{**item, "channel": "mail"} for item in mail_inbox.claim_announcements(connection)]
-            return mails + [{**item, "channel": "chat"} for item in chat_inbox.claim_announcements(connection)]
+            try:
+                chats = [{**item, "channel": "chat"} for item in chat_inbox.claim_announcements(connection)]
+            except Exception as error:  # noqa: BLE001 - the mail already claimed must still reach the screen
+                if connection.in_transaction:
+                    connection.execute("ROLLBACK")
+                print(f"agora: no se pudieron preparar los avisos de WhatsApp ({type(error).__name__})", file=sys.stderr)
+                chats = []
+            return mails + chats
         return {"items": await db(work)}
 
     return router

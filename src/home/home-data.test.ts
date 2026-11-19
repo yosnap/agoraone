@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { doneButOpen, invoicesToFile, latestMail, latestReceived, serversByTrouble, systemNotes, upcoming } from './home-data.ts';
+import { doneButOpen, invoicesToFile, latestReceived, serversByTrouble, systemNotes, upcoming } from './home-data.ts';
 
 const mail = (id: number, extra: Record<string, unknown> = {}) => ({ id, kind: 'other', confidentiality: 'normal', sentAt: `2026-11-1${id}T10:00:00Z`, details: {}, proposal: null, ...extra }) as never;
 
 test('el correo más reciente primero y, en modo discreto, solo lo normal', () => {
   const items = [mail(1), mail(3), mail(2, { confidentiality: 'private' })];
-  assert.deepEqual(latestMail(items, false).map((m: { id: number }) => m.id), [3, 2, 1]);
-  assert.deepEqual(latestMail(items, true).map((m: { id: number }) => m.id), [3, 1]);
+  assert.deepEqual(latestReceived(items, [], false).map(card => card.item.id), [3, 2, 1]);
+  assert.deepEqual(latestReceived(items, [], true).map(card => card.item.id), [3, 1]);
 });
 
 test('facturas por añadir y archivados que aún piden algo', () => {

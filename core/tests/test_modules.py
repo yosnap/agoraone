@@ -14,8 +14,11 @@ def test_modulos(tmp_path, monkeypatch):
     modules.save(c, {"correo": False, "inventado": False})
     assert modules.state(c)["correo"] is False and "inventado" not in modules.state(c)
     names = [s["name"] for s in engines._specs()]
-    assert "consultar_bandeja" not in names and "proponer_regla" not in names and "consultar_agenda" in names
-    modules.save(c, {"correo": True})
+    assert "consultar_bandeja" in names, "la Bandeja sigue con WhatsApp encendido (decisión del usuario, 19/11/2026)"
+    assert "proponer_regla" not in names and "consultar_agenda" in names
+    modules.save(c, {"whatsapp": False})
+    assert "consultar_bandeja" not in [s["name"] for s in engines._specs()], "oculta solo con correo y WhatsApp apagados"
+    modules.save(c, {"correo": True, "whatsapp": True})
     assert "consultar_bandeja" in [s["name"] for s in engines._specs()]
     # The supervisor starts the worker while the module is on and stops it when it is turned off.
     monkeypatch.setattr(modules, "CHECK_EVERY", 0.05)

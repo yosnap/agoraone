@@ -28,7 +28,7 @@ FOLLOW_FABRICA = "fabrica"
 # «CRMDev» follows its connection in the same way: on once a URL is saved, off while there is none.
 FOLLOW_CRMDEV = "crmdev"
 # Watson's tools that belong to a module.
-TOOLS = {"correo": {"consultar_bandeja", "proponer_regla", "proponer_limpieza"}, "whatsapp": {"proponer_respuesta_whatsapp"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos"}, "presupuestos": {"proponer_presupuesto"},
+TOOLS = {"correo": {"proponer_regla", "proponer_limpieza"}, "whatsapp": {"proponer_respuesta_whatsapp"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos"}, "presupuestos": {"proponer_presupuesto"},
          "reuniones": {"consultar_reuniones", "leer_reunion", "proponer_issue"}, "orca": {"proponer_encargo_orca"}}
 CHECK_EVERY = 20.0
 
@@ -56,11 +56,15 @@ def _central_source(connection: sqlite3.Connection) -> bool:
 
 
 def apply(connection: sqlite3.Connection) -> dict[str, bool]:
-    """Hides from Watson the tools of the modules that are off (the day summary only when mail and agenda are)."""
+    """Hides from Watson the tools of the modules that are off (the day summary only when mail and agenda are, the
+    Bandeja only when mail and WhatsApp are)."""
     on = state(connection)
     hidden = set().union(*(tools for name, tools in TOOLS.items() if not on[name]))
     if not on["correo"] and not on["agenda"]:
         hidden.add("resumen_del_dia")
+    # The Bandeja holds mail and WhatsApp: hidden only when both are off, and each part checks its own module inside.
+    if not on["correo"] and not on["whatsapp"]:
+        hidden.add("consultar_bandeja")
     engines.HIDDEN_TOOLS.clear()
     engines.HIDDEN_TOOLS.update(hidden)
     return on
