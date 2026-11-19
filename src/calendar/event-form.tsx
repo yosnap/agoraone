@@ -10,6 +10,16 @@ const two = (n: number) => String(n).padStart(2, '0');
 export const localInput = (date: Date) => `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}T${two(date.getHours())}:${two(date.getMinutes())}`;
 export const hourMinute = (iso: string) => new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
+type Form = { title: string; start: string; end: string; allDay: boolean; location: string; notes: string };
+type Origin = { inboxId?: number; chatId?: number };
+/** The card an event comes from: a mail (`inboxId`) or a WhatsApp conversation (`chatId`), each in its own field. */
+const from = (origin: Origin) => ({ inboxId: origin.inboxId ?? null, chatId: origin.chatId ?? null });
+export const eventRequest = (form: Form, calendarId: string | null, overlapOk: boolean, origin: Origin) => ({
+  calendarId, title: form.title.trim(), start: new Date(form.start).toISOString(), end: new Date(form.end).toISOString(), allDay: form.allDay,
+  location: form.location || null, notes: form.notes || null, overlapOk, ...from(origin) });
+export const reminderRequest = (form: Form, calendarId: string | null, origin: Origin) => ({
+  calendarId, title: form.title.trim(), due: form.start ? new Date(form.start).toISOString() : null, notes: form.notes || null, ...from(origin) });
+
 /** A new event or reminder, created only when the user presses the button; if the event overlaps others,
  * they are listed and it is created only with a second, explicit yes. Nothing is ever deleted. */
 export function EventForm({ initial, inboxId, chatId, discreet = false, onDone, onCancel }: {
@@ -36,11 +46,10 @@ export function EventForm({ initial, inboxId, chatId, discreet = false, onDone, 
     try {
       const calendar = calendarId && options.some(c => c.id === calendarId) ? calendarId : null;
       if (kind === 'reminder') {
-        await createReminder({ calendarId: calendar, title: form.title.trim(), due: form.start ? new Date(form.start).toISOString() : null, notes: form.notes || null, inboxId: inboxId ?? null, chatId: chatId ?? null });
+        await createReminder(reminderRequest(form, calendar, { inboxId, chatId }));
         onDone(`Recordatorio «${form.title.trim()}» creado.`);
       } else {
-        const made = await createEvent({ calendarId: calendar, title: form.title.trim(), start: new Date(form.start).toISOString(), end: new Date(form.end).toISOString(),
-          allDay: form.allDay, location: form.location || null, notes: form.notes || null, overlapOk, inboxId: inboxId ?? null, chatId: chatId ?? null });
+        const made = await createEvent(eventRequest(form, calendar, overlapOk, { inboxId, chatId }));
         onDone(`Evento «${form.title.trim()}» creado${made.clashes ? `; se solapa con ${made.clashes}` : ''}.`);
       }
     } catch (failure) {

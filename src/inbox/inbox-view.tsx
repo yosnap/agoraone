@@ -84,10 +84,10 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const request = useRef(0);  // only the latest read is shown (a slow answer for another tab is dropped)
   const chatKey = useRef<boolean | null>(null);  // whether a Zernio key is saved, read once from the core (not from Zernio)
   const loadChats = async (which: InboxState, mine: number) => {
-    if (!whatsapp) { setChats([]); setChatCounts(null); return; }
+    if (!whatsapp) { setChats([]); setChatCounts(null); setChatProblem(null); return; }
     try {
       if (chatKey.current === null) chatKey.current = (await getChatSettings()).hasKey;
-      if (!chatKey.current) { if (mine === request.current) { setChats([]); setChatCounts(null); } return; }
+      if (!chatKey.current) { if (mine === request.current) { setChats([]); setChatCounts(null); setChatProblem(null); } return; }
       const data = await getChatSummaries(which);
       if (mine !== request.current) return;
       setChats(data.items); setChatCounts(data.counts); setChatProblem(data.problem);
@@ -138,7 +138,10 @@ export function InboxView({ discreet }: { discreet: boolean }) {
   const isOpen = (key: string) => (action: CardAction) => open[action] === key;
   const showAction = (key: string) => (action: CardAction, on: boolean) => setOpen(current => ({ ...current, [action]: on ? key : current[action] === key ? undefined : current[action] }));
   const editing = (key: string) => Object.values(open).includes(key);
-  const count = (which: InboxState) => counts ? ` · ${counts[which] + (chatCounts?.[which] ?? 0)}` : '';
+  const count = (which: InboxState) => counts || chatCounts ? ` · ${(counts?.[which] ?? 0) + (chatCounts?.[which] ?? 0)}` : '';
+  // Entering discreet mode closes a conversation's open messages: leaving it does not show them again unasked.
+  const lastDiscreet = useRef(discreet);
+  if (lastDiscreet.current !== discreet) { lastDiscreet.current = discreet; if (discreet && open.messages) setOpen(current => ({ ...current, messages: undefined })); }
   return <section className="page inbox" aria-labelledby="inbox-title">
     <div className="eyebrow">BANDEJA{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="inbox-title">Bandeja</h1>

@@ -215,6 +215,7 @@ def summaries(connection: sqlite3.Connection, state: str = "pending", limit: int
     from .clients import brief, directory, find
 
     known = directory(connection) if rows else []
+    attached = attachment_counts(connection, [row["conversation_id"] for row in rows])
 
     def client(row) -> dict | None:
         return None if row["level"] == "private" else brief(find(known, phone=row["participant_phone"]))
@@ -227,7 +228,7 @@ def summaries(connection: sqlite3.Connection, state: str = "pending", limit: int
         "client": client(row),
         "account": {"id": row["account_id"], "phone": row["account_phone"], "label": row["account_label"]},
         "scope": {"id": row["scope_id"], "name": row["scope_name"], "color": row["scope_color"]} if row["scope_id"] else None,
-        "attachments": attachment_counts(connection, row["conversation_id"]),
+        "attachments": attached.get(row["conversation_id"], {}),
         "lastIncomingAt": row["last_in"], "updatedAt": row["updated_at"],
     } for row in rows]
 
@@ -256,12 +257,22 @@ def _kinds(raw: str | None) -> list[str]:
     return [_plain(str(a.get("type") or "file"))[:20] or "file" for a in found if isinstance(a, dict)] if isinstance(found, list) else []
 
 
-def attachment_counts(connection: sqlite3.Connection, conversation_id: int) -> dict[str, int]:
-    """How many attachments of each kind the messages the summary covers bring (the classifier's window)."""
-    counted: dict[str, int] = {}
-    for message in window(connection, conversation_id):
-        for kind in _kinds(message["attachments"]):
-            counted[kind] = counted.get(kind, 0) + 1
+def attachment_counts(connection: sqlite3.Connection, conversation_ids: list[int]) -> dict[int, dict[str, int]]:
+    """For each conversation, how many attachments of each kind the contact sent in its latest MESSAGES messages (what
+    the summary reads); never what the user sent, and never a link. One query for the whole page of cards."""
+    counted: dict[int, dict[str, int]] = {ident: {} for ident in conversation_ids}
+    if not conversation_ids:
+        return counted
+    marks = ", ".join("?" * len(conversation_ids))
+    rows = connection.execute(
+        f"""SELECT conversation_id, attachments FROM (
+              SELECT conversation_id, direction, attachments,
+                     ROW_NUMBER() OVER (PARTITION BY conversation_id ORDER BY {_MOMENT.format('m')} DESC, id DESC) AS n
+              FROM chat_message m WHERE conversation_id IN ({marks}))
+            WHERE n <= ? AND direction = 'incoming' AND attachments != '[]'""", (*conversation_ids, MESSAGES))
+    for row in rows:
+        for kind in _kinds(row["attachments"]):
+            counted[row["conversation_id"]][kind] = counted[row["conversation_id"]].get(kind, 0) + 1
     return counted
 
 
@@ -270,22 +281,43 @@ class ChatGone(LookupError):
 
 
 GONE = "Esa conversación ya no está en la Bandeja."
+OFF = "El módulo WhatsApp está apagado en Ajustes."
+
+
+def _judged(connection: sqlite3.Connection, conversation_id: int) -> tuple[sqlite3.Row, str]:
+    """A conversation in the Bandeja and the level that counts for it right now: the strictest of the one stored when
+    it was classified, its account's, the stored rule's and every enabled rule that matches today against all its
+    messages (also those the classifier has not read yet), so a word that makes it private blocks at once. A rule
+    «ignore» that matches today takes it out of the Bandeja. ChatGone when it is not there or the WhatsApp module is off."""
+    if isinstance(conversation_id, bool) or not isinstance(conversation_id, int):
+        raise ChatGone(GONE)
+    from . import modules
+
+    if not modules.state(connection)["whatsapp"]:  # off: no card, and nothing may leave from one
+        raise ChatGone(OFF)
+    row = connection.execute(
+        """SELECT c.id, c.account_id, c.participant_id, c.participant_name, c.participant_phone, a.confidentiality AS account_level,
+                  s.confidentiality AS stored, s.until_message_id, r.confidentiality AS stored_rule
+           FROM chat_summary s JOIN chat_conversation c ON c.id = s.conversation_id JOIN chat_account a ON a.id = c.account_id
+           LEFT JOIN chat_rule r ON r.id = s.rule_id WHERE s.conversation_id = ? AND s.state != 'quiet'""", (conversation_id,)).fetchone()
+    if row is None:
+        raise ChatGone(GONE)
+    rules = chat_rules.enabled_rules(connection)
+    text = rule_text(connection, conversation_id)
+    first = chat_rules.first_match(rules, row, text)
+    if first is not None and first["action"] == "ignore":
+        raise ChatGone(GONE)
+    level = stricter(stricter(row["account_level"], row["stored"]), row["stored_rule"])
+    for rule in rules:
+        if rule["confidentiality"] and chat_rules.matches(rule, row, text):
+            level = stricter(level, rule["confidentiality"])
+    return row, level
 
 
 def level_of(connection: sqlite3.Connection, conversation_id: int) -> str:
-    """The level that counts now for a conversation in the Bandeja (the strictest of its own, its account's and its
-    rule's). The only check every action from a WhatsApp card goes through; ChatGone when it is not in the Bandeja."""
-    try:
-        ident = int(conversation_id)
-    except (TypeError, ValueError) as error:
-        raise ChatGone(GONE) from error
-    row = connection.execute(
-        f"""SELECT {_LEVEL} AS level FROM chat_summary s JOIN chat_conversation c ON c.id = s.conversation_id
-            JOIN chat_account a ON a.id = c.account_id LEFT JOIN chat_rule r ON r.id = s.rule_id
-            WHERE s.conversation_id = ? AND s.state != 'quiet'""", (ident,)).fetchone()
-    if row is None:
-        raise ChatGone(GONE)
-    return row["level"]
+    """The level that counts now for a conversation in the Bandeja (see `_judged`). The only check every action from a
+    WhatsApp card goes through; ChatGone when it is not in the Bandeja."""
+    return _judged(connection, conversation_id)[1]
 
 
 SHOWN = 10  # latest messages a card shows
@@ -305,27 +337,38 @@ def messages(connection: sqlite3.Connection, conversation_id: int, limit: int = 
              "unsupported": bool(row["unsupported"]), "attachments": _kinds(row["attachments"])} for row in rows[::-1]]
 
 
-_PHONE = re.compile(r"\+?\d[\d\s().-]{7,}\d")
+_URL = re.compile(r"(?i)\b(?:https?://|ftp://|www\.)\S+|\b[a-z0-9.-]+\.(?:com|es|net|org|io|app|me|link|ly|info|eu|co)/\S*")
+# Dates and times kept as they are: «2026-11-20», «2026-11-20 10:00», «20/11/2026».
+_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b")
+# A phone in any common form: «+34 611 222 333», «0034611222333», «611.222.333», «(+34) 611-22-23-33».
+_PHONE = re.compile(r"(?:\+|\b00)?\(?\+?\d(?:[\s.\-()]{0,3}\d){8,}")
 
 
-def _no_phones(text: str) -> str:
-    """Blanks what reads as a phone number (nine digits or more), keeping dates («2026-11-20 10:00»)."""
-    def blank(found: re.Match) -> str:
-        value = found[0]
-        if re.match(r"\d{4}-\d{2}-\d{2}", value) or sum(c.isdigit() for c in value) < 9:
-            return value
-        return "[número]"
-    return _PHONE.sub(blank, text)
+def scrub(text: str) -> str:
+    """Text that leaves for an agent without links nor anything that reads as a phone number (nine digits or more),
+    keeping dates and times. Best effort on free text: what does not look like a number or a link stays."""
+    text = _URL.sub("[enlace]", text)
+    kept: list[str] = []
+
+    def keep(found: re.Match) -> str:
+        kept.append(found[0])
+        return f"\ue000{len(kept) - 1}\ue001"
+    text = _PHONE.sub("[número]", _DATE.sub(keep, text.replace("\ue000", "").replace("\ue001", "")))
+    return re.sub("\ue000(\\d+)\ue001", lambda found: kept[int(found[1])], text)
 
 
-def handoff_text(connection: sqlite3.Connection, conversation_id: int) -> tuple[str, str]:
-    """(the participant's name, the conversation as it goes to an agent as data): the classifier's window, with
-    «mensaje no disponible» for what WhatsApp did not deliver, attachments only by their kind and every phone-like
-    number blanked. Never the participant's number nor any link."""
-    row = connection.execute("SELECT participant_name FROM chat_conversation WHERE id = ?", (int(conversation_id),)).fetchone()
-    name = _no_phones(_plain(row["participant_name"] if row else "") or "Contacto")[:120]
+def handoff_text(connection: sqlite3.Connection, conversation_id: int) -> tuple[str, str, str]:
+    """(its level now, the participant's name, the conversation as it goes to an agent as data): only the messages the
+    classification covered (up to its last message, never what arrived after and nobody has judged), with «mensaje no
+    disponible» for what WhatsApp did not deliver, attachments only by their kind, and links and phone numbers
+    blanked. Never the participant's number. ChatGone when it is not in the Bandeja or that message is gone."""
+    row, level = _judged(connection, conversation_id)
+    included = window(connection, conversation_id, until=row["until_message_id"]) if row["until_message_id"] is not None else None
+    if not included:
+        raise ChatGone(GONE)
+    name = scrub(_plain(row["participant_name"]) or "Contacto")[:120]
     lines = []
-    for message in window(connection, int(conversation_id)):
+    for message in included:
         who = "Yo" if message["direction"] == "outgoing" else name
         if message["unsupported"]:
             text = "[mensaje no disponible]"
@@ -335,15 +378,15 @@ def handoff_text(connection: sqlite3.Connection, conversation_id: int) -> tuple[
             if kinds:
                 text = f"{text} [adjunto: {', '.join(sorted(set(kinds)))}]".strip()
             text = text or "[sin texto]"
-        lines.append(f"[{(message['at'] or '')[:16]}] {who}: {_no_phones(text)}")
-    return name, "\n".join(lines)
+        lines.append(f"[{(message['at'] or '')[:16]}] {who}: {scrub(text)}")
+    return level, name, "\n".join(lines)
 
 
 def archive_all(connection: sqlite3.Connection) -> int:
     """«Archivar todo lo que hay ahora»: every pending conversation goes to «done» (user's decision, 19/11/2026); one
-    opens again by itself when something new is received. Nothing changes in WhatsApp or Zernio."""
-    with transaction(connection):
-        return connection.execute("UPDATE chat_summary SET state = 'done', decided_at = ? WHERE state = 'pending'", (now(),)).rowcount
+    opens again by itself when something new is received. Nothing changes in WhatsApp or Zernio. Runs inside the
+    caller's transaction, with the mail's."""
+    return connection.execute("UPDATE chat_summary SET state = 'done', decided_at = ? WHERE state = 'pending'", (now(),)).rowcount
 
 
 # ---- Jev (TypeSafe), in shadow: the same questions as mail (English, kinds one to one with KINDS) about the window the

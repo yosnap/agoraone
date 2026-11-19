@@ -314,7 +314,7 @@ def test_archivar_todo_y_resumir_solo_lo_nuevo(db):
     ask, sent = asker(lambda messages: json.dumps({"correos": [{"n": i + 1, "tipo": "factura", "resumen": "R"} for i in range(len(messages))]}))
     summarize_once(db, [FakeEngine()], ask)
     add(db, normal, "b@proveedor.com", "Sin resumir aún", "y", days_ago=1)
-    assert mail_inbox.archive_all(db) == 1
+    assert mail_inbox.archive_all(db) == (1, 0)
     assert mail_inbox.inbox(db) == [] and mail_inbox.counts(db)["done"] == 1 and mail_inbox.counts(db)["unread"] == 0
     otra = account(db, "nueva@gmail.com")  # an account added later: its old mail is not summarised
     add(db, otra, "c@viejo.com", "Antiguo", "z", days_ago=5)

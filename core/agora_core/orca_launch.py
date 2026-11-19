@@ -141,19 +141,19 @@ def _mail(connection: sqlite3.Connection, message_id: int) -> dict:
 
 
 def _chat(connection: sqlite3.Connection, conversation_id) -> dict:
-    """A `normal` WhatsApp conversation in the Bandeja as it goes to an agent: the classifier's window, without
-    numbers, links or lines that look like keys (`chat_inbox.level_of` is the only check of its level)."""
+    """A `normal` WhatsApp conversation in the Bandeja as it goes to an agent: only what its classification covered,
+    without links, phone numbers or lines that look like keys. Its level is the one `chat_inbox` judges now, with the
+    rules of today."""
     from . import chat_inbox
 
     try:
-        level = chat_inbox.level_of(connection, conversation_id)
+        level, name, lines = chat_inbox.handoff_text(connection, conversation_id)
     except chat_inbox.ChatGone as error:
         raise OrcaError(str(error)) from error
     if level != "normal":
         raise OrcaError("Esa conversación es «solo en este Mac» o privada: no se envía a un agente con modelo remoto.")
-    name, lines = chat_inbox.handoff_text(connection, int(conversation_id))
     text = _clean(_no_keys(f"Conversación de WhatsApp con {name}\n\n{lines}"))
-    return {"kind": "chat", "id": int(conversation_id), "label": f"Conversación de WhatsApp con {name}"[:200], "text": text[:SOURCE_CHARS]}
+    return {"kind": "chat", "id": conversation_id, "label": f"Conversación de WhatsApp con {name}"[:200], "text": text[:SOURCE_CHARS]}
 
 
 def _note(connection: sqlite3.Connection, source: str, ref: str, revision: str) -> dict:

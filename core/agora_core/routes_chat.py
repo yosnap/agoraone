@@ -39,7 +39,7 @@ class Decision(BaseModel):
     state: Literal["pending", "done", "dismissed"]
 
 
-OFF = "El módulo WhatsApp está apagado en Ajustes."
+OFF = chat_inbox.OFF
 
 
 class AccountChange(BaseModel):

@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import chat_inbox, mail_inbox, mail_rules, modules
+from . import chat_inbox, mail_inbox, mail_rules, modules, zernio
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -108,11 +108,13 @@ def inbox_router(settings: Settings, health, secrets=None) -> APIRouter:
 
     @router.post("/mail/inbox/archive-all")
     async def archive_all():
+        # WhatsApp's pending conversations go to «Hechos» too (user's decision, 19/11/2026), only when the Bandeja shows
+        # them (module on and a key saved), and in the same transaction as the mail.
+        key = bool(secrets and await run_in_threadpool(secrets.get, zernio.SECRET))
+
         def work(connection):
-            mail = mail_inbox.archive_all(connection)
-            # WhatsApp's pending conversations go to «Hechos» too (user's decision, 19/11/2026), when its cards are shown.
-            chats = chat_inbox.archive_all(connection) if modules.state(connection)["whatsapp"] else 0
-            return mail, chats
+            chats = key and modules.state(connection)["whatsapp"]
+            return mail_inbox.archive_all(connection, chat_inbox.archive_all if chats else None)
         archived, chats = await db(work)
         return {"archived": archived, "chats": chats, "counts": await db(mail_inbox.counts)}
 

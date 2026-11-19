@@ -17,7 +17,11 @@ type Vault = { id: string; name: string; folders: string[] };
 const NO_PROJECT = '';
 type Saved = { repo: string; root: string; path: string };
 /** Marks the card of the note's origin, mail or conversation (their ids are different spaces). */
-const decide = (origin: CardOrigin, state: InboxState) => origin.kind === 'chat' ? decideChat(origin.id, state) : decideInbox(origin.id, state);
+export const decideOrigin = (origin: CardOrigin, state: InboxState) => origin.kind === 'chat' ? decideChat(origin.id, state) : decideInbox(origin.id, state);
+const decide = decideOrigin;
+/** The note for the repository, tied to its card by kind and id (never a conversation's id as a mail's). */
+export const repoNoteRequest = (origin: CardOrigin, note: { client: string; project: string; folder: string; title: string; content: string }) =>
+  ({ ...note, source: { kind: origin.kind, id: origin.id } });
 
 /** «Añadir a la nota del proyecto»: a client's mail or WhatsApp conversation becomes one new note in the vault. The client and project
  * come from the user's clients, Central's and their own (the mail's own preselected), the folder is browsed to (the client's folder suggested, any
@@ -82,6 +86,8 @@ export function ProjectNote({ origin: item, onDone, onCancel }: { origin: CardOr
       setVaults(found);
       if (preferred) setVaultId(preferred.id);
       setContent(noteContent(item, project || null));
+      // A title even without a vault (a note only for the repository); the vault's folder suggestion replaces it.
+      setTitle(current => current || noteTitle(client || 'Cliente', item.subject, item.sentAt));
     })().catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudieron leer los vaults.'));
   }
 
@@ -112,7 +118,7 @@ export function ProjectNote({ origin: item, onDone, onCancel }: { origin: CardOr
     if (repoFolder === null) return;
     setBusy(true); setError('');
     try {
-      const note = saved ?? await createRepoNote({ client, project, folder: repoFolder, title: title.trim(), content: content + extra, source: { kind: item.kind, id: item.id } });
+      const note = saved ?? await createRepoNote(repoNoteRequest(item, { client, project, folder: repoFolder, title: title.trim(), content: content + extra }));
       setSaved(note);
       const failed = mail && sources ? await saveFiles(item.id, sources, chosen, title, { kind: 'repo', client, project, folder: note.path.split('/').slice(0, -1).join('/') }, filesDone.current) : [];
       if (failed.length) { setError(`La nota está guardada.${problems(failed)}`); return; }
