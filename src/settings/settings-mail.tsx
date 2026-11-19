@@ -132,12 +132,12 @@ export function MailSettingsCard() {
       {account.auth === 'password' && <MailServersForm key={`${account.username}:${account.imapHost}:${account.imapPort}:${account.smtpHost}:${account.smtpPort}`} account={account} busy={busy === account.id}
         onSave={(work, done) => act(account.id, work, done)}/>}
       <div className="actions">
-        <button className="button" disabled={busy === account.id} onClick={() => void act(account.id, () => changeMailAccount(account.id, { enabled: !account.enabled }), account.enabled ? 'Cuenta en pausa.' : 'Cuenta reanudada.')}>{account.enabled ? 'Pausar' : 'Reanudar'}</button>
+        <button type="button" className="button" disabled={busy === account.id} onClick={() => void act(account.id, () => changeMailAccount(account.id, { enabled: !account.enabled }), account.enabled ? 'Cuenta en pausa.' : 'Cuenta reanudada.')}>{account.enabled ? 'Pausar' : 'Reanudar'}</button>
         {removing === account.id ? <span className="field-row" role="group" aria-label={`Confirmar quitar ${account.address}`}>
           <small>Se borran sus correos guardados y su contraseña del Llavero; el buzón no se toca.</small>
-          <ActionButton icon="trash" label="Quitar" tone="danger" type="submit" disabled={busy === account.id} onClick={() => void act(account.id, () => deleteMailAccount(account.id), 'Cuenta quitada.').then(() => setRemoving(null))}/>
-          <ActionButton icon="close" label="Cancelar" type="submit" onClick={() => setRemoving(null)}/>
-        </span> : <ActionButton icon="trash" label="Quitar…" tone="danger" type="submit" disabled={busy === account.id} onClick={() => setRemoving(account.id)}/>}
+          <ActionButton icon="trash" label="Quitar" tone="danger" disabled={busy === account.id} onClick={() => void act(account.id, () => deleteMailAccount(account.id), 'Cuenta quitada.').then(() => setRemoving(null))}/>
+          <ActionButton icon="close" label="Cancelar" onClick={() => setRemoving(null)}/>
+        </span> : <ActionButton icon="trash" label="Quitar…" tone="danger" disabled={busy === account.id} onClick={() => setRemoving(account.id)}/>}
       </div>
       </>}
     </li>)}</ul> : <p className="muted">Todavía no hay cuentas conectadas.</p>}
@@ -166,7 +166,7 @@ export function MailSettingsCard() {
         {(!sendOnly(form.provider) || (form.provider === 'resend' && form.inbound)) && <label className="field">Días hacia atrás<input type="number" min={1} max={3650} value={form.maxAgeDays} onChange={event => setForm({ ...form, maxAgeDays: Math.max(1, Math.min(3650, Number(event.target.value) || 60)) })}/></label>}
       </div>
       <div className="actions"><ActionButton icon="plus" label="Añadir cuenta" tone="primary" type="submit" disabled={busy === 'new' || !form.address.includes('@')}/><ActionButton icon="close" label="Cancelar" onClick={() => setAdding(false)}/></div>
-    </form> : <div className="actions"><ActionButton icon="plus" label="Añadir cuenta" type="submit" onClick={() => setAdding(true)}/></div>}
+    </form> : <div className="actions"><ActionButton icon="plus" label="Añadir cuenta" onClick={() => setAdding(true)}/></div>}
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;
 }
