@@ -20,8 +20,8 @@ TIMEOUT = 8
 
 
 class MusicError(RuntimeError):
-    """`reason` says why when it matters to the screen: «missing» (the song or the player is not there), so «pon …»
-    may try YouTube; any other failure (permission, a player that does not answer) is told as it is."""
+    """`reason` says why when it matters to the screen: «missing» (the song or the player is not there) or «silent»
+    (the player did not answer in time), so «pon …» may try YouTube; any other failure (a permission) is told as it is."""
 
     def __init__(self, message: str, reason: str | None = None):
         super().__init__(message)
@@ -32,7 +32,7 @@ def _osascript(script: str, *args: str) -> str:
     try:
         done = subprocess.run(["/usr/bin/osascript", "-e", script, *args], capture_output=True, text=True, timeout=TIMEOUT, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
-        raise MusicError("El reproductor no responde.") from error
+        raise MusicError("El reproductor no responde.", "silent") from error
     if done.returncode != 0:
         if "-1743" in done.stderr or "not allowed" in done.stderr.lower():
             raise MusicError("macOS no deja a AgoraOne controlar la música: dale permiso en Ajustes del Sistema › Privacidad y seguridad › Automatización.")
@@ -123,7 +123,7 @@ def _playerctl(*args: str) -> str:
     try:
         done = subprocess.run(["playerctl", *args], capture_output=True, text=True, timeout=TIMEOUT, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
-        raise MusicError("El reproductor no responde.") from error
+        raise MusicError("El reproductor no responde.", "silent") from error
     if done.returncode != 0:
         raise MusicError("El reproductor no pudo hacerlo.")
     return done.stdout.strip()

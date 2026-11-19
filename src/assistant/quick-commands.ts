@@ -138,9 +138,11 @@ function command(text: string): (() => Promise<QuickResult>) | null {
         const done = await playMusic(wanted, query);
         return { reply: done.done, failed: false };
       } catch (failure) {
-        // Only when the song (or the player) is not there; a permission or a player that does not answer is said.
-        if (where || !(failure instanceof ApiError) || failure.data?.reason !== 'missing') throw failure;
-        return await onYouTube(mine, `No está en ${wanted === 'spotify' ? 'Spotify' : 'Música'}. `);
+        // When the song (or the player) is not there, or the player does not answer in time, YouTube plays it; a
+        // permission refused is said as it is.
+        const reason = failure instanceof ApiError ? failure.data?.reason : undefined;
+        if (where || (reason !== 'missing' && reason !== 'silent')) throw failure;
+        return await onYouTube(mine, reason === 'silent' ? `${wanted === 'spotify' ? 'Spotify' : 'Música'} no responde. ` : `No está en ${wanted === 'spotify' ? 'Spotify' : 'Música'}. `);
       }
     } catch (failure) {
       return { reply: failure instanceof Error ? failure.message : 'No se pudo hacer.', failed: true };
