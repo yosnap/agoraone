@@ -213,6 +213,11 @@ REGISTRY: dict[str, Connector] = {c.id: c for c in (
 )}
 
 
+def module_owners() -> dict[str, str]:
+    """Which connector's card holds the switch of each module (static: it comes from the manifests)."""
+    return {name: connector.id for connector in REGISTRY.values() for name in connector.modules}
+
+
 def describe(connector: Connector, connection: sqlite3.Connection, secrets) -> dict:
     on = modules.state(connection)
     return {"id": connector.id, "name": connector.name, "description": connector.description, "kind": connector.kind,

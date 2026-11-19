@@ -317,7 +317,7 @@ def test_central_apagado_sin_rutas_ni_instantanea(tmp_path, fake):
         assert client.get("/central", headers=HEADERS).status_code == 404
         assert client.post("/central/refresh", headers=HEADERS).status_code == 404
         assert len(fake.seen) == seen, "apagado no pide nada a Central"
-        assert client.get("/connectors", headers=HEADERS).status_code == 200, "Ajustes › Central sigue disponible"
+        assert client.get("/connectors", headers=HEADERS).status_code == 200, "Conectores › Central sigue disponible"
         c = connect(settings.data_dir / DB_NAME)
         try:
             assert central.stored(c) is not None and central.snapshot(c) is None, "se conserva pero no se usa"

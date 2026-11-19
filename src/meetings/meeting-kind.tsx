@@ -26,7 +26,7 @@ export function KindFields({ value, onChange, onTyping }: { value: Fields; onCha
     <label className="field">Cliente<ModernSelect value={value.client} options={options} disabled={!names.length && !value.client} onChange={client => onChange({ ...value, client, project: client === value.client ? value.project : '' })}/></label>
     <label className="field">Proyecto (de Central)<ModernSelect value={value.project} options={projectOptions} disabled={!value.client} onChange={project => onChange({ ...value, project })}/></label>
     {clients !== null && !names.length && <p className="meeting-central-retry">
-      <small className="muted">{failed ? 'No se pudieron leer tus clientes.' : 'Aún no tienes clientes: créalos en Trabajos › Clientes o conecta Central (Ajustes › Central).'}</small>
+      <small className="muted">{failed ? 'No se pudieron leer tus clientes.' : 'Aún no tienes clientes: créalos en Trabajos › Clientes o conecta Central (Conectores › Central).'}</small>
       {retrying ? <small className="muted">Se vuelve a intentar sola…</small>
         : <button type="button" className="button" onClick={reread}>Volver a leer</button>}
     </p>}

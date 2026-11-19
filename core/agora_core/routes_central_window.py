@@ -42,12 +42,12 @@ PAGES = {"", "ajustes", "webs", "servidores", "alertas", "correo"}
 ITEMS = {"clientes", "proyectos", "servidores", "presupuestos"}
 OFF = "El módulo Central está apagado."
 OFF_QUOTES = "El módulo Presupuestos está apagado."
-NOT_CONNECTED = "Falta la dirección de Central: escríbela en Ajustes › Central."
+NOT_CONNECTED = "Falta la dirección de Central: escríbela en Conectores › Central."
 BAD_ROUTE = "Esa página de Central no se puede abrir desde AgoraOne."
 NO_WINDOW = "La ventana de Central solo existe en la app de escritorio: ábrelo en el navegador."
 BAD_URL = "Solo se abren en el navegador direcciones web (http o https)."
 LOOPBACK_IP = ("La ventana de Central no abre 127.0.0.1 ni ::1, que son la dirección de AgoraOne: escribe la de Central con «localhost» "
-               "(por ejemplo http://localhost:3099) en Ajustes › Central.")
+               "(por ejemplo http://localhost:3099) en Conectores › Central.")
 NO_BROWSER = "No se pudo abrir el navegador."
 
 

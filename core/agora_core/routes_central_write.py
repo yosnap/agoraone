@@ -36,11 +36,11 @@ from .db import DB_NAME, connect, now, transaction
 from .settings import Settings
 
 OFF = {"central": "El módulo Central está apagado.", "presupuestos": "El módulo Presupuestos está apagado."}
-NOT_CONNECTED = "Central no está conectado por su dirección y clave: conéctalo en Ajustes › Central."
+NOT_CONNECTED = "Central no está conectado por su dirección y clave: conéctalo en Conectores › Central."
 NO_WRITE = ("La clave de Central no tiene el permiso «escritura»: crea en Ajustes › Apps conectadas de Central una clave con ese permiso "
-            "y guárdala en Ajustes › Central.")
+            "y guárdala en Conectores › Central.")
 NO_QUOTES = ("Para cambiar los hitos de un presupuesto, la clave de Central necesita los permisos «escritura» y «presupuestos»: créala en "
-             "Ajustes › Apps conectadas de Central y guárdala en Ajustes › Central.")
+             "Ajustes › Apps conectadas de Central y guárdala en Conectores › Central.")
 EXPIRED = "Esa vista previa ya no vale: vuelve a revisar el cambio."
 UNKNOWN = "Central no respondió a tiempo y puede haberse creado: revisa en Central antes de repetirlo."
 MOVED = "La conexión con Central ha cambiado desde la vista previa: vuelve a revisar el cambio."

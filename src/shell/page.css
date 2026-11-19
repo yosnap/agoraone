@@ -32,6 +32,8 @@
 .segmented button { border:0; background:none; border-radius:8px; padding:7px 12px; font-size:11px; color:var(--c-355a50) }
 .segmented button[aria-pressed="true"] { background:var(--c-fffffa); color:var(--c-173d3c); box-shadow:0 1px 3px var(--c-173d3c22) }
 .page-actions { margin:-8px 0 20px }
+/* A section-wide notice or error never touches the cards that follow it. */
+.page > .load-error, .page > .notice, .page > .error { margin-bottom:16px }
 /* Interface size (Ajustes › Apariencia): text areas grow, the 3D scenes keep their size. */
 .page > *, .assistant-head, .assistant-messages > *, .assistant-form, .assistant-list > * { zoom:var(--ui-zoom, 1) }
 

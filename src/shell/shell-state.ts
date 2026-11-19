@@ -15,8 +15,9 @@ export const menu: { id: Exclude<Section, 'settings'>; label: string }[] = [
   { id: 'central', label: 'Central' },
 ];
 
-/** The sections that belong to a module that can be turned off (1.6): hidden from the rail and never shown while off. */
-export const sectionModule: Partial<Record<Section, ModuleName>> = { inbox: 'correo', agenda: 'agenda', fiscal: 'fiscal', jobs: 'trabajos', meetings: 'reuniones', office: 'oficina', connectors: 'conectores', quotes: 'presupuestos', central: 'central', fabrica: 'fabrica' };
+/** The sections that belong to a module that can be turned off (1.6): hidden from the rail and never shown while off.
+ * Conectores is not one of them: it is always shown and each connector keeps the switch of its own modules. */
+export const sectionModule: Partial<Record<Section, ModuleName>> = { inbox: 'correo', agenda: 'agenda', fiscal: 'fiscal', jobs: 'trabajos', meetings: 'reuniones', office: 'oficina', quotes: 'presupuestos', central: 'central', fabrica: 'fabrica' };
 
 const key = 'agora-shell';
 
@@ -24,7 +25,9 @@ const key = 'agora-shell';
 const linked: Record<string, Section> = { cerebro: 'brain', resumen: 'summary', asistente: 'assistant', oficina: 'office', conectores: 'connectors', ajustes: 'settings', bandeja: 'inbox', agenda: 'agenda', fiscal: 'fiscal', trabajos: 'jobs', reuniones: 'meetings', agentes: 'agents', presupuestos: 'quotes', central: 'central', fabrica: 'fabrica' };
 
 export function readShell(): { section: Section; discreet: boolean } {
-  const fromLink = linked[new URLSearchParams(window.location.search).get('seccion') ?? ''];
+  const params = new URLSearchParams(window.location.search);
+  // ?conector=central opens Conectores on that card.
+  const fromLink = linked[params.get('seccion') ?? ''] ?? (params.has('conector') ? 'connectors' : undefined);
   try {
     const value = JSON.parse(localStorage.getItem(key) || '{}');
     return { section: fromLink ?? (sections.includes(value?.section) ? value.section : 'brain'), discreet: value?.discreet === true };
