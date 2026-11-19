@@ -503,6 +503,7 @@ def test_solo_con_la_carpeta_antigua_se_ve_la_instantanea_y_el_aviso(tmp_path, f
         described = client.get("/central/connection", headers=HEADERS).json()
         assert described["legacy"] is True and described["transport"] is None
         assert client.post("/central/refresh", headers=HEADERS).status_code == 502, "sin dirección ni clave no se lee nada"
+        assert client.get("/central", headers=HEADERS).json()["problem"] is None, "falta conectar: no es una avería"
         assert fake.seen == []
         c = connect(settings.data_dir / DB_NAME)
         try:
@@ -547,3 +548,26 @@ def test_presupuesto_sin_conexion_dice_como_conectar(tmp_path, fake, no_processe
         refused = client.post(f"/assistant/proposals/{proposal['id']}/quote", headers=HEADERS)
         assert refused.status_code == 422 and refused.json()["error"] == "Central no está conectado: conéctalo con su dirección y su clave."
         assert fake.seen == [] and fake.created == []
+        connected(client, secrets)
+        made = client.post(f"/assistant/proposals/{proposal['id']}/quote", headers=HEADERS)
+        assert made.status_code == 201, "la propuesta no se gastó: se crea al conectar Central"
+        assert len(fake.created) == 1
+
+
+def test_una_lectura_por_la_api_olvida_la_carpeta_antigua(tmp_path, fake, no_processes):
+    secrets = MemorySecrets()
+    settings, app = app_with(tmp_path, secrets)
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        connected(client, secrets)
+        keep_snapshot(settings, legacy=True)  # a connection made before the old row could be dropped
+        c = connect(settings.data_dir / DB_NAME)
+        try:
+            assert central.legacy(c)
+        finally:
+            c.close()
+        assert client.post("/central/refresh", headers=HEADERS).status_code == 200
+        c = connect(settings.data_dir / DB_NAME)
+        try:
+            assert not central.legacy(c), "leído por la API, la fila antigua sobra"
+        finally:
+            c.close()

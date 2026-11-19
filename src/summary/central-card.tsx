@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { getCentral, refreshCentral, type CentralState } from '../api/core';
 import { LoadError } from '../ui/load-state';
+import { centralCardView } from './central-card-state';
 
 const serverTone: Record<string, string> = { green: 'good', amber: 'waiting', red: 'bad', grey: 'paused' };
 const serverLabel: Record<string, string> = { green: 'Bien', amber: 'Atención', red: 'Problema', grey: 'Sin datos' };
@@ -17,11 +18,12 @@ export function CentralCard({ discreet }: { discreet: boolean }) {
     try { setState(await refreshCentral()); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo leer Central.'); } finally { setBusy(false); }
   };
   const snapshot = state?.snapshot;
+  const view = centralCardView(state);
   const active = (snapshot?.clients ?? []).filter(c => c.projects.some(p => p.status === 'ACTIVE' || p.status === 'MAINTENANCE'));
   return <article className="card summary-wide" aria-labelledby="central-title">
     <div className="card-head"><h2 id="central-title">Clientes y servidores · Central</h2>
       <button type="button" className="button" disabled={busy || !state?.configured} onClick={() => void refresh()}>{busy ? 'Leyendo…' : 'Actualizar'}</button></div>
-    {state && !state.configured ? <p className="muted">Central no está conectado: conéctalo en Ajustes › Central.</p> : !snapshot ? <p className="muted">Aún no se ha leído Central{state?.problem ? '' : ': se lee cada media hora o con «Actualizar»'}.</p> : <>
+    {view === 'not_connected' ? <p className="muted">Central no está conectado: conéctalo en Ajustes › Central.</p> : !snapshot ? <p className="muted">Aún no se ha leído Central{state?.problem ? '' : ': se lee cada media hora o con «Actualizar»'}.</p> : <>
       <p className="muted">{snapshot.clients.length} clientes ({active.length} con proyectos activos) · {snapshot.servers.length} servidores · leído {new Date(snapshot.fetchedAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}. Solo lectura.</p>
       <div className="summary-split">
         <div><h3>Servidores</h3><ul className="central-list">{snapshot.servers.map(server => <li key={server.name}>

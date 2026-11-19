@@ -83,7 +83,7 @@ def legacy(connection: sqlite3.Connection) -> bool:
     row = connection.execute("SELECT value FROM setting WHERE key = ?", (LEGACY_SETTING,)).fetchone()
     try:
         saved = json.loads(row["value"]) if row else {}
-    except ValueError:
+    except (TypeError, ValueError):
         return False
     return isinstance(saved, dict) and bool(saved.get("path"))
 

@@ -45,6 +45,8 @@ def read_now(connection: sqlite3.Connection, secrets, health: CentralHealth) -> 
     try:
         data = central.refresh(connection, origin)
         health.notice = None
+        if central.legacy(connection):
+            central.forget_legacy(connection)  # read through the API: the old folder setting is no longer needed
     except central.NoReadingError as error:
         health.notice = str(error)
         data = central.snapshot(connection)
@@ -112,9 +114,7 @@ def central_router(settings: Settings, health: CentralHealth, secrets) -> APIRou
             if off(connection):
                 return None
             data, way = read_now(connection, secrets, health)
-            if way is None:
-                raise central.CentralError(NOT_CONFIGURED)
-            return data, way
+            return (data, way) if way else NOT_CONFIGURED
         try:
             found = await db(work)
         except central.CentralError as error:
@@ -122,6 +122,8 @@ def central_router(settings: Settings, health: CentralHealth, secrets) -> APIRou
             return JSONResponse({"error": str(error)}, status_code=502)
         if found is None:
             return JSONResponse({"error": OFF}, status_code=404)
+        if found == NOT_CONFIGURED:  # a setting to make, not a failure: no warning is left behind
+            return JSONResponse({"error": NOT_CONFIGURED}, status_code=502)
         health.problem = None
         return {"configured": True, "transport": found[1], "snapshot": public(found[0]), "problem": None, "notice": health.notice}
 

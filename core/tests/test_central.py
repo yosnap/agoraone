@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from agora_core import central, mail, mail_inbox
+from agora_core import central, central_api, mail, mail_inbox
 from agora_core.brain_tools import Toolbox
 from agora_core.db import DB_NAME, connect, migrate
 from agora_core.embed import VectorCache
@@ -19,6 +19,9 @@ RAW = {
 }
 
 
+ORIGIN = central_api.Connection("https://central.example.com", "cen_" + "x" * 43)  # never reached: `fetch` stands in
+
+
 @pytest.fixture
 def db(tmp_path):
     connection = connect(tmp_path / "data" / DB_NAME)
@@ -28,7 +31,7 @@ def db(tmp_path):
 
 
 def test_instantanea_y_cliente_de_un_remitente(db, tmp_path):
-    snap = central.refresh(db, tmp_path, fetch=lambda folder: RAW)
+    snap = central.refresh(db, ORIGIN, fetch=lambda origin: RAW)
     uno = snap["clients"][0]
     assert uno["domains"] == ["clienteuno.com"] and uno["email"] == "info@clienteuno.com" and uno["taxId"] == "B12345678"
     assert snap["clients"][1]["domains"] == [], "gmail.com no es el dominio de nadie"
@@ -40,15 +43,15 @@ def test_instantanea_y_cliente_de_un_remitente(db, tmp_path):
 
 
 def test_central_que_falla_se_dice_claro(db, tmp_path):
-    def broken(folder):
+    def broken(origin):
         raise OSError("sin base de datos")
     with pytest.raises(central.CentralError, match=r"No se pudo leer Central \(OSError\)"):
-        central.refresh(db, tmp_path, fetch=broken)
+        central.refresh(db, ORIGIN, fetch=broken)
     assert central.snapshot(db) is None
 
 
 def test_la_bandeja_y_watson_conocen_al_cliente(db, tmp_path):
-    central.refresh(db, tmp_path, fetch=lambda folder: RAW)
+    central.refresh(db, ORIGIN, fetch=lambda origin: RAW)
     account = mail.create_account(db, {"address": "yo@gmail.com", "provider": "gmail"})
     message = db.execute("""INSERT INTO mail_message (account_id, folder, uidvalidity, uid, from_address, subject, body, sent_at, received_at)
                             VALUES (?, 'INBOX', 1, 1, 'ana@clienteuno.com', 'Cambios', 'x', '2026-11-14T10:00:00Z', '2026-11-14T10:00:00Z')""",

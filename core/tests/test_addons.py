@@ -67,7 +67,7 @@ def test_central_ya_no_es_un_complemento(db):
     """Central is connected only through its web API: no folder, no port and no add-on card."""
     assert "central" not in addons.MANIFESTS and "central" not in addons.ALLOWED
     assert "central" not in {a["id"] for a in addons.describe(db)}
-    assert not addons.recognised("central", Path("/"))
+    assert addons.recognised("central", Path("/")) is False
     with pytest.raises(addons.AddonError):
         addons.save_config(db, "central", {"port": 3099})
 

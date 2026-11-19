@@ -239,11 +239,14 @@ def assistant_router(
         if not await run_in_threadpool(quotes_on):
             proposals.setdefault(proposal_id, found)  # not spent: it may be created once the module is on again
             return JSONResponse({"error": "El módulo Presupuestos está apagado."}, status_code=404)
-        def work():
+        def connected():
             with database() as connection:
-                origin = central.source(connection, secrets)
-            if origin is None:
-                raise central.CentralError("Central no está conectado: conéctalo con su dirección y su clave.")
+                return central.source(connection, secrets)
+        origin = await run_in_threadpool(connected)
+        if origin is None:
+            proposals.setdefault(proposal_id, found)  # not spent: it may be created once Central is connected
+            return JSONResponse({"error": "Central no está conectado: conéctalo con su dirección y su clave."}, status_code=422)
+        def work():
             return central.create_quote(origin, found["quote"])
         try:
             made = await run_in_threadpool(work)
