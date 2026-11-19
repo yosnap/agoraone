@@ -9,7 +9,7 @@ function Notes({ notes, onRead }: { notes: ReviewNote[]; onRead: (key: string) =
 
 function Section({ title, count, why, children }: { title: string; count: number; why: string; children: React.ReactNode }) {
   return <details className="review-section" open={count > 0 && count < 40}>
-    <summary><span className={`status-badge ${count ? 'paused' : 'good'}`}>{count}</span> {title}</summary>
+    <summary><span className={`status-badge dot ${count ? 'paused' : 'good'}`}>{count}</span> {title}</summary>
     <p className="muted">{why}</p>
     {count > 0 && children}
   </details>;

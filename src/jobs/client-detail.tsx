@@ -11,7 +11,7 @@ const originTone = { central: 'paused', crmdev: 'waiting', local: 'good' } as co
 /** Where a client comes from: Central, CRMDev, AgoraOne (one badge each). */
 export function ClientOrigins({ client }: { client: DirectoryClient }) {
   return <span className="client-origins">{client.sources.map(origin =>
-    <span key={origin} className={`status-badge ${originTone[origin]}`}>{originLabels[origin]}</span>)}
+    <span key={origin} className={`status-badge dot ${originTone[origin]}`}>{originLabels[origin]}</span>)}
     {client.unplaced && <span className="status-badge bad">Sin ubicar</span>}
     {client.repeated && <span className="status-badge waiting">Nombre repetido</span>}</span>;
 }
