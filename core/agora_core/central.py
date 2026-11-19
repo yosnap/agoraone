@@ -2,29 +2,26 @@
 thing ever written is a draft quote the user confirmed (`create_quote`, decision of 15/11/2026).
 
 Central stays its own application, local or remote (user's decision, 18/11/2026). AgoraOne reaches it through its
-HTTP API with a URL and an access key (`central_api.py`); while the old way lasts, a Central folder registered as
-an add-on is still read by starting its MCP server over stdio. Only reading is done, apart from that draft quote.
+HTTP API with a URL and an access key (`central_api.py`), and in no other way: its code, its folder and its own
+runtime are never needed. Only reading is done, apart from that draft quote.
 The result is kept as a snapshot in the core's database, refreshed every half hour and on demand, so the brain,
 Watson and the mail know the clients (their address, tax id and domains) and the active servers."""
 
-import asyncio
 import json
-import os
 import re
-import shutil
 import threading
 import sqlite3
-from pathlib import Path
 
 from . import central_api
 from .clients import client_domain as _client_domain, domain as _domain
 from .db import now, transaction
 
-TOTAL_SECONDS = 180
 _REFRESHING = threading.Lock()  # one reading at a time (the half-hourly one or «Actualizar»)
-READING_TOOLS = {"list_clients", "list_projects", "list_websites", "list_servers", "get_project"}
 SNAPSHOT_SETTING = "central.snapshot"
-CALL_SECONDS = 60
+# Where the retired folder-and-port way kept Central's place. Kept (never read as a folder, never run) only to tell
+# its user how to connect now; it goes away once a connection over the API is saved.
+LEGACY_SETTING = "addons.central"
+MOVED = "Ahora Central se conecta con su dirección y una clave de acceso: créala en Ajustes › Apps conectadas de Central."
 
 
 class CentralError(RuntimeError):
@@ -33,56 +30,6 @@ class CentralError(RuntimeError):
 
 class NoReadingError(CentralError):
     """The connected key has no «lectura» permission: nothing to read over HTTP, and nothing broken."""
-
-
-def _bun() -> str | None:
-    return shutil.which("bun") or next((str(p) for p in (Path.home() / ".bun/bin/bun",) if p.exists()), None)
-
-
-async def _call_all(folder: Path) -> dict:
-    from mcp.client.session import ClientSession
-    from mcp.client.stdio import StdioServerParameters, stdio_client
-
-    bun = _bun()
-    if not bun:
-        raise CentralError("No se encuentra bun, que Central necesita para su servidor MCP.")
-    env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG") if k in os.environ}
-    params = StdioServerParameters(command=bun, args=["src/mcp/server.ts"], cwd=str(folder), env=env)
-
-    async def call(session, name: str, args: dict | None = None):
-        if name not in READING_TOOLS:  # only reading tools, ever
-            raise CentralError("Herramienta de Central no permitida.")
-        result = await asyncio.wait_for(session.call_tool(name, args or {}), CALL_SECONDS)
-        if getattr(result, "isError", False):
-            return None
-        text = "".join(getattr(part, "text", "") for part in result.content)
-        try:
-            return json.loads(text)
-        except ValueError:
-            return None
-
-    def items(value) -> list[dict]:
-        return [v for v in value if isinstance(v, dict)] if isinstance(value, list) else []
-
-    quiet = open(os.devnull, "w")  # Central's own messages (which may name its database) never reach AgoraOne's log
-    try:
-        async with stdio_client(params, errlog=quiet) as (read, write):
-            async with ClientSession(read, write) as session:
-                await asyncio.wait_for(session.initialize(), CALL_SECONDS)
-                clients = items(await call(session, "list_clients"))
-                projects = items(await call(session, "list_projects", {"limit": 200}))
-                websites = items(await call(session, "list_websites"))
-                servers = items(await call(session, "list_servers"))
-                # The client's address and tax id only come with a project's full record: one per client.
-                details: dict[str, dict] = {}
-                for project in projects:
-                    name = project.get("client")
-                    if name and name not in details and project.get("id"):
-                        full = await call(session, "get_project", {"id": project["id"]})
-                        details[name] = full.get("client") if isinstance(full, dict) and isinstance(full.get("client"), dict) else {}
-    finally:
-        quiet.close()
-    return {"clients": clients, "projects": projects, "websites": websites, "servers": servers, "details": details}
 
 
 _GITHUB = re.compile(r"(?:https://(?:www\.)?github\.com/|git@github\.com:)((?!-)[A-Za-z0-9-]{1,39})/([A-Za-z0-9._-]{1,100}?)(?:\.git)?/?")
@@ -126,27 +73,32 @@ def shape(raw: dict) -> dict:
     return {"clients": clients, "servers": servers, "fetchedAt": now()}
 
 
-Source = central_api.Connection | Path
+def source(connection: sqlite3.Connection, secrets) -> central_api.Connection | None:
+    """Central's HTTP API when there are a saved URL and key; None otherwise."""
+    return central_api.connection_of(connection, secrets)
 
 
-def source(connection: sqlite3.Connection, secrets, folder: Path | None) -> Source | None:
-    """Where Central is read from: its HTTP API when there are a URL and a key, else the old stdio way when its
-    folder is registered, else nowhere."""
-    return central_api.connection_of(connection, secrets) or folder
+def legacy(connection: sqlite3.Connection) -> bool:
+    """Whether the old folder setting is still there (with a path), so its user is told the new way."""
+    row = connection.execute("SELECT value FROM setting WHERE key = ?", (LEGACY_SETTING,)).fetchone()
+    try:
+        saved = json.loads(row["value"]) if row else {}
+    except ValueError:
+        return False
+    return isinstance(saved, dict) and bool(saved.get("path"))
 
 
-def _read(origin: Source) -> dict:
-    if isinstance(origin, central_api.Connection):
-        return central_api.read_all(origin)
-    return asyncio.run(asyncio.wait_for(_call_all(origin), TOTAL_SECONDS))
+def forget_legacy(connection: sqlite3.Connection) -> None:
+    with transaction(connection):
+        connection.execute("DELETE FROM setting WHERE key = ?", (LEGACY_SETTING,))
 
 
-def refresh(connection: sqlite3.Connection, origin: Source, fetch=None) -> dict:
+def refresh(connection: sqlite3.Connection, origin: central_api.Connection, fetch=None) -> dict:
     """Reads Central now and keeps the snapshot. `fetch(origin)` is for tests."""
     if not _REFRESHING.acquire(blocking=False):
         raise CentralError("Ya se está leyendo Central; espera un momento.")
     try:
-        raw = fetch(origin) if fetch else _read(origin)
+        raw = fetch(origin) if fetch else central_api.read_all(origin)
         snapshot = shape(raw)
     except CentralError:
         raise
@@ -155,8 +107,7 @@ def refresh(connection: sqlite3.Connection, origin: Source, fetch=None) -> dict:
     except central_api.CentralApiError as error:  # its message never carries the key
         raise CentralError(str(error)) from None
     except Exception as error:  # noqa: BLE001 - Central is an outside program: any failure is said plainly
-        hint = "" if isinstance(origin, central_api.Connection) else " ¿Está su base de datos en marcha?"
-        raise CentralError(f"No se pudo leer Central ({type(error).__name__}).{hint}") from None
+        raise CentralError(f"No se pudo leer Central ({type(error).__name__}).") from None
     finally:
         _REFRESHING.release()
     with transaction(connection):
@@ -187,36 +138,10 @@ def client_for(connection: sqlite3.Connection, address: str | None) -> dict | No
     return clients.match(connection, address=address)
 
 
-WRITE_TOOL = "create_quote"  # the only writing tool AgoraOne may call, and only for a quote the user confirmed
-
-
-def create_quote(origin: Source, quote: dict) -> dict:
+def create_quote(origin: central_api.Connection, quote: dict) -> dict:
     """Creates in Central the draft quote the user confirmed (Central gives it the next number of the year);
     never sends it nor changes a phase. Returns its id and number."""
-    if isinstance(origin, central_api.Connection):
-        try:
-            return central_api.create_quote(origin, quote)
-        except central_api.CentralApiError as error:
-            raise CentralError(str(error)) from None
-    folder = origin
-
-    async def run():
-        from mcp.client.session import ClientSession
-        from mcp.client.stdio import StdioServerParameters, stdio_client
-
-        bun = _bun()
-        if not bun:
-            raise CentralError("No se encuentra bun, que Central necesita para su servidor MCP.")
-        env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG") if k in os.environ}
-        async with stdio_client(StdioServerParameters(command=bun, args=["src/mcp/server.ts"], cwd=str(folder), env=env)) as (read, write):
-            async with ClientSession(read, write) as session:
-                await asyncio.wait_for(session.initialize(), CALL_SECONDS)
-                result = await asyncio.wait_for(session.call_tool(WRITE_TOOL, quote), CALL_SECONDS)
-                text = "".join(getattr(part, "text", "") for part in result.content)
-                if getattr(result, "isError", False):
-                    raise CentralError(text[:300] or "Central no pudo crear el presupuesto.")
-                try:
-                    return json.loads(text)
-                except ValueError:
-                    return {"text": text[:300]}
-    return asyncio.run(asyncio.wait_for(run(), TOTAL_SECONDS))
+    try:
+        return central_api.create_quote(origin, quote)
+    except central_api.CentralApiError as error:
+        raise CentralError(str(error)) from None

@@ -6,8 +6,8 @@ const core = <T>(path: string, body?: unknown, method?: string) => request<T>(`/
 
 export type CentralScope = 'lectura' | 'presupuestos' | 'escritura';
 export type CentralConnection = {
-  url: string | null; hasKey: boolean; storeProblem: string | null; legacyFolder: boolean;
-  transport: 'http' | 'stdio' | null; suggestedUrl: string;
+  url: string | null; hasKey: boolean; storeProblem: string | null; legacy: boolean;
+  transport: 'http' | null; suggestedUrl: string;
 };
 export type CentralStatus = { version: string | null; api: string | null; scopes: CentralScope[]; runtime: 'production' | 'local' | null };
 

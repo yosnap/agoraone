@@ -42,10 +42,9 @@ def test_instantanea_y_cliente_de_un_remitente(db, tmp_path):
 def test_central_que_falla_se_dice_claro(db, tmp_path):
     def broken(folder):
         raise OSError("sin base de datos")
-    with pytest.raises(central.CentralError, match="base de datos"):
+    with pytest.raises(central.CentralError, match=r"No se pudo leer Central \(OSError\)"):
         central.refresh(db, tmp_path, fetch=broken)
     assert central.snapshot(db) is None
-    assert central.READING_TOOLS.isdisjoint({"create_quote", "update_phase", "add_note"}), "solo herramientas de lectura"
 
 
 def test_la_bandeja_y_watson_conocen_al_cliente(db, tmp_path):

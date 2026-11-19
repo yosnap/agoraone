@@ -1,9 +1,9 @@
-import json
 import socket
 import sqlite3
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,10 +33,9 @@ def db(tmp_path):
     connection.close()
 
 
-def central(folder):
-    (folder / "src" / "mcp").mkdir(parents=True)
-    (folder / "src" / "mcp" / "server.ts").write_text("// mcp")
-    (folder / "package.json").write_text(json.dumps({"name": "central"}))
+def fabrica(folder):
+    folder.mkdir(parents=True)
+    (folder / "pyproject.toml").write_text('[project]\nname = "mi-fabrica"\n')
     return folder
 
 
@@ -52,34 +51,38 @@ def costguard_db(path, now):
 
 
 def test_reconoce_solo_la_carpeta_correcta(tmp_path, db):
-    folder = central(tmp_path / "central")
-    assert addons.recognised("central", folder)
+    folder = fabrica(tmp_path / "fabrica")
+    assert addons.recognised("fabrica", folder)
     other = tmp_path / "otro"
     other.mkdir()
-    (other / "package.json").write_text(json.dumps({"name": "central"}))
-    assert not addons.recognised("central", other), "hace falta también su servidor MCP"
-    for bad in ({"path": "relativa"}, {"path": str(other)}, {"port": 80}, {"port": "3099"}, {"otro": 1}, {"dataPath": "/x"}):
+    (other / "pyproject.toml").write_text('[project]\nname = "otra-cosa"\n')
+    assert not addons.recognised("fabrica", other)
+    for bad in ({"path": "relativa"}, {"path": str(other)}, {"port": 80}, {"port": "8742"}, {"otro": 1}, {"dataPath": "/x"}):
         with pytest.raises(addons.AddonError):
-            addons.save_config(db, "central", bad)
-    assert addons.save_config(db, "central", {"path": str(folder)})["port"] == 3099
+            addons.save_config(db, "fabrica", bad)
+    assert addons.save_config(db, "fabrica", {"path": str(folder)})["port"] == 8742
+
+
+def test_central_ya_no_es_un_complemento(db):
+    """Central is connected only through its web API: no folder, no port and no add-on card."""
+    assert "central" not in addons.MANIFESTS and "central" not in addons.ALLOWED
+    assert "central" not in {a["id"] for a in addons.describe(db)}
+    assert not addons.recognised("central", Path("/"))
+    with pytest.raises(addons.AddonError):
+        addons.save_config(db, "central", {"port": 3099})
 
 
 def test_estados(tmp_path, db):
     listed = {a["id"]: a["status"] for a in addons.describe(db)}
-    assert listed["central"] == "not_configured" and listed["fabrica"] == "not_configured"
-    folder = central(tmp_path / "central")
+    assert listed["fabrica"] == "not_configured"
+    folder = fabrica(tmp_path / "fabrica")
     with socket.socket() as free:
         free.bind(("127.0.0.1", 0))
         unused = free.getsockname()[1]
-    addons.save_config(db, "central", {"path": str(folder), "port": unused})
-    assert {a["id"]: a["status"] for a in addons.describe(db)}["central"] == "detected"
-    with socket.socket() as server:
-        server.bind(("127.0.0.1", 0))
-        server.listen()
-        addons.save_config(db, "central", {"port": server.getsockname()[1]})
-        assert {a["id"]: a["status"] for a in addons.describe(db)}["central"] == "responding"
-    (folder / "package.json").unlink()
-    assert {a["id"]: a["status"] for a in addons.describe(db)}["central"] == "not_found"
+    addons.save_config(db, "fabrica", {"path": str(folder), "port": unused})
+    assert {a["id"]: a["status"] for a in addons.describe(db)}["fabrica"] == "detected"
+    (folder / "pyproject.toml").unlink()
+    assert {a["id"]: a["status"] for a in addons.describe(db)}["fabrica"] == "not_found"
 
 
 def test_fabrica_en_marcha_si_su_panel_responde(tmp_path, db):
@@ -133,7 +136,7 @@ def test_rutas(tmp_path):
         for bad in (text, other):
             assert client.put("/addons/costguard", json={"dataPath": str(bad)}, headers=headers).status_code == 422
         assert client.get("/addons", headers=headers).status_code == 200, "el registro sigue funcionando"
-        assert client.put("/addons/central", json={"port": "3099"}, headers=headers).status_code == 422
+        assert client.put("/addons/central", json={"port": 3099}, headers=headers).status_code == 422, "Central ya no es un complemento"
         assert client.put("/addons/otro", json={}, headers=headers).status_code == 422
         listed = client.put("/addons/costguard", json={"dataPath": str(data)}, headers=headers).json()["addons"]
         assert {a["id"]: a["status"] for a in listed}["costguard"] == "recording"
@@ -157,11 +160,11 @@ def test_ventana_exacta_de_horas(tmp_path):
 
 
 def test_un_complemento_roto_no_rompe_el_registro(tmp_path, db):
-    folder = central(tmp_path / "central")
-    addons.save_config(db, "central", {"path": str(folder)})
-    (folder / "package.json").write_text("[1, 2]")
+    folder = fabrica(tmp_path / "fabrica")
+    addons.save_config(db, "fabrica", {"path": str(folder)})
+    (folder / "pyproject.toml").write_bytes(b"\xff\xfe no es texto")
     listed = {a["id"]: a["status"] for a in addons.describe(db)}
-    assert listed["central"] == "not_found"
+    assert listed["fabrica"] == "not_found"
 
 
 def test_costguard_cerrado_no_deja_archivos(tmp_path):
@@ -177,10 +180,10 @@ def test_costguard_cerrado_no_deja_archivos(tmp_path):
 
 
 def test_olvidar_ajustes_y_solo_los_propios(tmp_path, db):
-    folder = central(tmp_path / "central")
-    addons.save_config(db, "central", {"path": str(folder), "port": 4000})
+    folder = fabrica(tmp_path / "fabrica")
+    addons.save_config(db, "fabrica", {"path": str(folder), "port": 4000})
     with pytest.raises(addons.AddonError):
-        addons.save_config(db, "central", {"dataPath": str(tmp_path)})
-    forgotten = addons.save_config(db, "central", {"path": None, "port": None})
-    assert "path" not in forgotten and forgotten["port"] == 3099
-    assert {a["id"]: a["status"] for a in addons.describe(db)}["central"] == "not_configured"
+        addons.save_config(db, "fabrica", {"dataPath": str(tmp_path)})
+    forgotten = addons.save_config(db, "fabrica", {"path": None, "port": None})
+    assert "path" not in forgotten and forgotten["port"] == 8742
+    assert {a["id"]: a["status"] for a in addons.describe(db)}["fabrica"] == "not_configured"

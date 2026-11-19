@@ -42,7 +42,7 @@ def addons_router(settings: Settings) -> APIRouter:
         return {"addons": await db(addons.describe)}
 
     @router.put("/{addon}")
-    async def configure(addon: Literal["central", "costguard", "fabrica"], body: AddonIn):
+    async def configure(addon: Literal["costguard", "fabrica"], body: AddonIn):
         changes = body.model_dump(exclude_unset=True)  # an explicit null forgets that setting
         try:
             await db(lambda c: addons.save_config(c, addon, changes))

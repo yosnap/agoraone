@@ -8,9 +8,11 @@ const scopeMeaning: Record<CentralScope, string> = {
   lectura: 'clientes, proyectos, webs, servidores y agenda', presupuestos: 'ver y crear presupuestos en borrador', escritura: 'reservado para más adelante',
 };
 
+export const centralMoved = 'Ahora Central se conecta con su dirección y una clave de acceso: créala en Ajustes › Apps conectadas de Central.';
+
 function badge(state: CentralConnection): [string, string] {
   if (state.transport === 'http') return ['good', 'Dirección y clave guardadas'];
-  if (state.transport === 'stdio') return ['waiting', 'Por carpeta (modo antiguo)'];
+  if (state.legacy) return ['waiting', 'Hay que volver a conectarlo'];
   return ['paused', 'Sin conectar'];
 }
 
@@ -64,7 +66,7 @@ export function CentralSettingsCard() {
   return <article className="card settings-mail" aria-labelledby="central-settings-title">
     <div className="card-head"><h2 id="central-settings-title">Central</h2><span className={`status-badge ${tone}`}>{label}</span></div>
     <p>Central sigue siendo una aplicación aparte. AgoraOne se conecta a ella con su dirección y una clave de acceso que creas en <strong>Ajustes › Apps conectadas</strong> de Central; la clave se guarda solo en el almacén de secretos del sistema y no se vuelve a mostrar. Sin Central no se ven sus clientes ni sus presupuestos.</p>
-    {state.legacyFolder && state.transport === 'stdio' && <p className="muted">Ahora se lee por la carpeta de Central (modo antiguo, necesita su código y bun). Con la dirección y una clave, AgoraOne pasa a usar su API.</p>}
+    {state.legacy && <p className="notice" role="status">{centralMoved}</p>}
     {state.storeProblem && <p className="fiscal-warning" role="alert">{state.storeProblem}</p>}
     <form className="field-row" onSubmit={save}>
       <label className="field">Dirección de Central

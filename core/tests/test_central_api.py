@@ -1,5 +1,5 @@
 """Central over HTTP: the URL rules (https except loopback), redirections never followed, errors and logs without
-the key, the size cap, the snapshot read through the API equal to the stdio one, the connection routes (the key is
+the key, the size cap, the snapshot read through the API in the shape AgoraOne keeps, the connection routes (the key is
 never returned nor stored in the database), and the «Central» and «Presupuestos» modules isolated when off.
 Central is a stand-in with the real shape of its API v1 (`src/app/api/v1`, `src/lib/api/*`) and invented data."""
 
@@ -185,17 +185,17 @@ def test_solo_rutas_de_la_api():
         central_api.request(TARGET, "GET", "/ajustes")
 
 
-def stdio_raw() -> dict:
-    """What the stdio reading gives for the same Central: MCP lists plus each client's record from get_project."""
+def reference_raw() -> dict:
+    """The same Central as plain lists plus each client's record: the reference the API reading must equal."""
     return {"clients": [{"id": c["id"], "name": c["name"], "projects": c["projects"], "websites": c["websites"]} for c in CLIENTS],
             "projects": PAGES[0] + PAGES[1], "websites": WEBSITES, "servers": SERVERS,
             "details": {c["name"]: dict(c) for c in CLIENTS}}
 
 
-def test_la_instantanea_por_http_es_la_misma_que_por_stdio(db, fake, tmp_path):
+def test_la_instantanea_por_http_tiene_la_forma_de_referencia(db, fake):
     by_http = central.refresh(db, TARGET)
-    by_stdio = central.refresh(db, tmp_path, fetch=lambda folder: stdio_raw())
-    assert {**by_http, "fetchedAt": None} == {**by_stdio, "fetchedAt": None}
+    reference = central.refresh(db, TARGET, fetch=lambda origin: reference_raw())
+    assert {**by_http, "fetchedAt": None} == {**reference, "fetchedAt": None}
     uno = by_http["clients"][0]
     assert uno["id"] == "c1" and uno["phone"] == "+34 600 000 001" and uno["email"] == "info@clienteuno.com" and uno["domains"] == ["clienteuno.com"]
     assert [p["name"] for p in uno["projects"]] == ["Web Uno", "Viejo"] and by_http["clients"][1]["projects"][0]["name"] == "Blog", "sigue las páginas"
@@ -215,14 +215,14 @@ def test_sin_permiso_de_lectura_no_se_leen_clientes(db, fake):
         central.create_quote(TARGET, {"client": "Nadie", "title": "Web", "items": [{"description": "Diseño", "unitPrice": 900}]})
 
 
-def test_el_transporte_elige_http_con_url_y_clave(db, tmp_path):
+def test_central_solo_se_lee_con_url_y_clave(db):
     secrets = MemorySecrets()
-    assert central.source(db, secrets, None) is None
-    assert central.source(db, secrets, tmp_path) == tmp_path, "sin conexión, la carpeta de siempre"
+    db.execute("INSERT INTO setting (key, value) VALUES ('addons.central', ?)", (json.dumps({"path": "/ruta/de/central"}),))
+    assert central.source(db, secrets) is None, "la carpeta antigua no es una fuente"
     central_api.save_url(db, URL)
-    assert central.source(db, secrets, tmp_path) == tmp_path, "sin clave tampoco"
+    assert central.source(db, secrets) is None, "sin clave tampoco"
     secrets.put(central_api.SECRET, KEY)
-    assert central.source(db, secrets, tmp_path) == TARGET
+    assert central.source(db, secrets) == TARGET
 
 
 def app_with(tmp_path, secrets, engine=None):
@@ -240,7 +240,7 @@ def test_rutas_de_la_conexion_nunca_devuelven_la_clave(tmp_path, fake, caplog):
     settings, app = app_with(tmp_path, secrets)
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
         first = client.get("/central/connection", headers=HEADERS).json()
-        assert first == {"url": None, "hasKey": False, "storeProblem": None, "legacyFolder": False, "transport": None, "suggestedUrl": "https://central.example.com"}
+        assert first == {"url": None, "hasKey": False, "storeProblem": None, "legacy": False, "transport": None, "suggestedUrl": "https://central.example.com"}
         assert client.get("/central", headers=HEADERS).status_code == 404, "sin ninguna fuente, Central empieza apagado"
         for wrong in ({"url": "http://central.example.com", "key": KEY}, {"url": URL, "key": "cen_mala"}, {"url": URL, "key": 123}):
             answer = client.put("/central/connection", json=wrong, headers=HEADERS)
@@ -448,24 +448,35 @@ def test_sin_instantanea_no_vale_un_identificador_como_cliente(tmp_path, monkeyp
     c.close()
 
 
-def central_folder(tmp_path):
-    folder = tmp_path / "central"
-    (folder / "src" / "mcp").mkdir(parents=True)
-    (folder / "src" / "mcp" / "server.ts").write_text("")
-    (folder / "package.json").write_text(json.dumps({"name": "central"}))
-    return folder
+@pytest.fixture
+def no_processes(monkeypatch):
+    """Central is never started: any attempt to run a program fails the test."""
+    import asyncio
+    import subprocess
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("no se arranca ningún proceso para Central")
+    monkeypatch.setattr(subprocess, "Popen", refuse)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", refuse)
 
 
-def test_clave_sin_lectura_usa_la_carpeta_o_avisa_sin_alarma(tmp_path, fake, monkeypatch):
-    from agora_core import addons
+def keep_snapshot(settings, legacy: bool):
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    c = connect(settings.data_dir / DB_NAME)
+    try:
+        migrate(c)
+        central.refresh(c, TARGET, fetch=lambda origin: reference_raw())
+        if legacy:
+            c.execute("INSERT INTO setting (key, value) VALUES ('addons.central', ?)", (json.dumps({"path": "/ruta/de/central", "port": 3099}),))
+            c.commit()
+    finally:
+        c.close()
 
+
+def test_clave_sin_lectura_conserva_la_instantanea_y_avisa_sin_alarma(tmp_path, fake, no_processes):
     fake.scopes = ["presupuestos"]
     secrets = MemorySecrets()
     settings, app = app_with(tmp_path, secrets)
-
-    async def by_stdio(folder):
-        return stdio_raw()
-    monkeypatch.setattr(central, "_call_all", by_stdio)
     with TestClient(app, base_url=f"http://{settings.authority}") as client:
         connected(client, secrets)
         quiet = client.post("/central/refresh", headers=HEADERS)
@@ -473,10 +484,66 @@ def test_clave_sin_lectura_usa_la_carpeta_o_avisa_sin_alarma(tmp_path, fake, mon
         assert quiet.json()["snapshot"] is None
         shown = client.get("/central", headers=HEADERS).json()
         assert shown["problem"] is None and "lectura" in shown["notice"]
+        keep_snapshot(settings, legacy=False)
+        read = client.post("/central/refresh", headers=HEADERS).json()
+        assert read["transport"] == "http" and read["snapshot"]["clients"][0]["name"] == "Cliente Uno", "la instantánea guardada sigue"
+        assert "lectura" in read["notice"]
+
+
+def test_solo_con_la_carpeta_antigua_se_ve_la_instantanea_y_el_aviso(tmp_path, fake, no_processes):
+    secrets = MemorySecrets()
+    settings, app = app_with(tmp_path, secrets)
+    keep_snapshot(settings, legacy=True)
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        shown = client.get("/central", headers=HEADERS)
+        assert shown.status_code == 200, "Central sigue encendido para quien solo tenía la carpeta"
+        body = shown.json()
+        assert body["configured"] is False and body["transport"] is None and body["notice"] == central.MOVED
+        assert body["snapshot"]["clients"][0]["name"] == "Cliente Uno" and body["snapshot"]["fetchedAt"]
+        described = client.get("/central/connection", headers=HEADERS).json()
+        assert described["legacy"] is True and described["transport"] is None
+        assert client.post("/central/refresh", headers=HEADERS).status_code == 502, "sin dirección ni clave no se lee nada"
+        assert fake.seen == []
         c = connect(settings.data_dir / DB_NAME)
         try:
-            addons.save_config(c, "central", {"path": str(central_folder(tmp_path))})
+            before = central.stored(c)
         finally:
             c.close()
-        read = client.post("/central/refresh", headers=HEADERS).json()
-        assert read["transport"] == "stdio" and read["snapshot"]["clients"][0]["name"] == "Cliente Uno", "la carpeta sigue leyendo"
+        connected(client, secrets)
+        c = connect(settings.data_dir / DB_NAME)
+        try:
+            assert c.execute("SELECT 1 FROM setting WHERE key = 'addons.central'").fetchone() is None, "al conectar se olvida la carpeta"
+            assert central.stored(c) == before, "la instantánea sigue intacta"
+        finally:
+            c.close()
+        described = client.get("/central/connection", headers=HEADERS).json()
+        assert described["legacy"] is False and described["transport"] == "http"
+        assert client.get("/central", headers=HEADERS).json()["notice"] is None
+
+
+def test_la_carpeta_antigua_solo_se_olvida_al_guardar_una_conexion(tmp_path, fake, no_processes):
+    secrets = MemorySecrets()
+    settings, app = app_with(tmp_path, secrets)
+    keep_snapshot(settings, legacy=True)
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        assert client.put("/central/connection", json={"url": "http://central.example.com", "key": KEY}, headers=HEADERS).status_code == 422
+        assert client.delete("/central/connection", headers=HEADERS).status_code == 200
+        assert client.post("/central/refresh", headers=HEADERS).status_code == 502
+        assert client.get("/central/connection", headers=HEADERS).json()["legacy"] is True, "sin conexión sigue el aviso"
+        c = connect(settings.data_dir / DB_NAME)
+        try:
+            assert central.legacy(c), "la fila se conserva mientras no haya conexión"
+        finally:
+            c.close()
+
+
+def test_presupuesto_sin_conexion_dice_como_conectar(tmp_path, fake, no_processes):
+    secrets = MemorySecrets()
+    settings, app = app_with(tmp_path, secrets, QuoteEngine())
+    keep_snapshot(settings, legacy=True)
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        client.put("/modules", json={"modules": {"presupuestos": True}}, headers=HEADERS)
+        proposal = propose(client)
+        refused = client.post(f"/assistant/proposals/{proposal['id']}/quote", headers=HEADERS)
+        assert refused.status_code == 422 and refused.json()["error"] == "Central no está conectado: conéctalo con su dirección y su clave."
+        assert fake.seen == [] and fake.created == []

@@ -17,9 +17,8 @@ MODULES = {
     "fabrica": "Mi fábrica",
 }
 # Modules split from «trabajos» (which used to cover Central and its quotes): until the user sets them, they are on
-# when a source of Central exists (its folder as an add-on, a connection or a snapshot already read) and off when
-# there is none, so nobody
-# loses what already worked and nobody without Central sees them appear.
+# when a source of Central exists (a connection, a snapshot already read or the old folder setting) and off when
+# there is none, so nobody loses what already worked and nobody without Central sees them appear.
 FOLLOW_CENTRAL = ("central", "presupuestos")
 # «Mi fábrica» follows its folder registered as an add-on in the same way until the user sets it.
 FOLLOW_FABRICA = "fabrica"
@@ -42,12 +41,11 @@ def state(connection: sqlite3.Connection) -> dict[str, bool]:
 
 
 def _central_source(connection: sqlite3.Connection) -> bool:
-    """A Central folder registered as an add-on, a saved connection, or a snapshot already read (proof that one
-    worked before)."""
+    """A saved connection, a snapshot already read (proof that one worked before) or the old folder setting (only
+    the setting is looked at, never the folder)."""
     from . import central, central_api
 
-    return (bool(addons.config(connection, "central").get("path")) or central_api.saved_url(connection) is not None
-            or central.stored(connection) is not None)
+    return central_api.saved_url(connection) is not None or central.stored(connection) is not None or central.legacy(connection)
 
 
 def apply(connection: sqlite3.Connection) -> dict[str, bool]:

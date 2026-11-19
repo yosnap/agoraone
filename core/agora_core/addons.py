@@ -25,8 +25,6 @@ class Manifest:
 
 
 MANIFESTS = {m.id: m for m in [
-    Manifest("central", "Central", "CRM personal: proyectos, clientes, presupuestos, webs y servidores.",
-             ["MCP por stdio (bun src/mcp/server.ts)", "Web local"], {"port": 3099}),
     Manifest("costguard", "CostGuard", "Mide el gasto de tokens de los agentes (Claude Code, Codex, OpenCode, pi).",
              ["Consumo de tokens de las últimas 5 y 24 horas, en solo lectura"],
              {"dataPath": str(Path.home() / "Library" / "Application Support" / "CostGuard" / "consumo.sqlite")}),
@@ -35,7 +33,7 @@ MANIFESTS = {m.id: m for m in [
 ]}
 
 
-ALLOWED = {"central": {"path", "port"}, "fabrica": {"path", "port"}, "costguard": {"dataPath"}}
+ALLOWED = {"fabrica": {"path", "port"}, "costguard": {"dataPath"}}
 COSTGUARD_COLUMNS = {"hora", "agente", "gi", "go", "cr", "cw", "turnos"}
 
 
@@ -52,18 +50,8 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 _LOCAL = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
 
 
-def _read_json(path: Path) -> dict:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def recognised(addon: str, folder: Path) -> bool:
     """Whether the folder really holds that add-on, judged by its own project files (read, never run)."""
-    if addon == "central":
-        return _read_json(folder / "package.json").get("name") == "central" and (folder / "src" / "mcp" / "server.ts").is_file()
     if addon == "fabrica":
         try:
             text = (folder / "pyproject.toml").read_text(encoding="utf-8")
@@ -147,8 +135,7 @@ def status(addon: str, settings: dict) -> str:
             return "not_configured"
         if not recognised(addon, Path(settings["path"])):
             return "not_found"
-        answers = _listening(settings.get("port")) if addon == "central" else _healthy(settings.get("port"), "/salud")
-        return "responding" if answers else "detected"
+        return "responding" if _healthy(settings.get("port"), "/salud") else "detected"
     except Exception:  # noqa: BLE001 - one add-on in a bad state must not break the whole registry
         return "unreadable"
 

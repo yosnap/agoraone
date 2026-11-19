@@ -88,7 +88,7 @@ function BrainMcp() {
   </article>;
 }
 
-/** The add-ons AgoraOne knows (Central, CostGuard, my factory) and how to plug the brain into Hermes. */
+/** The add-ons AgoraOne knows (CostGuard, my factory) and how to plug the brain into Hermes. */
 export function ConnectorsView() {
   const [addons, setAddons] = useState<Addon[] | null>(null);
   const [error, setError] = useState('');

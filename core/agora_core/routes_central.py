@@ -6,14 +6,13 @@ import sqlite3
 import sys
 import threading
 from contextlib import contextmanager
-from pathlib import Path
 
 from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from . import addons, central, central_api, modules
+from . import central, central_api, modules
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -24,11 +23,6 @@ class CentralHealth:
     def __init__(self):
         self.problem: str | None = None  # a failure, shown as a warning
         self.notice: str | None = None  # a setting worth saying once and quietly (a key that cannot read)
-
-
-def _folder(connection: sqlite3.Connection) -> Path | None:
-    path = addons.config(connection, "central").get("path")
-    return Path(path) if path and addons.recognised("central", Path(path)) else None
 
 
 class ConnectionIn(BaseModel):
@@ -43,24 +37,19 @@ NEW_ORIGIN = "Para otra dirección (otro servidor, puerto o esquema), escribe ot
 
 
 def read_now(connection: sqlite3.Connection, secrets, health: CentralHealth) -> tuple[dict | None, str | None]:
-    """Reads Central from its source: the API when connected, else the old folder. A key without «lectura» is
-    not a failure: the folder is read when there is one, and otherwise nothing, with a quiet notice."""
-    folder = _folder(connection)
-    origin = central.source(connection, secrets, folder)
+    """Reads Central through its API when connected; otherwise nothing. A key without «lectura» is not a failure:
+    the stored snapshot stays, with a quiet notice."""
+    origin = central.source(connection, secrets)
     if origin is None:
         return None, None
-    way = "http" if isinstance(origin, central_api.Connection) else "stdio"
     try:
         data = central.refresh(connection, origin)
         health.notice = None
     except central.NoReadingError as error:
         health.notice = str(error)
-        if folder is None:
-            health.problem = None
-            return central.snapshot(connection), way
-        data, way = central.refresh(connection, folder), "stdio"
+        data = central.snapshot(connection)
     health.problem = None
-    return data, way
+    return data, "http"
 
 
 def central_worker(settings: Settings, stop: threading.Event, health: CentralHealth, secrets) -> None:
@@ -103,20 +92,19 @@ def central_router(settings: Settings, health: CentralHealth, secrets) -> APIRou
         return {**data, "clients": [{k: v for k, v in c.items() if k not in ("email", "phone", "taxId")} for c in data["clients"]]}
 
     def transport(connection) -> str | None:
-        if central_api.connection_of(connection, secrets):
-            return "http"
-        return "stdio" if _folder(connection) else None
+        return "http" if central_api.connection_of(connection, secrets) else None
 
     def off(connection) -> bool:
         return not modules.state(connection)["central"]
 
     @router.get("/central")
     async def get_central():
-        found = await db(lambda c: None if off(c) else (central.snapshot(c), transport(c)))
+        found = await db(lambda c: None if off(c) else (central.snapshot(c), transport(c), central.legacy(c)))
         if found is None:
             return JSONResponse({"error": OFF}, status_code=404)
-        data, way = found
-        return {"configured": way is not None, "transport": way, "snapshot": public(data), "problem": health.problem, "notice": health.notice}
+        data, way, legacy = found
+        notice = central.MOVED if way is None and legacy else health.notice
+        return {"configured": way is not None, "transport": way, "snapshot": public(data), "problem": health.problem, "notice": notice}
 
     @router.post("/central/refresh")
     async def refresh():
@@ -145,8 +133,9 @@ def central_router(settings: Settings, health: CentralHealth, secrets) -> APIRou
                 has_key, store = central_api.read_key(secrets) is not None, None
             except central_api.CentralApiError as error:
                 has_key, store = False, str(error)
-            return {"url": url, "hasKey": has_key, "storeProblem": store, "legacyFolder": _folder(connection) is not None,
-                    "transport": "http" if url and has_key else "stdio" if _folder(connection) else None, "suggestedUrl": central_api.SUGGESTED_URL}
+            connected = bool(url and has_key)
+            return {"url": url, "hasKey": has_key, "storeProblem": store, "legacy": not connected and central.legacy(connection),
+                    "transport": "http" if connected else None, "suggestedUrl": central_api.SUGGESTED_URL}
         return await db(work)
 
     def problem(status: int, message: str) -> JSONResponse:
@@ -174,6 +163,8 @@ def central_router(settings: Settings, health: CentralHealth, secrets) -> APIRou
         def store(connection):
             central_api.save_url(connection, body.url)
             modules.apply(connection)  # a first connection turns on the modules that follow Central
+            if central_api.connection_of(connection, secrets):
+                central.forget_legacy(connection)  # the old folder setting is no longer needed; the snapshot stays
         await db(store)
         return await described()
 
