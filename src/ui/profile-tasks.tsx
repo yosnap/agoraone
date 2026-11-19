@@ -47,7 +47,7 @@ function JobForm({ initial, hidden = 0, once = false, submit, onCancel, label }:
     {missing && <p role="alert" className="error">Escribe qué debe hacer el perfil.</p>}
     {hidden > 0 && <small>{hidden === 1 ? 'Una línea que parece una clave se muestra' : `${hidden} líneas que parecen claves se muestran`} como «[línea oculta N]» y se conserva al guardar.</small>}
     <p className="approval-warning">Hermes la ejecutará en su horario con las herramientas y permisos del perfil, sin pedirte confirmación, como cualquier tarea programada. El resultado se guarda en Hermes; no se envía a ningún chat.</p>
-    <div><button type="submit" className="primary" disabled={sending}>{sending ? 'Guardando…' : label}</button><ActionButton icon="close" label="Cancelar" disabled={sending} onClick={onCancel}/></div>
+    <div><ActionButton icon="save" label={label} tone="primary" busyLabel={sending && 'Guardando…'} type="submit" disabled={sending}/><ActionButton icon="close" label="Cancelar" disabled={sending} onClick={onCancel}/></div>
   </form>;
 }
 
@@ -69,8 +69,8 @@ export function JobManager<J extends ScheduledJob>({ profileId, jobs, gateway, o
         {job.id && <div className="task-actions">
           {job.enabled ? <ActionButton icon="pause" label="Pausar" small disabled={!!action.busy} onClick={() => action.run(`pause:${job.id}`, () => changeJob(profileId, job.id!, { action: 'pause' }))}/>
             : <ActionButton icon="play" label="Reanudar" small disabled={!!action.busy} onClick={() => action.run(`resume:${job.id}`, () => changeJob(profileId, job.id!, { action: 'resume' }))}/>}
-          <button type="button" className="act-run" disabled={!!action.busy} onClick={async () => { if (await action.run(`run:${job.id}`, () => changeJob(profileId, job.id!, { action: 'run' })))
-            action.say(gateway === 'running' ? `«${job.name}» queda marcada: el gateway de Hermes la ejecutará en su próximo ciclo si atiende las tareas de este perfil.` : gateway === 'unknown' ? `«${job.name}» queda marcada: se ejecutará cuando el gateway de Hermes la recoja.` : `«${job.name}» queda marcada para ejecutarse, pero el gateway de Hermes no está en marcha: se ejecutará cuando arranque.`); }}>{action.busy === `run:${job.id}` ? 'Marcando…' : 'Ejecutar ahora'}</button>
+          <ActionButton icon="play" label="Ejecutar ahora" small busyLabel={action.busy === `run:${job.id}` && 'Marcando…'} disabled={!!action.busy} onClick={async () => { if (await action.run(`run:${job.id}`, () => changeJob(profileId, job.id!, { action: 'run' })))
+            action.say(gateway === 'running' ? `«${job.name}» queda marcada: el gateway de Hermes la ejecutará en su próximo ciclo si atiende las tareas de este perfil.` : gateway === 'unknown' ? `«${job.name}» queda marcada: se ejecutará cuando el gateway de Hermes la recoja.` : `«${job.name}» queda marcada para ejecutarse, pero el gateway de Hermes no está en marcha: se ejecutará cuando arranque.`); }}/>
           <ActionButton icon="edit" label="Editar" small disabled={!!action.busy} onClick={() => edit(job.id!)}/>
           {confirm === job.id ? <><ActionButton icon="trash" label="Eliminar definitivamente" tone="danger" disabled={!!action.busy} onClick={async () => { await action.run(`remove:${job.id}`, () => changeJob(profileId, job.id!, { action: 'remove' })); setConfirm(null); }}/>
             <ActionButton icon="close" label="No" onClick={() => setConfirm(null)}/></>
@@ -127,8 +127,8 @@ export function CardControls({ profileId, card, action }: { profileId: string; c
   return <>
       <div className="task-actions">
         <ActionButton icon="check" label="Completar" disabled={!!action.busy} onClick={async () => { if (await action.run(`done:${card.id}`, () => changeCard(profileId, card.id, { action: 'complete' }))) action.say(`Tarjeta «${card.title}» completada.`); }}/>
-        {card.status === 'blocked' ? <button type="button" disabled={!!action.busy} onClick={() => action.run(`unblock:${card.id}`, () => changeCard(profileId, card.id, { action: 'unblock' }))}>Desbloquear</button>
-          : <button type="button" disabled={!!action.busy} onClick={() => setNote({ id: card.id, kind: 'block', text: '' })}>Bloquear</button>}
+        {card.status === 'blocked' ? <ActionButton icon="play" label="Desbloquear" disabled={!!action.busy} onClick={() => action.run(`unblock:${card.id}`, () => changeCard(profileId, card.id, { action: 'unblock' }))}/>
+          : <ActionButton icon="pause" label="Bloquear" disabled={!!action.busy} onClick={() => setNote({ id: card.id, kind: 'block', text: '' })}/>}
         <ActionButton icon="edit" label="Comentar" disabled={!!action.busy} onClick={() => setNote({ id: card.id, kind: 'comment', text: '' })}/>
         {confirm === card.id ? <>{card.status === 'running' && <small className="approval-warning">Un agente está trabajando en ella: archivarla lo detendrá.</small>}<ActionButton icon="archive" label="Archivar definitivamente" tone="danger" disabled={!!action.busy} onClick={async () => { if (await action.run(`archive:${card.id}`, () => changeCard(profileId, card.id, { action: 'archive' }))) action.say(`Tarjeta «${card.title}» archivada.`); setConfirm(null); }}/>
           <ActionButton icon="close" label="No" onClick={() => setConfirm(null)}/></>
@@ -139,7 +139,7 @@ export function CardControls({ profileId, card, action }: { profileId: string; c
         if (await action.run(`${note.kind}:${card.id}`, () => note.kind === 'block' ? changeCard(profileId, card.id, { action: 'block', reason: note.text || undefined }) : changeCard(profileId, card.id, { action: 'comment', body: note.text }))) { setNote(null); action.say(note.kind === 'block' ? `Tarjeta «${card.title}» bloqueada.` : 'Comentario añadido.'); } }}>
         {note.kind === 'block' ? <label>Motivo del bloqueo (opcional)<textarea autoFocus value={note.text} maxLength={500} onChange={event => setNote({ ...note, text: event.target.value })}/></label>
           : <div className="task-field"><span>Comentario</span><MarkdownField label="Comentario" value={note.text} onChange={text => setNote({ ...note, text })} minHeight={90} autoFocus/></div>}
-        <div><button type="submit" className="primary" disabled={!!action.busy}>{note.kind === 'block' ? 'Bloquear' : 'Añadir comentario'}</button><ActionButton icon="close" label="Cancelar" onClick={() => setNote(null)}/></div>
+        <div><ActionButton icon={note.kind === 'block' ? 'pause' : 'send'} label={note.kind === 'block' ? 'Bloquear' : 'Añadir comentario'} tone="primary" type="submit" disabled={!!action.busy}/><ActionButton icon="close" label="Cancelar" onClick={() => setNote(null)}/></div>
       </form>}
   </>;
 }

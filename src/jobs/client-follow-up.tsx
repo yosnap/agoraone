@@ -60,9 +60,9 @@ export function VaultCards({ cards, discreet, busy, act }: { cards: ClientsDirec
         ? <span className="actions" role="group" aria-label={`Confirmar crear ${card.name}`}>
           <small>Se crea el cliente manual «{card.name}» en AgoraOne, sin ubicar hasta que lo crees o enlaces en Central o CRMDev.</small>
           <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={() => setAsking(null)}/>
-          <button type="button" className="button primary" disabled={busy}
+          <ActionButton icon="plus" label="Crear cliente manual" tone="primary" disabled={busy}
             onClick={() => { setAsking(null); act(() => createClient({ name: card.name, company: null, email: null, phone: null, taxId: null, domains: [], notes: null }),
-              `«${card.name}» creado como cliente manual.`); }}>Crear cliente manual</button>
+              `«${card.name}» creado como cliente manual.`); }}/>
         </span>
         : <span className="actions"><ActionButton icon="plus" label="Crear cliente manual…" disabled={busy} onClick={() => setAsking(card.name)}/></span>}
     </li>)}</ul>

@@ -37,7 +37,7 @@ function ProjectsPage({ filters, cursor, last, discreet, onMore, onPick, onOpen 
       <td className="central-row-actions">{p.id && <span className="actions"><ActionButton icon="eye" label="Ver ficha" onClick={() => onPick(p.id!)}/>
         <OpenInCentral page={`proyectos/${p.id}`} discreet={discreet}/></span>}</td>
     </tr>)}
-    {last && nextCursor && <tr><td colSpan={6} className="central-row-actions"><button type="button" className="button" onClick={() => onMore(nextCursor)}>Cargar más</button></td></tr>}
+    {last && nextCursor && <tr><td colSpan={6} className="central-row-actions"><ActionButton icon="download" label="Cargar más" onClick={() => onMore(nextCursor)}/></td></tr>}
   </tbody>;
 }
 

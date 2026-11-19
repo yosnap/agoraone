@@ -119,7 +119,7 @@ test('«Volver a leer» pide otra vez, a CRMDev y en el momento, lo que hay en p
   await settle();
   readAgain();
   const during = renderToStaticMarkup(createElement(ReadAgain, { times: [READ_AT] }));
-  assert.match(during, /<button[^>]*disabled=""[^>]*>Leyendo…<\/button>/, 'mientras vuelve a leer, el botón no se puede pulsar otra vez');
+  assert.match(during, /<button[^>]*disabled=""[^>]*>.*?<span>Leyendo…<\/span><\/button>/, 'mientras vuelve a leer, el botón no se puede pulsar otra vez');
   await settle();
   assert.deepEqual(calls, [false, true], 'pulsar pide, tras pintar, con fresco');
   assert.equal(crmdevStore.has('horas:p9'), false, 'lo que no está en pantalla se olvida y se pedirá al volver');

@@ -39,7 +39,7 @@ function OpenInFabrica({ page, label, checkFirst = false }: { page: FabricaPage;
 export function OpenButtons({ label, busy, said, onOpen }: { label: string; busy: boolean; said: Said | null; onOpen: (inBrowser: boolean) => void }) {
   return <div className="fabrica-open">
     <div className="actions fabrica-actions">
-      <button type="button" className="button" disabled={busy} onClick={() => onOpen(false)}>{busy ? 'Abriendo…' : label}</button>
+      <ActionButton icon="external" label={label} busyLabel={busy && 'Abriendo…'} disabled={busy} onClick={() => onOpen(false)}/>
       {said?.browser && <ActionButton icon="external" label="Abrir en el navegador" disabled={busy} onClick={() => onOpen(true)}/>}
     </div>
     {said && <p className={said.ok ? 'ok-note' : 'error'} role="status">{said.text}</p>}

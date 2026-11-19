@@ -27,8 +27,8 @@ export function TasksTable({ tasks, discreet, withProject = true, onEdit }: {
       <td className="central-date">{dayLabel(t.dueDate)}</td>
       {!discreet && <td>{t.assignee?.name ?? '—'}</td>}
       {withProject && <td>{t.project ?? '—'}</td>}
-      {onEdit && <td className="central-row-actions">{t.id && <button type="button" className="button" aria-label={`Editar la tarea ${t.title ?? ''}`}
-        onClick={() => onEdit(t.id as string)}>Editar</button>}</td>}
+      {onEdit && <td className="central-row-actions">{t.id && <ActionButton icon="edit" label="Editar" aria-label={`Editar la tarea ${t.title ?? ''}`}
+        onClick={() => onEdit(t.id as string)}/>}</td>}
     </tr>)}</tbody>
   </table>;
 }

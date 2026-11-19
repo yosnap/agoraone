@@ -31,8 +31,8 @@ function DocumentButtons({ id }: { id: string }) {
   };
   return <>
     <div className="actions central-actions">
-      {(['pdf', 'docx'] as DocumentFormat[]).map(format => <button key={format} type="button" className="button" disabled={busy !== null} onClick={() => void open(format)}>
-        {busy === format ? `Abriendo el ${documentLabels[format]}…` : `Abrir ${documentLabels[format]}`}</button>)}
+      {(['pdf', 'docx'] as DocumentFormat[]).map(format => <ActionButton key={format} icon="file" label={`Abrir ${documentLabels[format]}`}
+        busyLabel={busy === format && `Abriendo el ${documentLabels[format]}…`} disabled={busy !== null} onClick={() => void open(format)}/>)}
     </div>
     {said && <p className={said.ok ? 'ok-note' : 'error'} role="status">{said.text}</p>}
   </>;

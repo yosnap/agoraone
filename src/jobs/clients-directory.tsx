@@ -88,8 +88,8 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
   return <div className="clients-directory">
     <div className="jobs-heading"><h2>Clientes{pending && <small className="muted"> · {pending}</small>}</h2>
       <span className="actions">
-        {data.crmdev.on && data.crmdev.connected && <button type="button" className="button" disabled={busy}
-          onClick={() => void act(refreshCrmdevClients, 'Clientes de CRMDev leídos de nuevo.')}>Actualizar CRMDev</button>}
+        {data.crmdev.on && data.crmdev.connected && <ActionButton icon="refresh" label="Actualizar CRMDev" disabled={busy}
+          onClick={() => void act(refreshCrmdevClients, 'Clientes de CRMDev leídos de nuevo.')}/>}
         {!discreet && editing === null && <ActionButton icon="plus" label="Nuevo cliente" tone="primary" onClick={() => { setEditing('new'); setNote(''); }}/>}
       </span></div>
     <p className="muted">{sources.length ? `Tus clientes de ${sources.join(' y ')} y los que guardas en AgoraOne, en una sola lista. Los de cada CRM se cambian en su sección.`
