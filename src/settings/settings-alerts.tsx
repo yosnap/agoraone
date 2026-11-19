@@ -41,8 +41,8 @@ export function AlertsSettingsCard() {
         <input type="checkbox" checked={Boolean(chosen[t.key])} onChange={event => void save({ [t.key]: event.target.checked })}/> {t.label}</label>)}</div>
       <div className="field-row">
         {hour('morning', 'Resumen a las')}{hour('quietFrom', 'Silencio desde')}{hour('quietTo', 'hasta')}
+        <label className="field">Llamadas<ModernSelect value={chosen.callsLevel} options={levels} onChange={value => void save({ callsLevel: value as Level })}/></label>
       </div>
-      <label className="field">Llamadas<ModernSelect value={chosen.callsLevel} options={levels} onChange={value => void save({ callsLevel: value as Level })}/></label>
     </>}
     <ul className="alerts-permissions">
       <li><span>Historial de llamadas{callsBlocked ? ': necesita «Acceso total al disco»' : callsProblem === 'missing' ? ': este Mac no tiene historial' : callsProblem === 'unreadable' ? ': no se pudo leer' : ''}</span>

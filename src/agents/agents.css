@@ -1,6 +1,5 @@
 /* «Agentes»: a card per agent with what it does now, and the last 24 h on the right. No side stripes: the
    state shows with the full border, the avatar ring and the colour of its line. */
-.agents > * { max-width:1640px }
 .agents-bar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:0 0 14px }
 .agents-bar .button { margin-left:auto }
 .agents-busy { background:var(--c-f3e6c4); color:var(--c-7a5717) }

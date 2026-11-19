@@ -109,12 +109,12 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
     {filter === 'cards' ? <VaultCards cards={cards} discreet={discreet} busy={busy} act={(work, said) => void act(work, said)}/>
       : shown.length === 0 ? <p className="muted">{filter === 'unplaced' ? 'Ningún cliente sin ubicar: todos están en Central o en CRMDev.'
         : 'Todavía no tienes clientes. Crea uno con «Nuevo cliente» para que la Bandeja, WhatsApp, las reuniones, Fiscal y Watson lo reconozcan.'}</p>
-      : <table className="work-table clients-table"><thead><tr><th>Cliente</th><th>Origen</th><th>Proyectos</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
+      : <table className="work-table clients-table"><thead><tr><th>Cliente</th><th>Origen</th><th className="num">Proyectos</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
         <tbody>{shown.map(client => <tr key={rowKey(client)}>
           <td><strong>{client.name}</strong>{client.company && client.company !== client.name && <small className="muted"> · {client.company}</small>}
             {client.aliases.length > 0 && <small className="muted"> · también «{client.aliases.join('», «')}»</small>}</td>
           <td><ClientOrigins client={client}/></td>
-          <td>{client.sources.includes('central') ? client.projects.length : '—'}</td>
+          <td className="num">{client.sources.includes('central') ? client.projects.length : '—'}</td>
           <td>{actions(client)}</td>
         </tr>)}</tbody></table>}
   </div>;

@@ -1,5 +1,4 @@
-.agenda > * { max-width:1100px }
-.agenda-day h2, .agenda h2 { margin:24px 0 10px; font-size:15px }
+.agenda-day h2, .page.agenda h2 { margin:24px 0 10px; font-size:15px }
 .agenda h2::first-letter { text-transform:uppercase }
 .agenda-list { list-style:none; margin:0; padding:0; border:1px solid var(--c-dfe3d6); border-radius:12px; background:var(--c-fbfaf3) }
 .agenda-list li { display:flex; gap:12px; align-items:baseline; padding:9px 12px; border-bottom:1px solid var(--c-dfe3d6); font-size:13px }

@@ -7,7 +7,7 @@
 .central-record-tools { display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap; justify-content:flex-end; margin-left:auto }
 .central-record-body { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,max(440px,calc((100% - 16px) / 2))),1fr)); gap:16px; align-items:start }
 .central-record-body > .central-wide, .central-record-body > p, .central-block.wide { grid-column:1 / -1 }
-.central-block { background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:14px; padding:14px 16px; display:flex; flex-direction:column;
+.central-block { background:var(--c-fbfaf3); border:1px solid var(--c-dfe3d6); border-radius:14px; padding:14px 16px; font-size:13px; display:flex; flex-direction:column;
   gap:10px; min-width:0; overflow-x:auto }
 .central-block-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap }
 .central-block-head h3 { font:600 14px Manrope,sans-serif; margin:0 }
