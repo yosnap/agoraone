@@ -108,3 +108,19 @@ def test_la_clave_solo_en_su_cuenta_del_almacen():
     web_api.write_key(SPEC, secrets, None)
     assert secrets.values == {"otra-cuenta": "intocable"}
     assert KEY not in repr(TARGET)
+
+
+def test_la_clave_se_borra_antes_de_recortar_el_texto():
+    near_the_cut = "x" * 180 + KEY + " y más texto"
+    answer(lambda r: httpx.Response(422, json={"detail": near_the_cut}))
+    error = str(failure())
+    assert KEY[:8] not in error, "ni el principio de la clave sobrevive al recorte"
+    assert web_api.said(f'{{"detail": "{near_the_cut}"}}', KEY) == "x" * 180 + "*** y más texto"
+
+
+def test_la_clave_partida_por_espacios_o_saltos_de_linea_tambien_se_borra():
+    for split in (KEY[:10] + "\n" + KEY[10:], KEY[:5] + "  \t " + KEY[5:20] + "\r\n" + KEY[20:]):
+        text = web_api.said(httpx.Response(400, json={"detail": f"clave {split} rara"}).text, KEY)
+        assert text == "clave *** rara", repr(split)
+        squeezed = "".join(text.split())
+        assert not any(KEY[i:i + 6] in squeezed for i in range(len(KEY) - 5)), "ningún trozo de la clave"

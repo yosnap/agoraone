@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { getBrainMcpSetup, getConnectors, getCostguardUsage, putConnector, type AgentUsage, type BrainMcpSetup, type Connector, type ConnectorChanges,
+import { deleteConnector, getBrainMcpSetup, getConnectors, getCostguardUsage, putConnector, type AgentUsage, type BrainMcpSetup, type Connector, type ConnectorChanges,
   type ConnectorStatus } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 
@@ -21,9 +21,8 @@ function AddonCard({ addon, onSaved }: { addon: Connector; onSaved: (connector: 
   const [busy, setBusy] = useState(false);
   const save = async (event: FormEvent, forget = false) => {
     event.preventDefault(); setBusy(true); setError('');
-    const changes: ConnectorChanges = forget ? { [pathKey]: null, ...(!file ? { port: null } : {}) }
-      : { [pathKey]: path.trim() || null, ...(!file ? { port: port.trim() ? Number(port) : null } : {}) };
-    try { onSaved(await putConnector(addon.id, changes)); }
+    const changes: ConnectorChanges = { [pathKey]: path.trim() || null, ...(!file ? { port: port.trim() ? Number(port) : null } : {}) };
+    try { onSaved(await (forget ? deleteConnector(addon.id) : putConnector(addon.id, changes))); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
     finally { setBusy(false); }
   };

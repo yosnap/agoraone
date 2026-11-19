@@ -235,11 +235,13 @@ HEADERS = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
 
 
 def central_state(answer: dict) -> dict:
-    """Central's connector state (an entry of `/connectors` or the list), in the shape Settings › Central reads it."""
+    """Central's connector state (an entry of `/connectors` or the list), with the same rule as `centralConnection`
+    in src/api/central.ts: connected means a URL and a key saved."""
     entry = answer if "state" in answer else next(c for c in answer["connectors"] if c["id"] == "central")
     state, configured = entry["state"], entry["state"]["configured"]
     return {"url": configured["url"], "hasKey": configured["hasKey"], "storeProblem": state["storeProblem"],
-            "legacy": state["status"] == "legacy", "transport": "http" if state["status"] == "saved" else None, "suggestedUrl": entry["hint"]}
+            "legacy": state["status"] == "legacy", "transport": "http" if configured["url"] and configured["hasKey"] else None,
+            "suggestedUrl": entry["hint"]}
 
 
 def test_rutas_de_la_conexion_nunca_devuelven_la_clave(tmp_path, fake, caplog):

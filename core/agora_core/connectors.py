@@ -10,9 +10,9 @@ Connecting and disconnecting never depend on a module being on. Forgetting a con
 from it: only its key or its local setting."""
 
 import sqlite3
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Protocol
 
 from . import addons, central, central_api, modules, web_api
@@ -57,6 +57,7 @@ class WebApiAdapter:
                  after_save: Callable[[sqlite3.Connection, bool], None] | None = None):
         self.spec, self.probe, self.legacy, self.notice, self.after_save = spec, probe, legacy, notice, after_save
         self.hint = spec.example_url
+        self._lock = threading.Lock()  # the origin check, the key and the URL change together
 
     def state(self, connection, secrets) -> dict:
         url = web_api.saved_url(self.spec, connection)
@@ -74,6 +75,10 @@ class WebApiAdapter:
     def save(self, connection, secrets, body: dict) -> None:
         """`url` is required (a null forgets it); a missing `key` keeps the saved one, which never goes to another
         origin; a null `key` forgets it."""
+        with self._lock:
+            self._save(connection, secrets, body)
+
+    def _save(self, connection, secrets, body: dict) -> None:
         if "url" not in body:
             raise ConnectorError(web_api.url_problem(self.spec, None) or "")
         url, key = body["url"], body.get("key")
@@ -116,7 +121,8 @@ class WebApiAdapter:
     def forget(self, connection, secrets) -> None:
         """Forgets the key only: the URL is not secret and stays, and so does whatever was read."""
         try:
-            web_api.write_key(self.spec, secrets, None)
+            with self._lock:
+                web_api.write_key(self.spec, secrets, None)
         except web_api.WebApiError as error:
             raise ConnectorError(str(error), 503) from None
 
@@ -141,18 +147,21 @@ class LocalAdapter:
             raise ConnectorError(str(error)) from None
 
     def test(self, connection, secrets, body: dict) -> dict:
-        """The status with what is typed over what is saved, without saving anything."""
-        current = addons.config(connection, self.addon)
-        typed = {k: v for k, v in body.items() if k in addons.ALLOWED[self.addon] and v is not None}
-        if "port" in typed and (type(typed["port"]) is not int or not 1024 <= typed["port"] <= 65535):
-            raise ConnectorError("Puerto no válido.")
-        for key in ("path", "dataPath"):
-            if key in typed and (not isinstance(typed[key], str) or len(typed[key]) > 500 or not Path(typed[key]).is_absolute()):
-                raise ConnectorError("La ruta debe ser absoluta.")
-        return {"status": addons.status(self.addon, {**current, **typed})}
+        """The status with what is typed over what is saved (a null keeps the saved value), without saving anything."""
+        typed = {k: v for k, v in body.items() if v is not None}
+        try:
+            for key, value in body.items():
+                if value is not None:
+                    addons.check_format(self.addon, key, value)
+                elif key not in addons.ALLOWED[self.addon]:
+                    raise addons.AddonError("Ajuste no válido para este complemento.")
+        except addons.AddonError as error:
+            raise ConnectorError(str(error)) from None
+        return {"status": addons.status(self.addon, {**addons.config(connection, self.addon), **typed})}
 
     def forget(self, connection, secrets) -> None:
-        addons.save_config(connection, self.addon, {key: None for key in addons.ALLOWED[self.addon]})
+        """Leaves the add-on unconfigured (its port, if any, back to the default)."""
+        addons.forget(connection, self.addon)
 
 
 class GuideAdapter:

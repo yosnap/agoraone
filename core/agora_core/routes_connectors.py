@@ -1,6 +1,7 @@
-"""HTTP routes of the connectors (`connectors.py`): the list with each one's state, and saving, testing and forgetting
-one. They answer with any module off, so a connector can always be connected or disconnected. Bodies are read by
-hand: a validation error never echoes what was sent (it could carry a key), and a key is never answered back."""
+"""HTTP routes of the connectors (`connectors.py`): the list with each one's state, and reading, saving, testing and
+forgetting one. They answer with any module off, so a connector can always be connected or disconnected. Bodies are
+read by hand and capped: a validation error never echoes what was sent (it could carry a key), and a key is never
+answered back."""
 
 import json
 from contextlib import contextmanager
@@ -40,9 +41,14 @@ def connectors_router(settings: Settings, secrets) -> APIRouter:
 
     async def body_of(request: Request) -> dict | None:
         """The JSON object sent (an empty body is an empty object), or None when it is anything else."""
-        raw = await request.body()
-        if len(raw) > MAX_BODY:
-            return None
+        declared = request.headers.get("content-length")
+        if declared is not None and not (declared.isascii() and declared.isdigit() and int(declared) <= MAX_BODY):
+            return None  # refused before reading
+        raw = bytearray()
+        async for chunk in request.stream():
+            raw += chunk
+            if len(raw) > MAX_BODY:
+                return None
         if not raw.strip():
             return {}
         try:
@@ -54,6 +60,14 @@ def connectors_router(settings: Settings, secrets) -> APIRouter:
     @router.get("")
     async def list_connectors():
         return {"connectors": await db(lambda c: connectors.describe_all(c, secrets))}
+
+    @router.get("/{connector_id}")
+    async def one(connector_id: str):
+        """Only that connector's state: nothing of the others is checked."""
+        connector = connectors.REGISTRY.get(connector_id)
+        if connector is None:
+            return problem(404, UNKNOWN)
+        return await db(lambda c: connectors.describe(connector, c, secrets))
 
     @router.put("/{connector_id}")
     async def save(connector_id: str, request: Request):

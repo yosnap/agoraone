@@ -44,6 +44,8 @@ export type Connector = { id: string; name: string; description: string; kind: C
 export type ConnectorChanges = { url?: string | null; key?: string | null; port?: number | null; path?: string | null; dataPath?: string | null };
 const connectorPath = (id: string) => `/connectors/${encodeURIComponent(id)}`;
 export const getConnectors = () => core<{ connectors: Connector[] }>('/connectors');
+/** Only one connector's state (nothing of the others is checked). */
+export const getConnector = (id: string) => core<Connector>(connectorPath(id));
 export const putConnector = (id: string, changes: ConnectorChanges) => core<Connector>(connectorPath(id), changes, 'PUT');
 /** Tries what is typed (not saved) or, when missing, what is saved; the answer depends on the connector's kind. */
 export const testConnector = <T>(id: string, typed: ConnectorChanges) => core<T>(`${connectorPath(id)}/test`, typed, 'POST');

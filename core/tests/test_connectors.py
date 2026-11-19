@@ -165,3 +165,79 @@ def test_la_carpeta_antigua_de_central_se_ve_como_legacy(tmp_path, fake):
             c.close()
         state = listed(client)["central"]["state"]
         assert state["status"] == "legacy" and state["notice"] == central.MOVED
+
+
+def test_leer_un_conector_no_comprueba_los_demas(tmp_path, fake, monkeypatch):
+    checked = []
+    monkeypatch.setattr(connectors.addons, "status", lambda addon, settings: checked.append(addon) or "detected")
+    settings, app = app_with(tmp_path, MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        one = client.get("/connectors/central", headers=HEADERS)
+        assert one.status_code == 200 and one.json()["id"] == "central" and one.json()["state"]["status"] == "not_configured"
+        assert checked == [], "ni la fábrica ni CostGuard se miran al leer Central"
+        assert client.get("/connectors/costguard", headers=HEADERS).json()["state"]["status"] == "detected"
+        assert checked == ["costguard"]
+        assert client.get("/connectors/otro", headers=HEADERS).status_code == 404
+
+
+def test_cada_conector_tiene_su_cuenta_y_su_fila_propias():
+    secrets, rows = [], []
+    for connector in connectors.REGISTRY.values():
+        adapter = connector.adapter
+        if isinstance(adapter, connectors.WebApiAdapter):
+            secrets.append(adapter.spec.secret)
+            rows.append(adapter.spec.setting)
+        elif isinstance(adapter, connectors.LocalAdapter):
+            rows.append(f"addons.{adapter.addon}")
+    assert len(secrets) == len(set(secrets)), "dos conectores nunca comparten cuenta del almacén"
+    assert len(rows) == len(set(rows)), "ni fila de ajustes"
+
+
+def test_nulos_al_guardar_una_web_api(tmp_path, fake):
+    secrets = MemorySecrets()
+    settings, app = app_with(tmp_path, secrets)
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS)
+        before = len(fake.seen)
+        other = "https://central.example.net"
+        moved = client.put("/connectors/central", json={"url": other, "key": None}, headers=HEADERS)
+        assert moved.status_code == 200, "con la clave olvidada, otra dirección no lleva nada"
+        assert moved.json()["state"]["configured"] == {"url": other, "hasKey": False} and secrets.get(central_api.SECRET) is None
+        assert len(fake.seen) == before, "no sale ninguna petición"
+        client.put("/connectors/central", json={"url": URL, "key": KEY}, headers=HEADERS)
+        gone = client.put("/connectors/central", json={"url": None}, headers=HEADERS)
+        assert gone.status_code == 200 and gone.json()["state"]["configured"] == {"url": None, "hasKey": True}
+        assert secrets.get(central_api.SECRET) == KEY, "sin «key», la clave se conserva"
+        c = connect(settings.data_dir / DB_NAME)
+        try:
+            assert c.execute("SELECT 1 FROM setting WHERE key = ?", (central_api.SETTING,)).fetchone() is None
+        finally:
+            c.close()
+
+
+def test_olvidar_costguard_lo_deja_sin_configurar(tmp_path, fake):
+    settings, app = app_with(tmp_path, MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        before = listed(client)["costguard"]["state"]
+        assert before["configured"]["dataPath"], "empieza con la ruta por defecto"
+        gone = client.delete("/connectors/costguard", headers=HEADERS).json()["state"]
+        assert gone["status"] == "not_configured" and gone["configured"] == {"dataPath": None}
+        assert client.get("/addons/costguard/usage", headers=HEADERS).status_code == 404
+
+
+def test_un_cuerpo_demasiado_grande_se_rechaza_sin_repetirlo(tmp_path, fake):
+    settings, app = app_with(tmp_path, MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        big = json.dumps({"url": URL, "key": KEY, "relleno": "x" * 5000})
+        refused = client.put("/connectors/central", content=big, headers=HEADERS)
+        assert refused.status_code == 422 and KEY not in refused.text
+        lying = client.put("/connectors/central", content=big, headers={**HEADERS, "content-length": "10"})
+        assert lying.status_code in (400, 422) and KEY not in lying.text
+
+        def chunks():
+            yield b'{"url": "' + URL.encode() + b'", "relleno": "'
+            for _ in range(10):
+                yield b"x" * 1000
+            yield b'"}'
+        streamed = client.put("/connectors/central", content=chunks(), headers=HEADERS)
+        assert streamed.status_code == 422, "sin longitud declarada, se corta al leer"

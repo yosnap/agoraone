@@ -82,6 +82,33 @@ def config(connection: sqlite3.Connection, addon: str) -> dict:
     return {**MANIFESTS[addon].defaults, **(json.loads(row["value"]) if row else {})}
 
 
+def check_format(addon: str, key: str, value: object) -> None:
+    """Whether a setting is one of the add-on's own and well formed (a port of 1024-65535, an absolute path);
+    whether the path really holds the add-on is checked only when saving."""
+    if key not in ALLOWED.get(addon, ()):
+        raise AddonError("Ajuste no válido para este complemento.")
+    if key == "port":
+        if type(value) is not int or not 1024 <= value <= 65535:
+            raise AddonError("Puerto no válido.")
+    elif not isinstance(value, str) or len(value) > 500 or not Path(value).is_absolute():
+        raise AddonError("La ruta debe ser absoluta.")
+
+
+LOCATIONS = ("path", "dataPath")  # where an add-on is: forgetting them leaves it unconfigured, never at a default
+
+
+def forget(connection: sqlite3.Connection, addon: str) -> None:
+    """Forgets every setting of the add-on: a port goes back to its default, a location (even a default one such as
+    CostGuard's data file) is left unset, so the add-on is no longer configured."""
+    if addon not in MANIFESTS:
+        raise AddonError("Complemento desconocido.")
+    unset = {k: None for k in MANIFESTS[addon].defaults if k in LOCATIONS}
+    connection.execute(
+        "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        (f"addons.{addon}", json.dumps(unset)),
+    )
+
+
 def save_config(connection: sqlite3.Connection, addon: str, changes: dict) -> dict:
     """Validates where the add-on is and stores it. Each add-on accepts only its own settings; None forgets
     a setting (back to the default or to «not configured»)."""
@@ -96,12 +123,8 @@ def save_config(connection: sqlite3.Connection, addon: str, changes: dict) -> di
             if key in MANIFESTS[addon].defaults:
                 current[key] = MANIFESTS[addon].defaults[key]
             continue
-        if key == "port":
-            if type(value) is not int or not 1024 <= value <= 65535:
-                raise AddonError("Puerto no válido.")
-        else:
-            if not isinstance(value, str) or not Path(value).is_absolute() or len(value) > 500:
-                raise AddonError("La ruta debe ser absoluta.")
+        check_format(addon, key, value)
+        if key != "port":
             target = Path(value)
             if key == "path" and not (target.is_dir() and recognised(addon, target)):
                 raise AddonError(f"Esa carpeta no contiene {MANIFESTS[addon].name}.")

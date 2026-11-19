@@ -189,9 +189,11 @@ def said(answer_text: str, key: str) -> str:
         return ""
     if not isinstance(data, dict):
         return ""
-    reason = data.get("detail") or data.get("error") or ""
-    text = " ".join(str(reason).split())[:200]
-    return text.replace(key, "***") if key else text
+    reason = str(data.get("detail") or data.get("error") or "")
+    if key:  # before squeezing spaces or cutting, so no part of it survives; also a key split by spaces or line breaks
+        reason = re.sub(r"\s*".join(map(re.escape, key)), "***", reason)
+    text = " ".join(reason.split())
+    return text[:200]
 
 
 @contextmanager
