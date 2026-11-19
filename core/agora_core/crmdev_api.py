@@ -28,6 +28,7 @@ PATH = "/api/mcp/rest"
 SCOPES = ("organizacion",)
 MAX_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 100  # CRMDev has no pages: the most recent ones
+SYNC_ROWS = 1000  # the clients read for the directory of clients (crmdev_sync), the only list asked for more
 CACHE_SECONDS = 60
 CACHE_ENTRIES = 64
 # Tests replace it with an httpx.MockTransport; None is the real network.
@@ -69,10 +70,14 @@ STATUSES = {
 CATEGORIES = ("BUG", "FEATURE_REQUEST", "QUESTION", "SUPPORT", "BILLING", "PERFORMANCE", "SECURITY", "OTHER")
 
 
-def _limit(value: object) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= MAX_ROWS:
-        raise WebApiError("invalid", f"El límite va de 1 a {MAX_ROWS}.")
+def _limit(value: object, top: int = MAX_ROWS) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= top:
+        raise WebApiError("invalid", f"El límite va de 1 a {top}.")
     return value
+
+
+def _client_limit(value: object) -> int:
+    return _limit(value, SYNC_ROWS)
 
 
 def _id(value: object) -> str:
@@ -118,7 +123,7 @@ def _progress(value: object) -> int:
 ARGUMENTS: dict[str, dict[str, Callable[[object], object]]] = {
     "list_projects": {"limit": _limit, "status": _one_of(STATUSES["list_projects"])},
     "list_tasks": {"limit": _limit, "status": _one_of(STATUSES["list_tasks"]), "projectId": _id, "assigneeId": _id},
-    "list_clients": {"limit": _limit, "status": _one_of(STATUSES["list_clients"])},
+    "list_clients": {"limit": _client_limit, "status": _one_of(STATUSES["list_clients"])},
     "list_tickets": {"limit": _limit, "status": _one_of(STATUSES["list_tickets"]), "priority": _one_of(PRIORITIES),
                      "category": _one_of(CATEGORIES), "clientId": _id},
     "list_members": {"limit": _limit},

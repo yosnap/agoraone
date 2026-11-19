@@ -71,6 +71,8 @@ export type CrmdevChangeRequest =
     changes: { title?: string; description?: string | null; status?: string; priority?: string } }
   | { kind: 'proyecto'; id: string; list?: { estado?: string }; changes: { name?: string; status?: string; progress?: number } }
   | { kind: 'cliente-nuevo'; values: CrmdevClientValues; anyway?: true }
+  /** «Crear en CRMDev» of a client kept only in AgoraOne: its own data as it is, and the state chosen. */
+  | { kind: 'cliente-desde-local'; localId: number; status?: string; anyway?: true }
   | { kind: 'cliente'; id: string; list?: { estado?: string }; changes: { name?: string; email?: string; company?: string | null; status?: string } }
   | { kind: 'ticket'; id: string; list?: { estado?: string; cliente?: string }; changes: { status?: string; priority?: string; category?: string } };
 export type CrmdevChangeRow = { field: string; label: string; before: string | null; after: string | null; emptied: boolean };
@@ -79,3 +81,6 @@ export type CrmdevChangeDone = { done: true; kind: CrmdevChangeRequest['kind']; 
 
 export const previewCrmdevChange = (change: CrmdevChangeRequest) => send<CrmdevChangePreview>('/crmdev/write/preview', change);
 export const confirmCrmdevChange = (token: string) => send<CrmdevChangeDone>('/crmdev/write/confirm', { token });
+
+/** «Actualizar» the clients the directory uses: CRMDev is read now (at most 1000; `truncated` when it gave that many). */
+export const refreshCrmdevClients = () => send<{ count: number; fetchedAt: string; truncated: boolean }>('/crmdev/clients/refresh', {});

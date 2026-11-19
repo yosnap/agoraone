@@ -21,13 +21,14 @@ from .web_api import Connection, WebApiError
 
 TITLE, DESCRIPTION = 300, 4000
 KIND_TOOL = {"tarea-nueva": "create_task", "tarea": "update_task", "proyecto": "update_project", "cliente-nuevo": "create_client",
-             "cliente": "update_client", "ticket": "update_ticket"}
+             "cliente": "update_client", "ticket": "update_ticket", "cliente-desde-local": "create_client"}
 KINDS = tuple(KIND_TOOL)
 # The readings a change makes old (names of projects and clients are also shown in tasks, tickets and hours).
 KIND_LISTS = {
     "tarea-nueva": frozenset({"list_tasks", "get_project_time_report"}), "tarea": frozenset({"list_tasks", "get_project_time_report"}),
     "proyecto": frozenset({"list_projects", "list_tasks", "list_tickets", "get_project_time_report"}),
     "cliente-nuevo": frozenset({"list_clients"}), "cliente": frozenset({"list_clients", "list_tickets"}), "ticket": frozenset({"list_tickets"}),
+    "cliente-desde-local": frozenset({"list_clients"}),
 }
 GONE = f"Ya no está entre los {crmdev_api.MAX_ROWS} más recientes de CRMDev: vuelve a leer, o cámbialo en CRMDev."
 
@@ -63,6 +64,7 @@ class Change:
     expected: dict = field(default_factory=dict)  # the «after»: found already so, the change is done
     notes: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    local_id: int | None = None  # «Crear en CRMDev» of a client kept here: linked with it once created
 
     @property
     def tool(self) -> str:
@@ -158,7 +160,7 @@ def plan(target: Connection, given: dict) -> Change:
         return _new_task(target, given)
     if kind == "cliente-nuevo":
         return _new_client(target, given)
-    raise ChangeError("Ese cambio no existe.")
+    raise ChangeError("Ese cambio no existe.")  # «cliente-desde-local» needs the database: `from_local`
 
 
 def _update(target: Connection, kind: str, given: dict) -> Change:
@@ -253,6 +255,32 @@ def _new_client(target: Connection, given: dict) -> Change:
     return _created("cliente-nuevo", after, NEW_CLIENT, f"Cliente nuevo en CRMDev «{after['name'][:200]}»", f"cliente-nuevo:{same_name(after['name'])[:200]}", notes)
 
 
+def from_local(connection, target: Connection, given: dict) -> Change:
+    """«Crear en CRMDev» for a client kept only here: its name, mail, company and phone as they are, and the state the
+    user chose (Cliente by default). Checked against CRMDev's newest clients read now: one with the same name or mail is
+    offered to link (ExistsError) instead of creating a second one. Never for a client already in CRMDev."""
+    from . import clients
+
+    _check_keys(given, {"kind", "localId", "status"})
+    local_id = given.get("localId")
+    if isinstance(local_id, bool) or not isinstance(local_id, int) or local_id < 1:
+        raise ChangeError("El cliente no es válido.")
+    own = clients.get(connection, local_id)
+    if own is None:
+        raise WebApiError("not_found", "Ese cliente ya no está en AgoraOne.")
+    entry = next((e for e in clients.directory(connection) if e.get("localId") == local_id), None)
+    if any(link["connector"] == "crmdev" and link["state"] == "linked" for link in own["links"]) or (entry is not None and entry["crmdevId"]):
+        raise ChangeError("Ese cliente ya está en CRMDev: no se crea otra vez.")
+    status = given.get("status") if given.get("status") is not None else "CUSTOMER"
+    after = _values({"name": own["name"], "email": own["email"], "company": own["company"], "phone": own["phone"], "status": status}, NEW_CLIENT)
+    _existing(target, after["name"], after.get("email"))
+    notes = [f"Se ha comprobado que no esté ya entre los {crmdev_api.MAX_ROWS} clientes más recientes de CRMDev, por nombre o por correo.",
+             "Al crearlo, tu cliente queda enlazado con el de CRMDev: se ve una sola vez.", "Su NIF, sus dominios y sus notas se quedan solo en AgoraOne."]
+    change = _created("cliente-desde-local", after, NEW_CLIENT, f"Cliente nuevo en CRMDev «{after['name'][:200]}»", f"cliente-desde-local:{local_id}", notes)
+    change.local_id = local_id
+    return change
+
+
 def check(target: Connection, change: Change) -> bool:
     """Just before sending: True when CRMDev already has the change (nothing to send), False to send it; StaleError
     when what was shown as «before» changed meanwhile, ExistsError when the new client appeared meanwhile."""
@@ -267,6 +295,6 @@ def check(target: Connection, change: Change) -> bool:
         if now == change.expected:
             return True
         raise StaleError([{"field": name, "label": spec.fields[name].label, "value": shown(spec.fields[name], now[name])} for name in change.seen])
-    if change.kind == "cliente-nuevo":
+    if change.kind in ("cliente-nuevo", "cliente-desde-local"):
         _existing(target, change.arguments["name"], change.arguments.get("email"))
     return False

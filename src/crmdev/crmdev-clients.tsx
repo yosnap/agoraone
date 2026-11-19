@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { getCrmdevClient, getCrmdevView, type CrmdevClient, type CrmdevClientRecord, type CrmdevFilters } from '../api/crmdev';
+import { useEffect, useState } from 'react';
+import { getClients, originLabels, type DirectoryClient } from '../api/clients';
+import { getCrmdevClient, refreshCrmdevClients, getCrmdevView, type CrmdevClient, type CrmdevClientRecord, type CrmdevFilters } from '../api/crmdev';
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
@@ -20,6 +21,29 @@ function ClientContact({ read, discreet, onOpen }: { read: CrmdevRead<CrmdevClie
   if (read.failure) return <CrmdevProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/>;
   if (!read.data) return <Loading label="Leyendo el contacto del cliente" lines={1}/>;
   return <Facts items={[['Correo', read.data.email ?? '—']]}/>;
+}
+
+/** How this CRMDev client shows in the directory of clients (Trabajos › Clientes): linked with Central or with one kept
+ * in AgoraOne, or not there yet (read every half hour, or now with «Actualizar clientes»). */
+export function DirectoryLink({ crmdevId }: { crmdevId: string }) {
+  const [entry, setEntry] = useState<DirectoryClient | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const read = () => getClients().then(found => setEntry(found.clients.find(client => client.crmdevId === crmdevId || client.contacts.some(contact => contact.id === crmdevId)) ?? null)).catch(() => setEntry(null));
+  useEffect(() => { void read(); }, [crmdevId]);  // read again only for another client
+  const refresh = async () => {
+    setBusy(true); setError('');
+    try { await refreshCrmdevClients(); await read(); } catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo actualizar.'); }
+    finally { setBusy(false); }
+  };
+  if (entry === undefined) return <Loading label="Buscándolo en tus clientes" lines={1}/>;
+  return <div className="field-row">
+    <span>{entry ? (entry.crmdevId === crmdevId ? `En tus clientes como «${entry.name}» (${entry.sources.map(origin => originLabels[origin]).join(', ')}).`
+      : `En tus clientes como persona de «${entry.name}», por su empresa.`)
+      : 'Aún no está en tus clientes de AgoraOne: se lee cada media hora.'}</span>
+    <span className="actions"><button type="button" className="button" disabled={busy} onClick={() => void refresh()}>{busy ? 'Leyendo…' : 'Actualizar clientes'}</button></span>
+    {error && <p className="error" role="alert">{error}</p>}
+  </div>;
 }
 
 /** A client's record, built from the list just read: its data, its address (hidden in discreet mode) and its tickets.
@@ -47,6 +71,7 @@ export function ClientRecord({ client, estado, gone = false, readAt, discreet, o
         : <Facts items={[['Nombre', client.name ?? '—'], ['Empresa', client.company ?? '—'], ['Estado', labelOf(clientStatusLabels, client.status)]]}/>}
     </Block>
     <Block title="Contacto"><ClientContact read={contact} discreet={discreet} onOpen={onOpen}/></Block>
+    <Block title="En tus clientes"><DirectoryLink crmdevId={client.id}/></Block>
     <Block title="Tickets" wide>
       {tickets.failure ? <CrmdevProblem failure={tickets.failure} onRetry={tickets.reload} onOpen={onOpen}/>
         : !tickets.data ? <Loading label="Leyendo los tickets del cliente" lines={3}/>
