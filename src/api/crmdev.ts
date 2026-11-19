@@ -57,3 +57,25 @@ export const getCrmdevClient = (clientId: string, estado?: string, fresh = false
 // saved CRMDev address, named without the language (the core adds `/es/`; a ticket lives under `soporte/tickets`).
 export type CrmdevWindowPage = 'panel' | 'proyectos' | 'tareas' | 'clientes' | 'soporte' | `proyectos/${string}` | `clientes/${string}`
   | `tickets/${string}`;
+
+// Changes to CRMDev, through the core (/api/core/crmdev/write/*): first the exact change (before and after, read from
+// CRMDev now) with a single-use token, then «Guardar en CRMDev» sends exactly that, once. The screen never names a tool
+// and nothing deletes. `list` is the filter of the list the record was shown in, so the core reads it from the same one.
+const send = <T>(path: string, body: unknown) => request<T>(`/core${path}`, body);
+export type CrmdevTaskValues = { title: string; description?: string; projectId?: string; assigneeId?: string; status?: string; priority?: string;
+  dueDate?: string };
+export type CrmdevClientValues = { name: string; email?: string; company?: string; phone?: string; status?: string };
+export type CrmdevChangeRequest =
+  | { kind: 'tarea-nueva'; values: CrmdevTaskValues }
+  | { kind: 'tarea'; id: string; list?: { estado?: string; proyecto?: string };
+    changes: { title?: string; description?: string | null; status?: string; priority?: string } }
+  | { kind: 'proyecto'; id: string; list?: { estado?: string }; changes: { name?: string; status?: string; progress?: number } }
+  | { kind: 'cliente-nuevo'; values: CrmdevClientValues }
+  | { kind: 'cliente'; id: string; list?: { estado?: string }; changes: { name?: string; email?: string; company?: string | null; status?: string } }
+  | { kind: 'ticket'; id: string; list?: { estado?: string; cliente?: string }; changes: { status?: string; priority?: string; category?: string } };
+export type CrmdevChangeRow = { field: string; label: string; before: string | null; after: string | null; emptied: boolean };
+export type CrmdevChangePreview = { token: string; kind: CrmdevChangeRequest['kind']; title: string; rows: CrmdevChangeRow[]; notes: string[]; warnings: string[] };
+export type CrmdevChangeDone = { done: true; kind: CrmdevChangeRequest['kind']; title: string; warning?: string; repeated?: boolean };
+
+export const previewCrmdevChange = (change: CrmdevChangeRequest) => send<CrmdevChangePreview>('/crmdev/write/preview', change);
+export const confirmCrmdevChange = (token: string) => send<CrmdevChangeDone>('/crmdev/write/confirm', { token });

@@ -45,8 +45,9 @@ def test_conectar_probar_y_el_modulo_sigue_a_la_conexion(tmp_path, fake):
         assert entry["state"]["status"] == "saved" and entry["state"]["configured"] == {"url": URL, "hasKey": True}
         assert entry["modules"] == {"crmdev": True}, "con una dirección guardada se enciende"
         tested = client.post("/connectors/crmdev/test", headers=HEADERS)
-        assert tested.status_code == 200 and tested.json()["tools"] == sorted(crmdev_api.READ_TOOLS - {"list_tickets"})
-        assert tested.json()["unverified"] == ["list_tickets"]
+        allowed = crmdev_api.READ_TOOLS | crmdev_api.WRITE_TOOLS
+        assert tested.status_code == 200 and tested.json()["tools"] == sorted(allowed - crmdev_api.MODULE_TOOLS)
+        assert tested.json()["unverified"] == ["list_tickets", "update_ticket"]
         for answer in (entry, tested.json(), client.get("/connectors", headers=HEADERS).json()):
             assert KEY not in str(answer)
         refused = client.post("/connectors/crmdev/test", json={"key": "crm_" + "f" * 48}, headers=HEADERS)

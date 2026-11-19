@@ -3,7 +3,9 @@ import type { CrmdevWindowPage } from '../api/crmdev';
 import { openConnector } from '../connectors/open-connector';
 import { OpenInConnector } from '../connectors/open-in-connector';
 import type { Section } from '../shell/shell-state';
+import { ChangeReview } from '../ui/change-review';
 import { statusTone, labelOf } from './crmdev-labels';
+import type { useCrmdevChange } from './use-crmdev-change';
 import { orderNote, readAgain, readAtLabel, useRereading, type CrmdevFailure } from './use-crmdev-view';
 
 // Pieces shared by the tabs and records of the «CRMDev» section. Everything from CRMDev is React text: never HTML, never
@@ -21,7 +23,7 @@ export function CrmdevConnect({ onOpen }: { onOpen: (section: Section) => void }
   return <article className="card central-connect" aria-labelledby="crmdev-connect-title">
     <h2 id="crmdev-connect-title">Conecta CRMDev</h2>
     <p>Escribe la dirección de tu CRMDev y una clave de organización (<code>crm_…</code>) creada en sus Ajustes › API Keys. La clave se guarda solo en el almacén de secretos del sistema.</p>
-    <p>AgoraOne solo lee tus proyectos, tareas, tickets y clientes; nunca borra nada en CRMDev.</p>
+    <p>AgoraOne lee tus proyectos, tareas, tickets y clientes, y solo crea o cambia algo después de enseñarte el cambio exacto y de que lo confirmes; nunca borra nada en CRMDev.</p>
     <div className="actions central-actions">
       <button type="button" className="button primary" onClick={() => openConnector('crmdev', onOpen)}>Ir a Conectores › CRMDev</button>
     </div>
@@ -73,4 +75,26 @@ export function ReadAgain({ times }: { times: (string | null | undefined)[] }) {
     {when && <small className="muted">{when}</small>}
     <button type="button" className="button" disabled={busy} onClick={readAgain}>{busy ? 'Leyendo…' : 'Volver a leer'}</button>
   </div>;
+}
+
+/** The two buttons of a form that changes CRMDev, in a row of their own or on the right of its last field. */
+export function EditActions({ busy, disabled, onCancel }: { busy: boolean; disabled: boolean; onCancel: () => void }) {
+  return <div className="actions central-actions crmdev-edit-actions">
+    <button type="button" className="button" onClick={onCancel}>Cancelar</button>
+    <button type="submit" className="button primary" disabled={disabled || busy}>{busy ? 'Preparando…' : 'Revisar el cambio'}</button>
+  </div>;
+}
+
+/** The exact change to CRMDev and «Guardar en CRMDev»; after a conflict, what CRMDev has now. `onReview` goes back to
+ * the form (closing the review), `onLink` opens the existing record of a new client CRMDev already has. */
+export function CrmdevReview({ change, onCancel, onReview, onLink }: {
+  change: ReturnType<typeof useCrmdevChange>; onCancel: () => void; onReview: () => void; onLink?: (id: string) => void;
+}) {
+  return <ChangeReview change={change} where="CRMDev" onCancel={() => { change.reset(); onCancel(); }} onReview={() => { change.reset(); onReview(); }}
+    onLink={onLink && (id => { change.reset(); onLink(id); })}/>;
+}
+
+/** What was just done in CRMDev (or a warning about it). */
+export function Said({ text }: { text: string }) {
+  return text ? <p className="ok-note central-wide" role="status">{text}</p> : null;
 }

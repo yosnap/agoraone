@@ -4,7 +4,8 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { Block, Facts, RecordLayout } from '../ui/record-layout';
-import { Badge, CrmdevProblem, HIDDEN, OpenInCrmdev, OrderNote, ReadAgain } from './crmdev-common';
+import { Badge, CrmdevProblem, HIDDEN, OpenInCrmdev, OrderNote, ReadAgain, Said } from './crmdev-common';
+import { CrmdevEditClient, CrmdevNewClient } from './crmdev-edit-client';
 import { clientStatusLabels, filterOptions, labelOf } from './crmdev-labels';
 import { TicketsTable } from './crmdev-tickets';
 import { readKey, useCrmdevRead, type CrmdevRead } from './use-crmdev-view';
@@ -21,10 +22,13 @@ function ClientContact({ read, discreet, onOpen }: { read: CrmdevRead<CrmdevClie
 }
 
 /** A client's record, built from the list just read: its data, its address (hidden in discreet mode) and its tickets.
- * `estado` is the filter of that list, so the address comes from the same list (and the core's cache). */
+ * `estado` is the filter of that list, so the address comes from the same list (and the core's cache). Its data can be
+ * changed after seeing exactly what changes; its mail only out of discreet mode, once read. */
 export function ClientRecord({ client, estado, readAt, discreet, onBack, onOpen }: {
   client: CrmdevClient & { id: string }; estado?: string; readAt: string | null; discreet: boolean; onBack: () => void; onOpen: (section: Section) => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [said, setSaid] = useState('');
   const tickets = useCrmdevRead(readKey('tickets', { cliente: client.id }), fresh => getCrmdevView('tickets', { cliente: client.id }, fresh));
   const contact = useCrmdevRead(contactKey(client.id, estado, discreet), fresh => getCrmdevClient(client.id, estado, fresh));
   return <RecordLayout titleId="crmdev-client-title" title={client.name ?? 'Cliente sin nombre'}
@@ -32,8 +36,12 @@ export function ClientRecord({ client, estado, readAt, discreet, onBack, onOpen 
     actions={<span className="actions"><ReadAgain times={[readAt, tickets.data?.readAt, contact.data?.readAt]}/>
       <OpenInCrmdev page={`clientes/${client.id}`} discreet={discreet}/>
       <button type="button" className="button" onClick={onBack}>Volver a la lista</button></span>}>
-    <Block title="Datos">
-      <Facts items={[['Nombre', client.name ?? '—'], ['Empresa', client.company ?? '—'], ['Estado', labelOf(clientStatusLabels, client.status)]]}/>
+    <Said text={said}/>
+    <Block title="Datos" actions={!editing && <button type="button" className="button" onClick={() => { setSaid(''); setEditing(true); }}>Editar</button>}>
+      {editing ? <CrmdevEditClient key={JSON.stringify([client, contact.data?.email])} client={client} list={{ estado }} discreet={discreet}
+        email={discreet || !contact.data ? undefined : contact.data.email} onCancel={() => setEditing(false)}
+        onDone={text => { setEditing(false); setSaid(text); }}/>
+        : <Facts items={[['Nombre', client.name ?? '—'], ['Empresa', client.company ?? '—'], ['Estado', labelOf(clientStatusLabels, client.status)]]}/>}
     </Block>
     <Block title="Contacto"><ClientContact read={contact} discreet={discreet} onOpen={onOpen}/></Block>
     <Block title="Tickets" wide>
@@ -48,8 +56,12 @@ export function ClientRecord({ client, estado, readAt, discreet, onBack, onOpen 
 export function CrmdevClients({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   const [filters, setFilters] = useState<CrmdevFilters['clientes']>({});
   const [open, setOpen] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [said, setSaid] = useState('');
   const read = useCrmdevRead(readKey('clientes', filters), fresh => getCrmdevView('clientes', filters, fresh));
   const picked = open ? read.data?.items.find(c => c.id === open) : undefined;
+  // The existing client of a «Nuevo cliente» CRMDev already has: opened from the whole list, where it is.
+  const existing = (id: string) => { setCreating(false); setFilters({}); setOpen(id); };
   if (picked?.id) return <ClientRecord client={{ ...picked, id: picked.id }} estado={filters.estado} readAt={read.data?.readAt ?? null} discreet={discreet} onBack={() => setOpen(null)} onOpen={onOpen}/>;
   return <>
     <div className="field-row central-filters">
@@ -57,6 +69,10 @@ export function CrmdevClients({ discreet, onOpen }: { discreet: boolean; onOpen:
         options={filterOptions(clientStatusLabels)}/></label>
       <ReadAgain times={[read.data?.readAt]}/>
     </div>
+    <Said text={said}/>
+    {creating ? <CrmdevNewClient discreet={discreet} onCancel={() => setCreating(false)} onExisting={existing}
+      onDone={text => { setCreating(false); setSaid(text); }}/>
+      : <div className="crmdev-new"><button type="button" className="button" onClick={() => { setSaid(''); setCreating(true); }}>Nuevo cliente</button></div>}
     {read.failure ? <CrmdevProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/>
       : !read.data ? <Loading label="Leyendo los clientes de CRMDev" lines={4}/>
       : <>

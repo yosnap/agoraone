@@ -3,16 +3,21 @@ import { getCrmdevView, type CrmdevFilters, type CrmdevTask } from '../api/crmde
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
-import { Badge, CrmdevProblem, LongText, OrderNote, ReadAgain } from './crmdev-common';
+import { Badge, CrmdevProblem, LongText, OrderNote, ReadAgain, Said } from './crmdev-common';
+import { CrmdevEditTask, CrmdevNewTask } from './crmdev-edit-task';
 import { dayLabel, filterOptions, priorityLabels, taskStatusLabels } from './crmdev-labels';
 import { readKey, useCrmdevRead } from './use-crmdev-view';
 
 /** Some tasks: title (and its description), state, priority, date, assignee's name only and, unless they all belong to
- * one project, the project. In discreet mode neither descriptions nor the assignee column are shown. */
-export function TasksTable({ tasks, discreet, withProject = true }: { tasks: CrmdevTask[]; discreet: boolean; withProject?: boolean }) {
+ * one project, the project; with `onEdit`, an «Editar» button on each. In discreet mode neither descriptions nor the
+ * assignee column are shown. */
+export function TasksTable({ tasks, discreet, withProject = true, onEdit }: {
+  tasks: CrmdevTask[]; discreet: boolean; withProject?: boolean; onEdit?: (id: string) => void;
+}) {
   if (!tasks.length) return <p className="muted">Ninguna tarea.</p>;
   return <table className="data-table central-table">
-    <thead><tr><th>Tarea</th><th>Estado</th><th>Prioridad</th><th>Fecha</th>{!discreet && <th>Asignada a</th>}{withProject && <th>Proyecto</th>}</tr></thead>
+    <thead><tr><th>Tarea</th><th>Estado</th><th>Prioridad</th><th>Fecha</th>{!discreet && <th>Asignada a</th>}{withProject && <th>Proyecto</th>}
+      {onEdit && <th><span className="visually-hidden">Acciones</span></th>}</tr></thead>
     <tbody>{tasks.map((t, index) => <tr key={t.id ?? index}>
       <td className="crmdev-title"><strong>{t.title ?? '—'}</strong><LongText text={t.description} discreet={discreet}/></td>
       <td><Badge labels={taskStatusLabels} value={t.status}/></td>
@@ -20,8 +25,35 @@ export function TasksTable({ tasks, discreet, withProject = true }: { tasks: Crm
       <td className="central-date">{dayLabel(t.dueDate)}</td>
       {!discreet && <td>{t.assignee?.name ?? '—'}</td>}
       {withProject && <td>{t.project ?? '—'}</td>}
+      {onEdit && <td className="central-row-actions">{t.id && <button type="button" className="button" aria-label={`Editar la tarea ${t.title ?? ''}`}
+        onClick={() => onEdit(t.id as string)}>Editar</button>}</td>}
     </tr>)}</tbody>
   </table>;
+}
+
+/** Some tasks with «Nueva tarea» and «Editar»: each change is shown exactly and only saved after «Guardar en CRMDev».
+ * `list` is the filter the tasks were read with (the core reads a task again from that same list); `project` presets
+ * the project of a new task. Members are read only to offer an assignee, never in discreet mode. */
+export function EditableTasks({ tasks, list, discreet, withProject = true, project }: {
+  tasks: CrmdevTask[]; list: CrmdevFilters['tareas']; discreet: boolean; withProject?: boolean; project?: string;
+}) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [said, setSaid] = useState('');
+  const creating = editing === 'nueva';
+  const projects = useCrmdevRead(creating ? readKey('proyectos') : null, fresh => getCrmdevView('proyectos', {}, fresh));
+  const members = useCrmdevRead(creating && !discreet ? readKey('miembros') : null, fresh => getCrmdevView('miembros', {}, fresh));
+  const open = (id: string) => { setSaid(''); setEditing(id); };
+  const done = (text: string) => { setEditing(null); setSaid(text); };
+  const picked = editing && !creating ? tasks.find(t => t.id === editing) : undefined;
+  return <>
+    <Said text={said}/>
+    {creating ? <CrmdevNewTask projects={projects.data?.items ?? []} members={members.data?.items ?? []} discreet={discreet} project={project}
+      onDone={done} onCancel={() => setEditing(null)}/>
+      : picked?.id ? <CrmdevEditTask key={JSON.stringify(picked)} task={{ ...picked, id: picked.id }} list={list} discreet={discreet} onDone={done}
+        onCancel={() => setEditing(null)}/>
+      : <div className="crmdev-new"><button type="button" className="button" onClick={() => open('nueva')}>Nueva tarea</button></div>}
+    <TasksTable tasks={tasks} discreet={discreet} withProject={withProject} onEdit={open}/>
+  </>;
 }
 
 /** Tareas: the 100 most recent, filtered by state and project in CRMDev itself. */
@@ -41,6 +73,6 @@ export function CrmdevTasks({ discreet, onOpen }: { discreet: boolean; onOpen: (
     </div>
     {read.failure ? <CrmdevProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/>
       : !read.data ? <Loading label="Leyendo las tareas de CRMDev" lines={4}/>
-      : <><OrderNote page={read.data}/><TasksTable tasks={read.data.items} discreet={discreet}/></>}
+      : <><OrderNote page={read.data}/><EditableTasks tasks={read.data.items} list={filters} discreet={discreet}/></>}
   </>;
 }

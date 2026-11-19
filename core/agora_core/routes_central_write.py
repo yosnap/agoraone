@@ -20,11 +20,8 @@ in the action log (only the names of the fields)."""
 import hashlib
 import json
 import logging
-import secrets as random
 import sqlite3
-import time
 from contextlib import contextmanager
-from dataclasses import dataclass
 
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
@@ -32,6 +29,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import central_api, central_write, clients, modules
+from .confirmed_change import Pending, PendingChanges, Refused, Sentences
 from .db import DB_NAME, connect, now, transaction
 from .settings import Settings
 
@@ -63,15 +61,6 @@ class ConfirmIn(BaseModel):
     token: str = Field(min_length=16, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
-@dataclass
-class Pending:
-    change: central_write.Change
-    at: float
-    central: str  # the Central (address and key) it was previewed against: sent only there
-    state: str = "ready"  # ready, sending, done or unknown
-    result: dict | None = None
-
-
 def module_of(kind: str) -> str:
     return "presupuestos" if kind == "fase" else "central"
 
@@ -83,8 +72,7 @@ def central_of(target: central_api.Connection) -> str:
 
 def central_write_router(settings: Settings, secrets) -> APIRouter:
     router = APIRouter()
-    pending: dict[str, Pending] = {}
-    busy: set[str] = set()
+    pending: PendingChanges[central_write.Change] = PendingChanges(Sentences(EXPIRED, SENDING, UNKNOWN, BUSY_TARGET), TOKEN_SECONDS, MAX_TOKENS)
 
     @contextmanager
     def database():
@@ -117,16 +105,6 @@ def central_write_router(settings: Settings, secrets) -> APIRouter:
         scopes = set(central_api.status(target)["scopes"])
         need = {"escritura", "lectura", "presupuestos"} if kind == "fase" else {"escritura", "lectura"}
         return need <= scopes
-
-    def forget_old() -> None:
-        limit = time.time() - TOKEN_SECONDS
-        for token in [t for t, p in pending.items() if p.at < limit and p.state != "sending"]:
-            pending.pop(token, None)
-        while len(pending) > MAX_TOKENS:
-            oldest = next((t for t, p in pending.items() if p.state != "sending"), None)
-            if oldest is None:
-                break
-            pending.pop(oldest)
 
     @router.get("/central/write/permissions")
     async def permissions(request: Request):
@@ -179,54 +157,34 @@ def central_write_router(settings: Settings, secrets) -> APIRouter:
             return problem(409, str(error), "conflict", current=error.current)
         except central_api.CentralApiError as error:
             return failed(error, kind)
-        forget_old()
-        token = random.token_urlsafe(24)
-        pending[token] = Pending(change, time.time(), central_of(target))
+        token = pending.preview(change, central_of(target))
         return {"token": token, **change.public()}
 
     @router.post("/central/write/confirm")
     async def confirm(body: ConfirmIn):
-        # From here to the reservation nothing is awaited: two presses at once can never both pass.
-        forget_old()
-        entry = pending.get(body.token)
-        if entry is None:
-            return problem(410, EXPIRED, "expired")
-        if entry.state == "done":
-            return {**(entry.result or {}), "repeated": True}
-        if entry.state == "sending":
-            return problem(409, SENDING, "repeated")
-        if entry.state == "unknown":
-            return problem(409, UNKNOWN, "unknown")
-        change = entry.change
-        if change.target in busy:
-            return problem(409, BUSY_TARGET, "repeated")
-        entry.state = "sending"
-        busy.add(change.target)
         try:
-            return await send(body.token, entry)
-        finally:
-            busy.discard(change.target)
-            if entry.state == "sending":  # an unexpected failure: the change is reviewed again
-                pending.pop(body.token, None)
+            return await pending.confirm(body.token, send)
+        except Refused as refused:
+            return problem(refused.status, str(refused), refused.kind)
 
-    async def send(token: str, entry: Pending):
+    async def send(token: str, entry: Pending[central_write.Change]):
         change = entry.change
         on, target = await run_in_threadpool(prepare, module_of(change.kind))
         if not on or target is None:
-            pending.pop(token, None)
+            pending.drop(token)
             return problem(404, OFF[module_of(change.kind)], "off") if not on else problem(409, NOT_CONNECTED, "not_connected")
-        if central_of(target) != entry.central:
-            pending.pop(token, None)
+        if central_of(target) != entry.owner:
+            pending.drop(token)
             return problem(409, MOVED, "expired")
         if change.local_id is not None:
             own = await run_in_threadpool(with_db, lambda c: clients.get(c, change.local_id))
             if own is None or own["centralId"]:
-                pending.pop(token, None)
+                pending.drop(token)
                 return problem(409, "Ese cliente ya no está en AgoraOne o ya está enlazado con uno de Central.", "repeated")
         try:
             data = await run_in_threadpool(central_api.write, target, change.method, change.path, change.body)
         except central_api.CentralConflict as error:
-            pending.pop(token, None)
+            pending.drop(token)
             return problem(409, conflict_message(error, change), error.kind, current=central_write.shown_now(change.kind, error.current))
         except central_api.CentralApiError as error:
             if error.status == "busy" or (change.method == "PATCH" and error.status in ("unreachable", "error")):
@@ -235,7 +193,7 @@ def central_write_router(settings: Settings, secrets) -> APIRouter:
                 entry.state = "unknown"  # Central may have created it: never twice, and said so from the first answer
                 return problem(502, UNKNOWN, "unknown")
             else:
-                pending.pop(token, None)
+                pending.drop(token)
             return failed(error, change.kind)
         result = {"done": True, "kind": change.kind, "title": change.title}
         warning = await run_in_threadpool(with_db, lambda c: record(c, change, data))
