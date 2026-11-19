@@ -7,6 +7,7 @@ import { CrmdevConnect, CrmdevProblem, OpenInCrmdev } from './crmdev-common';
 import { CrmdevProjects } from './crmdev-projects';
 import { CrmdevTasks } from './crmdev-tasks';
 import { CrmdevTickets } from './crmdev-tickets';
+import { clearChanges } from './use-crmdev-change';
 import { crmdevTabs, startCrmdev, useCrmdevRead, type CrmdevTabName } from './use-crmdev-view';
 import '../central/central.css';
 import './crmdev.css';
@@ -35,7 +36,7 @@ export function CrmdevTabs({ tab, onTab, discreet, onOpen }: { tab: CrmdevTabNam
 export function CrmdevView({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   // Once per visit: nothing read before (or before connecting) is shown as current. It only empties the store, asks
   // nothing and is harmless if React runs it twice; the reads start once their components are on screen.
-  useState(startCrmdev);
+  useState(() => { startCrmdev(); clearChanges(); });
   const [tab, setTab] = useState<CrmdevTabName>('proyectos');
   const connection = useCrmdevRead('conexion', () => getConnector('crmdev'));
   const connected = crmdevConnected(connection.data);

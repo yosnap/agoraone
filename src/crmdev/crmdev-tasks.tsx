@@ -6,6 +6,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { Badge, CrmdevProblem, LongText, OrderNote, ReadAgain, Said } from './crmdev-common';
 import { CrmdevEditTask, CrmdevNewTask } from './crmdev-edit-task';
 import { dayLabel, filterOptions, priorityLabels, taskStatusLabels } from './crmdev-labels';
+import { changeKey, resetChange, useEditing } from './use-crmdev-change';
 import { readKey, useCrmdevRead } from './use-crmdev-view';
 
 /** Some tasks: title (and its description), state, priority, date, assignee's name only and, unless they all belong to
@@ -37,21 +38,23 @@ export function TasksTable({ tasks, discreet, withProject = true, onEdit }: {
 export function EditableTasks({ tasks, list, discreet, withProject = true, project }: {
   tasks: CrmdevTask[]; list: CrmdevFilters['tareas']; discreet: boolean; withProject?: boolean; project?: string;
 }) {
-  const [editing, setEditing] = useState<string | null>(null);
+  const editing = useEditing(tasks);
+  const [creating, setCreating] = useState(false);
   const [said, setSaid] = useState('');
-  const creating = editing === 'nueva';
   const projects = useCrmdevRead(creating ? readKey('proyectos') : null, fresh => getCrmdevView('proyectos', {}, fresh));
   const members = useCrmdevRead(creating && !discreet ? readKey('miembros') : null, fresh => getCrmdevView('miembros', {}, fresh));
-  const open = (id: string) => { setSaid(''); setEditing(id); };
-  const done = (text: string) => { setEditing(null); setSaid(text); };
-  const picked = editing && !creating ? tasks.find(t => t.id === editing) : undefined;
+  const close = () => { setCreating(false); editing.close(); };
+  const open = (id: string) => { setSaid(''); setCreating(false); resetChange(changeKey('tarea', id)); editing.open(id, tasks.find(t => t.id === id)); };
+  const create = () => { setSaid(''); editing.close(); resetChange(changeKey('tarea-nueva', project)); setCreating(true); };
+  const done = (text: string) => { close(); setSaid(text); };
+  const task = editing.row;
   return <>
     <Said text={said}/>
     {creating ? <CrmdevNewTask projects={projects.data?.items ?? []} members={members.data?.items ?? []} discreet={discreet} project={project}
-      onDone={done} onCancel={() => setEditing(null)}/>
-      : picked?.id ? <CrmdevEditTask key={JSON.stringify(picked)} task={{ ...picked, id: picked.id }} list={list} discreet={discreet} onDone={done}
-        onCancel={() => setEditing(null)}/>
-      : <div className="crmdev-new"><button type="button" className="button" onClick={() => open('nueva')}>Nueva tarea</button></div>}
+      onDone={done} onCancel={close}/>
+      // Keyed by id: a reread (after a conflict, say) never remounts it, so what was typed and the review stay.
+      : task ? <CrmdevEditTask key={task.id} task={task} list={editing.gone ? {} : list} gone={editing.gone} discreet={discreet} onDone={done} onCancel={close}/>
+      : <div className="crmdev-new"><button type="button" className="button" onClick={create}>Nueva tarea</button></div>}
     <TasksTable tasks={tasks} discreet={discreet} withProject={withProject} onEdit={open}/>
   </>;
 }

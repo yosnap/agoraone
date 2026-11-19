@@ -29,7 +29,7 @@ KIND_LISTS = {
     "proyecto": frozenset({"list_projects", "list_tasks", "list_tickets", "get_project_time_report"}),
     "cliente-nuevo": frozenset({"list_clients"}), "cliente": frozenset({"list_clients", "list_tickets"}), "ticket": frozenset({"list_tickets"}),
 }
-GONE = "Ya no está en esa lista de CRMDev (puede haber cambiado de estado): vuelve a leer y revisa el cambio."
+GONE = f"Ya no está entre los {crmdev_api.MAX_ROWS} más recientes de CRMDev: vuelve a leer, o cámbialo en CRMDev."
 
 
 class ExistsError(Exception):
@@ -138,8 +138,13 @@ def _rows_of(target: Connection, tool: str, arguments: dict, fresh: bool) -> lis
     return [row for row in data if isinstance(row, dict)]
 
 
-def _find(target: Connection, spec: Update, scope: dict, item: str) -> dict | None:
-    return next((row for row in _rows_of(target, spec.list_tool, scope, True) if row.get("id") == item), None)
+def _find(target: Connection, spec: Update, scope: dict, item: str, anywhere: bool = False) -> dict | None:
+    """The record in the list it was shown from, read now; with `anywhere`, also in the whole list when it left that
+    one (a change of state already applied moves it out of a list filtered by state)."""
+    found = next((row for row in _rows_of(target, spec.list_tool, scope, True) if row.get("id") == item), None)
+    if found is None and anywhere and scope:
+        found = next((row for row in _rows_of(target, spec.list_tool, {}, True) if row.get("id") == item), None)
+    return found
 
 
 # ---- Planning and checking -----------------------------------------------------------------------------------------
@@ -253,7 +258,7 @@ def check(target: Connection, change: Change) -> bool:
     when what was shown as «before» changed meanwhile, ExistsError when the new client appeared meanwhile."""
     if change.kind in UPDATES:
         spec = UPDATES[change.kind]
-        row = _find(target, spec, change.scope, change.item or "")
+        row = _find(target, spec, change.scope, change.item or "", anywhere=True)
         if row is None:
             raise StaleError([], GONE)
         now = {name: now_value(row, name) for name in change.seen}

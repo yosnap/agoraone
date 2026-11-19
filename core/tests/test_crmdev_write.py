@@ -11,7 +11,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from agora_core import brain_tools, confirmed_change, crmdev_api, crmdev_write, modules
+from agora_core import brain_tools, confirmed_change, crmdev_api, crmdev_write, modules, web_api
 from agora_core.db import DB_NAME, connect
 from test_assistant import MemorySecrets
 from test_central_api import HEADERS, app_with
@@ -31,6 +31,20 @@ ROWS = {
 UPDATES = {"update_task": ("list_tasks", "taskId"), "update_project": ("list_projects", "projectId"), "update_client": ("list_clients", "clientId"),
            "update_ticket": ("list_tickets", "ticketId")}
 FILTERS = {"status": "status", "projectId": "projectId", "clientId": "clientId"}
+# How each update of CRMDev's route.ts applies a field: «set» only when truthy (`args.x && …`), «defined» whenever it is
+# sent (`args.x !== undefined`, so null or "" empties it). Anything else is ignored, as CRMDev does.
+TRUTHY, DEFINED = "set", "defined"
+SEMANTICS = {
+    "update_task": {"title": TRUTHY, "description": DEFINED, "status": TRUTHY, "priority": TRUTHY},
+    "update_project": {"name": TRUTHY, "description": DEFINED, "status": TRUTHY, "progress": DEFINED},
+    "update_client": {"name": TRUTHY, "email": TRUTHY, "company": DEFINED, "status": TRUTHY, "notes": DEFINED},
+    "update_ticket": {"status": TRUTHY, "priority": TRUTHY, "category": TRUTHY},
+}
+
+
+def applied(tool: str, args: dict) -> dict:
+    rules = SEMANTICS[tool]
+    return {k: v for k, v in args.items() if k in rules and (rules[k] == DEFINED or v)}
 
 
 class StatefulCrmdev:
@@ -40,6 +54,7 @@ class StatefulCrmdev:
         self.rows = copy.deepcopy(ROWS)
         self.seen: list[dict] = []
         self.fail_write: httpx.Response | None = None
+        self.after_write: httpx.Response | Exception | None = None  # applied, then this answer (a 500 or a cut)
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         if request.headers.get("authorization") != f"Bearer {KEY}":
@@ -59,12 +74,18 @@ class StatefulCrmdev:
         if tool in UPDATES:
             table, key = UPDATES[tool]
             row = next(r for r in self.rows[table] if r["id"] == args[key])
-            row.update({k: v for k, v in args.items() if k != key})
-            return httpx.Response(200, json={"success": True, "data": {"id": row["id"]}})
+            row.update(applied(tool, args))
+            return self._answer({"id": row["id"]})
         table = {"create_task": "list_tasks", "create_client": "list_clients"}[tool]
         made = {"id": f"n{len(self.rows[table]) + 1}", **args}
         self.rows[table].insert(0, made)
-        return httpx.Response(200, json={"success": True, "data": {"id": made["id"]}})
+        return self._answer({"id": made["id"]})
+
+    def _answer(self, data: dict) -> httpx.Response:
+        after, self.after_write = self.after_write, None
+        if isinstance(after, Exception):
+            raise after
+        return after if after is not None else httpx.Response(200, json={"success": True, "data": data})
 
     def tools(self) -> list[str]:
         return [b["tool"] for b in self.seen]
@@ -332,3 +353,72 @@ def test_watson_no_tiene_herramientas_de_crmdev():
     source = Path(brain_tools.__file__).read_text(encoding="utf-8")
     assert "crmdev" not in source.lower()
     assert not {spec["name"] for spec in brain_tools.SPECS if "crmdev" in spec["name"]}
+
+
+def test_el_simulado_ignora_los_campos_vacios_como_crmdev():
+    assert applied("update_client", {"clientId": "c1", "email": "", "name": "", "company": None, "notes": "x"}) == {"company": None, "notes": "x"}
+    assert applied("update_task", {"taskId": "t1", "title": "", "description": None}) == {"description": None}
+
+
+def test_si_cambian_la_clave_o_la_direccion_tras_la_vista_previa_no_se_envia(setup, fake):
+    client, _ = setup
+    token = preview(client, {"kind": "tarea", "id": "t1", "changes": {"status": "DONE"}}).json()["token"]
+    other = "crm_" + "f" * 48
+    assert client.put("/connectors/crmdev", json={"url": URL, "key": other}, headers=HEADERS).status_code == 200
+    before = len(fake.seen)
+    moved = confirm(client, token)
+    assert moved.status_code == 409 and moved.json()["status"] == "expired" and len(fake.seen) == before
+    assert other not in moved.text and KEY not in moved.text
+
+
+@pytest.mark.parametrize("failure", [httpx.Response(500, json={"error": "Internal server error"}), httpx.ReadTimeout("corte")])
+def test_reintento_de_una_edicion_ya_aplicada_se_da_por_hecho(setup, fake, failure):
+    client, settings = setup
+    token = preview(client, {"kind": "tarea", "id": "t1", "list": {"estado": "TODO"}, "changes": {"status": "DONE"}}).json()["token"]
+    fake.after_write = failure
+    first = confirm(client, token)
+    assert first.status_code in (502, 503) and first.json()["status"] == "unreachable", first.text
+    again = confirm(client, token)
+    assert again.status_code == 200 and again.json()["done"] is True, "ya está así aunque haya salido de la lista filtrada"
+    assert [b["tool"] for b in fake.writes()] == ["update_task"], "una sola escritura"
+    c = connect(settings.data_dir / DB_NAME)
+    try:
+        detail = json.loads(c.execute("SELECT detail FROM action_log ORDER BY id DESC LIMIT 1").fetchone()[0])
+    finally:
+        c.close()
+    assert detail["already"] is True, "anotado como que no se envió nada"
+
+
+def test_un_alta_sin_respuesta_no_se_repite_sin_crear_de_todos_modos(setup, fake):
+    client, _ = setup
+    body = {"kind": "tarea-nueva", "values": {"title": "Una"}}
+    fake.after_write = httpx.Response(500, json={"error": "Internal server error"})
+    assert confirm(client, preview(client, body).json()["token"]).json()["status"] == "unknown"
+    again = preview(client, body)
+    assert again.status_code == 409 and again.json()["status"] == "doubtful" and "CRMDev" in again.json()["error"]
+    assert preview(client, {**body, "values": {"title": "  una "}}).json()["status"] == "doubtful", "mismo título"
+    assert [b["tool"] for b in fake.writes()].count("create_task") == 1, "sin confirmarlo, no sale otra"
+    anyway = preview(client, {**body, "anyway": True})
+    assert anyway.status_code == 200 and any("repetido" in w for w in anyway.json()["warnings"])
+    assert confirm(client, anyway.json()["token"]).status_code == 200
+    assert [b["tool"] for b in fake.writes()].count("create_task") == 2
+    assert preview(client, body).status_code == 200, "creada ya, deja de pedir confirmación"
+    assert preview(client, {"kind": "tarea", "id": "t1", "anyway": True, "changes": {"status": "DONE"}}).status_code == 422
+
+
+def test_el_transporte_no_deja_salir_notas_ni_descripcion_del_proyecto(fake):
+    target = crmdev_api.Connection(URL, KEY)
+    for tool, arguments in (("update_client", {"clientId": "c1", "notes": "x"}), ("update_project", {"projectId": "p1", "description": "x"})):
+        with pytest.raises(crmdev_api.WebApiError):
+            crmdev_api.call(target, tool, arguments)
+        with pytest.raises(crmdev_api.WebApiError) as refused:
+            web_api.request(crmdev_api.SPEC, target, "POST", "/api/mcp/rest", body={"tool": tool, "arguments": arguments})
+        assert str(refused.value) == crmdev_api.NOT_ALLOWED
+    assert fake.seen == []
+
+
+@pytest.mark.parametrize("raw", [b'{"kind": 5}', b'[1]', b'no es json', b'{"kind": "tarea", "x": "' + b"a" * 70000 + b'"}'])
+def test_cuerpos_raros_dan_error_propio_sin_peticiones(setup, fake, raw):
+    client, _ = setup
+    answer = client.post("/crmdev/write/preview", content=raw, headers={**HEADERS, "content-type": "application/json"})
+    assert answer.status_code in (413, 422) and set(answer.json()) == {"error", "status"} and fake.seen == []

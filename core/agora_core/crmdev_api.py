@@ -49,6 +49,10 @@ REVOKED = "CRMDev no acepta la clave: puede estar revocada o caducada. Crea otra
 NOT_MEMBER = "Quien creó la clave ya no es miembro de la organización en CRMDev: crea otra clave en Ajustes › API Keys."
 NO_PLAN = "Tu plan de CRMDev no incluye la API (módulo MCP)."
 TICKETS_OFF = "Los tickets no están activos en tu plan de CRMDev (módulo de soporte)."
+NO_WRITE = ("Quien creó la clave en CRMDev no tiene permiso para cambiar esto (el proyecto, la tarea, el ticket o la persona asignada): "
+            "pide ese permiso a un administrador de CRMDev o hazlo allí.")
+# CRMDev's own reasons when the creator of the key may not change that record (its live project permissions).
+NO_WRITE_REASONS = frozenset({"FORBIDDEN", "PROJECT_UNAVAILABLE", "RESPONSIBLE_UNAVAILABLE", "PARENT_UNAVAILABLE", "CONSULTATION_UNAVAILABLE"})
 TOO_BIG = "CRMDev devolvió una respuesta demasiado grande."  # web_api's own sentence for an answer over the cap
 HOURS_TOO_BIG = "El informe de horas de este proyecto es demasiado grande para leerlo aquí: míralo en CRMDev."
 DEFAULT_WAIT = 10.0  # seconds, when CRMDev does not say how long
@@ -284,6 +288,8 @@ def _forbidden(text: str, key: str) -> WebApiError:
         return WebApiError("auth", NOT_MEMBER)
     if reason == "MODULE_DISABLED":
         return WebApiError("forbidden", TICKETS_OFF)
+    if reason in NO_WRITE_REASONS:
+        return WebApiError("forbidden", NO_WRITE)
     if "plan" in reason.lower():
         return WebApiError("forbidden", NO_PLAN)
     return WebApiError("forbidden", FORBIDDEN)

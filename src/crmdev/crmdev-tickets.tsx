@@ -6,6 +6,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { Badge, CrmdevProblem, LongText, OpenInCrmdev, OrderNote, ReadAgain, Said } from './crmdev-common';
 import { CrmdevEditTicket } from './crmdev-edit-ticket';
 import { categoryLabels, dayLabel, filterOptions, labelOf, priorityLabels, ticketStatusLabels } from './crmdev-labels';
+import { changeKey, resetChange, useEditing } from './use-crmdev-change';
 import { namesOf, readKey, useCrmdevRead } from './use-crmdev-view';
 
 /** What the screen filters itself, over the tickets that came: CRMDev's API filters tickets only by state and client. */
@@ -43,7 +44,6 @@ export function TicketsTable({ tickets, discreet, withClient = true, onEdit }: {
 export function CrmdevTickets({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   const [filters, setFilters] = useState<CrmdevFilters['tickets']>({});
   const [local, setLocal] = useState<ScreenFilters>({});
-  const [editing, setEditing] = useState<string | null>(null);
   const [said, setSaid] = useState('');
   const read = useCrmdevRead(readKey('tickets', filters), fresh => getCrmdevView('tickets', filters, fresh));
   const clients = useCrmdevRead(readKey('clientes'), fresh => getCrmdevView('clientes', {}, fresh));
@@ -54,7 +54,8 @@ export function CrmdevTickets({ discreet, onOpen }: { discreet: boolean; onOpen:
   const projects = namesOf((read.data?.items ?? []).map(t => t.project));
   const shown = read.data ? screenFiltered(read.data.items, local) : [];
   const narrowed = Boolean(local.prioridad || local.proyecto);
-  const picked = editing ? read.data?.items.find(t => t.id === editing) : undefined;
+  const editing = useEditing(read.data?.items);
+  const picked = editing.row;
   return <>
     <div className="field-row central-filters">
       <label className="field">Estado<ModernSelect value={filters.estado ?? ''} onChange={value => remote({ ...filters, estado: value || undefined })}
@@ -74,9 +75,9 @@ export function CrmdevTickets({ discreet, onOpen }: { discreet: boolean; onOpen:
         <OrderNote page={read.data}/>
         {narrowed && <p className="muted" role="status">{shown.length} de {read.data.items.length} tickets leídos.</p>}
         <Said text={said}/>
-        {picked?.id && <CrmdevEditTicket key={JSON.stringify(picked)} ticket={{ ...picked, id: picked.id }} list={filters} onCancel={() => setEditing(null)}
-          onDone={text => { setEditing(null); setSaid(text); }}/>}
-        <TicketsTable tickets={shown} discreet={discreet} onEdit={id => { setSaid(''); setEditing(id); }}/>
+        {picked && <CrmdevEditTicket key={picked.id} ticket={picked} list={editing.gone ? {} : filters} gone={editing.gone} onCancel={editing.close}
+          onDone={text => { editing.close(); setSaid(text); }}/>}
+        <TicketsTable tickets={shown} discreet={discreet} onEdit={id => { setSaid(''); resetChange(changeKey('ticket', id)); editing.open(id, read.data?.items.find(t => t.id === id)); }}/>
       </>}
   </>;
 }

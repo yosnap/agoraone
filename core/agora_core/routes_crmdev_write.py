@@ -6,7 +6,10 @@ that deletes:
 - `POST /crmdev/write/confirm` `{token}`: reads the record again and, if what was shown as «before» is still there,
   sends exactly the arguments kept with the token, once, with the tool fixed by the kind of change (`KIND_TOOL`).
 
-Tokens, the reservation and repeated presses are `confirmed_change`'s. The screen never names a tool: a body naming
+Tokens, the reservation and repeated presses are `confirmed_change`'s. The body of a preview is read by hand (capped,
+and each kind checks its own keys in crmdev_write), so anything out of shape is a 422 in the core's own words. After a
+creation whose answer never came, a new preview of the same one is refused (409 `doubtful`) until the user, having
+looked in CRMDev, asks for it with `anyway` («Crear de todos modos»). The screen never names a tool: a body naming
 one is refused before anything is asked. A change already in CRMDev (found so on confirming) is not sent again. When
 CRMDev could not be heard to the end, a creation is marked «unknown» and never sent again with that token; a change of
 a record may be pressed again (it is read again first). After a change, the readings it makes old are forgotten.
@@ -19,9 +22,10 @@ import hashlib
 import json
 import logging
 import sqlite3
+import time
 from contextlib import contextmanager
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -38,16 +42,16 @@ UNKNOWN = "CRMDev no respondió a tiempo y puede haberse creado: revisa en CRMDe
 MOVED = "La conexión con CRMDev ha cambiado desde la vista previa: vuelve a revisar el cambio."
 SENDING = "Ese cambio ya se está enviando a CRMDev."
 BUSY_TARGET = "Hay otro cambio de esto enviándose a CRMDev: espera a que termine y revisa otra vez."
+DOUBTFUL = ("Un intento anterior de crear esto no recibió respuesta de CRMDev y puede haberse creado: revisa en CRMDev si ya está antes de "
+            "crearlo otra vez.")
+ANYWAY = "Un intento anterior pudo crearlo ya: si sigues, puede quedar repetido en CRMDev."
+CREATIONS = frozenset({"tarea-nueva", "cliente-nuevo"})
+DOUBT_SECONDS = 24 * 3600
+MAX_BODY = 64 * 1024
 STATUS_CODES = {"forbidden": 403, "not_found": 404, "invalid": 422, "busy": 429, "config": 409}
 TOKEN_SECONDS = 900
 MAX_TOKENS = 200
 LOG = logging.getLogger(__name__)
-
-
-class PreviewIn(BaseModel):
-    # Checked field by field in crmdev_write (each kind allows its own keys): unknown ones, like a «tool», are refused there.
-    model_config = {"extra": "allow"}
-    kind: str = Field(max_length=20)
 
 
 class ConfirmIn(BaseModel):
@@ -63,6 +67,7 @@ def owner_of(target: web_api.Connection) -> str:
 def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
     router = APIRouter()
     pending: PendingChanges[crmdev_write.Change] = PendingChanges(Sentences(EXPIRED, SENDING, UNKNOWN, BUSY_TARGET), TOKEN_SECONDS, MAX_TOKENS)
+    doubtful: dict[str, float] = {}  # creations whose answer never came (target → when): a new one of the same asks first
 
     @contextmanager
     def database():
@@ -85,11 +90,31 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
                 return False, None
             return True, crmdev_api.connection_of(connection, secrets)
 
+    def doubtful_of(target_id: str) -> bool:
+        cutoff = time.time() - DOUBT_SECONDS
+        for old in [t for t, at in doubtful.items() if at < cutoff]:
+            doubtful.pop(old, None)
+        return target_id in doubtful
+
+    def doubt(target_id: str) -> None:
+        doubtful[target_id] = time.time()
+        while len(doubtful) > MAX_TOKENS:
+            doubtful.pop(next(iter(doubtful)))
+
     @router.post("/crmdev/write/preview")
-    async def preview(body: PreviewIn):
-        given = body.model_dump()
-        if given.get("kind") not in crmdev_write.KINDS:
+    async def preview(request: Request):
+        raw = await request.body()
+        if len(raw) > MAX_BODY:
+            return problem(413, "El cambio es demasiado grande.", "invalid")
+        try:
+            given = json.loads(raw)
+        except ValueError:
+            return problem(422, "El cambio no se entiende.", "invalid")
+        if not isinstance(given, dict) or not isinstance(given.get("kind"), str) or given["kind"] not in crmdev_write.KINDS:
             return problem(422, "Ese cambio no existe.", "invalid")
+        creation = given["kind"] in CREATIONS
+        # «Crear de todos modos», only for a creation whose earlier try may already be in CRMDev; anywhere else refused.
+        anyway = given.pop("anyway", None) is True if creation else False
         on, target = await run_in_threadpool(prepare)
         if not on:
             return problem(404, OFF, "off")
@@ -103,6 +128,10 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
             return problem(409, str(error), "exists", crmdevId=error.crmdev_id, crmdevName=error.name)
         except web_api.WebApiError as error:
             return failed(error)
+        if creation and doubtful_of(change.target):
+            if not anyway:
+                return problem(409, DOUBTFUL, "doubtful")
+            change.warnings.append(ANYWAY)
         token = pending.preview(change, owner_of(target))
         return {"token": token, **change.public()}
 
@@ -115,6 +144,7 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
 
     async def send(token: str, entry: Pending[crmdev_write.Change]):
         change = entry.change
+        creation = change.kind in CREATIONS
         on, target = await run_in_threadpool(prepare)
         if not on or target is None:
             pending.drop(token)
@@ -142,32 +172,41 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
                 # The tool comes from the kind of change, fixed in the core; the closed list checks it again.
                 await run_in_threadpool(crmdev_api.call, target, crmdev_write.KIND_TOOL[change.kind], change.arguments)
             except web_api.WebApiError as error:
-                creation = change.kind in ("tarea-nueva", "cliente-nuevo")
                 if error.status != "busy":
                     crmdev_api.forget_reads(crmdev_write.KIND_LISTS[change.kind])  # it may have been written: read it anew
                 if error.status == "busy" or (not creation and error.status in ("unreachable", "error")):
                     entry.state = "ready"  # nothing written, or a change that is read again before sending: may be pressed again
                 elif error.status in ("unreachable", "error"):
                     entry.state = "unknown"  # CRMDev may have created it: never twice, and said so from the first answer
+                    doubt(change.target)
                     return problem(502, UNKNOWN, "unknown")
                 else:
                     pending.drop(token)
                 return failed(error)
-        crmdev_api.forget_reads(crmdev_write.KIND_LISTS[change.kind])
+            except Exception:
+                if creation:  # an unexpected failure once it may have left: treated as «may have been created»
+                    entry.state = "unknown"
+                    doubt(change.target)
+                raise
+        # Done before anything else can fail, so an error afterwards never lets the same change be sent again.
         result = {"done": True, "kind": change.kind, "title": change.title}
-        warning = await run_in_threadpool(record, change)
+        entry.state, entry.result = "done", result
+        doubtful.pop(change.target, None)
+        crmdev_api.forget_reads(crmdev_write.KIND_LISTS[change.kind])
+        warning = await run_in_threadpool(record, change, already)
         if warning:
             result["warning"] = warning
-        entry.state, entry.result = "done", result
         return result
 
-    def record(change: crmdev_write.Change) -> str | None:
-        """Writes down what was created or changed in CRMDev (field names, never values)."""
+    def record(change: crmdev_write.Change, already: bool) -> str | None:
+        """Writes down what was created or changed in CRMDev (field names, never values); `already` when CRMDev had it
+        so and nothing was sent."""
         try:
             with database() as connection, transaction(connection):
                 connection.execute("INSERT INTO action_log (occurred_at, actor, action, outcome, detail) VALUES (?, 'usuario', ?, 'done', ?)",
-                                   (now(), "crear_en_crmdev" if change.kind.endswith("-nueva") or change.kind.endswith("-nuevo") else "cambiar_en_crmdev",
-                                    json.dumps({"kind": change.kind, "fields": change.fields(), "from": "vista"}, ensure_ascii=False)))
+                                   (now(), "crear_en_crmdev" if change.kind in CREATIONS else "cambiar_en_crmdev",
+                                    json.dumps({"kind": change.kind, "fields": change.fields(), "from": "vista", **({"already": True} if already else {})},
+                                               ensure_ascii=False)))
         except (sqlite3.Error, OSError):
             LOG.warning("No se pudo anotar en el registro de acciones un cambio hecho en CRMDev.")
             return "Hecho en CRMDev, pero no se pudo anotar en el registro de acciones de AgoraOne."

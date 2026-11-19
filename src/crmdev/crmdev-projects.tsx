@@ -4,10 +4,11 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { Block, Facts, RecordLayout } from '../ui/record-layout';
-import { Badge, CrmdevProblem, OpenInCrmdev, OrderNote, ReadAgain, Said } from './crmdev-common';
+import { Badge, CrmdevProblem, Gone, OpenInCrmdev, OrderNote, ReadAgain, Said } from './crmdev-common';
 import { CrmdevEditProject } from './crmdev-edit-project';
 import { dayLabel, filterOptions, labelOf, minutesLabel, projectStatusLabels, projectTypeLabels } from './crmdev-labels';
 import { EditableTasks } from './crmdev-tasks';
+import { changeKey, resetChange, useEditing } from './use-crmdev-change';
 import { readKey, useCrmdevRead, type CrmdevRead } from './use-crmdev-view';
 
 const progressLabel = (progress: number | null) => (progress == null ? '—' : `${progress} %`);
@@ -51,8 +52,8 @@ function HoursDetail({ hours }: { hours: CrmdevHours }) {
 /** A project's record, built from the list just read (CRMDev has no read by id), with its tasks and its hours; its
  * name, state and progress, and its tasks, can be changed after seeing exactly what changes. `list` is the filter of the
  * list it was opened from. */
-export function ProjectRecord({ project, list = {}, readAt, discreet, onBack, onOpen }: {
-  project: CrmdevProject & { id: string }; list?: CrmdevFilters['proyectos']; readAt: string | null; discreet: boolean; onBack: () => void;
+export function ProjectRecord({ project, list = {}, gone = false, readAt, discreet, onBack, onOpen }: {
+  project: CrmdevProject & { id: string }; list?: CrmdevFilters['proyectos']; gone?: boolean; readAt: string | null; discreet: boolean; onBack: () => void;
   onOpen: (section: Section) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -64,8 +65,9 @@ export function ProjectRecord({ project, list = {}, readAt, discreet, onBack, on
       <OpenInCrmdev page={`proyectos/${project.id}`} discreet={discreet}/>
       <button type="button" className="button" onClick={onBack}>Volver a la lista</button></span>}>
     <Said text={said}/>
-    <Block title="Estado" actions={!editing && <button type="button" className="button" onClick={() => { setSaid(''); setEditing(true); }}>Editar</button>}>
-      {editing ? <CrmdevEditProject key={JSON.stringify(project)} project={project} list={list} onCancel={() => setEditing(false)}
+    {gone && <div className="central-wide"><Gone/></div>}
+    <Block title="Estado" actions={!editing && <button type="button" className="button" onClick={() => { setSaid(''); resetChange(changeKey('proyecto', project.id)); setEditing(true); }}>Editar</button>}>
+      {editing ? <CrmdevEditProject key={project.id} project={project} list={gone ? {} : list} onCancel={() => setEditing(false)}
         onDone={text => { setEditing(false); setSaid(text); }}/>
         : <Facts items={[['Estado', labelOf(projectStatusLabels, project.status)], ['Progreso', progressLabel(project.progress)],
           ['Tipo', labelOf(projectTypeLabels, project.type)], ['Fecha límite', dayLabel(project.deadline)]]}/>}
@@ -83,10 +85,11 @@ export function ProjectRecord({ project, list = {}, readAt, discreet, onBack, on
 /** Proyectos: the 100 most recent, filtered by state in CRMDev, and each project's record. */
 export function CrmdevProjects({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   const [filters, setFilters] = useState<CrmdevFilters['proyectos']>({});
-  const [open, setOpen] = useState<string | null>(null);
   const read = useCrmdevRead(readKey('proyectos', filters), fresh => getCrmdevView('proyectos', filters, fresh));
-  const picked = open ? read.data?.items.find(p => p.id === open) : undefined;
-  if (picked?.id) return <ProjectRecord project={{ ...picked, id: picked.id }} list={filters} readAt={read.data?.readAt ?? null} discreet={discreet} onBack={() => setOpen(null)} onOpen={onOpen}/>;
+  const open = useEditing(read.data?.items);
+  const picked = open.row;
+  if (picked) return <ProjectRecord key={picked.id} project={picked} list={filters} gone={open.gone} readAt={read.data?.readAt ?? null} discreet={discreet}
+    onBack={open.close} onOpen={onOpen}/>;
   return <>
     <div className="field-row central-filters">
       <label className="field">Estado<ModernSelect value={filters.estado ?? ''} onChange={value => setFilters({ estado: value || undefined })}
@@ -107,7 +110,7 @@ export function CrmdevProjects({ discreet, onOpen }: { discreet: boolean; onOpen
             <td>{labelOf(projectTypeLabels, p.type)}</td>
             <td className="central-date">{dayLabel(p.deadline)}</td>
             <td className="central-row-actions">{p.id && <span className="actions">
-              <button type="button" className="button" aria-label={`Ver ficha de ${p.name ?? 'proyecto sin nombre'}`} onClick={() => setOpen(p.id)}>Ver ficha</button>
+              <button type="button" className="button" aria-label={`Ver ficha de ${p.name ?? 'proyecto sin nombre'}`} onClick={() => open.open(p.id as string, p)}>Ver ficha</button>
               <OpenInCrmdev page={`proyectos/${p.id}`} discreet={discreet}/></span>}</td>
           </tr>)}</tbody>
         </table>}

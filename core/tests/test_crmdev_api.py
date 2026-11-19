@@ -276,7 +276,9 @@ def test_probar_no_ensena_lo_que_no_esta_en_la_lista(monkeypatch):
 @pytest.mark.parametrize("error, status, message", [
     ("Invalid API Key", "auth", crmdev_api.REVOKED), ("MCP no está incluido en el plan de esta organización", "forbidden", crmdev_api.NO_PLAN),
     ("MODULE_DISABLED", "forbidden", crmdev_api.TICKETS_OFF), ("MCP_UNAUTHORIZED", "auth", crmdev_api.NOT_MEMBER),
-    ("FORBIDDEN", "forbidden", crmdev_api.FORBIDDEN), (None, "forbidden", crmdev_api.FORBIDDEN),
+    ("FORBIDDEN", "forbidden", crmdev_api.NO_WRITE), ("PROJECT_UNAVAILABLE", "forbidden", crmdev_api.NO_WRITE),
+    ("RESPONSIBLE_UNAVAILABLE", "forbidden", crmdev_api.NO_WRITE), ("Otra cosa", "forbidden", crmdev_api.FORBIDDEN),
+    (None, "forbidden", crmdev_api.FORBIDDEN),
 ])
 def test_cada_403_dice_su_causa(monkeypatch, error, status, message):
     body = {"error": error} if error else {}

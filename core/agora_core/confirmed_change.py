@@ -71,7 +71,9 @@ class PendingChanges(Generic[C]):
         for token in [t for t, p in self._items.items() if p.at < oldest_kept and p.state != "sending"]:
             self._items.pop(token, None)
         while len(self._items) > self.limit:
-            oldest = next((t for t, p in self._items.items() if p.state != "sending"), None)
+            # Over the cap, an «unknown» one goes last: it keeps saying «it may have been created» rather than «expired».
+            oldest = next((t for t, p in self._items.items() if p.state not in ("sending", "unknown")), None) \
+                or next((t for t, p in self._items.items() if p.state != "sending"), None)
             if oldest is None:
                 break
             self._items.pop(oldest)
