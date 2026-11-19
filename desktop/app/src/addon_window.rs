@@ -1,4 +1,4 @@
-//! A window of this app for the own web of an add-on of the user (Central, Mi fábrica), never in a frame: the add-on
+//! A window of this app for the own web of an add-on of the user (Central, CRMDev, Mi fábrica), never in a frame: the add-on
 //! is the window's main page, so its session, its CSP and its headers work as in a browser on macOS (WKWebView),
 //! Windows (WebView2) and Linux (WebKitGTK). The user signs in with the add-on's own login; no key of AgoraOne goes
 //! there. Each window is described by a `Spec` (its label, title, data store, the rule for the addresses it may open
@@ -92,6 +92,26 @@ pub fn origin_of(url: &Url) -> Option<Origin> {
         return None;
     }
     Some((url.scheme().to_string(), url.host_str()?.to_ascii_lowercase(), url.port_or_known_default()?))
+}
+
+/// AgoraOne's own host: any 127.x address or ::1, which share cookies with AgoraOne's window whatever the port.
+fn agora_host(host: &str) -> bool {
+    host == "[::1]" || host.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_loopback())
+}
+
+/// The origin of a remote add-on's address (a connector's web: Central, CRMDev) handed over by the core, checked again
+/// here: http or https, no user or password, plain http only on `localhost` (the core's rule, without AgoraOne's own
+/// host, since cookies go by host and not by port), and never one of AgoraOne's own ports.
+pub fn remote_origin(url: &Url, own_ports: &[u16]) -> Option<Origin> {
+    let origin = origin_of(url)?;
+    if !url.username().is_empty() || url.password().is_some() || url.as_str().len() > MAX_URL || agora_host(&origin.1) {
+        return None;
+    }
+    let local = origin.1 == "localhost";
+    if (origin.0 == "http" && !local) || (local && own_ports.contains(&origin.2)) {
+        return None;
+    }
+    Some(origin)
 }
 
 /// Whether a page may load in the window: exactly the same scheme, host and port as the open address.
@@ -375,6 +395,31 @@ pub fn run(spec: &'static Spec, app: AppHandle, link: agora_server::core::CoreLi
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn origen_remoto_solo_su_origen_y_nunca_agoraone() {
+        let url = |text: &str| Url::parse(text).unwrap();
+        let own = [4317, 4318];
+        let saved = remote_origin(&url("https://crm.example.com/es/panel"), &own);
+        let origin = saved.as_ref();
+        assert!(allowed(&url("https://crm.example.com/es/proyectos/x"), origin));
+        assert!(allowed(&url("https://KORDIA.tech:443/es/soporte"), origin));
+        assert!(!allowed(&url("https://otro-crm.example.com/"), origin), "otro host");
+        assert!(!allowed(&url("https://evil.crm.example.com/"), origin), "un subdominio es otro host");
+        assert!(!allowed(&url("https://crm.example.com:8443/"), origin), "otro puerto");
+        assert!(!allowed(&url("http://crm.example.com/"), origin), "http frente a https");
+        for wrong in ["javascript:alert(1)", "data:text/html,hola", "file:///etc/passwd", "blob:https://crm.example.com/1", "about:blank"] {
+            assert!(!allowed(&url(wrong), origin), "{wrong}");
+            assert!(remote_origin(&url(wrong), &own).is_none(), "{wrong}");
+        }
+        for wrong in ["http://crm.example.com/", "https://ana@crm.example.com/", "https://ana:pw@crm.example.com/", "http://127.0.0.1:3099/",
+                      "https://127.0.0.1:3099/", "http://127.1.2.3:3099/", "http://[::1]:3099/", "http://localhost:4317/", "http://localhost:4318/"] {
+            assert!(remote_origin(&url(wrong), &own).is_none(), "{wrong}");
+        }
+        assert_eq!(remote_origin(&url("http://localhost:3099/"), &own), Some(("http".into(), "localhost".into(), 3099)));
+        let long = format!("https://crm.example.com/{}", "a".repeat(MAX_URL));
+        assert!(remote_origin(&url(&long), &own).is_none(), "dirección demasiado larga");
+    }
 
     #[test]
     fn nunca_el_almacen_por_defecto() {

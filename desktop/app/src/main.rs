@@ -8,6 +8,7 @@
 
 mod addon_window;
 mod central_window;
+mod crmdev_window;
 mod fabrica_window;
 mod youtube_window;
 
@@ -264,6 +265,7 @@ fn main() {
                 notify_loop(app.handle().clone(), link.clone());
                 wake_loop(app.handle().clone(), link.clone());
                 central_window::central_loop(app.handle().clone(), link.clone());
+                crmdev_window::crmdev_loop(app.handle().clone(), link.clone());
                 fabrica_window::fabrica_loop(app.handle().clone(), link.clone());
                 youtube_window::youtube_loop(app.handle().clone(), link);
             }
@@ -305,7 +307,7 @@ fn main() {
         .build(tauri::generate_context!())
         .unwrap_or_else(|_| alert("no se pudo abrir la ventana"));
     app.run(move |app, event| {
-        // Neither the hidden YouTube window nor Central's keeps the app open: closing AgoraOne's window closes them too.
+        // Neither the hidden YouTube window nor an add-on's (Central, CRMDev, Mi fábrica) keeps the app open: closing AgoraOne's window closes them too.
         if let RunEvent::WindowEvent { label, event: tauri::WindowEvent::Destroyed, .. } = &event
             && label == "main"
         {

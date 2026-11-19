@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { getModules, putModules, type ModuleName, type ModulesState } from '../api/core';
 import { checkCentralWindow } from '../api/central';
+import { checkConnectorWindow } from '../api/connector-window';
 import { checkFabricaWindow } from '../api/fabrica';
 
 /** Which modules are on, shared by the whole screen (1.6). Until read, everything counts as on. */
@@ -31,10 +32,16 @@ export const moduleLabels = () => labels;
 export const moduleOwners = () => owners;
 /** Whether the modules have been read once. */
 export const modulesRead = () => read;
+/** By the connector's window label (`Connector.window`, today the connector's id too): makes the desktop app look again
+ * whether that window may stay open. */
+export const windowChecks: Record<string, () => Promise<unknown>> = {
+  central: checkCentralWindow, crmdev: () => checkConnectorWindow('crmdev'), fabrica: checkFabricaWindow,
+};
+/** Before the owners are read (or with an older core): the modules whose connector is not named like them. */
+const OWNER_FALLBACK: Partial<Record<ModuleName, string>> = { presupuestos: 'central' };
+const windowOf = (name: ModuleName) => owners?.[name] ?? OWNER_FALLBACK[name] ?? name;
 export async function setModule(name: ModuleName, value: boolean) {
   publish(await putModules({ [name]: value }));
-  // Central's window closes at once when no module that uses it is left on.
-  if (!value && (name === 'central' || name === 'presupuestos')) void checkCentralWindow().catch(() => undefined);
-  // The same for the fábrica's window when its module is turned off.
-  if (!value && name === 'fabrica') void checkFabricaWindow().catch(() => undefined);
+  // A connector's window closes at once when no module that uses it is left on (Central with Presupuestos, CRMDev, the fábrica).
+  if (!value) void windowChecks[windowOf(name)]?.().catch(() => undefined);
 }

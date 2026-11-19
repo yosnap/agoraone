@@ -1,7 +1,5 @@
 import { deleteConnector, putConnector, type Connector, type ModuleName } from '../api/core';
-import { checkCentralWindow } from '../api/central';
-import { checkFabricaWindow } from '../api/fabrica';
-import { refreshModules, setModule } from '../shell/modules';
+import { refreshModules, setModule, windowChecks } from '../shell/modules';
 import { changesFor, type Fields } from './connector-forms';
 
 // What the card's buttons do, apart from the card so it can be checked without a screen: every call to the core is
@@ -12,7 +10,7 @@ export type ActionDeps = {
   /** By the connector's window label: makes the desktop app look again whether that window may stay open. */
   windows: Record<string, () => Promise<unknown>>;
 };
-const real: ActionDeps = { put: putConnector, remove: deleteConnector, refresh: refreshModules, windows: { central: checkCentralWindow, fabrica: checkFabricaWindow } };
+const real: ActionDeps = { put: putConnector, remove: deleteConnector, refresh: refreshModules, windows: windowChecks };
 
 /** After any change: the modules may follow the connection (Central turns its modules on) and its window may close. */
 function afterChange(connector: Connector, deps: ActionDeps) {

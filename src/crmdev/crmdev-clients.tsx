@@ -4,7 +4,7 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { Block, Facts, RecordLayout } from '../ui/record-layout';
-import { Badge, CrmdevProblem, HIDDEN, OrderNote, ReadAgain } from './crmdev-common';
+import { Badge, CrmdevProblem, HIDDEN, OpenInCrmdev, OrderNote, ReadAgain } from './crmdev-common';
 import { clientStatusLabels, filterOptions, labelOf } from './crmdev-labels';
 import { TicketsTable } from './crmdev-tickets';
 import { readKey, useCrmdevRead, type CrmdevRead } from './use-crmdev-view';
@@ -30,6 +30,7 @@ export function ClientRecord({ client, estado, readAt, discreet, onBack, onOpen 
   return <RecordLayout titleId="crmdev-client-title" title={client.name ?? 'Cliente sin nombre'}
     subtitle={client.company && client.company !== client.name ? client.company : undefined} badges={<span className="chip">De CRMDev</span>}
     actions={<span className="actions"><ReadAgain times={[readAt, tickets.data?.readAt, contact.data?.readAt]}/>
+      <OpenInCrmdev page={`clientes/${client.id}`} discreet={discreet}/>
       <button type="button" className="button" onClick={onBack}>Volver a la lista</button></span>}>
     <Block title="Datos">
       <Facts items={[['Nombre', client.name ?? '—'], ['Empresa', client.company ?? '—'], ['Estado', labelOf(clientStatusLabels, client.status)]]}/>
@@ -66,7 +67,9 @@ export function CrmdevClients({ discreet, onOpen }: { discreet: boolean; onOpen:
             <td className="crmdev-title"><strong>{c.name ?? '—'}</strong></td>
             <td>{c.company && c.company !== c.name ? c.company : '—'}</td>
             <td><Badge labels={clientStatusLabels} value={c.status}/></td>
-            <td className="central-row-actions">{c.id && <button type="button" className="button" aria-label={`Ver ficha de ${c.name ?? 'cliente sin nombre'}`} onClick={() => setOpen(c.id)}>Ver ficha</button>}</td>
+            <td className="central-row-actions">{c.id && <span className="actions">
+              <button type="button" className="button" aria-label={`Ver ficha de ${c.name ?? 'cliente sin nombre'}`} onClick={() => setOpen(c.id)}>Ver ficha</button>
+              <OpenInCrmdev page={`clientes/${c.id}`} discreet={discreet}/></span>}</td>
           </tr>)}</tbody>
         </table>}
       </>}

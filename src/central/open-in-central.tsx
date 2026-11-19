@@ -1,48 +1,17 @@
-import { useState, type ReactNode } from 'react';
-import { ApiError } from '../api/client';
-import { centralExternalLink, openCentralInBrowser, openCentralLink, openCentralWindow, type CentralLink, type CentralPage } from '../api/central';
+import type { ReactNode } from 'react';
+import { centralExternalLink, openCentralInBrowser, openCentralLink, type CentralLink, type CentralPage } from '../api/central';
+import { OpenInConnector } from '../connectors/open-in-connector';
 import { eventStore, WindowLinkNotice } from '../shell/window-link-notice';
 import './central.css';
 
 /** Central's own web in a window of AgoraOne (1.7), never in a frame: for what has no native view here and for
- * «Abrir en Central» on a client, project or quote. The user signs in there with Central's own login. Without the
- * desktop app (AgoraOne in a browser tab) the same page can open in the system's browser. In discreet mode nothing
- * of Central is opened: its window would show what discreet mode hides. */
-type Said = { ok: boolean; text: string; browser?: boolean };
-
-const message = (error: unknown, fallback: string) => error instanceof ApiError || error instanceof Error ? error.message : fallback;
-
-export function OpenInCentral({ page, label = 'Abrir en Central', discreet = false, browserToo = false, content, buttonClass = 'button' }: {
+ * «Abrir en Central» on a client, project or quote. It is the connector window's button with Central's pages. */
+export function OpenInCentral({ page, label = 'Abrir en Central', ...rest }: {
   page: CentralPage; label?: string; discreet?: boolean; browserToo?: boolean;
   /** What the button shows instead of `label` (a level badge that leads to the record), with `label` as its name. */
   content?: ReactNode; buttonClass?: string;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [said, setSaid] = useState<Said | null>(null);
-  if (discreet) return null;
-  const open = async (inBrowser: boolean) => {
-    setBusy(true); setSaid(null);
-    try {
-      if (inBrowser) {
-        await openCentralInBrowser(page);
-        setSaid({ ok: true, text: 'Abierto en tu navegador.' });
-      } else {
-        await openCentralWindow(page);
-        setSaid({ ok: true, text: 'Abierto en la ventana de Central. La primera vez, inicia sesión con tu usuario de Central: se recuerda.' });
-      }
-    } catch (error) {
-      const noWindow = error instanceof ApiError && error.data?.status === 'no_window';
-      setSaid({ ok: false, text: message(error, 'No se pudo abrir Central.'), browser: noWindow });
-    } finally { setBusy(false); }
-  };
-  return <div className="central-open">
-    <div className="actions central-actions">
-      <button type="button" className={buttonClass} disabled={busy} aria-label={content ? label : undefined} title={content ? label : undefined}
-        onClick={() => void open(false)}>{busy ? 'Abriendo…' : content ?? label}</button>
-      {(browserToo || said?.browser) && <button type="button" className="button" disabled={busy} onClick={() => void open(true)}>Abrir en el navegador</button>}
-    </div>
-    {said && <p className={said.ok ? 'ok-note' : 'error'} role="status">{said.text}</p>}
-  </div>;
+  return <OpenInConnector connector="central" page={page} label={label} {...rest}/>;
 }
 
 const PAGES: { page: CentralPage; label: string; what: string; browserToo?: boolean }[] = [
