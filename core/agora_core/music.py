@@ -8,6 +8,7 @@ list, and what to play («pon …») is passed as an argument, never written int
 
 import shutil
 import subprocess
+import time
 import sys
 from pathlib import Path
 
@@ -28,9 +29,9 @@ class MusicError(RuntimeError):
         self.reason = reason
 
 
-def _osascript(script: str, *args: str) -> str:
+def _osascript(script: str, *args: str, timeout: float = TIMEOUT) -> str:
     try:
-        done = subprocess.run(["/usr/bin/osascript", "-e", script, *args], capture_output=True, text=True, timeout=TIMEOUT, check=False)
+        done = subprocess.run(["/usr/bin/osascript", "-e", script, *args], capture_output=True, text=True, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
         raise MusicError("El reproductor no responde.", "silent") from error
     if done.returncode != 0:
@@ -84,6 +85,55 @@ SEARCH_MUSIC = '''on run argv
     return "ok"
   end tell
 end run'''
+# A song of the Apple Music catalogue: its album opens in Music and it plays from that song. Music plays the album
+# from its first track, so it skips (muted) to the song asked for and starts it from the beginning.
+OPEN_IN_MUSIC = '''on run argv
+  tell application "Music" to open location (item 1 of argv)
+  return "opened"
+end run'''
+PLAY_FROM_ALBUM = '''on run argv
+  tell application "Music"
+    set wanted to item 1 of argv
+    set v to sound volume
+    set sound volume to 0
+    play
+    delay 1
+    set tries to 0
+    repeat while (name of current track) is not wanted and tries < 40
+      next track
+      delay 0.4
+      set tries to tries + 1
+    end repeat
+    set ok to (name of current track) is wanted
+    if ok then set player position to 0
+    set sound volume to v
+    if not ok then
+      pause
+      return "none"
+    end if
+    return "ok"
+  end tell
+end run'''
+CATALOG = "https://itunes.apple.com/search"
+
+
+def catalog_song(query: str, fetch=None) -> dict | None:
+    """The first song of the public Apple Music catalogue for these words (only the words go to Apple): its name,
+    artist and the album address that opens it in Music. None when there is nothing or no answer."""
+    import httpx
+
+    try:
+        answer = (fetch or httpx.get)(CATALOG, params={"term": query, "entity": "song", "country": "es", "limit": 5}, timeout=8)
+        results = answer.json().get("results", []) if answer.status_code == 200 else []
+    except Exception:  # noqa: BLE001 - an outside service: no answer is «not found»
+        return None
+    for item in results:
+        if isinstance(item, dict) and item.get("trackName") and isinstance(item.get("collectionId"), int) and isinstance(item.get("trackId"), int):
+            return {"name": str(item["trackName"])[:200], "artist": str(item.get("artistName") or "")[:120],
+                    "url": f"music://music.apple.com/es/album/{item['collectionId']}?i={item['trackId']}"}
+    return None
+
+
 SEARCH_SPOTIFY = '''on run argv
   tell application "Spotify" to open location ("spotify:search:" & (item 1 of argv))
   return "opened"
@@ -271,8 +321,17 @@ def play(player: str, query: str) -> str:
         raise MusicError(f"{PLAYERS[player]['name']} no está instalado en este Mac. Prueba con YouTube.", "missing")
     if player == "music":
         result = _osascript(SEARCH_MUSIC, query)
-        if result == "none":
-            raise MusicError(f"No encuentro «{query}» en tu biblioteca de Apple Music (solo busca en ella). Prueba con YouTube.", "missing")
-        return f"Reproduciendo «{query}» en Música."
+        if result != "none":
+            return f"Reproduciendo «{query}» en Música."
+        # Not in the library: the Apple Music catalogue (the user's subscription plays it).
+        song = catalog_song(query)
+        if not song:
+            raise MusicError(f"No encuentro «{query}» en Apple Music. Prueba con YouTube.", "missing")
+        _osascript(OPEN_IN_MUSIC, song["url"])
+        time.sleep(3)  # Music shows the album before it can play it
+        if _osascript(PLAY_FROM_ALBUM, song["name"], timeout=30) == "none":
+            raise MusicError(f"Música no pudo poner «{song['name']}». Prueba con YouTube.", "missing")
+        by = f" de {song['artist']}" if song["artist"] else ""
+        return f"Pongo «{song['name']}»{by} en Música, de Apple Music."
     _osascript(SEARCH_SPOTIFY, query)
     return f"Abierta la búsqueda de «{query}» en Spotify: elige qué poner."

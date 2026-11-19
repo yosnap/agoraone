@@ -60,11 +60,21 @@ def test_spotify_sin_instalar_no_se_le_pregunta(mac, monkeypatch):
 
 def test_solo_lo_que_falta_se_puede_buscar_en_youtube(mac, monkeypatch):
     monkeypatch.setattr(music, "_running", lambda process: True)
-    monkeypatch.setattr(music, "_osascript", lambda script, *a: "none")
+    monkeypatch.setattr(music, "_osascript", lambda script, *a, **k: "none")
+    monkeypatch.setattr(music, "catalog_song", lambda query: None)  # nothing in the catalogue either
     with pytest.raises(music.MusicError) as missing:
         music.play("music", "jazz")
     assert missing.value.reason == "missing"
-    def denied(script, *a):
+    monkeypatch.setattr(music.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(music, "catalog_song", lambda query: {"name": "So What", "artist": "Miles Davis", "url": "music://music.apple.com/es/album/1?i=2"})
+    with pytest.raises(music.MusicError) as unplayed:  # in the catalogue, but Music could not reach the song
+        music.play("music", "jazz")
+    assert unplayed.value.reason == "missing"
+    asked = []
+    monkeypatch.setattr(music, "_osascript", lambda script, *a, **k: asked.append(a) or ("none" if script == music.SEARCH_MUSIC else "ok"))
+    assert "So What" in music.play("music", "jazz")
+    assert ("music://music.apple.com/es/album/1?i=2",) in asked and ("So What",) in asked
+    def denied(script, *a, **k):
         raise music.MusicError("macOS no deja a AgoraOne controlar la música")
     monkeypatch.setattr(music, "_osascript", denied)
     with pytest.raises(music.MusicError) as refused:
@@ -82,3 +92,17 @@ def test_spotify_en_la_papelera_no_cuenta(monkeypatch, tmp_path):
     assert not music._installed("spotify")
     monkeypatch.setattr(music.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, found + "/Users/x/Apps/Spotify.app\n", ""))
     assert music._installed("spotify")
+
+
+def test_cancion_del_catalogo_de_apple_music():
+    import httpx
+    from agora_core import music
+    answer = httpx.Response(200, json={"results": [{"trackName": "Corazón Partío", "artistName": "Alejandro Sanz", "collectionId": 193410821, "trackId": 193410897}]})
+    song = music.catalog_song("alejandro sanz", fetch=lambda url, **k: answer)
+    assert song == {"name": "Corazón Partío", "artist": "Alejandro Sanz", "url": "music://music.apple.com/es/album/193410821?i=193410897"}
+    assert music.catalog_song("x", fetch=lambda url, **k: httpx.Response(200, json={"results": []})) is None
+    def roto(url, **k):
+        raise httpx.ConnectError("sin red")
+    assert music.catalog_song("x", fetch=roto) is None
+    raro = httpx.Response(200, json={"results": [{"trackName": "x", "collectionId": "1;do shell script", "trackId": 2}]})
+    assert music.catalog_song("x", fetch=lambda url, **k: raro) is None  # only numeric ids reach the address
