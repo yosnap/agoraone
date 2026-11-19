@@ -1,4 +1,7 @@
+import type { ReactNode } from 'react';
+import type { CrmdevWindowPage } from '../api/crmdev';
 import { openConnector } from '../connectors/open-connector';
+import { OpenInConnector } from '../connectors/open-in-connector';
 import type { Section } from '../shell/shell-state';
 import { statusTone, labelOf } from './crmdev-labels';
 import { orderNote, readAgain, readAtLabel, useRereading, type CrmdevFailure } from './use-crmdev-view';
@@ -7,6 +10,11 @@ import { orderNote, readAgain, readAtLabel, useRereading, type CrmdevFailure } f
 // Markdown, never a link, even when it looks like an address.
 
 export const HIDDEN = 'Oculto en modo discreto';
+
+/** «Abrir en CRMDev»: the page in CRMDev's own window (or the browser without the desktop app); nothing in discreet mode. */
+export function OpenInCrmdev({ page, label, discreet, content }: { page: CrmdevWindowPage; label?: string; discreet: boolean; content?: ReactNode }) {
+  return <OpenInConnector connector="crmdev" page={page} label={label} discreet={discreet} content={content}/>;
+}
 
 /** Without a connection: where to connect, and that nothing is ever deleted. */
 export function CrmdevConnect({ onOpen }: { onOpen: (section: Section) => void }) {

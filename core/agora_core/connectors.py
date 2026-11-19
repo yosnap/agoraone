@@ -226,6 +226,12 @@ def module_owners() -> dict[str, str]:
     return {name: connector.id for connector in REGISTRY.values() for name in connector.modules}
 
 
+def module_windows() -> dict[str, str]:
+    """The window label (`Connector.window`) of the connector that holds each module's switch, for the modules whose
+    connector has a window of its own: turning such a module off makes the desktop app look at that window at once."""
+    return {name: connector.window for connector in REGISTRY.values() if connector.window for name in connector.modules}
+
+
 def describe(connector: Connector, connection: sqlite3.Connection, secrets) -> dict:
     on = modules.state(connection)
     return {"id": connector.id, "name": connector.name, "description": connector.description, "kind": connector.kind,

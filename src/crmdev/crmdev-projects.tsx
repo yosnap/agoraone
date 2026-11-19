@@ -4,7 +4,7 @@ import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { Block, Facts, RecordLayout } from '../ui/record-layout';
-import { Badge, CrmdevProblem, OrderNote, ReadAgain } from './crmdev-common';
+import { Badge, CrmdevProblem, OpenInCrmdev, OrderNote, ReadAgain } from './crmdev-common';
 import { dayLabel, filterOptions, labelOf, minutesLabel, projectStatusLabels, projectTypeLabels } from './crmdev-labels';
 import { TasksTable } from './crmdev-tasks';
 import { readKey, useCrmdevRead, type CrmdevRead } from './use-crmdev-view';
@@ -55,6 +55,7 @@ export function ProjectRecord({ project, readAt, discreet, onBack, onOpen }: {
   const hours = useCrmdevRead(`horas:${project.id}`, fresh => getCrmdevHours(project.id, fresh));
   return <RecordLayout titleId="crmdev-project-title" title={project.name ?? 'Proyecto sin nombre'} badges={<span className="chip">De CRMDev</span>}
     actions={<span className="actions"><ReadAgain times={[readAt, tasks.data?.readAt, hours.data?.readAt]}/>
+      <OpenInCrmdev page={`proyectos/${project.id}`} discreet={discreet}/>
       <button type="button" className="button" onClick={onBack}>Volver a la lista</button></span>}>
     <Block title="Estado">
       <Facts items={[['Estado', labelOf(projectStatusLabels, project.status)], ['Progreso', progressLabel(project.progress)],
@@ -95,7 +96,9 @@ export function CrmdevProjects({ discreet, onOpen }: { discreet: boolean; onOpen
             <td className="num">{progressLabel(p.progress)}</td>
             <td>{labelOf(projectTypeLabels, p.type)}</td>
             <td className="central-date">{dayLabel(p.deadline)}</td>
-            <td className="central-row-actions">{p.id && <button type="button" className="button" aria-label={`Ver ficha de ${p.name ?? 'proyecto sin nombre'}`} onClick={() => setOpen(p.id)}>Ver ficha</button>}</td>
+            <td className="central-row-actions">{p.id && <span className="actions">
+              <button type="button" className="button" aria-label={`Ver ficha de ${p.name ?? 'proyecto sin nombre'}`} onClick={() => setOpen(p.id)}>Ver ficha</button>
+              <OpenInCrmdev page={`proyectos/${p.id}`} discreet={discreet}/></span>}</td>
           </tr>)}</tbody>
         </table>}
       </>}

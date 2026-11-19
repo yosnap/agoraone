@@ -136,3 +136,24 @@ def test_modules_dice_que_conector_tiene_cada_interruptor(tmp_path):
         assert set(owners) <= set(modules.MODULES), "solo módulos que existen"
         assert client.put("/modules", json={"modules": {"correo": True}}, headers=HEADERS).json()["owners"] == owners
     assert owners == connectors.module_owners()
+
+
+def test_modules_dice_la_ventana_de_cada_modulo_desde_el_manifiesto(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from fastapi.testclient import TestClient
+    from test_assistant import MemorySecrets
+    from test_central_api import HEADERS, app_with
+
+    from agora_core import connectors
+
+    settings, app = app_with(tmp_path, MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        windows = client.get("/modules", headers=HEADERS).json()["windows"]
+        assert windows == {"central": "central", "presupuestos": "central", "crmdev": "crmdev", "fabrica": "fabrica"}
+        assert client.put("/modules", json={"modules": {"correo": True}}, headers=HEADERS).json()["windows"] == windows
+    # The label comes from `Connector.window`, never from the connector's id: a connector named otherwise keeps its own.
+    other = replace(connectors.REGISTRY["crmdev"], id="seo", modules=("seo",), window="seo-web")
+    monkeypatch.setitem(connectors.REGISTRY, "seo", other)
+    assert connectors.module_windows()["seo"] == "seo-web"
+    assert "costguard" not in connectors.module_windows().values(), "sin ventana propia no hay etiqueta"

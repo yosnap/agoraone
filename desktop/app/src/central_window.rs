@@ -23,15 +23,16 @@
 //! Central (it has none today) would be cancelled and told as a link. Tauri lets a navigation through when WebKit's
 //! address cannot be parsed (`unwrap_or(true)` in tauri-runtime-wry), as for any window of the app.
 //!
-//! The window itself is the add-on window shared with Mi fábrica (`addon_window.rs`); this is Central's rule.
+//! The window itself, and its rule for addresses (`remote_origin`), are the add-on window shared with CRMDev and Mi
+//! fábrica (`addon_window.rs`).
 
-use tauri::{AppHandle, Url};
+use tauri::AppHandle;
 
-use crate::addon_window::{self, MAX_URL, Origin, Spec, State, origin_of};
+use crate::addon_window::{self, Spec, State, remote_origin as central_origin};
 #[cfg(test)]
 use crate::addon_window::{FOCUS_EVERY, allowed, due, macos_major, may_stay};
 
-static CENTRAL: Spec = Spec {
+pub(crate) static CENTRAL: Spec = Spec {
     label: "central",
     title: "Central (AgoraOne)",
     store: [0x6a, 0x1f, 0x3c, 0x52, 0x9e, 0x47, 0x4b, 0x08, 0xa1, 0x7d, 0x25, 0xc4, 0x0e, 0x93, 0xb6, 0x71],
@@ -40,25 +41,6 @@ static CENTRAL: Spec = Spec {
     like_main: false,
     state: State::new(),
 };
-
-/// AgoraOne's own host: any 127.x address or ::1, which share cookies with AgoraOne's window whatever the port.
-fn agora_host(host: &str) -> bool {
-    host == "[::1]" || host.parse::<std::net::Ipv4Addr>().is_ok_and(|ip| ip.is_loopback())
-}
-
-/// The origin of a Central address handed over by the core, checked again here: http or https, no user or password,
-/// plain http only on `localhost` (the core's rule, without AgoraOne's own host), and never AgoraOne itself.
-fn central_origin(url: &Url, own_ports: &[u16]) -> Option<Origin> {
-    let origin = origin_of(url)?;
-    if !url.username().is_empty() || url.password().is_some() || url.as_str().len() > MAX_URL || agora_host(&origin.1) {
-        return None;
-    }
-    let local = origin.1 == "localhost";
-    if (origin.0 == "http" && !local) || (local && own_ports.contains(&origin.2)) {
-        return None;
-    }
-    Some(origin)
-}
 
 /// While the desktop app runs: the screen's orders to open or close Central's window, as they come.
 pub fn central_loop(app: AppHandle, link: agora_server::core::CoreLink) {
@@ -69,6 +51,7 @@ pub fn central_loop(app: AppHandle, link: agora_server::core::CoreLink) {
 mod tests {
     use super::*;
     use std::sync::Mutex;
+    use tauri::Url;
     use std::time::{Duration, Instant};
 
     fn url(text: &str) -> Url {

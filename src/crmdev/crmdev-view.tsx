@@ -3,7 +3,7 @@ import { getConnector, type Connector } from '../api/core';
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { CrmdevClients } from './crmdev-clients';
-import { CrmdevConnect, CrmdevProblem } from './crmdev-common';
+import { CrmdevConnect, CrmdevProblem, OpenInCrmdev } from './crmdev-common';
 import { CrmdevProjects } from './crmdev-projects';
 import { CrmdevTasks } from './crmdev-tasks';
 import { CrmdevTickets } from './crmdev-tickets';
@@ -25,6 +25,7 @@ export function CrmdevTabs({ tab, onTab, discreet, onOpen }: { tab: CrmdevTabNam
         : tab === 'tareas' ? <CrmdevTasks discreet={discreet} onOpen={onOpen}/>
         : tab === 'tickets' ? <CrmdevTickets discreet={discreet} onOpen={onOpen}/>
         : <CrmdevClients discreet={discreet} onOpen={onOpen}/>}
+      {tab === 'tareas' && <OpenInCrmdev page="tareas" label="Abrir las tareas en CRMDev" discreet={discreet}/>}
     </div>
   </>;
 }
@@ -40,7 +41,10 @@ export function CrmdevView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
   const connected = crmdevConnected(connection.data);
   return <section className="page central crmdev" aria-labelledby="crmdev-title">
     <div className="eyebrow">CRMDEV{discreet ? ' · MODO DISCRETO' : ''}</div>
-    <div className="central-head"><h1 id="crmdev-title">CRMDev</h1></div>
+    <div className="central-head">
+      <h1 id="crmdev-title">CRMDev</h1>
+      {connected && <OpenInCrmdev page="panel" label="Abrir CRMDev" discreet={discreet}/>}
+    </div>
     <p className="page-lead">Tus proyectos, tareas, tickets y clientes de CRMDev, leídos de su API en solo lectura. CRMDev no tiene páginas: cada lista trae como mucho los 100 más recientes. «Volver a leer» pregunta a CRMDev en ese momento. En modo discreto se ocultan los correos, los nombres de las personas y las descripciones.</p>
     {connection.failure ? <CrmdevProblem failure={connection.failure} onRetry={connection.reload} onOpen={onOpen}/>
       : !connection.data ? <Loading label="Comprobando la conexión con CRMDev" lines={2}/>

@@ -20,23 +20,20 @@ AgoraOne's own host, and cookies go by host, not by port, so on a Mac without a 
 AgoraOne's access cookie would reach that Central. The browser can still open it.
 
 With the «Central» module off every route answers 404; a quote's page follows the «Presupuestos» module instead,
-which works without the «Central» one."""
+which works without the «Central» one. The routes themselves are the shared ones of `connector_window.py`."""
 
 import webbrowser  # noqa: F401 - the tests patch `webbrowser.open` through this module
-from contextlib import contextmanager
 
 from fastapi import APIRouter
-from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
-from . import central_api, central_views, modules
-from .db import DB_NAME, connect
+from . import central_api, central_views
+from .connector_window import BAD_URL, NO_BROWSER, RouteIn, UrlIn, WindowTexts, page_url, window_router
 from .hidden_player import Relay
 from .settings import Settings
 from .window_links import agora_host, external_url, open_in_browser
 
-__all__ = ["agora_host", "central_window_router", "external_url", "open_in_browser", "page_url", "route_of"]
+__all__ = ["BAD_URL", "NO_BROWSER", "RouteIn", "UrlIn", "agora_host", "central_window_router", "external_url", "open_in_browser", "page_url",
+           "route_of"]
 
 PAGES = {"", "ajustes", "webs", "servidores", "alertas", "correo"}
 ITEMS = {"clientes", "proyectos", "servidores", "presupuestos"}
@@ -45,18 +42,8 @@ OFF_QUOTES = "El módulo Presupuestos está apagado."
 NOT_CONNECTED = "Falta la dirección de Central: escríbela en Conectores › Central."
 BAD_ROUTE = "Esa página de Central no se puede abrir desde AgoraOne."
 NO_WINDOW = "La ventana de Central solo existe en la app de escritorio: ábrelo en el navegador."
-BAD_URL = "Solo se abren en el navegador direcciones web (http o https)."
 LOOPBACK_IP = ("La ventana de Central no abre 127.0.0.1 ni ::1, que son la dirección de AgoraOne: escribe la de Central con «localhost» "
                "(por ejemplo http://localhost:3099) en Conectores › Central.")
-NO_BROWSER = "No se pudo abrir el navegador."
-
-
-class RouteIn(BaseModel):
-    ruta: object = None
-
-
-class UrlIn(BaseModel):
-    url: object = None
 
 
 def route_of(value: object) -> tuple[str, str] | None:
@@ -72,91 +59,8 @@ def route_of(value: object) -> tuple[str, str] | None:
     return None
 
 
-def page_url(base: str, route: str) -> str:
-    return f"{base}/{route}" if route else f"{base}/"
-
-
 def central_window_router(settings: Settings, relay: Relay | None = None) -> APIRouter:
-    router = APIRouter()
-    relay = relay or Relay()
-
-    @contextmanager
-    def database():
-        connection = connect(settings.data_dir / DB_NAME)
-        try:
-            yield connection
-        finally:
-            connection.close()
-
-    def problem(status: int, message: str, kind: str) -> JSONResponse:
-        return JSONResponse({"error": message, "status": kind}, status_code=status)
-
-    def lookup() -> tuple[dict[str, bool], str | None]:
-        with database() as connection:
-            return modules.state(connection), central_api.saved_url(connection)
-
-    async def target(value: object, window: bool = False) -> str | JSONResponse:
-        """The full address of a page of Central, or the refusal: module off (404), not on the list or AgoraOne's own
-        host for the window (422), no URL (409)."""
-        on, base = await run_in_threadpool(lookup)
-        found = route_of(value)
-        module = found[1] if found else "central"
-        if not on[module]:
-            return problem(404, OFF if module == "central" else OFF_QUOTES, "off")
-        if found is None:
-            return problem(422, BAD_ROUTE, "invalid")
-        if base is None:
-            return problem(409, NOT_CONNECTED, "not_connected")
-        if window and agora_host(base):
-            return problem(422, LOOPBACK_IP, "loopback_ip")
-        return page_url(base, found[0])
-
-    async def any_module_on() -> bool:
-        on, _ = await run_in_threadpool(lookup)
-        return on["central"] or on["presupuestos"]
-
-    @router.post("/central/window")
-    async def open_window(body: RouteIn):
-        url = await target(body.ruta, window=True)
-        if isinstance(url, JSONResponse):
-            return url
-        if not relay.available():
-            return problem(409, NO_WINDOW, "no_window")
-        return {"seq": relay.push({"action": "open", "url": url})}
-
-    @router.post("/central/window/browser")
-    async def open_browser(body: RouteIn):
-        url = await target(body.ruta)
-        if isinstance(url, JSONResponse):
-            return url
-        if not await run_in_threadpool(open_in_browser, url):
-            return problem(502, NO_BROWSER, "error")
-        return {"done": True}
-
-    @router.post("/central/window/external")
-    async def open_external(body: UrlIn):
-        if not await any_module_on():
-            return problem(404, OFF, "off")
-        url = external_url(body.url)
-        if url is None:
-            return problem(422, BAD_URL, "invalid")
-        if not await run_in_threadpool(open_in_browser, url):
-            return problem(502, NO_BROWSER, "error")
-        return {"done": True}
-
-    @router.post("/central/window/close")
-    async def close_window():
-        """Always allowed (closing hides, never shows): without the desktop app there is nothing to close."""
-        return {"done": relay.available() and relay.push({"action": "close"}) > 0}
-
-    @router.post("/central/window/check")
-    async def check_window():
-        return {"done": relay.available() and relay.push({"action": "check"}) > 0}
-
-    @router.get("/internal/central/window/next")  # only the desktop app: the browser cannot reach /internal
-    async def window_next(after: int = -1):
-        answer = await relay.next(after)
-        on, base = await run_in_threadpool(lookup)
-        return {**answer, "allowed": on["central"] or on["presupuestos"], "url": base}
-
-    return router
+    """Central's window routes, built by the shared connector window factory: a quote's page follows «Presupuestos»."""
+    texts = WindowTexts(off={"central": OFF, "presupuestos": OFF_QUOTES}, not_connected=NOT_CONNECTED, bad_route=BAD_ROUTE,
+                        no_window=NO_WINDOW, loopback_ip=LOOPBACK_IP)
+    return window_router(settings, "central", central_api.saved_url, route_of, texts, relay)

@@ -1,5 +1,7 @@
 import { request } from './client';
 import { deleteConnector, getConnector, putConnector, testConnector, type Connector } from './core';
+import { checkConnectorWindow, closeConnectorWindow, openConnectorInBrowser, openConnectorLink, openConnectorWindow, windowExternalLink,
+  type WindowLink } from './connector-window';
 
 // Central's connection, through the core's connector «central» (/api/core/connectors/central): the key goes to the
 // system's secret store and is never answered back; the screen only learns whether there is one.
@@ -115,28 +117,16 @@ export const levelLabels: Record<CentralLevel, string> = { green: 'Bien', amber:
 export type CentralPage = '' | 'ajustes' | 'webs' | 'servidores' | 'alertas' | 'correo' | `clientes/${string}` | `proyectos/${string}`
   | `servidores/${string}` | `presupuestos/${string}`;
 /** Opens the page in Central's window; 409 `no_window` when AgoraOne runs in a browser tab (no desktop app). */
-export const openCentralWindow = (ruta: CentralPage) => core<{ seq: number }>('/central/window', { ruta });
+export const openCentralWindow = (ruta: CentralPage) => openConnectorWindow('central', ruta);
 /** The same page in the system's browser. */
-export const openCentralInBrowser = (ruta: CentralPage) => core<{ done: true }>('/central/window/browser', { ruta });
+export const openCentralInBrowser = (ruta: CentralPage) => openConnectorInBrowser('central', ruta);
 /** A link of Central to another site (http or https; the screen warns first about http), in the system's browser. */
-export const openCentralLink = (url: string) => core<{ done: true }>('/central/window/external', { url });
+export const openCentralLink = (url: string) => openConnectorLink('central', url);
 /** Closes Central's window (discreet mode turned on); nothing happens without the desktop app. */
-export const closeCentralWindow = () => core<{ done: boolean }>('/central/window/close', {});
+export const closeCentralWindow = () => closeConnectorWindow('central');
 /** Makes the desktop app look again at once whether the window may stay (module and address changed). */
-export const checkCentralWindow = () => core<{ done: boolean }>('/central/window/check', {});
+export const checkCentralWindow = () => checkConnectorWindow('central');
 
-/** A link of Central to another site, as the desktop app hands it over: `oauth` when it is a sign-in with another
- * service (it would come back to a browser without Central's session), `http` when it is not encrypted. */
-export type CentralLink = { url: string; kind: 'oauth' | 'http' | 'https' };
-const OAUTH_HOSTS = new Set(['accounts.google.com', 'oauth2.googleapis.com', 'login.microsoftonline.com', 'login.live.com', 'appleid.apple.com']);
-/** The link of the event the desktop app sends: only web addresses, of bounded size. */
-export const centralExternalLink = (detail: unknown): CentralLink | null => {
-  const url = (detail as { url?: unknown } | null)?.url;
-  if (typeof url !== 'string' || url.length > 2000) return null;
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { return null; }
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
-  const oauth = OAUTH_HOSTS.has(parsed.hostname) || /\/oauth2?(\/|$)/i.test(parsed.pathname)
-    || (parsed.searchParams.has('client_id') && parsed.searchParams.has('redirect_uri'));
-  return { url, kind: oauth ? 'oauth' : parsed.protocol === 'http:' ? 'http' : 'https' };
-};
+/** A link of Central to another site, as the desktop app hands it over (see `windowExternalLink`). */
+export type CentralLink = WindowLink;
+export const centralExternalLink = windowExternalLink;

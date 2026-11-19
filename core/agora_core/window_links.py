@@ -27,11 +27,21 @@ def external_url(value: object) -> str | None:
 
 
 def agora_host(url: str) -> bool:
-    """127.x or ::1: AgoraOne's own host, which shares its cookies whatever the port."""
+    """AgoraOne's own host, which shares its cookies whatever the port, or another name for this machine: any loopback
+    or unspecified address (127.x, ::1, 0.0.0.0, :: and those written as IPv4 inside IPv6), `localhost.` with its final
+    dot and any `*.localhost`. Plain `localhost` is another host for cookies and is not AgoraOne's."""
     try:
-        return ipaddress.ip_address(urlsplit(url).hostname or "").is_loopback
+        host = urlsplit(url).hostname or ""
     except ValueError:
         return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        name = host.rstrip(".")
+        return (name != host and name == "localhost") or name.endswith(".localhost")
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback or ip.is_unspecified
 
 
 def open_in_browser(url: str) -> bool:

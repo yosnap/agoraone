@@ -3,7 +3,7 @@ import { getCrmdevView, type CrmdevFilters, type CrmdevTicket } from '../api/crm
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
-import { Badge, CrmdevProblem, LongText, OrderNote, ReadAgain } from './crmdev-common';
+import { Badge, CrmdevProblem, LongText, OpenInCrmdev, OrderNote, ReadAgain } from './crmdev-common';
 import { categoryLabels, dayLabel, filterOptions, labelOf, priorityLabels, ticketStatusLabels } from './crmdev-labels';
 import { namesOf, readKey, useCrmdevRead } from './use-crmdev-view';
 
@@ -17,7 +17,8 @@ export const screenFiltered = (tickets: CrmdevTicket[], { prioridad, proyecto }:
 export function TicketsTable({ tickets, discreet, withClient = true }: { tickets: CrmdevTicket[]; discreet: boolean; withClient?: boolean }) {
   if (!tickets.length) return <p className="muted">Ningún ticket.</p>;
   return <table className="data-table central-table">
-    <thead><tr><th>Ticket</th><th>Estado</th><th>Prioridad</th><th>Categoría</th>{!discreet && <th>Abierto por</th>}{withClient && <th>Cliente</th>}<th>Proyecto</th><th>Fecha</th></tr></thead>
+    <thead><tr><th>Ticket</th><th>Estado</th><th>Prioridad</th><th>Categoría</th>{!discreet && <th>Abierto por</th>}{withClient && <th>Cliente</th>}<th>Proyecto</th><th>Fecha</th>
+      <th><span className="visually-hidden">Acciones</span></th></tr></thead>
     <tbody>{tickets.map((t, index) => <tr key={t.id ?? index}>
       <td className="crmdev-title"><strong>{t.title ?? '—'}</strong><LongText text={t.description} discreet={discreet}/></td>
       <td><Badge labels={ticketStatusLabels} value={t.status}/></td>
@@ -27,6 +28,7 @@ export function TicketsTable({ tickets, discreet, withClient = true }: { tickets
       {withClient && <td>{t.client ?? '—'}</td>}
       <td>{t.project ?? '—'}</td>
       <td className="central-date">{dayLabel(t.createdAt)}</td>
+      <td className="central-row-actions">{t.id && <OpenInCrmdev page={`tickets/${t.id}`} discreet={discreet}/>}</td>
     </tr>)}</tbody>
   </table>;
 }

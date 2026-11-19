@@ -52,3 +52,8 @@ export const getCrmdevHours = (projectId: string, fresh = false) =>
 export type CrmdevClientRecord = CrmdevClient & { email: string | null } & ReadAt;
 export const getCrmdevClient = (clientId: string, estado?: string, fresh = false) =>
   core<CrmdevClientRecord>(`/crmdev/clientes/${encodeURIComponent(clientId)}${query({ estado }, fresh)}`);
+
+// CRMDev's own web, in a window of the desktop app (/api/core/crmdev/window*): only pages of a closed list of the
+// saved CRMDev address, named without the language (the core adds `/es/`; a ticket lives under `soporte/tickets`).
+export type CrmdevWindowPage = 'panel' | 'proyectos' | 'tareas' | 'clientes' | 'soporte' | `proyectos/${string}` | `clientes/${string}`
+  | `tickets/${string}`;

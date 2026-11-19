@@ -15,7 +15,7 @@ use tauri::{AppHandle, Url};
 
 use crate::addon_window::{self, MAX_URL, Origin, Spec, State, origin_of};
 
-static FABRICA: Spec = Spec {
+pub(crate) static FABRICA: Spec = Spec {
     label: "fabrica",
     title: "Mi fábrica (AgoraOne)",
     store: [0x3e, 0x81, 0x5d, 0x0c, 0xb2, 0x64, 0x4f, 0x19, 0x97, 0x2a, 0x6e, 0xd3, 0x41, 0xf8, 0x0b, 0x5c],
