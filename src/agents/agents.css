@@ -37,7 +37,7 @@ p.agent-facts { display:block }
 @keyframes agent-fresh { to { background:transparent } }
 .agents .agent-outcome { font-size:10px; text-align:center; padding:1px 4px; border-radius:6px; background:var(--c-e6eadf); color:var(--c-355a50) }
 .agents .agent-outcome.hecho { background:var(--c-dcebdc); color:var(--c-24563a) }
-.agents .agent-outcome.falló, .agents .agent-outcome.rechazado { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.agents .agent-outcome.falló, .agents .agent-outcome.rechazado, .agents .agent-outcome.desconocido { background:var(--c-f3e6c4); color:var(--c-7a5717) }
 .agents-main { display:flex; flex-direction:column; gap:20px; min-width:0 }
 .coding-sessions h2 { margin:0 0 4px }
 .coding-sessions > p { margin:0 0 10px; font-size:13px }

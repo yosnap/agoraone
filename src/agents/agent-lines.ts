@@ -18,7 +18,7 @@ export const RUNNING = new Set(['claimed', 'running', 'review']);
 export const BLOCKED = new Set(['blocked', 'failed', 'crashed', 'timed_out']);
 export const sourceLabel: Record<string, string> = { telegram: 'Telegram', desktop: 'Desktop', cron: 'tarea programada', cli: 'terminal', api: 'API', acp: 'editor', subagent: 'subagente' };
 
-export type Outcome = 'hecho' | 'falló' | 'rechazado' | 'deshecho' | null;
+export type Outcome = 'hecho' | 'falló' | 'rechazado' | 'deshecho' | 'desconocido' | null;
 export type Line = { at: string; who: string; text: string; outcome: Outcome; key: string };
 
 export function describe(event: ActivityEvent, who: string, discreet = false): Line {
@@ -37,19 +37,20 @@ const watsonLabels: Record<string, string> = {
   agenda: 'miró la agenda', day: 'repasó tu día', consultar_reuniones: 'buscó reuniones', meetings: 'buscó reuniones', leer_reunion: 'leyó una reunión', meeting: 'leyó una reunión', revisar_vault: 'revisó el vault',
   consultar_trabajos: 'consultó los trabajos', proponer_nota: 'propuso una nota', proponer_evento: 'propuso un evento', proponer_presupuesto: 'propuso un presupuesto',
   proponer_limpieza: 'propuso limpiar correo', proponer_reorganizacion: 'propuso ordenar el vault', proponer_regla: 'propuso una regla de correo',
-  proponer_issue: 'propuso una issue', crear_regla: 'creaste una regla de correo', 'mail.send': 'enviaste un correo', 'orca.launch': 'lanzaste un agente en Orca',
+  proponer_issue: 'propuso una issue', crear_regla: 'creaste una regla de correo', 'mail.send': 'enviaste un correo', 'chat.send': 'enviaste un WhatsApp', 'orca.launch': 'lanzaste un agente en Orca',
 };
 const outcomes: Record<WatsonEvent['outcome'], Outcome> = { done: 'hecho', denied: 'rechazado', failed: 'falló', undone: 'deshecho' };
 // Looking things up is not a decision: only what changes something or proposes it says how it ended.
-const decided = (action: string) => action.startsWith('proponer_') || action === 'crear_regla' || action === 'mail.send' || action === 'orca.launch';
+const decided = (action: string) => action.startsWith('proponer_') || action === 'crear_regla' || action === 'mail.send' || action === 'chat.send' || action === 'orca.launch';
 
 export function describeWatson(event: WatsonEvent, assistant: string): Line {
   const who = event.actor === 'user' ? 'Tú' : assistant;
+  if (event.unknown) return { key: `w|${event.id}`, at: event.at, who, text: `${watsonLabels[event.action] ?? event.action}: comprueba en el móvil si llegó`, outcome: 'desconocido' };
   return { key: `w|${event.id}`, at: event.at, who, text: watsonLabels[event.action] ?? event.action.replace(/[_.]/g, ' '),
     outcome: decided(event.action) || event.outcome !== 'done' ? outcomes[event.outcome] : null };
 }
 
-export const outcomeLabel = (outcome: Outcome) => outcome === 'hecho' ? 'Hecho' : outcome === 'falló' ? 'Falló' : outcome === 'rechazado' ? 'Rechazado' : outcome === 'deshecho' ? 'Deshecho' : '·';
+export const outcomeLabel = (outcome: Outcome) => outcome === 'hecho' ? 'Hecho' : outcome === 'falló' ? 'Falló' : outcome === 'rechazado' ? 'Rechazado' : outcome === 'deshecho' ? 'Deshecho' : outcome === 'desconocido' ? 'Desconocido' : '·';
 
 /** Two entries can share time and kind (two sessions started in the same second): each key made unique. */
 export function uniqueKeys(lines: Line[]): Line[] {

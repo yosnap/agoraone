@@ -31,6 +31,7 @@ from .routes_index import EmbedHealth, embed_worker, index_router
 from .routes_mail import mail_router, mail_worker
 from .routes_mail_send import mail_send_router
 from .routes_chat import chat_router
+from .routes_chat_send import chat_send_router
 from .routes_jev import jev_router
 from . import jev_shadow
 from .chat_sync import chat_worker
@@ -227,6 +228,7 @@ def create_app(
     app.include_router(mail_router(settings, secrets))
     app.include_router(mail_send_router(settings, secrets, drafter))
     app.include_router(chat_router(settings, secrets, chat_summary_health))
+    app.include_router(chat_send_router(settings, secrets, drafter))
     app.include_router(jev_router(settings, secrets))
     app.include_router(inbox_router(settings, summary_health, secrets))
     app.include_router(fiscal_router(settings, secrets))

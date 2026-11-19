@@ -130,7 +130,7 @@
 .agent-log small { font-size:10.5px; color:var(--c-6f8379) }
 .agent-outcome { font-size:9.5px; text-align:center; padding:1px 4px; border-radius:6px; background:var(--c-e6eadf); color:var(--c-355a50) }
 .agent-outcome.hecho { background:var(--c-dcebdc); color:var(--c-24563a) }
-.agent-outcome.falló { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.agent-outcome.falló, .agent-outcome.desconocido { background:var(--c-f3e6c4); color:var(--c-7a5717) }
 .dock-music { flex-direction:row; align-items:flex-start; opacity:1 }
 .music-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px }
 .music-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px }

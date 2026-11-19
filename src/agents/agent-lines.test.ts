@@ -11,6 +11,12 @@ test('las acciones de Watson dicen qué hizo y solo las decisiones cómo acabaro
   const sent = describeWatson({ id: 1, at: '2026-11-16T21:00:00Z', actor: 'user', action: 'mail.send', outcome: 'denied' }, 'Watson');
   assert.equal(sent.who, 'Tú');
   assert.equal(outcomeLabel(sent.outcome), 'Rechazado');
+  const whatsapp = describeWatson({ id: 2, at: '2026-11-19T12:00:00Z', actor: 'user', action: 'chat.send', outcome: 'done' }, 'Watson');
+  assert.equal(whatsapp.text, 'enviaste un WhatsApp');
+  assert.equal(outcomeLabel(whatsapp.outcome), 'Hecho');
+  const unsure = describeWatson({ id: 3, at: '2026-11-19T12:00:00Z', actor: 'user', action: 'chat.send', outcome: 'failed', unknown: true }, 'Watson');
+  assert.equal(unsure.text, 'enviaste un WhatsApp: comprueba en el móvil si llegó');
+  assert.equal(outcomeLabel(unsure.outcome), 'Desconocido');
   assert.equal(describeWatson({ id: 9, at: 'x', actor: 'watson', action: 'algo_nuevo', outcome: 'done' }, 'W').text, 'algo nuevo');
 });
 

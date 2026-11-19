@@ -33,7 +33,8 @@ _LOCK = threading.Lock()
 _clock = time.monotonic  # the reading's own clock, replaceable in tests without touching the time module
 
 
-def _when(value) -> datetime | None:
+def parse_moment(value) -> datetime | None:
+    """A Zernio or stored time as an aware UTC datetime; None for anything that is not one."""
     if not isinstance(value, str) or not value.strip():
         return None
     try:
@@ -44,7 +45,7 @@ def _when(value) -> datetime | None:
 
 
 def _iso(value) -> str | None:
-    moment = _when(value)
+    moment = parse_moment(value)
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ") if moment else None
 
 
@@ -146,13 +147,13 @@ def _conversation(connection: sqlite3.Connection, account: sqlite3.Row, item: di
         (account["id"], remote_id, _text(item.get("participantId"), 100), _text(item.get("participantName"), 120),
          _phone_like(item.get("participantPhoneNumber")) or _phone_like(item.get("participantUsername"))))
     row = connection.execute("SELECT * FROM chat_conversation WHERE account_id = ? AND remote_id = ?", (account["id"], remote_id)).fetchone()
-    return row, _when(item.get("updatedTime"))
+    return row, parse_moment(item.get("updatedTime"))
 
 
 def _changed(row: sqlite3.Row, updated: datetime | None, cutoff: datetime) -> bool:
     if row["synced_at"] is None:
         return updated is None or updated >= cutoff
-    stored = _when(row["updated_time"])
+    stored = parse_moment(row["updated_time"])
     return updated is not None and (stored is None or updated > stored)
 
 
@@ -165,7 +166,7 @@ def _keep(connection: sqlite3.Connection, conversation_id: int, items: list[dict
             fields = message_fields(item)
             if fields is None:
                 continue
-            sent = _when(fields["sent_at"])
+            sent = parse_moment(fields["sent_at"])
             if sent is not None and sent < cutoff:
                 reached = True
                 continue

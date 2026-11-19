@@ -63,7 +63,8 @@ export const getPersonas = () => core<{ personas: Persona[]; tone: Record<ToneKe
 export const getAssistantSettings = () => core<AssistantSettings>('/assistant/settings');
 export const putAssistantSettings = (changes: Partial<AssistantSettings>) => core<AssistantSettings>('/assistant/settings', changes, 'PUT');
 /** The «Agentes» section: whether Watson is answering now and what it did in 24 h (actions and outcomes only). */
-export type WatsonEvent = { id: number; at: string; actor: 'watson' | 'user'; action: string; outcome: 'done' | 'denied' | 'failed' | 'undone' };
+/** `unknown`: a WhatsApp send that may have left (nobody can know): the user checks the phone. */
+export type WatsonEvent = { id: number; at: string; actor: 'watson' | 'user'; action: string; outcome: 'done' | 'denied' | 'failed' | 'undone'; unknown?: boolean };
 export type WatsonActivity = { answering: number; since: string | null; lastAt: string | null; count: number; events: WatsonEvent[] };
 /** Claude Code and Codex sessions of this Mac moved in 24 h: metadata only, never the conversation. */
 export type CodingHost = 'orca' | 'vscode' | 'codex-app' | 'claude-desktop' | 'terminal' | 'sdk';
@@ -245,6 +246,19 @@ export const decideChat = (id: number, state: InboxState) => core<{ ok: true }>(
 /** One of a card's latest messages, as AgoraOne keeps it (never asked to Zernio): the text as plain data. */
 export type ChatMessage = { id: number; direction: 'incoming' | 'outgoing'; at: string | null; text: string | null; unsupported: boolean; attachments: string[] };
 export const getChatMessages = (id: number) => core<{ messages: ChatMessage[] }>(`/chat/summaries/${id}/messages`);
+/** Meta's 24 h window for a free reply, from the contact's last message AgoraOne keeps (open only with a minute left). */
+export type ChatWindow = { open: boolean; until: string | null; lastIncomingAt: string | null };
+type ChatPeople = { to: { name: string | null; phone: string | null } | null; from: { phone: string | null; label: string | null } };
+export type ChatReplyDraft = ChatPeople & { conversationId: number; accountId: number; text: string; confidentiality: Level; window: ChatWindow; maxLength: number };
+/** `lastIncomingId`: the contact's last message the preview answered (set by the preview, sent back with «Enviar»). */
+export type ChatDraft = { conversationId: number; text: string; lastIncomingId?: string | null };
+export type ChatPreview = ChatPeople & { draft: ChatDraft; digest: string; confidentiality: Level; attachments: never[]; window: ChatWindow };
+export const getChatReply = (id: number) => core<ChatReplyDraft>(`/chat/summaries/${id}/reply`);
+/** Watson's draft, only for a normal conversation (the core refuses the rest); it never sends. */
+export const composeChat = (id: number, instructions: string) => core<{ text: string }>(`/chat/summaries/${id}/compose`, { instructions });
+export const previewChat = (draft: ChatDraft) => core<ChatPreview>('/chat/drafts/preview', draft);
+/** Sends exactly the sealed preview, once; a second press with the same seal is refused. */
+export const sendChat = (draft: ChatDraft, digest: string) => core<{ sent: boolean; messageId: string | null }>('/chat/send', { draft, digest });
 export type MicrosoftSignIn = { state: 'none' | 'waiting' | 'done' | 'declined' | 'expired' | 'error' | 'cancelled'; message?: string | null; userCode?: string; verificationUri?: string; expiresAt?: number };
 export const getMicrosoftClient = () => core<{ clientId: string | null }>('/mail/microsoft');
 export const putMicrosoftClient = (clientId: string | null) => core<{ clientId: string | null }>('/mail/microsoft', { clientId }, 'PUT');

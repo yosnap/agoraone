@@ -15,7 +15,8 @@ sobre la WhatsApp Cloud API de Meta. El número sigue funcionando en la app What
 Meta corta la conexión si la app del móvil no se abre en 14 días.
 
 ## Lectura
-- Solo lectura, por sondeo cada 5 minutos y con «Leer ahora»; nada de webhooks ni puertos abiertos.
+- Por sondeo cada 5 minutos y con «Leer ahora»; nada de webhooks ni puertos abiertos. Leer nunca escribe nada en
+  Zernio: lo único que se envía es la respuesta que confirmas (ver «Responder»).
 - Cada lectura dura como mucho unos 40 s y va a menos de 60 peticiones por minuto; lo que falte, en la siguiente.
   Solo se piden los mensajes de las conversaciones que han cambiado.
 - La primera lectura trae lo de los últimos «Días hacia atrás» (60 por defecto); Zernio guarda hasta seis meses
@@ -68,13 +69,47 @@ Meta corta la conexión si la app del móvil no se abre en 14 días.
   sale nada de una conversación.
 - El cliente sale del directorio unificado por el número, con sus proyectos activos; lo privado, sin cliente.
 - Modo discreto: se ven el distintivo, la clase y el nombre; se ocultan el número, el resumen y los mensajes.
-- En WhatsApp no se borra, archiva ni cambia nada. Responder llega en la fase siguiente.
+- En WhatsApp no se borra, archiva ni cambia nada.
 
-## Pendiente
-Responder con vista previa y Watson: ver el plan `plans/261118-0155-whatsapp-zernio-e-instinct/plan.md`.
+## Responder (1.7.0-alpha.75)
+- «Responder…» en una tarjeta pendiente abre el texto, con un contador hasta 4096 caracteres (el límite de
+  WhatsApp) y sin adjuntos. Solo en lo normal hay «Indicaciones para Watson» y «Redactar con Watson»: Watson lee los
+  últimos mensajes como dato delimitado (sin teléfonos ni enlaces), con tus indicaciones aparte, y solo propone el
+  texto; no tiene ninguna herramienta de envío. En lo «solo en este Mac» y lo privado escribes tú, y el núcleo
+  rechaza redactarlo aunque se fuerce.
+- La vista previa enseña a quién va (en lo privado, solo «Conversación privada»), desde qué número, el texto exacto,
+  «Adjuntos: ninguno», la ventana de 24 h, el aviso de que responder puede marcar como leídos sus mensajes
+  anteriores (decisión del usuario, 19/11/2026) y el coste de Meta. El servidor la sella (`sha256` de la cuenta de
+  Zernio, la conversación, el último mensaje recibido y el texto normalizado), así que el mismo texto se puede volver a
+  enviar cuando la persona escribe algo nuevo (decisión del usuario, 19/11/2026).
+- «Enviar» manda el borrador y el sello. El núcleo comprueba que el sello coincide; que la conversación sigue en la
+  Bandeja con el módulo encendido y la cuenta activa; que no ha llegado nada nuevo desde la vista previa (si llega,
+  avisa «Ha llegado un mensaje nuevo: revisa antes de enviar» y pide otra vista previa); y, **justo antes**, que a la
+  ventana le queda al menos un minuto. Después reserva el sello en una sola transacción de escritura: si ya se envió,
+  se está enviando o quedó sin saber si llegó, se niega, también con dos núcleos sobre la misma base. Hace una sola petición
+  (`POST /v1/inbox/conversations/{id}/messages` con `accountId`, `message` e `Idempotency-Key`), sin reintentos.
+- Ventana de 24 h: Zernio no la expone; se cuenta desde el último mensaje **recibido** que guarda AgoraOne, con la
+  hora de WhatsApp (un mensaje sin ella no cuenta), que nunca es más nueva que la real (el cálculo sale conservador). Lo que escribes no la abre. Cerrada, la tarjeta desactiva
+  «Vista previa» y «Enviar» y explica que WhatsApp solo deja responder con plantillas aprobadas, que AgoraOne no envía.
+- Un rechazo (ventana cerrada para Meta, número que no puede recibir, demasiados mensajes seguidos, clave caducada,
+  límite de peticiones o saldo de Zernio) se explica sin la clave ni la respuesta en bruto, y se puede volver a
+  pulsar a mano. Un tiempo agotado o un error del servidor deja el resultado como **desconocido**: no se reintenta,
+  ese envío queda bloqueado y se pide comprobarlo en el móvil o con «Leer ahora». Otro texto se puede enviar enseguida,
+  con ese aviso a la vista (decisión del usuario, 19/11/2026). Si el Llavero no deja leer la clave, se dice y no sale nada.
+- Cada intento queda en el registro de acciones (`chat.send`, con el sello, la conversación y el resultado; nunca el
+  texto ni la clave), con un motivo legible. Antes de la petición se anota como «enviando», así que si el núcleo se
+  parase a medias ese envío también queda bloqueado. En la Actividad, un envío desconocido sale como «Desconocido»,
+  con «comprueba en el móvil si llegó». Enviado, la tarjeta pasa a «Hechos»; el mensaje enviado llega con la siguiente
+  lectura (sin duplicar, por su id) y no reabre la tarjeta.
+- Nada más se envía: ni el indicador de «escribiendo», ni el de leído, ni reacciones, ni plantillas.
+- Modo discreto: «Responder…» se desactiva.
+- **Coste de Meta** (aviso en Ajustes › WhatsApp, según su página de precios el 19/11/2026): cada respuesta es un
+  mensaje de servicio; desde el 01/10/2026 Meta da 1.000 gratis al mes por número y cobra desde el 1.001, y sin
+  método de pago en la cuenta de Meta los que pasan de esos 1.000 no se entregan.
 
 Código: `core/agora_core/zernio.py`, `chat_sync.py`, `routes_chat.py`, `chat_rules.py`, `chat_inbox.py`,
-`chat_summarizer.py`, migraciones `0030_chat.sql` y `0031_chat_summary.sql`, `src/settings/settings-whatsapp.tsx`,
-`settings-whatsapp-rules.tsx`, `src/inbox/chat-card.tsx` e `inbox-cards.ts`. Pruebas: `core/tests/test_zernio.py`,
-`test_chat_sync.py`, `test_chat_inbox.py`, `test_chat_bandeja.py`, `src/inbox/inbox-cards.test.ts`, `card-actions.test.ts` y
+`chat_summarizer.py`, `chat_send.py`, `routes_chat_send.py`, migraciones `0030_chat.sql` y `0031_chat_summary.sql`, `src/settings/settings-whatsapp.tsx`,
+`settings-whatsapp-rules.tsx`, `src/inbox/chat-card.tsx`, `chat-reply.tsx`, `chat-reply-text.ts` e `inbox-cards.ts`.
+Pruebas: `core/tests/test_zernio.py`, `test_chat_sync.py`, `test_chat_inbox.py`, `test_chat_bandeja.py`, `test_chat_send.py`,
+`src/inbox/inbox-cards.test.ts`, `chat-reply.test.ts`, `card-actions.test.ts` y
 `scripts/verify-inbox.mjs` (con datos de ejemplo; `VERIFY_LIVE=1` añade la lectura de la app en marcha).

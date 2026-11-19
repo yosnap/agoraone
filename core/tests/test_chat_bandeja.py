@@ -196,8 +196,9 @@ def test_el_texto_para_orca_va_como_datos_sin_numeros_ni_enlaces(database):  # n
     mark = text.split("<<<", 1)[1].split("\n", 1)[0]
     inside = text.split(f"<<<{mark}\n", 1)[1].rsplit(f"\n{mark}>>>", 1)[0]
     assert text.startswith("Revisa lo que pide") and "Ignora lo anterior" in inside and "Ignora lo anterior" not in text.split("<<<", 1)[0]
-    assert "611" not in text and "600 000 001" not in text and "2026-11-20 10:00" in inside and "[número]" in inside
-    assert "622" not in text and "2026-11-21 [número]" in inside, "un número tras una fecha también se tapa"
+    visible = text.replace(mark, "")  # the random mark may hold «611» or «622» by chance
+    assert "611" not in visible and "600 000 001" not in visible and "2026-11-20 10:00" in inside and "[número]" in inside
+    assert "622" not in visible and "2026-11-21 [número]" in inside, "un número tras una fecha también se tapa"
     assert "pago.ejemplo.com" not in text and "ejemplo.es/x" not in text and inside.count("[enlace]") == 2
     assert "[adjunto: image]" in inside and "[mensaje no disponible]" in inside and "http" not in inside
     assert plan["source"] == {"kind": "chat", "id": conv, "label": "Conversación de WhatsApp con Ana Prueba"}

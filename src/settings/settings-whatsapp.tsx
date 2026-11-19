@@ -3,6 +3,7 @@ import {
   changeChatAccount, getChatSettings, getScopes, levelLabels, putChatKey, syncChat, testChat,
   type ChatAccount, type ChatSettings, type ChatSyncResult, type Level, type Scope,
 } from '../api/core';
+import { META_COST_NOTICE } from '../inbox/chat-reply-text';
 import { ModernSelect } from '../ui/modern-select';
 import { Loading, LoadError } from '../ui/load-state';
 import { WhatsAppRulesCard } from './settings-whatsapp-rules';
@@ -35,8 +36,9 @@ export function WhatsAppSettingsCard() {
   return <><WhatsAppConnectionCard/><WhatsAppRulesCard/></>;
 }
 
-/** WhatsApp through Zernio, read-only: the key goes to the Keychain and is never shown again; each account has its
- * scope, confidentiality and days back. Nothing is sent or marked as read. */
+/** WhatsApp through Zernio: the key goes to the Keychain and is never shown again; each account has its scope,
+ * confidentiality and days back. Reading never marks anything as read; a reply leaves only from a card, after its
+ * exact preview and «Enviar», and Meta's charge for it is stated here. */
 function WhatsAppConnectionCard() {
   const [state, setState] = useState<ChatSettings | null>(null);
   const [scopes, setScopes] = useState<Scope[]>([]);
@@ -71,8 +73,9 @@ function WhatsAppConnectionCard() {
   return <article className="card settings-mail" aria-labelledby="whatsapp-title">
     <div className="card-head"><h2 id="whatsapp-title">WhatsApp (Zernio)</h2>
       <span className={`status-badge ${state.hasKey ? 'good' : 'paused'}`}>{state.hasKey ? 'Clave guardada' : 'Sin clave'}</span></div>
-    <p>AgoraOne lee tu WhatsApp Business a través de Zernio en <strong>solo lectura</strong>: no envía nada ni marca nada como leído. Lee cada cinco minutos o al pulsar «Leer ahora». El número se conecta en el panel de Zernio; aquí solo va su clave de API, que se guarda en el Llavero y no se vuelve a mostrar.</p>
+    <p>AgoraOne lee tu WhatsApp Business a través de Zernio sin marcar nada como leído, cada cinco minutos o al pulsar «Leer ahora». Solo envía un mensaje cuando respondes desde una tarjeta de la Bandeja, ves la vista previa exacta y pulsas «Enviar». El número se conecta en el panel de Zernio; aquí solo va su clave de API, que se guarda en el Llavero y no se vuelve a mostrar.</p>
     <p className="muted">Los grupos no llegan: con el número en modo «coexistence», WhatsApp solo entrega los chats individuales.</p>
+    <p className="muted">{META_COST_NOTICE}</p>
     <form className="field-row" onSubmit={save}>
       <label className="field">{state.hasKey ? 'Cambiar la clave de API de Zernio' : 'Clave de API de Zernio'}
         <input type="password" autoComplete="off" spellCheck={false} value={key} onChange={event => setKey(event.target.value)} placeholder="Va directa al Llavero"/></label>

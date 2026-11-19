@@ -116,3 +116,7 @@
 .chat-message.outgoing { align-self:flex-end; text-align:right }
 .chat-message.outgoing p:not(.muted) { background:var(--c-dcebdc); color:var(--c-24563a); border-color:var(--c-dcebdc) }
 .chat-message > .muted { font-size:11px }
+/* WhatsApp reply: the closed-window reason with a uniform border, never a side stripe */
+.chat-reply-closed { margin:0; padding:9px 11px; font-size:12px; border-radius:8px; background:var(--c-f3e6c4); color:var(--c-7a5717); border:1px solid var(--c-f3e6c4) }
+.chat-reply-count { align-self:flex-end; font-size:11px; color:var(--c-6f8379) }
+.chat-reply-count.over { color:var(--c-7a5717); font-weight:600 }
