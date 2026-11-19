@@ -12,6 +12,7 @@ import { attachmentsSection, noteContent, noteTitle, projectsBase, withLevel } f
 import { attachmentName, type CardOrigin } from './inbox-cards';
 import { filesSection, NoteFiles, saveFiles, type Chosen } from './note-files';
 import { RepoFolderPicker } from './repo-note';
+import { ActionButton } from '../ui/action-button';
 
 type Vault = { id: string; name: string; folders: string[] };
 const NO_PROJECT = '';
@@ -142,7 +143,7 @@ export function ProjectNote({ origin: item, onDone, onCancel }: { origin: CardOr
         task={`Lee la nota ${saved.root}/${saved.path} (está en la copia principal del repositorio, sin commit) y haz lo que plantea.`} onClose={() => setOrca(false)}/>
       : <div className="inbox-actions">
           <button type="button" className="button primary" onClick={() => setOrca(true)}>Llevar a Orca…</button>
-          <button type="button" className="button" onClick={() => onDone(repoMessage ?? '')}>Cerrar</button>
+          <ActionButton icon="close" label="Cerrar" onClick={() => onDone(repoMessage ?? '')}/>
         </div>}
   </div>;
   return <form className="project-note" aria-label="Añadir a la nota del proyecto" onSubmit={event => { event.preventDefault(); void create(); }}>
@@ -180,7 +181,7 @@ export function ProjectNote({ origin: item, onDone, onCancel }: { origin: CardOr
         ? <button type="submit" className="button primary" disabled={busy || repoFolder === null || !title.trim()}>{busy ? 'Guardando…' : saved ? 'Reintentar' : 'Guardar en el repositorio'}</button>
         : <button type="submit" className="button primary" disabled={busy || !vault || folder === null || !title.trim()}>{busy ? 'Creando…' : made ? 'Reintentar' : 'Crear la nota'}</button>}
       {(made || saved) && error && <button type="button" className="button" disabled={busy} onClick={() => void finish()}>Terminar sin esos archivos</button>}
-      <button type="button" className="button" disabled={busy} onClick={onCancel}>Cancelar</button>
+      <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={onCancel}/>
     </div>
   </form>;
 }

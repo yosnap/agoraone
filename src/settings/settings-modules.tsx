@@ -5,6 +5,7 @@ import { Loading, LoadError } from '../ui/load-state';
 import { refreshOrcaProjects } from '../orca/orca-projects';
 import { moduleLabels, moduleOn, moduleOwners, modulesRead, setModule, useModules } from '../shell/modules';
 import type { Section } from '../shell/shell-state';
+import { ActionButton } from '../ui/action-button';
 
 const order: ModuleName[] = ['correo', 'agenda', 'fiscal', 'trabajos', 'presupuestos', 'reuniones', 'voz', 'musica', 'oficina', 'orca', 'whatsapp', 'jev', 'central', 'fabrica'];
 // What turning off each internal module does; the modules of a connector say it on their card in Conectores (and
@@ -41,7 +42,7 @@ export function ModulesList({ modules, labels, owners, onChange, onConnectors }:
     </li>)}</ul>
     {moved.length > 0 && <div className="field-row modules-connectors">
       <p>{joinNames(moved)} se encienden y apagan en su tarjeta de Conectores.</p>
-      {onConnectors && <span className="actions"><button type="button" className="button" onClick={onConnectors}>Ir a Conectores</button></span>}
+      {onConnectors && <span className="actions"><ActionButton icon="link" label="Ir a Conectores" onClick={onConnectors}/></span>}
     </div>}
   </>;
 }

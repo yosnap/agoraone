@@ -7,6 +7,7 @@ import { ChangeReview } from '../ui/change-review';
 import { statusTone, labelOf } from './crmdev-labels';
 import type { useCrmdevChange } from './use-crmdev-change';
 import { orderNote, readAgain, readAtLabel, useRereading, type CrmdevFailure } from './use-crmdev-view';
+import { ActionButton } from '../ui/action-button';
 
 // Pieces shared by the tabs and records of the «CRMDev» section. Everything from CRMDev is React text: never HTML, never
 // Markdown, never a link, even when it looks like an address.
@@ -25,7 +26,7 @@ export function CrmdevConnect({ onOpen }: { onOpen: (section: Section) => void }
     <p>Escribe la dirección de tu CRMDev y una clave de organización (<code>crm_…</code>) creada en sus Ajustes › API Keys. La clave se guarda solo en el almacén de secretos del sistema.</p>
     <p>AgoraOne lee tus proyectos, tareas, tickets y clientes, y solo crea o cambia algo después de enseñarte el cambio exacto y de que lo confirmes; nunca borra nada en CRMDev.</p>
     <div className="actions central-actions">
-      <button type="button" className="button primary" onClick={() => openConnector('crmdev', onOpen)}>Ir a Conectores › CRMDev</button>
+      <ActionButton icon="link" label="Ir a Conectores › CRMDev" tone="primary" onClick={() => openConnector('crmdev', onOpen)}/>
     </div>
   </article>;
 }
@@ -43,8 +44,8 @@ export function CrmdevProblem({ failure, onRetry, onOpen }: { failure: CrmdevFai
   return <div className="error load-error crmdev-problem" role="alert" data-kind={failure.kind ?? 'error'}>
     <span>{lead && <strong>{lead} </strong>}{failure.message}</span>
     <span className="actions">
-      {(failure.kind === 'auth' || failure.kind === 'forbidden') && <button type="button" onClick={() => openConnector('crmdev', onOpen)}>Ir a Conectores › CRMDev</button>}
-      <button type="button" onClick={onRetry}>Reintentar</button>
+      {(failure.kind === 'auth' || failure.kind === 'forbidden') && <ActionButton icon="link" label="Ir a Conectores › CRMDev" onClick={() => openConnector('crmdev', onOpen)}/>}
+      <ActionButton icon="refresh" label="Reintentar" onClick={onRetry}/>
     </span>
   </div>;
 }
@@ -73,15 +74,15 @@ export function ReadAgain({ times }: { times: (string | null | undefined)[] }) {
   const busy = useRereading();
   return <div className="actions central-actions crmdev-read">
     {when && <small className="muted">{when}</small>}
-    <button type="button" className="button" disabled={busy} onClick={readAgain}>{busy ? 'Leyendo…' : 'Volver a leer'}</button>
+    <ActionButton icon="refresh" label="Volver a leer" busyLabel={busy && 'Leyendo…'} disabled={busy} onClick={readAgain}/>
   </div>;
 }
 
 /** The two buttons of a form that changes CRMDev, in a row of their own or on the right of its last field. */
 export function EditActions({ busy, disabled, onCancel }: { busy: boolean; disabled: boolean; onCancel: () => void }) {
   return <div className="actions central-actions crmdev-edit-actions">
-    <button type="button" className="button" onClick={onCancel}>Cancelar</button>
-    <button type="submit" className="button primary" disabled={disabled || busy}>{busy ? 'Preparando…' : 'Revisar el cambio'}</button>
+    <ActionButton icon="close" label="Cancelar" onClick={onCancel}/>
+    <ActionButton icon="check" label="Revisar el cambio" tone="primary" busyLabel={busy && 'Preparando…'} type="submit" disabled={disabled || busy}/>
   </div>;
 }
 
@@ -98,9 +99,9 @@ export function CrmdevReview({ change, onCancel, onReview, onLink, linkLabel, pa
       <p className="notice">{change.doubtful.message}</p>
       {change.error && <p className="error" role="alert">{change.error}</p>}
       <div className="actions central-actions">
-        <button type="button" className="button" disabled={change.busy} onClick={cancel}>Cancelar</button>
+        <ActionButton icon="close" label="Cancelar" disabled={change.busy} onClick={cancel}/>
         {page && <OpenInCrmdev page={page} label="Revisar en CRMDev" discreet={discreet}/>}
-        <button type="button" className="button primary" disabled={change.busy} onClick={() => void change.anyway()}>Crear de todos modos</button>
+        <ActionButton icon="plus" label="Crear de todos modos" tone="primary" disabled={change.busy} onClick={() => void change.anyway()}/>
       </div>
     </div>;
   }

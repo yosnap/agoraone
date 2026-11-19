@@ -9,6 +9,7 @@ import { CentralEditClient } from './central-edit-client';
 import { CentralNote } from './central-note';
 import { Block, Facts, RecordLayout } from '../ui/record-layout';
 import { dateLabel, forgetCentral, useCentralRead, viewKey } from './use-central-view';
+import { ActionButton } from '../ui/action-button';
 
 const HIDDEN = 'Oculto en modo discreto';
 
@@ -49,7 +50,7 @@ function ClientRecord({ id, discreet, onBack, onOpen }: { id: string; discreet: 
   const can = useWritePermissions();
   const [editing, setEditing] = useState<Editing>(null);
   const [said, setSaid] = useState('');
-  const back = <button type="button" className="button" onClick={onBack}>Volver a la lista</button>;
+  const back = <ActionButton icon="back" label="Volver a la lista" onClick={onBack}/>;
   if (read.failure) return <><div className="actions central-actions">{back}</div><CentralProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/></>;
   if (!read.data) return <><div className="actions central-actions">{back}</div><Loading label="Leyendo la ficha del cliente" lines={4}/></>;
   const c = read.data;
@@ -61,12 +62,12 @@ function ClientRecord({ id, discreet, onBack, onOpen }: { id: string; discreet: 
     badges={<span className="chip">De Central</span>} actions={<><OpenInCentral page={`clientes/${id}`} discreet={discreet}/>{back}</>}>
     <FallbackNote fallback={c.fallback}/>
     {said && <p className="ok-note central-wide" role="status">{said}</p>}
-    <Block title="Datos y contacto" actions={editable && editing !== 'datos' && <button type="button" className="button" onClick={() => open('datos')}>Cambiar datos</button>}>
+    <Block title="Datos y contacto" actions={editable && editing !== 'datos' && <ActionButton icon="edit" label="Cambiar datos" onClick={() => open('datos')}/>}>
       {editable && editing === 'datos' ? <CentralEditClient key={editable.revision} client={editable} onDone={done} onCancel={() => setEditing(null)} onReview={forgetCentral}/>
         : <Facts items={[['Nombre', c.name ?? '—'], ['Empresa', c.company || '—'],
           ...(discreet ? [['Contacto', `${HIDDEN}: correo, teléfono, NIF y dirección.`] as [string, string]] : contact)]}/>}
     </Block>
-    <Block title="Notas" actions={editable && editing !== 'nota' && <button type="button" className="button" onClick={() => open('nota')}>Añadir nota</button>}>
+    <Block title="Notas" actions={editable && editing !== 'nota' && <ActionButton icon="plus" label="Añadir nota" onClick={() => open('nota')}/>}>
       {editable && editing === 'nota' && <CentralNote target="cliente" id={editable.id} onDone={done} onCancel={() => setEditing(null)}/>}
       <NotesList notes={c.notes} discreet={discreet}/>
     </Block>
@@ -100,7 +101,7 @@ export function CentralClients({ discreet, onOpen }: { discreet: boolean; onOpen
         <td><strong>{c.name ?? '—'}</strong></td><td>{c.company && c.company !== c.name ? c.company : '—'}</td>
         <td className="num">{c.projects ?? '—'}</td><td className="num">{c.websites ?? '—'}</td>
         <td className="central-row-actions">{c.id && <span className="actions">
-          <button type="button" className="button" onClick={() => setOpen(c.id)}>Ver ficha</button><OpenInCentral page={`clientes/${c.id}`} discreet={discreet}/></span>}</td>
+          <ActionButton icon="eye" label="Ver ficha" onClick={() => setOpen(c.id)}/><OpenInCentral page={`clientes/${c.id}`} discreet={discreet}/></span>}</td>
       </tr>)}</tbody>
     </table>}
   </>;

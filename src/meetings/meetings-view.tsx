@@ -9,6 +9,7 @@ import { asClass, emptyFields, KindFields, type Fields } from './meeting-kind';
 import { useClients } from '../data/clients-store';
 import { lastChoice, rememberChoice, startRecording, stopRecording, useMeetingRecorder } from './meeting-recorder';
 import './meetings.css';
+import { ActionButton } from '../ui/action-button';
 
 const levels: { value: Level; label: string }[] = (Object.keys(levelLabels) as Level[]).map(value => ({ value, label: levelLabels[value] }));
 export const clock = (seconds: number) => {
@@ -67,10 +68,10 @@ function MeetingRow({ meeting, discreet, onDeleted, onChanged, ours, planned, as
     {idle && (confirming
       ? <span className="meeting-confirm" role="group" aria-label="Confirmar borrado">
           <span>¿Borrar el audio de esta reunión?</span>
-          <button type="button" className="button danger" onClick={() => void remove()}>Borrar</button>
-          <button type="button" className="button" onClick={() => setConfirming(false)}>Cancelar</button>
+          <ActionButton icon="trash" label="Borrar" tone="danger" onClick={() => void remove()}/>
+          <ActionButton icon="close" label="Cancelar" onClick={() => setConfirming(false)}/>
         </span>
-      : <button type="button" className="button" onClick={() => setConfirming(true)}>Borrar</button>)}
+      : <ActionButton icon="trash" label="Borrar" onClick={() => setConfirming(true)}/>)}
     {error && <small className="dictation-error" role="alert">{error}</small>}
     {open && !hidden && meeting.has_transcript && <MeetingDetailPanel key={`${meeting.id}:${meeting.work}`} id={meeting.id} onChanged={onChanged}/>}
   </li>;

@@ -8,6 +8,7 @@ import { MicrosoftClientField, MicrosoftConnect } from './settings-microsoft';
 import { ProviderLogo } from './provider-logos';
 import { MailServersForm } from './settings-mail-servers';
 import { Loading, LoadError } from '../ui/load-state';
+import { ActionButton } from '../ui/action-button';
 
 const statusLabels: Record<MailAccount['status'], string> = {
   pending: 'Pendiente de leer', ok: 'Conectada', auth: 'Revisa la contraseña', unreachable: 'Sin conexión', error: 'Error del servidor',
@@ -38,8 +39,8 @@ function ScopeSelect({ value, scopes, onChange, onCreated, id }: { value: string
   };
   if (naming) return <span className="field-row">
     <input aria-label="Nombre del ámbito nuevo" autoFocus value={name} maxLength={80} onChange={event => setName(event.target.value)} placeholder="CodeIA, Humanitek…"/>
-    <button type="button" className="button primary" disabled={!name.trim()} onClick={() => void create()}>Crear</button>
-    <button type="button" className="button" onClick={() => setNaming(false)}>Cancelar</button>{failed && <LoadError message={failed}/>}</span>;
+    <ActionButton icon="plus" label="Crear" tone="primary" disabled={!name.trim()} onClick={() => void create()}/>
+    <ActionButton icon="close" label="Cancelar" onClick={() => setNaming(false)}/>{failed && <LoadError message={failed}/>}</span>;
   return <ModernSelect id={id} value={value} onChange={choice => choice === 'new' ? setNaming(true) : onChange(choice)}
     options={[{ value: '', label: 'Sin ámbito' }, ...scopes.map(scope => ({ value: String(scope.id), label: scope.name })), { value: 'new', label: 'Nuevo ámbito…' }]}/>;
 }
@@ -123,7 +124,7 @@ export function MailSettingsCard() {
       <form className="field-row" onSubmit={event => { event.preventDefault(); void act(account.id, () => changeMailAccount(account.id, { password: passwords[account.id] }), 'Contraseña guardada en el Llavero.').then(ok => { if (ok) setPasswords({ ...passwords, [account.id]: '' }); }); }}>
         <label className="field">{account.provider === 'resend' ? (account.hasPassword ? 'Cambiar la clave de API de Resend' : 'Clave de API de Resend') : account.hasPassword ? 'Cambiar la contraseña de aplicación' : 'Contraseña de aplicación'}
           <input type="password" autoComplete="off" spellCheck={false} value={passwords[account.id] ?? ''} onChange={event => setPasswords({ ...passwords, [account.id]: event.target.value })} placeholder="Nunca se muestra una vez guardada"/></label>
-        <button className="button" disabled={(passwords[account.id] ?? '').length < 4 || busy === account.id}>Guardar</button>
+        <ActionButton icon="save" label="Guardar" type="submit" disabled={(passwords[account.id] ?? '').length < 4 || busy === account.id}/>
       </form>}
       {account.provider === 'resend' && <label className="check"><input type="checkbox" checked={account.inbound} disabled={busy === account.id}
         onChange={event => void act(account.id, () => changeMailAccount(account.id, { inbound: event.target.checked }), event.target.checked ? 'AgoraOne leerá también lo que recibes en Resend.' : 'Ya no se lee lo que recibes en Resend.')}/>
@@ -134,9 +135,9 @@ export function MailSettingsCard() {
         <button className="button" disabled={busy === account.id} onClick={() => void act(account.id, () => changeMailAccount(account.id, { enabled: !account.enabled }), account.enabled ? 'Cuenta en pausa.' : 'Cuenta reanudada.')}>{account.enabled ? 'Pausar' : 'Reanudar'}</button>
         {removing === account.id ? <span className="field-row" role="group" aria-label={`Confirmar quitar ${account.address}`}>
           <small>Se borran sus correos guardados y su contraseña del Llavero; el buzón no se toca.</small>
-          <button className="button danger" disabled={busy === account.id} onClick={() => void act(account.id, () => deleteMailAccount(account.id), 'Cuenta quitada.').then(() => setRemoving(null))}>Quitar</button>
-          <button className="button" onClick={() => setRemoving(null)}>Cancelar</button>
-        </span> : <button className="button danger" disabled={busy === account.id} onClick={() => setRemoving(account.id)}>Quitar…</button>}
+          <ActionButton icon="trash" label="Quitar" tone="danger" type="submit" disabled={busy === account.id} onClick={() => void act(account.id, () => deleteMailAccount(account.id), 'Cuenta quitada.').then(() => setRemoving(null))}/>
+          <ActionButton icon="close" label="Cancelar" type="submit" onClick={() => setRemoving(null)}/>
+        </span> : <ActionButton icon="trash" label="Quitar…" tone="danger" type="submit" disabled={busy === account.id} onClick={() => setRemoving(account.id)}/>}
       </div>
       </>}
     </li>)}</ul> : <p className="muted">Todavía no hay cuentas conectadas.</p>}
@@ -164,8 +165,8 @@ export function MailSettingsCard() {
         <label className="field">Nivel<ModernSelect value={form.confidentiality} options={levels} onChange={value => setForm({ ...form, confidentiality: value as Level })}/></label>
         {(!sendOnly(form.provider) || (form.provider === 'resend' && form.inbound)) && <label className="field">Días hacia atrás<input type="number" min={1} max={3650} value={form.maxAgeDays} onChange={event => setForm({ ...form, maxAgeDays: Math.max(1, Math.min(3650, Number(event.target.value) || 60)) })}/></label>}
       </div>
-      <div className="actions"><button className="button primary" disabled={busy === 'new' || !form.address.includes('@')}>Añadir cuenta</button><button type="button" className="button" onClick={() => setAdding(false)}>Cancelar</button></div>
-    </form> : <div className="actions"><button className="button" onClick={() => setAdding(true)}>Añadir cuenta</button></div>}
+      <div className="actions"><ActionButton icon="plus" label="Añadir cuenta" tone="primary" type="submit" disabled={busy === 'new' || !form.address.includes('@')}/><ActionButton icon="close" label="Cancelar" onClick={() => setAdding(false)}/></div>
+    </form> : <div className="actions"><ActionButton icon="plus" label="Añadir cuenta" type="submit" onClick={() => setAdding(true)}/></div>}
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { projectStatusLabels, type CentralProjectRecord } from '../api/central';
 import { ModernSelect } from '../ui/modern-select';
 import { ChangeReview, useCentralChange } from './central-change';
+import { ActionButton } from '../ui/action-button';
 
 // Archiving is done in Central only (it removes the project's audits, alerts and uptime monitor): not offered here.
 const EDITABLE = ['ACTIVE', 'MAINTENANCE', 'DORMANT'];
@@ -33,8 +34,8 @@ export function CentralEditProject({ project, onDone, onCancel, onReview }: {
         Fijar el estado para que el escáner de Central no lo cambie (dejar de fijarlo solo se puede en Central)</label>}
     {change.error && <p className="error" role="alert">{change.error}</p>}
     <div className="actions central-actions">
-      <button type="button" className="button" onClick={onCancel}>Cancelar</button>
-      <button type="submit" className="button primary" disabled={!Object.keys(changes).length || change.busy}>{change.busy ? 'Preparando…' : 'Revisar el cambio'}</button>
+      <ActionButton icon="close" label="Cancelar" onClick={onCancel}/>
+      <ActionButton icon="check" label="Revisar el cambio" tone="primary" busyLabel={change.busy && 'Preparando…'} type="submit" disabled={!Object.keys(changes).length || change.busy}/>
     </div>
   </form>;
 }

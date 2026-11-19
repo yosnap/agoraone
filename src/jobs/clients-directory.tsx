@@ -9,6 +9,7 @@ import { ClientSuggestions, DistinctPairs, VaultCards } from './client-follow-up
 import { ClientForm } from './client-form';
 import { filterClients, followUp, forDiscreet, type ClientsFilter } from './clients-view';
 import { takeClientsFilter } from './jobs-tab';
+import { ActionButton } from '../ui/action-button';
 
 const rowKey = (client: DirectoryClient) => `${client.sources.join('+')}-${client.localId ?? client.centralId ?? client.crmdevId ?? client.name}`;
 
@@ -64,23 +65,23 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
   const cards = forDiscreet(data.vaultCards, discreet);
   const pending = followUp({ ...data, vaultCards: cards });
   const actions = (client: DirectoryClient) => {
-    const record = <button type="button" className="button" onClick={() => { setOpen(rowKey(client)); setNote(''); }}>Ficha</button>;
+    const record = <ActionButton icon="eye" label="Ficha" onClick={() => { setOpen(rowKey(client)); setNote(''); }}/>;
     if (discreet || client.localId === null) return <span className="actions">{record}</span>;
     const id = client.localId;
     if (deleting?.id === id) return <span className="field-row" role="group" aria-label={`Confirmar eliminar ${client.name}`}>
       <small>Se borra de AgoraOne{client.sources.length > 1 ? '; en Central y CRMDev sigue igual' : ''}. Antes se guarda una copia con sus notas.
         {deleting.meetings ? ` ${deleting.meetings === 1 ? 'Una reunión lo nombra y conservará' : `${deleting.meetings} reuniones lo nombran y conservarán`} el nombre «${client.aliases.at(-1) ?? client.name}».` : ''}</small>
-      <button type="button" className="button" disabled={busy} onClick={() => setDeleting(null)}>Cancelar</button>
-      <button type="button" className="button danger" disabled={busy} onClick={() => void act(() => deleteClient(id), `«${client.name}» eliminado de tus clientes.`)}>Eliminar de verdad</button>
+      <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={() => setDeleting(null)}/>
+      <ActionButton icon="trash" label="Eliminar de verdad" tone="danger" disabled={busy} onClick={() => void act(() => deleteClient(id), `«${client.name}» eliminado de tus clientes.`)}/>
     </span>;
     return <span className="actions">
       {record}
-      <button type="button" className="button" disabled={busy} onClick={() => { setEditing(id); setNote(''); }}>Editar</button>
+      <ActionButton icon="edit" label="Editar" disabled={busy} onClick={() => { setEditing(id); setNote(''); }}/>
       {client.source === 'ambos' && client.centralId && (client.aliases.length
         ? <button type="button" className="button" disabled={busy}
           onClick={() => void act(() => distinctClient(id, client.centralId!), `«${client.aliases.at(-1)}» y «${client.name}» de Central se quedan como clientes distintos.`)}>Son distintos</button>
         : <small className="muted">Mismo nombre que en Central: para separarlos, cambia antes el nombre del tuyo.</small>)}
-      <button type="button" className="button danger" disabled={busy} onClick={() => askDelete(id)}>Eliminar…</button>
+      <ActionButton icon="trash" label="Eliminar…" tone="danger" disabled={busy} onClick={() => askDelete(id)}/>
     </span>;
   };
   const sources = [data.central.on && data.central.read ? 'Central' : null, data.crmdev.on && data.crmdev.read ? 'CRMDev' : null].filter(Boolean);
@@ -89,7 +90,7 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
       <span className="actions">
         {data.crmdev.on && data.crmdev.connected && <button type="button" className="button" disabled={busy}
           onClick={() => void act(refreshCrmdevClients, 'Clientes de CRMDev leídos de nuevo.')}>Actualizar CRMDev</button>}
-        {!discreet && editing === null && <button type="button" className="button primary" onClick={() => { setEditing('new'); setNote(''); }}>Nuevo cliente</button>}
+        {!discreet && editing === null && <ActionButton icon="plus" label="Nuevo cliente" tone="primary" onClick={() => { setEditing('new'); setNote(''); }}/>}
       </span></div>
     <p className="muted">{sources.length ? `Tus clientes de ${sources.join(' y ')} y los que guardas en AgoraOne, en una sola lista. Los de cada CRM se cambian en su sección.`
       : 'Ni Central ni CRMDev están encendidos y leídos (Conectores): ves solo los clientes que guardas en AgoraOne.'}

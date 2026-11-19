@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { CentralClientRecord } from '../api/central';
 import type { ClientField } from '../api/central-write';
 import { ChangeReview, useCentralChange } from './central-change';
+import { ActionButton } from '../ui/action-button';
 
 const FIELDS: { field: ClientField; label: string; max: number; type?: string; lines?: boolean }[] = [
   { field: 'name', label: 'Nombre', max: 120 }, { field: 'company', label: 'Empresa', max: 160 },
@@ -31,8 +32,8 @@ export function CentralEditClient({ client, onDone, onCancel, onReview }: {
     </label>)}</div>
     {change.error && <p className="error" role="alert">{change.error}</p>}
     <div className="actions central-actions">
-      <button type="button" className="button" onClick={onCancel}>Cancelar</button>
-      <button type="submit" className="button primary" disabled={!changed.length || change.busy}>{change.busy ? 'Preparando…' : 'Revisar el cambio'}</button>
+      <ActionButton icon="close" label="Cancelar" onClick={onCancel}/>
+      <ActionButton icon="check" label="Revisar el cambio" tone="primary" busyLabel={change.busy && 'Preparando…'} type="submit" disabled={!changed.length || change.busy}/>
     </div>
   </form>;
 }

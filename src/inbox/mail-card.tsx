@@ -9,6 +9,7 @@ import { InvoiceFiling } from './invoice-filing';
 import { IssueFromSource } from './issue-from-source';
 import { ProjectNote } from './project-note';
 import { ReplyComposer } from './reply-composer';
+import { ActionButton } from '../ui/action-button';
 
 /** One mail's card in the Bandeja: its summary, what it asks and its actions. Only proposes: every action opens a
  * form the user checks, and nothing is moved, sent or written without the button. */
@@ -73,7 +74,7 @@ export function MailCard({ item, discreet, selected, editing, isOpen, show, orca
           && <button type="button" className="button" disabled={discreet} title={discreet ? 'Sal del modo discreto para escribir la issue' : 'Crear una issue en el repositorio del proyecto'}
             onClick={() => show('issue', true)}>Crear issue…</button>}
       </> : <button type="button" className="button" onClick={() => onDecide('pending')}>Volver a Pendientes</button>}
-      {!item.moved && <button type="button" className="button act-delete" onClick={onDelete}>Eliminar…</button>}
+      {!item.moved && <ActionButton icon="trash" label="Eliminar…" tone="danger" small onClick={onDelete}/>}
       {item.suggestion && <button type="button" className="button" onClick={onRule}
         title={`${actionLabels[item.suggestion.action]} para todo lo que venga de ${item.suggestion.sender}`}>Crear regla «{item.suggestion.name}»</button>}
     </div>

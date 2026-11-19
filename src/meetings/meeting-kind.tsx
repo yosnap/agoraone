@@ -3,6 +3,7 @@ import { exportMeeting, kindLabels, updateMeeting, type MeetingClass, type Meeti
 import { PeopleField } from './people-field';
 import { ModernSelect } from '../ui/modern-select';
 import { useClients } from '../data/clients-store';
+import { ActionButton } from '../ui/action-button';
 
 const kinds = (Object.keys(kindLabels) as MeetingKind[]).map(value => ({ value, label: kindLabels[value] }));
 const failed = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
@@ -28,7 +29,7 @@ export function KindFields({ value, onChange, onTyping }: { value: Fields; onCha
     {clients !== null && !names.length && <p className="meeting-central-retry">
       <small className="muted">{failed ? 'No se pudieron leer tus clientes.' : 'Aún no tienes clientes: créalos en Trabajos › Clientes o conecta Central (Conectores › Central).'}</small>
       {retrying ? <small className="muted">Se vuelve a intentar sola…</small>
-        : <button type="button" className="button" onClick={reread}>Volver a leer</button>}
+        : <ActionButton icon="refresh" label="Volver a leer" onClick={reread}/>}
     </p>}
     <PeopleField value={value.people} onChange={people => onChange({ ...value, people })} onTyping={onTyping}/>
   </div>;
@@ -53,7 +54,7 @@ export function MeetingClassCard({ detail, onSaved }: { detail: MeetingDetail; o
     <h3>Qué fue y con quién</h3>
     <KindFields value={fields} onTyping={setTyping} onChange={next => { setFields(next); setState({ saving: false, done: '', error: '' }); }}/>
     <span className="meeting-actions">
-      <button type="button" className="button" disabled={same || state.saving} onClick={() => void save()}>{state.saving ? 'Guardando…' : 'Guardar'}</button>
+      <ActionButton icon="save" label="Guardar" busyLabel={state.saving && 'Guardando…'} disabled={same || state.saving} onClick={() => void save()}/>
       {state.done && <small className="ok-note" role="status">{state.done}</small>}
     </span>
     {state.error && <small className="dictation-error" role="alert">{state.error}</small>}
@@ -83,8 +84,8 @@ export function MeetingExport({ detail }: { detail: MeetingDetail }) {
     <h3>Para Claude o Codex</h3>
     <p className="muted">Toda la reunión en un archivo Markdown: tipo, cliente, personas, resumen, resumen extendido, decisiones, tareas y la transcripción completa.</p>
     <span className="meeting-actions">
-      <button type="button" className="button" onClick={() => void download()}>Descargar el archivo</button>
-      <button type="button" className="button" onClick={() => void copy()}>Copiar todo</button>
+      <ActionButton icon="download" label="Descargar el archivo" onClick={() => void download()}/>
+      <ActionButton icon="copy" label="Copiar todo" onClick={() => void copy()}/>
     </span>
     {note && <small className={note.error ? 'dictation-error' : 'ok-note'} role={note.error ? 'alert' : 'status'}>{note.text}</small>}
   </section>;

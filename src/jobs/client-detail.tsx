@@ -4,6 +4,7 @@ import { OpenInCrmdev } from '../crmdev/crmdev-common';
 import { clientStatusLabels, labelOf } from '../crmdev/crmdev-labels';
 import { ClientPlacement } from './client-placement';
 import { differenceText, staleText } from './clients-view';
+import { ActionButton } from '../ui/action-button';
 
 const originTone = { central: 'paused', crmdev: 'waiting', local: 'good' } as const;
 
@@ -29,7 +30,7 @@ export function ClientDetail({ client, can, discreet, busy, act, onClose, onDone
       <span className="actions">
         {centralId && <OpenInCentral page={`clientes/${centralId}`} discreet={discreet}/>}
         {crmdevId && <OpenInCrmdev page={`clientes/${crmdevId}`} discreet={discreet}/>}
-        <button type="button" className="button" onClick={onClose}>Cerrar</button>
+        <ActionButton icon="close" label="Cerrar" onClick={onClose}/>
       </span></div>
     <p><ClientOrigins client={client}/>
       {client.crmdevStatus && <small className="muted"> · En CRMDev: {labelOf(clientStatusLabels, client.crmdevStatus)}</small>}</p>

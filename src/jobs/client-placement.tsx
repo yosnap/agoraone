@@ -11,6 +11,7 @@ import { ApiError } from '../api/client';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { placements } from './clients-view';
+import { ActionButton } from '../ui/action-button';
 
 const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -56,8 +57,8 @@ export function ClientPlacement({ client, can, onDone }: {
       {options.includes('crmdev') && <label className="field">Estado en CRMDev<ModernSelect value={status} onChange={setStatus}
         options={optionsOf(clientStatusLabels, null)}/></label>}
       <span className="actions">
-        {options.includes('central') && <button type="button" className="button" onClick={() => { setWhere('central'); void central.ask({ kind: 'cliente-nuevo', localId: id }); }}>Crear en Central…</button>}
-        {options.includes('crmdev') && <button type="button" className="button" onClick={() => { setWhere('crmdev'); void crmdev.ask({ kind: 'cliente-desde-local', localId: id, status }); }}>Crear en CRMDev…</button>}
+        {options.includes('central') && <ActionButton icon="plus" label="Crear en Central…" onClick={() => { setWhere('central'); void central.ask({ kind: 'cliente-nuevo', localId: id }); }}/>}
+        {options.includes('crmdev') && <ActionButton icon="plus" label="Crear en CRMDev…" onClick={() => { setWhere('crmdev'); void crmdev.ask({ kind: 'cliente-desde-local', localId: id, status }); }}/>}
       </span>
     </div>}
     {where === 'central' && (central.busy && !central.preview ? <Loading label="Preparando el cliente para Central" lines={2}/>
@@ -68,7 +69,7 @@ export function ClientPlacement({ client, can, onDone }: {
       : reviewing(crmdev) ? <CrmdevReview change={crmdev} onCancel={close} onReview={close} page="clientes" linkLabel="Enlazar con el existente"
         onLink={crmdevId => void link(async () => { await refreshForLink(); await linkCrmdevClient(id, crmdevId, 'linked'); }, 'Enlazado con el cliente que ya tenía CRMDev.')}/>
       : <>{crmdev.error && <p className="error" role="alert">{crmdev.error}</p>}
-        <div className="actions"><button type="button" className="button" onClick={close}>Cerrar</button></div></>)}
+        <div className="actions"><ActionButton icon="close" label="Cerrar" onClick={close}/></div></>)}
     {error && <p className="error" role="alert">{error}</p>}
   </div>;
 }

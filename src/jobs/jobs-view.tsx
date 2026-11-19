@@ -13,6 +13,7 @@ import { ClientProjectsSection } from './client-projects';
 import { ClientsDirectoryView } from './clients-directory';
 import { CommissionForm, type ProfileChoice } from './commission-form';
 import './jobs.css';
+import { ActionButton } from '../ui/action-button';
 
 type Period = '24h' | '7d' | '30d';
 const periods: { id: Period; label: string; days: number }[] = [{ id: '24h', label: '24 h', days: 1 }, { id: '7d', label: '7 días', days: 7 }, { id: '30d', label: '30 días', days: 30 }];
@@ -127,7 +128,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
         <button key={p.id} aria-pressed={period === p.id} onClick={() => setPeriod(p.id)}>{p.label}</button>)}</div>
       <label className="field jobs-filter">Perfil<ModernSelect value={profile} onChange={setProfile}
         options={[{ value: ALL, label: 'Todos los perfiles' }, ...Object.keys(work?.profiles ?? {}).map(id => ({ value: id, label: labelOf(id) }))]}/></label>
-      <button type="button" className="button" onClick={() => void load()}>Actualizar</button>
+      <ActionButton icon="refresh" label="Actualizar" onClick={() => void load()}/>
     </div>
     {error && <LoadError message={error}/>}
     {!work && !error ? <Loading label="Leyendo los trabajos de Hermes" lines={4}/> : work && <>
@@ -146,7 +147,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
             : <JobManager profileId={id} jobs={entry.tasks} gateway={gateway} onChanged={() => void load()} extra={task => <TaskRuns task={task} period={period} discreet={discreet}/>}/>}
         </article>)}
       <div className="jobs-heading"><h2>Kanban y encargos</h2>
-        {!commissioning && !discreet && central !== null && profileList.length > 0 && <button type="button" className="button primary" onClick={() => { setCommissioning(true); action.say(''); }}>Nuevo encargo</button>}</div>
+        {!commissioning && !discreet && central !== null && profileList.length > 0 && <ActionButton icon="plus" label="Nuevo encargo" tone="primary" onClick={() => { setCommissioning(true); action.say(''); }}/>}</div>
       {commissioning && !discreet && central !== null && <CommissionForm profiles={profileList} central={central} ready={ready} onCancel={() => setCommissioning(false)}
         onDone={note => { setCommissioning(false); action.say(note); void load(); }}/>}
       {action.error && <p role="alert" className="error">{action.error}</p>}

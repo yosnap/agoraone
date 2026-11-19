@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { createClient, getClient, linkCrmdevClient, undistinctClient, updateClient, type OwnClient, type OwnClientFields } from '../api/clients';
 import { LoadError, Loading } from '../ui/load-state';
+import { ActionButton } from '../ui/action-button';
 
 const blank: OwnClientFields = { name: '', company: null, email: null, phone: null, taxId: null, domains: [], notes: null };
 const text = (value: string) => value.trim() || null;
@@ -69,8 +70,8 @@ export function ClientForm({ clientId, onDone, onCancel }: { clientId: number | 
     <div className="field-row">
       <label className="field">Dominios (opcional, separados por comas)<input maxLength={600} value={domains} onChange={event => setDomains(event.target.value)} placeholder="cafeweb.es, cafeweb.com"/></label>
       <span className="actions">
-        <button type="button" className="button" disabled={busy} onClick={onCancel}>Cancelar</button>
-        <button type="submit" className="button primary" disabled={busy || !fields.name.trim()}>{busy ? 'Guardando…' : 'Guardar'}</button>
+        <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={onCancel}/>
+        <ActionButton icon="save" label="Guardar" tone="primary" busyLabel={busy && 'Guardando…'} type="submit" disabled={busy || !fields.name.trim()}/>
       </span>
     </div>
   </form>;

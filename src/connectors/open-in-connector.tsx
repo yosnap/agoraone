@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { ApiError } from '../api/client';
 import { openConnectorInBrowser, openConnectorLink, openConnectorWindow, windowExternalLink, type WindowLabel, type WindowLink } from '../api/connector-window';
 import { eventStore, WindowLinkNotice } from '../shell/window-link-notice';
+import { ActionButton } from '../ui/action-button';
 import '../central/central.css';
 
 /** A connector's own web in a window of AgoraOne (1.7), never in a frame: «Abrir en Central», «Abrir en CRMDev»… on a
@@ -53,9 +54,11 @@ export function OpenInConnector({ connector, page, label, discreet = false, brow
   };
   return <div className="central-open">
     <div className="actions central-actions">
-      <button type="button" className={buttonClass} disabled={busy} aria-label={content ? name : undefined} title={content ? name : undefined}
-        onClick={() => void open(false)}>{busy ? 'Abriendo…' : content ?? name}</button>
-      {(browserToo || said?.browser) && <button type="button" className="button" disabled={busy} onClick={() => void open(true)}>Abrir en el navegador</button>}
+      {content ? <button type="button" className={buttonClass} disabled={busy} aria-label={name} title={name}
+        onClick={() => void open(false)}>{busy ? 'Abriendo…' : content}</button>
+        : <ActionButton icon="external" label={name} busyLabel={busy && 'Abriendo…'} className={buttonClass === 'button' ? undefined : buttonClass}
+          disabled={busy} onClick={() => void open(false)}/>}
+      {(browserToo || said?.browser) && <ActionButton icon="external" label="Abrir en el navegador" disabled={busy} onClick={() => void open(true)}/>}
     </div>
     {said && <p className={said.ok ? 'ok-note' : 'error'} role="status">{said.text}</p>}
   </div>;

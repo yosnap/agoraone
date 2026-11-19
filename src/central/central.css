@@ -16,7 +16,6 @@
 .central-figure-label { font-size:11px; font-weight:600; letter-spacing:.3px }
 .central-figure-value { font:500 30px/1.1 Manrope,sans-serif }
 .central-figure small { font-size:11px; opacity:.85 }
-.central-table td { vertical-align:top }
 .central-table .central-date, .central-table th { white-space:nowrap }
 .central-text { white-space:pre-wrap; overflow-wrap:anywhere }
 .central-row-actions { text-align:right; white-space:nowrap; width:1% }

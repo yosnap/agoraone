@@ -11,7 +11,6 @@
 .crmdev .central-filters .field { max-width:360px }
 .crmdev-read { align-items:center; gap:12px }
 /* Rows centred: badges and buttons on the line of their text. */
-.crmdev .central-table td { vertical-align:middle }
 .crmdev-edit { margin-bottom:14px }
 .crmdev-edit-row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px 16px }
 .crmdev-edit-row > .field { flex:1 1 200px; min-width:0 }

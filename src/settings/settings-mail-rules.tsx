@@ -6,6 +6,7 @@ import {
 import { actionLabels } from '../inbox/inbox-labels';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { ActionButton } from '../ui/action-button';
 
 const actions = (Object.keys(actionLabels) as MailRuleAction[]).map(value => ({ value, label: actionLabels[value] }));
 const levels = [{ value: '', label: 'El de la cuenta' }, ...(['local_only', 'private'] as Level[]).map(value => ({ value, label: levelLabels[value] }))];
@@ -49,7 +50,7 @@ export function MailRulesCard() {
   ].filter(Boolean).join(' · ');
   return <article className="card" aria-labelledby="mail-rules-title">
     <div className="card-head"><h2 id="mail-rules-title">Reglas del correo</h2>
-      {!adding && <button type="button" className="button" onClick={() => setAdding(true)}>Añadir regla</button>}</div>
+      {!adding && <ActionButton icon="plus" label="Añadir regla" onClick={() => setAdding(true)}/>}</div>
     <p>Mandan sobre la clasificación automática: la primera que coincide decide. Un dominio (cliente.com) incluye sus subdominios. El nivel de una regla solo puede ser más estricto que el de la cuenta.</p>
     {rules === null && !error ? <Loading label="Leyendo las reglas"/> : <ul className="mail-accounts">
       {rules?.length === 0 && <li className="muted">Aún no hay reglas. También puedes crearlas desde una tarjeta de la Bandeja.</li>}
@@ -60,9 +61,9 @@ export function MailRulesCard() {
         <div className="field-row">
           <button type="button" className="button" onClick={() => void act(() => changeMailRule(rule.id, { enabled: !rule.enabled }), rule.enabled ? 'Regla desactivada.' : 'Regla activada.')}>{rule.enabled ? 'Desactivar' : 'Activar'}</button>
           {removing === rule.id ? <span className="field-row" role="group" aria-label={`Confirmar quitar ${rule.name}`}>
-            <button type="button" className="button danger" onClick={() => void act(() => deleteMailRule(rule.id), 'Regla quitada.').then(() => setRemoving(null))}>Quitar de verdad</button>
-            <button type="button" className="button" onClick={() => setRemoving(null)}>Cancelar</button></span>
-            : <button type="button" className="button danger" onClick={() => setRemoving(rule.id)}>Quitar…</button>}
+            <ActionButton icon="trash" label="Quitar de verdad" tone="danger" onClick={() => void act(() => deleteMailRule(rule.id), 'Regla quitada.').then(() => setRemoving(null))}/>
+            <ActionButton icon="close" label="Cancelar" onClick={() => setRemoving(null)}/></span>
+            : <ActionButton icon="trash" label="Quitar…" tone="danger" onClick={() => setRemoving(rule.id)}/>}
         </div>
       </li>)}
     </ul>}
@@ -77,8 +78,8 @@ export function MailRulesCard() {
         <label className="field">Ámbito<ModernSelect value={form.scopeId} options={scopeOptions} onChange={value => setForm({ ...form, scopeId: value })}/></label>
         <label className="field">Nivel<ModernSelect value={form.confidentiality} options={levels} onChange={value => setForm({ ...form, confidentiality: value })}/></label>
       </div>
-      <div className="field-row"><button className="button primary">Guardar regla</button>
-        <button type="button" className="button" onClick={() => { setAdding(false); setForm(empty); }}>Cancelar</button></div>
+      <div className="field-row"><ActionButton icon="save" label="Guardar regla" tone="primary" type="submit"/>
+        <ActionButton icon="close" label="Cancelar" onClick={() => { setAdding(false); setForm(empty); }}/></div>
     </form>}
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;

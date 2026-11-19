@@ -3,6 +3,7 @@ import { createCard } from '../api/client';
 import { LoadError } from '../ui/load-state';
 import { MarkdownField } from '../ui/markdown-field';
 import { ModernSelect } from '../ui/modern-select';
+import { ActionButton } from '../ui/action-button';
 
 export type ProfileChoice = { id: string; name: string; label: string };
 
@@ -38,8 +39,8 @@ export function CommissionForm({ profiles, central, ready, onDone, onCancel }: {
     {!ready.ok && <p className="fiscal-warning">{ready.why}</p>}
     {error && <LoadError message={error}/>}
     <div className="field-row">
-      <button type="submit" className="button primary" disabled={busy || !profile || !title.trim()}>{busy ? 'Creando…' : 'Crear encargo'}</button>
-      <button type="button" className="button" disabled={busy} onClick={onCancel}>Cancelar</button>
+      <ActionButton icon="plus" label="Crear encargo" tone="primary" busyLabel={busy && 'Creando…'} type="submit" disabled={busy || !profile || !title.trim()}/>
+      <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={onCancel}/>
     </div>
   </form>;
 }

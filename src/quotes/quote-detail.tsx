@@ -9,6 +9,7 @@ import { Block, Facts, RecordLayout } from '../ui/record-layout';
 import { QuotePhaseEdit } from './quote-phase-edit';
 import { HIDDEN, QuotesProblem, StatusBadge } from './quotes-common';
 import { OpenInCentral } from '../central/open-in-central';
+import { ActionButton } from '../ui/action-button';
 
 const documentLabels: Record<DocumentFormat, string> = { pdf: 'PDF', docx: 'Word' };
 const day = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/Madrid' });
@@ -59,7 +60,7 @@ function Phases({ q, discreet, canWrite, onSaid }: { q: QuoteRecord; discreet: b
             <td className="central-date">{p.dueDate ? dayLabel(p.dueDate) : '—'}</td><td>{p.status ? phaseStatusLabels[p.status] : '—'}</td>
             <td className="central-date">{p.completedAt ? dateLabel(p.completedAt) : '—'}</td>
             <td className="central-row-actions">{editable && editing !== editable.id &&
-              <button type="button" className="button" onClick={() => { onSaid(''); setEditing(editable.id); }}>Cambiar</button>}</td>
+              <ActionButton icon="edit" label="Cambiar" onClick={() => { onSaid(''); setEditing(editable.id); }}/>}</td>
           </tr>
           {editable && editing === editable.id && q.id && <tr><td colSpan={7}>
             <QuotePhaseEdit key={editable.revision} quoteId={q.id} phase={editable} onCancel={() => setEditing(null)} onReview={forgetCentral}
@@ -114,7 +115,7 @@ export function QuoteDetail({ id, discreet, onBack, onOpen }: { id: string; disc
   const read = useCentralRead(`presupuesto:${id}`, () => getQuote(id));
   const can = useWritePermissions();
   const [said, setSaid] = useState('');
-  const back = <button type="button" className="button" onClick={onBack}>Volver a la lista</button>;
+  const back = <ActionButton icon="back" label="Volver a la lista" onClick={onBack}/>;
   if (read.failure) return <><div className="actions central-actions">{back}</div><QuotesProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/></>;
   if (!read.data) return <><div className="actions central-actions">{back}</div><Loading label="Leyendo el presupuesto" lines={5}/></>;
   const q = read.data;

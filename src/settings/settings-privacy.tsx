@@ -3,6 +3,7 @@ import { getHermesCatalog } from '../api/client';
 import { getFolderRules, getIndexStatus, levelLabels, putFolderRules, type FolderRule, type IndexStatus } from '../api/core';
 import { ModernSelect } from '../ui/modern-select';
 import { Loading, LoadError } from '../ui/load-state';
+import { ActionButton } from '../ui/action-button';
 
 /** What the brain holds and the folder rules that make notes «solo en este Mac» or private. */
 export function PrivacySettingsCard() {
@@ -42,8 +43,8 @@ export function PrivacySettingsCard() {
             options={(['local_only', 'private'] as const).map(level => ({ value: level, label: levelLabels[level] }))}/></td>
           <td><button className="button danger" aria-label={`Quitar la regla de ${rule.folder || 'carpeta vacía'}`} onClick={() => { setRules(rules.filter((_, at) => at !== index)); setDirty(true); }}>×</button></td>
         </tr>)}</tbody></table> : <p className="muted">Sin reglas de carpeta.</p>}
-      <div className="actions"><button className="button" onClick={() => { setRules([...rules, { source: '*', folder: '', confidentiality: 'private' }]); setDirty(true); }}>Añadir regla</button>
-        <button className="button primary" disabled={!dirty} onClick={() => void save()}>Guardar reglas</button></div>
+      <div className="actions"><ActionButton icon="plus" label="Añadir regla" type="submit" onClick={() => { setRules([...rules, { source: '*', folder: '', confidentiality: 'private' }]); setDirty(true); }}/>
+        <ActionButton icon="save" label="Guardar reglas" tone="primary" type="submit" disabled={!dirty} onClick={() => void save()}/></div>
     </>}
     {saved && <span className="ok-note" role="status">{saved}</span>}{error && <LoadError message={error} onRetry={load}/>}
   </article>;

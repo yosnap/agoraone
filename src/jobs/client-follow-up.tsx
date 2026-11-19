@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createClient, distinctClient, linkClient, linkClientPair, linkCrmdevClient, type ClientsDirectory, type LinkSuggestion, type VaultCard } from '../api/clients';
 import { suggestionKey, suggestionText } from './clients-view';
+import { ActionButton } from '../ui/action-button';
 
 type Act = (work: () => Promise<unknown>, said: string) => void;
 const levelLabels: Record<VaultCard['level'], string> = { normal: 'Normal', local_only: 'Solo en este Mac', private: 'Privada' };
@@ -27,7 +28,7 @@ export function ClientSuggestions({ suggestions, busy, act }: { suggestions: Lin
       <span>{suggestionText(suggestion)}</span>
       <span className="actions">
         <button type="button" className="button" disabled={busy} onClick={() => act(actions.distinct, 'Se quedan como clientes distintos.')}>Son distintos</button>
-        <button type="button" className="button primary" disabled={busy} onClick={() => act(actions.link, 'Enlazados: se ven como un solo cliente.')}>Enlazar</button>
+        <ActionButton icon="link" label="Enlazar" tone="primary" disabled={busy} onClick={() => act(actions.link, 'Enlazados: se ven como un solo cliente.')}/>
       </span>
     </li>;
   })}</ul>;
@@ -58,12 +59,12 @@ export function VaultCards({ cards, discreet, busy, act }: { cards: ClientsDirec
       {discreet ? null : asking === card.name
         ? <span className="actions" role="group" aria-label={`Confirmar crear ${card.name}`}>
           <small>Se crea el cliente manual «{card.name}» en AgoraOne, sin ubicar hasta que lo crees o enlaces en Central o CRMDev.</small>
-          <button type="button" className="button" disabled={busy} onClick={() => setAsking(null)}>Cancelar</button>
+          <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={() => setAsking(null)}/>
           <button type="button" className="button primary" disabled={busy}
             onClick={() => { setAsking(null); act(() => createClient({ name: card.name, company: null, email: null, phone: null, taxId: null, domains: [], notes: null }),
               `«${card.name}» creado como cliente manual.`); }}>Crear cliente manual</button>
         </span>
-        : <span className="actions"><button type="button" className="button" disabled={busy} onClick={() => setAsking(card.name)}>Crear cliente manual…</button></span>}
+        : <span className="actions"><ActionButton icon="plus" label="Crear cliente manual…" disabled={busy} onClick={() => setAsking(card.name)}/></span>}
     </li>)}</ul>
   </div>;
 }

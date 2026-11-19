@@ -5,6 +5,7 @@ import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { MeetingClassCard, MeetingExport } from './meeting-kind';
 import { VaultFolderBrowser } from '../ui/vault-folder-browser';
+import { ActionButton } from '../ui/action-button';
 
 type Target = { vaults: { id: string; name: string }[]; central: { id: string; label: string } | null };
 const failed = (failure: unknown, fallback: string) => failure instanceof Error ? failure.message : fallback;
@@ -34,11 +35,11 @@ function TaskRow({ task, meeting, central }: { task: MeetingTask; meeting: strin
     {done ? <small className="ok-note" role="status">{done}</small> : asking
       ? <span className="meeting-confirm" role="group" aria-label="Confirmar">
           <span>{asking === 'reminder' ? `¿Crear el recordatorio «${task.title}»${task.due ? ' para esa fecha' : ''}?` : `¿Encargar «${task.title}» a ${central?.label}?`}</span>
-          <button type="button" className="button primary" onClick={() => void confirm()}>Confirmar</button>
-          <button type="button" className="button" onClick={() => setAsking(null)}>Cancelar</button>
+          <ActionButton icon="check" label="Confirmar" tone="primary" onClick={() => void confirm()}/>
+          <ActionButton icon="close" label="Cancelar" onClick={() => setAsking(null)}/>
         </span>
       : <span className="meeting-actions">
-          <button type="button" className="button" onClick={() => setAsking('reminder')}>Crear recordatorio</button>
+          <ActionButton icon="plus" label="Crear recordatorio" onClick={() => setAsking('reminder')}/>
           {central && <button type="button" className="button" onClick={() => setAsking('card')}>Encargar al bot central</button>}
         </span>}
     {error && <small className="dictation-error" role="alert">{error}</small>}
@@ -78,10 +79,10 @@ function SaveNote({ detail, vaults, onSaved }: { detail: MeetingDetail; vaults: 
       client={detail.client} value={folder} onChange={(from, next) => { if (from === vault) { setFolder(next); setAsking(false); } }}/></div>
     {asking ? <span className="meeting-confirm" role="group" aria-label="Confirmar">
         <span>¿Crear la nota «{title}» en {vaultLabel} › {folder || '(raíz)'}?</span>
-        <button type="button" className="button primary" disabled={folder === null || saving} onClick={() => void save()}>{saving ? 'Creando…' : 'Crear la nota'}</button>
-        <button type="button" className="button" onClick={() => setAsking(false)}>Cancelar</button>
+        <ActionButton icon="plus" label="Crear la nota" tone="primary" busyLabel={saving && 'Creando…'} disabled={folder === null || saving} onClick={() => void save()}/>
+        <ActionButton icon="close" label="Cancelar" onClick={() => setAsking(false)}/>
       </span>
-      : <button type="button" className="button primary" disabled={!vault || !title.trim() || folder === null} onClick={() => setAsking(true)}>Guardar en el vault…</button>}
+      : <ActionButton icon="save" label="Guardar en el vault…" tone="primary" disabled={!vault || !title.trim() || folder === null} onClick={() => setAsking(true)}/>}
     {error && <small className="dictation-error" role="alert">{error}</small>}
   </div>;
 }

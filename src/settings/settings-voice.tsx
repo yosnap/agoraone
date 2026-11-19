@@ -5,6 +5,7 @@ import { WatsonVoiceChoice } from './watson-voice-choice';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { setVoiceMode, voiceMode, type VoiceMode } from '../assistant/speech';
+import { ActionButton } from '../ui/action-button';
 
 const OTHER = '__otra__';
 const languages = [{ value: 'auto', label: 'Detectar el idioma' }, { value: 'es', label: 'Español' }, { value: 'en', label: 'Inglés' },
@@ -26,7 +27,7 @@ function PathChoice({ label, value, found, onSave, describe }: {
     }} options={[{ value: '', label: found.length ? `Automático (${found[0].text})` : 'Automático (no se ha encontrado)' }, ...found.map(f => ({ value: f.path, label: f.text })), { value: OTHER, label: 'Otra ruta…' }]}/></label>
     {typing && <form className="field-row" onSubmit={event => { event.preventDefault(); onSave(text.trim() || null); }}>
       <input value={text} onChange={event => setText(event.target.value)} placeholder={describe} aria-label={`Ruta de ${label.toLowerCase()}`}/>
-      <button type="submit" className="button">Guardar</button>
+      <ActionButton icon="save" label="Guardar" type="submit"/>
     </form>}
   </div>;
 }
@@ -110,7 +111,7 @@ function WakeWord() {
     <small className="muted">Di «Oye Watson» desde cualquier app y Watson empieza a escuchar, como con ⌃⌥W. Se reconoce en este Mac (sin internet) y no se guarda ni se envía nada de lo que oye. Mientras esté activo, el micrófono queda abierto y macOS enseña su punto naranja. Solo en la app de escritorio del Mac; la primera vez macOS pide los permisos de micrófono y reconocimiento de voz.</small>
     {status && <small className={status.ok ? 'ok-note' : 'dictation-error'} role="status">{status.text}</small>}
     {status && !status.ok && status.retry && <div className="inbox-actions">
-      <button type="button" className="button" onClick={() => void change(true)}>Reintentar</button>
+      <ActionButton icon="refresh" label="Reintentar" onClick={() => void change(true)}/>
     </div>}
     {error && <small className="dictation-error" role="alert">{error}</small>}
   </div>;

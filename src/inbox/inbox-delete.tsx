@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { moveInboxMail } from '../api/core';
 import { LoadError } from '../ui/load-state';
+import { ActionButton } from '../ui/action-button';
 
 export type Doomed = { id: number; from: string; subject: string; date: string | null; hidden: boolean };
 const day = (iso: string | null) => iso ? new Date(iso).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }) : '';
@@ -37,7 +38,7 @@ export function InboxDelete({ title, messages, onDone, onCancel }: {
     <div className="inbox-actions">
       <button type="button" className="button act-delete" disabled={busy || count === 0} onClick={() => void run()}>
         {busy ? 'Moviendo…' : `Mover ${count} a la Papelera`}</button>
-      <button type="button" className="button" disabled={busy} onClick={onCancel}>Cancelar</button>
+      <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={onCancel}/>
     </div>
   </div>;
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { openCodingInOrca, type CodingHost, type CodingSession } from '../api/core';
 import { moduleOn, useModules } from '../shell/modules';
 import { ago } from './agent-lines';
+import { ActionButton } from '../ui/action-button';
 
 const tools: Record<CodingSession['tool'], string> = { claude: 'Claude Code', codex: 'Codex' };
 /** Where each session runs, as its own record says (Orca, VS Code, the Codex or Claude app, a terminal). */
@@ -24,7 +25,7 @@ export function CodingSessions({ sessions, discreet, now, onCity, compact = fals
   const working = sessions.filter(s => s.state === 'working').length;
   return <section className={`coding-sessions${compact ? ' compact' : ''}`} aria-labelledby="coding-title">
     <div className="card-head"><h2 id="coding-title" className={compact ? 'visually-hidden' : undefined}>Agentes de código en este Mac</h2>
-      {onCity && <button type="button" className="button" onClick={onCity}>Verlos en la ciudad</button>}</div>
+      {onCity && <ActionButton icon="eye" label="Verlos en la ciudad" onClick={onCity}/>}</div>
     <p className="muted">{sessions.length === 0 ? 'Ninguna sesión de Claude Code ni de Codex en las últimas 24 horas.'
       : `${sessions.length} ${sessions.length === 1 ? 'sesión' : 'sesiones'} en 24 h${working ? `, ${working} trabajando ahora` : ''}. Solo se leen sus metadatos.`}</p>
     {sessions.length > 0 && <ul className="coding-list">{sessions.map(session => <li key={session.id} className={`card coding-row state-${session.state}`}>
@@ -33,7 +34,7 @@ export function CodingSessions({ sessions, discreet, now, onCity, compact = fals
         <small>{tools[session.tool]}{session.host ? ` en ${hosts[session.host]}` : ''}{session.model ? ` · ${session.model.replace(/^claude-/, '')}` : ''}{!discreet && session.branch ? ` · ${session.branch}` : ''}</small></span>
       <span className="coding-numbers">{discreet ? '•••' : `${count(session.tokens.input + session.tokens.output)} tokens`}<small>{session.turns} {session.turns === 1 ? 'respuesta' : 'respuestas'} en 24 h</small></span>
       <small className="coding-when">{session.state === 'working' ? 'ahora' : ago(session.lastAt, now)}</small>
-      {orca && session.inOrca && <span className="coding-open"><button type="button" className="button" onClick={() => void open(session.id)}>Abrir en Orca</button>
+      {orca && session.inOrca && <span className="coding-open"><ActionButton icon="external" label="Abrir en Orca" onClick={() => void open(session.id)}/>
         {opening?.id === session.id && <small role="status">{opening.text}</small>}</span>}
     </li>)}</ul>}
   </section>;

@@ -11,6 +11,7 @@ import { CentralEditProject } from './central-edit-project';
 import { CentralNote } from './central-note';
 import { Block, Facts, RecordLayout } from '../ui/record-layout';
 import { dateLabel, forgetCentral, useCentralRead, useCentralReadings, viewKey } from './use-central-view';
+import { ActionButton } from '../ui/action-button';
 
 const ALL = '';
 const PAGE = '50';
@@ -33,7 +34,7 @@ function ProjectsPage({ filters, cursor, last, discreet, onMore, onPick, onOpen 
       <td>{label(projectStatusLabels, p.status)}</td>
       <td>{p.phase ?? '—'}</td>
       <td className="central-date">{dateLabel(p.lastActivity)}</td>
-      <td className="central-row-actions">{p.id && <span className="actions"><button type="button" className="button" onClick={() => onPick(p.id!)}>Ver ficha</button>
+      <td className="central-row-actions">{p.id && <span className="actions"><ActionButton icon="eye" label="Ver ficha" onClick={() => onPick(p.id!)}/>
         <OpenInCentral page={`proyectos/${p.id}`} discreet={discreet}/></span>}</td>
     </tr>)}
     {last && nextCursor && <tr><td colSpan={6} className="central-row-actions"><button type="button" className="button" onClick={() => onMore(nextCursor)}>Cargar más</button></td></tr>}
@@ -49,7 +50,7 @@ function ProjectRecord({ id, discreet, onBack, onOpen }: { id: string; discreet:
   const can = useWritePermissions();
   const [editing, setEditing] = useState<Editing>(null);
   const [said, setSaid] = useState('');
-  const back = <button type="button" className="button" onClick={onBack}>Volver a la lista</button>;
+  const back = <ActionButton icon="back" label="Volver a la lista" onClick={onBack}/>;
   if (read.failure) return <><div className="actions central-actions">{back}</div><CentralProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/></>;
   if (!read.data) return <><div className="actions central-actions">{back}</div><Loading label="Leyendo la ficha del proyecto" lines={4}/></>;
   const p = read.data;
@@ -68,13 +69,13 @@ function ProjectRecord({ id, discreet, onBack, onOpen }: { id: string; discreet:
   return <RecordLayout titleId="central-project-title" title={p.name} subtitle={p.description ?? undefined} badges={<span className="chip">De Central</span>}
     actions={<><OpenInCentral page={`proyectos/${id}`} label="Abrir en Central (secretos, entornos…)" discreet={discreet}/>{back}</>}>
     {said && <p className="ok-note central-wide" role="status">{said}</p>}
-    <Block title="Estado y fase" actions={editable && editing !== 'estado' && <button type="button" className="button" onClick={() => open('estado')}>Cambiar estado o fase</button>}>
+    <Block title="Estado y fase" actions={editable && editing !== 'estado' && <ActionButton icon="edit" label="Cambiar estado o fase" onClick={() => open('estado')}/>}>
       {editable && editing === 'estado' ? <CentralEditProject key={editable.revision} project={editable} onDone={done} onCancel={() => setEditing(null)} onReview={forgetCentral}/>
         : <Facts items={state}/>}
     </Block>
     <Block title="Código"><Facts items={facts}/></Block>
     <Block title="Despliegue"><Facts items={deploy}/></Block>
-    <Block title="Notas" actions={editable && editing !== 'nota' && <button type="button" className="button" onClick={() => open('nota')}>Añadir nota</button>}>
+    <Block title="Notas" actions={editable && editing !== 'nota' && <ActionButton icon="plus" label="Añadir nota" onClick={() => open('nota')}/>}>
       {editable && editing === 'nota' && <CentralNote target="proyecto" id={editable.id} onDone={done} onCancel={() => setEditing(null)}/>}
       <NotesList notes={p.notes} discreet={discreet}/>
     </Block>
@@ -111,7 +112,7 @@ export function CentralProjects({ discreet, onOpen }: { discreet: boolean; onOpe
       <label className="field">Cliente<ModernSelect value={filters.cliente ?? ALL} onChange={value => apply({ ...filters, cliente: value || undefined })}
         options={[{ value: ALL, label: 'Todos' }, ...names.map(name => ({ value: name, label: name }))]}/></label>
       <label className="field">Buscar<input value={typed} maxLength={200} onChange={event => setTyped(event.target.value)} placeholder="Nombre o tecnología"/></label>
-      <div className="actions central-actions"><button type="submit" className="button">Buscar</button></div>
+      <div className="actions central-actions"><ActionButton icon="search" label="Buscar" type="submit"/></div>
     </form>
     <table className="data-table central-table">
       <thead><tr><th>Proyecto</th><th>Cliente</th><th>Estado</th><th>Fase</th><th>Última actividad</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
