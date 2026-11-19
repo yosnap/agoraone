@@ -131,7 +131,7 @@ fn notify_loop(app: AppHandle, link: agora_server::core::CoreLink) {
 
 /// Only AgoraOne itself loads inside the window.
 fn own(url: &Url) -> bool {
-    url.scheme() == "http" && matches!(url.host_str(), Some("localhost" | "127.0.0.1")) && url.port() == Some(PORT)
+    url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(PORT)
 }
 
 /// ⌃⌥W from any app (user's choice, 15/11/2026): AgoraOne comes to the front and Watson starts listening.
@@ -322,4 +322,20 @@ fn main() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn la_ventana_solo_carga_agoraone_en_127_0_0_1() {
+        let at = |text: &str| own(&Url::parse(text).expect("url"));
+        assert!(at(&format!("http://127.0.0.1:{PORT}/#acceso=abc")));
+        // localhost could resolve to a program on [::1] with the same port and read the token from the address.
+        for other in [format!("http://localhost:{PORT}/"), format!("http://[::1]:{PORT}/"), format!("https://127.0.0.1:{PORT}/"),
+                      format!("http://127.0.0.1:{}/", PORT + 1), format!("http://localhost.:{PORT}/")] {
+            assert!(!at(&other), "{other}");
+        }
+    }
 }

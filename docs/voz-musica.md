@@ -18,10 +18,19 @@ Su campo «Pon…» sirve para pedir algo; el desplegable se abre hacia arriba c
 - Windows: todavía no.
 - Para ver lo que suena nunca se abre un reproductor: solo se pregunta a los que ya están abiertos.
 - «Pon…» funciona distinto según el reproductor:
-  - en Música, reproduce lo primero que coincida en tu biblioteca;
+  - en Música, reproduce lo primero que coincida en tu biblioteca y, si no está, la canción del catálogo de Apple
+    Music (la reproduce tu suscripción): Música abre su álbum y salta, en silencio, hasta esa canción (el nombre
+    se compara sin mayúsculas, tildes ni puntuación, y vale «Corazón Partío (Remastered)» para «Corazón Partío»).
+    Todo cabe en unos 20 s: si Música no llega a tiempo, se pausa, se le devuelve el volumen y suena en YouTube;
+    el volumen se devuelve también si Música falla a medias. Si Música no responde a una búsqueda, se pausa para
+    que no empiece a sonar encima de YouTube;
   - en Spotify, abre su búsqueda para que elijas, porque su AppleScript no permite buscar y reproducir.
 - Las órdenes salen de una lista cerrada, y el texto de «pon…» se pasa como argumento de AppleScript, nunca
   escrito dentro del guion.
+- Qué sale del equipo con «pon…»: solo las palabras pedidas, a dos sitios. A la API pública de búsqueda de iTunes
+  de Apple (`itunes.apple.com/search`, tienda de España, `country=es`), cuando no está en tu biblioteca de
+  Música, y a la búsqueda pública de YouTube cuando suena allí. Sin cuenta, clave, cookies ni identificadores tuyos;
+  nada más de AgoraOne va con ellas.
 
 ## Tu biblioteca y YouTube
 
@@ -50,8 +59,12 @@ Su campo «Pon…» sirve para pedir algo; el desplegable se abre hacia arriba c
     YouTube en segundo plano (alpha.30 y .31). Esa ventana no tiene órdenes nativas, no guarda nada entre arranques,
     solo carga páginas de YouTube, rechaza las cookies, salta los anuncios que dejan saltarse y no pasa sola al
     siguiente vídeo. La pantalla deja sus órdenes en el núcleo y la app las recoge; el estado del vídeo vuelve a la
-    pantalla ya revisado. En el navegador, sin esa ventana, se saltan; si no queda ninguno, se ofrece «Abrir en
-    YouTube».
+    pantalla ya revisado. AgoraOne se sirve siempre desde `http://127.0.0.1` y YouTube no deja incrustar su
+    reproductor en una página servida desde una IP (da el error 150 incluso con vídeos que sí lo permiten): por eso,
+    en la app de escritorio, los vídeos van directos a la ventana oculta, y en la vista previa del navegador, que no
+    la tiene, se avisa al momento y se ofrece «Abrir en YouTube». No se usa `localhost` a propósito: otro programa
+    podría escuchar en `[::1]` en el mismo puerto, quedarse la ventana (`localhost` resuelve antes a `::1`) y leer
+    el token de acceso de la dirección.
 - En la tarjeta de música, el desplegable elige la fuente: tu biblioteca si tienes carpetas de música, YouTube si
   no. Con «Tu biblioteca», lo que no está en ella se busca en YouTube y se dice. Cuando nada suena, la tarjeta dice qué reproductor está abierto. Un reproductor que no está instalado (Spotify)
   se avisa sin preguntarle a macOS, que abriría «¿Dónde está…?».

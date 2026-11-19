@@ -41,10 +41,10 @@ export function PrivacySettingsCard() {
           <td><ModernSelect value={rule.source} onChange={value => edit(index, { source: value })} options={scopes}/></td>
           <td><ModernSelect value={rule.confidentiality} onChange={value => edit(index, { confidentiality: value as FolderRule['confidentiality'] })}
             options={(['local_only', 'private'] as const).map(level => ({ value: level, label: levelLabels[level] }))}/></td>
-          <td><button className="button danger" aria-label={`Quitar la regla de ${rule.folder || 'carpeta vacía'}`} onClick={() => { setRules(rules.filter((_, at) => at !== index)); setDirty(true); }}>×</button></td>
+          <td><button type="button" className="button danger" aria-label={`Quitar la regla de ${rule.folder || 'carpeta vacía'}`} onClick={() => { setRules(rules.filter((_, at) => at !== index)); setDirty(true); }}>×</button></td>
         </tr>)}</tbody></table> : <p className="muted">Sin reglas de carpeta.</p>}
-      <div className="actions"><ActionButton icon="plus" label="Añadir regla" type="submit" onClick={() => { setRules([...rules, { source: '*', folder: '', confidentiality: 'private' }]); setDirty(true); }}/>
-        <ActionButton icon="save" label="Guardar reglas" tone="primary" type="submit" disabled={!dirty} onClick={() => void save()}/></div>
+      <div className="actions"><ActionButton icon="plus" label="Añadir regla" onClick={() => { setRules([...rules, { source: '*', folder: '', confidentiality: 'private' }]); setDirty(true); }}/>
+        <ActionButton icon="save" label="Guardar reglas" tone="primary" disabled={!dirty} onClick={() => void save()}/></div>
     </>}
     {saved && <span className="ok-note" role="status">{saved}</span>}{error && <LoadError message={error} onRetry={load}/>}
   </article>;

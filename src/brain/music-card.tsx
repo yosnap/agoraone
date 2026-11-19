@@ -3,7 +3,7 @@ import { controlMusic, getLibrary, getMusic, libraryCover, playMusic, playerCove
 import { ModernSelect } from '../ui/modern-select';
 import { localControl, localSeek, localVolume, playLocal, useLocalPlayer } from './local-player';
 import { MusicSlider } from './music-slider';
-import { askTicket, playYouTube, stopYouTube, useYouTube, youtubeControl, youtubeSeek, youtubeVolume } from './youtube-player';
+import { askTicket, playYouTube, stopYouTube, useYouTube, youtubeActive, youtubeControl, youtubeProblem, youtubeSeek, youtubeVolume } from './youtube-player';
 
 const REFRESH = 3000;
 const clock = (seconds: number | null | undefined) => seconds == null ? '–:––' : `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
@@ -72,6 +72,7 @@ export function MusicCard() {
       if (!videos.length) throw new Error(`No encuentro «${wanted}» en YouTube.`);
       const playing = (await getMusic().catch(() => null))?.players[0];
       if (!playYouTube(videos, wanted, mine)) return false;  // something else was asked for meanwhile
+      if (!youtubeActive()) throw new Error(`${before}${youtubeProblem()}`);  // e.g. the browser preview
       if (local.playing) localControl('pause');
       if (playing?.state === 'playing' && (playing.player === 'music' || playing.player === 'spotify')) await controlMusic(playing.player, 'pause').catch(() => undefined);
       setMessage(`${before}En YouTube: «${videos[0].title}».`);
