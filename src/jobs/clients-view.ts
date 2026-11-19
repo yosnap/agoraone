@@ -37,3 +37,15 @@ export function placements(client: DirectoryClient, can: { central: boolean; crm
   if (client.localId === null) return [];
   return (['central', 'crmdev'] as const).filter(where => can[where] && !client.sources.includes(where));
 }
+
+/** What may be on screen in discreet mode, at once (before the core is asked again): only normal vault cards are
+ * named; the reserved ones are counted. */
+export function forDiscreet(cards: ClientsDirectory['vaultCards'], discreet: boolean): ClientsDirectory['vaultCards'] {
+  if (!discreet) return cards;
+  const shown = cards.cards.filter(card => card.level === 'normal');
+  return { ...cards, cards: shown, hidden: cards.hidden + cards.cards.length - shown.length };
+}
+
+/** Why a client kept here is «sin ubicar» again: the CRM it was linked with no longer returns that client. */
+export const staleText = (stale: DirectoryClient['staleLink']) =>
+  stale ? `Estaba enlazado con un cliente de ${stale === 'central' ? 'Central' : 'CRMDev'} que ya no aparece al leerlo (borrado o fuera de lo leído): vuelve a ubicarlo.` : '';

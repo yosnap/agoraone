@@ -17,6 +17,10 @@ export type DirectoryClient = {
   differences: { field: string; label: string; crmdev?: string }[];
   /** Kept only in AgoraOne while a CRM is connected, and linked to none: to be created or linked in one. */
   unplaced: boolean;
+  /** Linked with a client that CRM no longer returns: «sin ubicar» again. */
+  staleLink: 'central' | 'crmdev' | null;
+  /** Another entry has the same name (two clients of a CRM called the same): the user decides with «Enlazar». */
+  repeated: boolean;
 };
 /** Two clients of different sources whose names are only alike: linked only on «Enlazar». */
 export type LinkSuggestion =

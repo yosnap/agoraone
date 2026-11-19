@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { deleteClient, distinctClient, getClient, getClients, type ClientsDirectory, type DirectoryClient } from '../api/clients';
 import { getWritePermissions } from '../api/central-write';
 import { refreshCrmdevClients } from '../api/crmdev';
@@ -7,7 +7,7 @@ import { LoadError, Loading } from '../ui/load-state';
 import { ClientDetail, ClientOrigins } from './client-detail';
 import { ClientSuggestions, DistinctPairs, VaultCards } from './client-follow-up';
 import { ClientForm } from './client-form';
-import { filterClients, followUp, type ClientsFilter } from './clients-view';
+import { filterClients, followUp, forDiscreet, type ClientsFilter } from './clients-view';
 import { takeClientsFilter } from './jobs-tab';
 
 const rowKey = (client: DirectoryClient) => `${client.sources.join('+')}-${client.localId ?? client.centralId ?? client.crmdevId ?? client.name}`;
@@ -44,6 +44,9 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
       .catch(failure => { if (mine === request.current) setError(failure instanceof Error ? failure.message : 'No se pudieron leer los clientes.'); });
   };
   if (!asked.current) { asked.current = true; load(); }
+  // Discreet mode turned on or off with the directory open: reserved vault cards go at once, and the core is asked again.
+  const readWith = useRef(discreet);
+  useEffect(() => { if (readWith.current !== discreet) { readWith.current = discreet; load(); } });
   const act = async (work: () => Promise<unknown>, done: string) => {
     setBusy(true); setError(''); setNote('');
     try { await work(); setNote(done); load(); invalidateClients(); }
@@ -58,7 +61,8 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
   const can = { central: canCentral, crmdev: data.crmdev.on && data.crmdev.connected };
   const shown = filterClients(data.clients, filter);
   const picked = open === null ? null : data.clients.find(client => rowKey(client) === open) ?? null;
-  const pending = followUp(data);
+  const cards = forDiscreet(data.vaultCards, discreet);
+  const pending = followUp({ ...data, vaultCards: cards });
   const actions = (client: DirectoryClient) => {
     const record = <button type="button" className="button" onClick={() => { setOpen(rowKey(client)); setNote(''); }}>Ficha</button>;
     if (discreet || client.localId === null) return <span className="actions">{record}</span>;
@@ -92,7 +96,7 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
       {data.crmdev.truncated ? ' De CRMDev se leen los 1000 más recientes: el resto no se ve aquí.' : ''}</p>
     {data.crmdev.problem && <LoadError message={data.crmdev.problem}/>}
     <div className="segmented" role="group" aria-label="Qué clientes ver">{([['all', 'Todos'], ['unplaced', `Sin ubicar (${data.unplacedCount})`],
-      ['cards', `Fichas sin cliente (${data.vaultCards.count})`]] as const).map(([key, label]) =>
+      ['cards', `Fichas sin cliente (${cards.count})`]] as const).map(([key, label]) =>
       <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>)}</div>
     {editing !== null && !discreet && <ClientForm key={editing} clientId={editing === 'new' ? null : editing} onCancel={() => setEditing(null)}
       onDone={saved => { setEditing(null); setNote(`«${saved.name}» guardado.`); load(); invalidateClients(); }}/>}
@@ -102,7 +106,7 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
       act={(work, said) => void act(work, said)} onDone={said => { setNote(said); load(); invalidateClients(); }}/>}
     {note && <p role="status" className="task-done">{note}</p>}
     {error && <LoadError message={error}/>}
-    {filter === 'cards' ? <VaultCards cards={data.vaultCards} discreet={discreet} busy={busy} act={(work, said) => void act(work, said)}/>
+    {filter === 'cards' ? <VaultCards cards={cards} discreet={discreet} busy={busy} act={(work, said) => void act(work, said)}/>
       : shown.length === 0 ? <p className="muted">{filter === 'unplaced' ? 'Ningún cliente sin ubicar: todos están en Central o en CRMDev.'
         : 'Todavía no tienes clientes. Crea uno con «Nuevo cliente» para que la Bandeja, WhatsApp, las reuniones, Fiscal y Watson lo reconozcan.'}</p>
       : <table className="work-table clients-table"><thead><tr><th>Cliente</th><th>Origen</th><th>Proyectos</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>

@@ -3,7 +3,7 @@ import { OpenInCentral } from '../central/open-in-central';
 import { OpenInCrmdev } from '../crmdev/crmdev-common';
 import { clientStatusLabels, labelOf } from '../crmdev/crmdev-labels';
 import { ClientPlacement } from './client-placement';
-import { differenceText } from './clients-view';
+import { differenceText, staleText } from './clients-view';
 
 const originTone = { central: 'paused', crmdev: 'waiting', local: 'good' } as const;
 
@@ -11,7 +11,8 @@ const originTone = { central: 'paused', crmdev: 'waiting', local: 'good' } as co
 export function ClientOrigins({ client }: { client: DirectoryClient }) {
   return <span className="client-origins">{client.sources.map(origin =>
     <span key={origin} className={`status-badge ${originTone[origin]}`}>{originLabels[origin]}</span>)}
-    {client.unplaced && <span className="status-badge bad">Sin ubicar</span>}</span>;
+    {client.unplaced && <span className="status-badge bad">Sin ubicar</span>}
+    {client.repeated && <span className="status-badge waiting">Nombre repetido</span>}</span>;
 }
 
 /** A client of the directory: its sources, CRMDev's state, what CRMDev has otherwise than Central (shown, never
@@ -32,6 +33,8 @@ export function ClientDetail({ client, can, discreet, busy, act, onClose, onDone
       </span></div>
     <p><ClientOrigins client={client}/>
       {client.crmdevStatus && <small className="muted"> · En CRMDev: {labelOf(clientStatusLabels, client.crmdevStatus)}</small>}</p>
+    {client.staleLink && <p className="notice">{staleText(client.staleLink)}</p>}
+    {client.repeated && <p className="muted">Hay otro cliente con este mismo nombre: si son el mismo, enlázalos con la sugerencia; si no, cambia el nombre en su CRM.</p>}
     {client.company && client.company !== client.name && <p className="muted">Empresa: {client.company}</p>}
     {client.aliases.length > 0 && <p className="muted">También se llama «{client.aliases.join('», «')}».</p>}
     {client.differences.length > 0 && <ul className="client-differences" aria-label="Diferencias con CRMDev">

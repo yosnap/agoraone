@@ -19,6 +19,7 @@ from .web_api import Connection, WebApiError
 
 SETTING = "crmdev.clients"
 REFRESH_SECONDS = 1800
+WAIT_SECONDS = 30  # «Actualizar» while the worker reads: waits for its result
 TEXT = 200
 EMAIL = 320
 STATUSES = frozenset(crmdev_api.STATUSES["list_clients"])
@@ -60,7 +61,14 @@ def shape(data: object) -> dict:
 def refresh(connection: sqlite3.Connection, target: Connection) -> dict:
     """Reads CRMDev's clients now and keeps the snapshot; a WebApiError (without the key) when it cannot."""
     if not _REFRESHING.acquire(blocking=False):
-        raise WebApiError("busy", "Ya se están leyendo los clientes de CRMDev; espera un momento.")
+        # Another reading (the half-hourly one) is under way: its result is just as fresh, so wait for it.
+        if not _REFRESHING.acquire(timeout=WAIT_SECONDS):
+            raise WebApiError("busy", "Ya se están leyendo los clientes de CRMDev; espera un momento.")
+        _REFRESHING.release()
+        found = stored(connection)
+        if found is not None:
+            return found
+        _REFRESHING.acquire()
     try:
         snapshot = shape(crmdev_api.call(target, "list_clients", {"limit": crmdev_api.SYNC_ROWS}, fresh=True))
     finally:
@@ -99,7 +107,8 @@ def read_now(connection: sqlite3.Connection, secrets, health: CrmdevHealth) -> d
     try:
         data = refresh(connection, target)
     except WebApiError as error:  # fixed sentences: never the key nor the address
-        health.problem = str(error)[:200]
+        if error.status != "busy":  # a passing «wait a moment» of CRMDev is no problem of the connection
+            health.problem = str(error)[:200]
         raise
     health.problem = None
     return data

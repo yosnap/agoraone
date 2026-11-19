@@ -7,9 +7,25 @@ import { CrmdevReview, reviewing } from '../crmdev/crmdev-common';
 import { clientStatusLabels } from '../crmdev/crmdev-labels';
 import { optionsOf } from '../crmdev/crmdev-edit-ticket';
 import { changeKey, resetChange, useCrmdevChange } from '../crmdev/use-crmdev-change';
+import { ApiError } from '../api/client';
 import { Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
 import { placements } from './clients-view';
+
+const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Reads CRMDev's clients again before linking with an existing one; CRMDev asking to wait (or another reading under
+ * way) is waited out twice, a few seconds apart, before saying so. */
+export async function refreshForLink(refresh: () => Promise<unknown> = refreshCrmdevClients, wait: (ms: number) => Promise<unknown> = pause) {
+  for (let attempt = 0; ; attempt++) {
+    try { await refresh(); return; }
+    catch (error) {
+      const busy = error instanceof ApiError && (error.status === 429 || error.data?.status === 'busy');
+      if (!busy || attempt >= 2) throw busy ? new Error('CRMDev pide esperar unos segundos: vuelve a pulsar «Enlazar con el existente» en un momento.') : error;
+      await wait(4000);
+    }
+  }
+}
 
 /** «Crear en Central» and «Crear en CRMDev» for a client kept in AgoraOne: the user picks the CRM (or both, one after
  * the other). Each shows the exact client that will be created, and only «Guardar en …» creates it; then the client
@@ -50,7 +66,7 @@ export function ClientPlacement({ client, can, onDone }: {
           `Enlazado con «${central.exists?.centralName ?? 'el cliente'}» de Central.`)}/>)}
     {where === 'crmdev' && (crmdev.busy && !reviewing(crmdev) ? <Loading label="Preparando el cliente para CRMDev" lines={2}/>
       : reviewing(crmdev) ? <CrmdevReview change={crmdev} onCancel={close} onReview={close} page="clientes" linkLabel="Enlazar con el existente"
-        onLink={crmdevId => void link(async () => { await refreshCrmdevClients(); await linkCrmdevClient(id, crmdevId, 'linked'); }, 'Enlazado con el cliente que ya tenía CRMDev.')}/>
+        onLink={crmdevId => void link(async () => { await refreshForLink(); await linkCrmdevClient(id, crmdevId, 'linked'); }, 'Enlazado con el cliente que ya tenía CRMDev.')}/>
       : <>{crmdev.error && <p className="error" role="alert">{crmdev.error}</p>}
         <div className="actions"><button type="button" className="button" onClick={close}>Cerrar</button></div></>)}
     {error && <p className="error" role="alert">{error}</p>}

@@ -30,6 +30,10 @@ CENTRAL = {
 VAULT = "vault-" + "a" * 24
 
 
+def ref(n: int) -> str:
+    return f"note-{n:024x}"
+
+
 @pytest.fixture
 def setup(tmp_path, fake):  # noqa: F811
     settings, app = app_with(tmp_path, MemorySecrets())
@@ -320,13 +324,15 @@ def test_fichas_del_vault_sin_cliente(setup, fake):  # noqa: F811
     read_crmdev(client)
     connection = database(settings)
     try:
+        # As the backend sends them: an opaque «note-<hash>» ref, the file name without «.md» as title, the folder.
         upsert_notes(connection, VAULT, "Vault", [
-            Note("Clientes/Cliente Uno.md", "Ficha", "Clientes", "r", "x", "Datos de contacto: nunca a un modelo"),
-            Note("Clientes/Sin Cliente.md", "Ficha", "Clientes", "r", "x", "Texto que no se lee"),
-            Note("clientes/Carpeta Propia/Notas.md", "Notas", "clientes/Carpeta Propia", "r", "x", "hola"),
-            Note("clientes/Carpeta Propia/Más.md", "Más", "clientes/Carpeta Propia", "r", "x", "hola"),
-            Note("Clientes/Secreto.md", "Ficha", "Clientes", "r", "x", "---\nconfidencialidad: privado\n---\nnada"),
-            Note("Otros/Clientes/Nada.md", "Nada", "Otros/Clientes", "r", "x", "fuera"),
+            Note(ref(1), "Cliente Uno", "Clientes", "r", "x", "Datos de contacto: nunca a un modelo"),
+            Note(ref(2), "Sin Cliente", "Clientes", "r", "x", "Texto que no se lee"),
+            Note(ref(3), "Notas", "clientes/Carpeta Propia", "r", "x", "hola"),
+            Note(ref(4), "Más", "clientes/Carpeta Propia", "r", "x", "hola"),
+            Note(ref(5), "Secreto", "Clientes", "r", "x", "---\nconfidencialidad: privado\n---\nnada"),
+            Note(ref(6), "Nada", "Otros/Clientes", "r", "x", "fuera"),
+            Note(ref(7), "Clientes", "", "r", "x", "una nota en la raíz que se llama Clientes"),
         ])
     finally:
         connection.close()
@@ -336,6 +342,7 @@ def test_fichas_del_vault_sin_cliente(setup, fake):  # noqa: F811
     discreet = directory(client, discreet="true")["vaultCards"]
     assert [c["name"] for c in discreet["cards"]] == ["Carpeta Propia", "Sin Cliente"] and discreet["hidden"] == 1
     assert "Texto que no se lee" not in json.dumps(directory(client)), "nunca el contenido"
+    assert "note-" not in json.dumps(directory(client)), "nunca el identificador del índice"
 
     class Database:
         def __enter__(self):
@@ -355,7 +362,7 @@ def test_fichas_del_vault_sin_cliente(setup, fake):  # noqa: F811
     assert "Sin Cliente" not in [c["name"] for c in state["vaultCards"]["cards"]] and state["unplacedCount"] == 1
     connection = database(settings)
     try:
-        assert connection.execute("SELECT count(*) FROM item WHERE class = 'note'").fetchone()[0] == 6
+        assert connection.execute("SELECT count(*) FROM item WHERE class = 'note'").fetchone()[0] == 7
         assert client_cards.vault_cards(connection, [], True)["count"] == 4
     finally:
         connection.close()

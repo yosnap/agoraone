@@ -15,10 +15,23 @@ domains are only the ones the user wrote. One kept only here while a CRM is conn
 import json
 import re
 import sqlite3
+import threading
 import unicodedata
+from contextlib import contextmanager
 from urllib.parse import urlparse
 
 from .db import now, transaction
+
+
+@contextmanager
+def _writing(connection: sqlite3.Connection):
+    """A write transaction of the clients or their links; the directory kept in memory is built anew afterwards."""
+    try:
+        with transaction(connection):
+            yield connection
+    finally:
+        _changed()
+
 
 # Mail providers many people share: never the domain of a client. Whole families by their first label
 # («hotmail.es», «yahoo.co.uk»…) and single ones.
@@ -79,8 +92,8 @@ def client_domain(host: str | None) -> bool:
 
 
 def same_name(value: str | None) -> str:
-    """«  Café  Web » and «café web» are the same client."""
-    return " ".join(str(value or "").split()).casefold()
+    """«  Café  Web » and «café web» are the same client (also when one was written with combining accents)."""
+    return " ".join(unicodedata.normalize("NFC", str(value or "")).split()).casefold()
 
 
 def loose(value: str | None) -> str:
@@ -199,7 +212,7 @@ def create(connection: sqlite3.Connection, fields: dict) -> dict:
         raise _taken(data["name"])
     stamp = now()
     try:
-        with transaction(connection):
+        with _writing(connection):
             cursor = connection.execute(
                 "INSERT INTO client (name, company, email, phone, tax_id, domains, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (data["name"], data["company"], data["email"], data["phone"], data["taxId"], json.dumps(data["domains"]), data["notes"], stamp, stamp))
@@ -218,7 +231,7 @@ def update(connection: sqlite3.Connection, client_id: int, fields: dict) -> dict
     if _name_taken(connection, data["name"], client_id):
         raise _taken(data["name"])
     try:
-        with transaction(connection):
+        with _writing(connection):
             connection.execute("UPDATE client SET name = ?, company = ?, email = ?, phone = ?, tax_id = ?, domains = ?, notes = ?, updated_at = ? WHERE id = ?",
                                (data["name"], data["company"], data["email"], data["phone"], data["taxId"], json.dumps(data["domains"]), data["notes"],
                                 now(), client_id))
@@ -235,7 +248,7 @@ def delete(connection: sqlite3.Connection, client_id: int) -> dict | None:
     found = get(connection, client_id)
     if not found:
         return None
-    with transaction(connection):
+    with _writing(connection):
         connection.execute("INSERT INTO client_backup (client_id, data, created_at) VALUES (?, ?, ?)",
                            (client_id, json.dumps(found, ensure_ascii=False), now()))
         connection.execute("DELETE FROM client WHERE id = ?", (client_id,))
@@ -251,7 +264,7 @@ def set_link(connection: sqlite3.Connection, client_id: int, central_id: str, st
     if not own:
         return None
     if state == "undistinct":
-        with transaction(connection):
+        with _writing(connection):
             connection.execute("DELETE FROM client_distinct WHERE client_id = ? AND central_id = ?", (client_id, central_id))
         return get(connection, client_id)
     other = next((c for c in _central(connection) if c.get("id") == central_id), None)
@@ -259,7 +272,7 @@ def set_link(connection: sqlite3.Connection, client_id: int, central_id: str, st
         raise ClientError("Ese cliente no está en Central (o Central no está conectado).")
     if state == "distinct" and same_name(other["name"]) == same_name(own["name"]):
         raise ClientError(SAME_NAME)
-    with transaction(connection):
+    with _writing(connection):
         if state == "linked":
             connection.execute("UPDATE client SET central_id = ?, updated_at = ? WHERE id = ?", (central_id, now(), client_id))
             connection.execute("DELETE FROM client_distinct WHERE client_id = ? AND central_id = ?", (client_id, central_id))
@@ -272,7 +285,7 @@ def set_link(connection: sqlite3.Connection, client_id: int, central_id: str, st
 def link_created(connection: sqlite3.Connection, client_id: int, central_id: str) -> bool:
     """Links a client kept here with the one just created from it in Central («Crear en Central»), which the
     snapshot will only have after its next reading. Never over another link: False when it already had one."""
-    with transaction(connection):
+    with _writing(connection):
         changed = connection.execute("UPDATE client SET central_id = ?, updated_at = ? WHERE id = ? AND central_id IS NULL",
                                      (central_id, now(), client_id)).rowcount
         connection.execute("DELETE FROM client_distinct WHERE client_id = ? AND central_id = ?", (client_id, central_id))
@@ -306,17 +319,17 @@ def set_remote_link(connection: sqlite3.Connection, client_id: int, connector: s
     if not own:
         return None
     if state == "undistinct":
-        with transaction(connection):
+        with _writing(connection):
             connection.execute("DELETE FROM client_link WHERE client_id = ? AND connector = ? AND remote_id = ? AND state = 'distinct'",
                                (client_id, connector, remote_id))
         return get(connection, client_id)
     name = _crmdev_names(connection).get(remote_id)
     if name is None:
-        raise ClientError("Ese cliente no está en CRMDev (o CRMDev no está conectado o aún no se ha leído).")
+        raise ClientError("Ese cliente aún no está en lo leído de CRMDev (o CRMDev no está conectado): pulsa «Actualizar CRMDev», espera unos segundos y vuelve a enlazarlo.")
     if state == "distinct" and same_name(name) == same_name(own["name"]):
         raise ClientError(SAME_NAME)
     try:
-        with transaction(connection):
+        with _writing(connection):
             if state == "linked":
                 connection.execute("DELETE FROM client_link WHERE client_id = ? AND connector = ? AND (state = 'linked' OR remote_id = ?)",
                                    (client_id, connector, remote_id))
@@ -324,9 +337,22 @@ def set_remote_link(connection: sqlite3.Connection, client_id: int, connector: s
                 connection.execute("DELETE FROM client_link WHERE client_id = ? AND connector = ? AND remote_id = ?", (client_id, connector, remote_id))
             connection.execute("INSERT INTO client_link (client_id, connector, remote_id, state, created_at) VALUES (?, ?, ?, ?, ?)",
                                (client_id, connector, remote_id, state, now()))
+            if state == "linked":
+                _check_applied(connection, lambda e: e["localId"] == client_id, "crmdevId", remote_id)
     except sqlite3.IntegrityError:  # that remote client is linked with another one kept here
         raise ClientError(TAKEN) from None
     return get(connection, client_id)
+
+
+def _check_applied(connection: sqlite3.Connection, mine, field: str, wanted: str) -> None:
+    """Inside the transaction of a new link: ClientError (so nothing is kept) when another link of the user keeps the
+    two apart, naming the client that other link goes with."""
+    entries = _build(connection)[0]
+    found = next((e for e in entries if mine(e)), None)
+    if found is not None and found[field] == wanted:
+        return
+    other = next((e for e in entries if e[field] == wanted), None)
+    raise ClientError(f"No se puede enlazar: otro enlace tuyo ya lo une con «{(other or found or {}).get('name', 'otro cliente')}». Deshaz antes ese enlace.")
 
 
 def link_remote(connection: sqlite3.Connection, client_id: int, connector: str, remote_id: str) -> bool:
@@ -334,7 +360,7 @@ def link_remote(connection: sqlite3.Connection, client_id: int, connector: str, 
     snapshot will only have after its next reading. Never over another link: False when it already had one (or that
     remote client is someone else's)."""
     try:
-        with transaction(connection):
+        with _writing(connection):
             if connection.execute("SELECT 1 FROM client_link WHERE client_id = ? AND connector = ? AND state = 'linked'", (client_id, connector)).fetchone():
                 return False
             connection.execute("DELETE FROM client_link WHERE client_id = ? AND connector = ? AND remote_id = ?", (client_id, connector, remote_id))
@@ -359,7 +385,7 @@ def set_pair_link(connection: sqlite3.Connection, central_id: str, crmdev_id: st
     if state not in ("linked", "distinct", "undistinct"):
         raise ClientError("Estado de enlace no válido.")
     if state == "undistinct":
-        with transaction(connection):
+        with _writing(connection):
             connection.execute("DELETE FROM remote_link WHERE connector_a = 'central' AND id_a = ? AND connector_b = 'crmdev' AND id_b = ? AND state = 'distinct'",
                                (central_id, crmdev_id))
         return
@@ -370,13 +396,15 @@ def set_pair_link(connection: sqlite3.Connection, central_id: str, crmdev_id: st
     if state == "distinct" and same_name(central_name) == same_name(crmdev_name):
         raise ClientError("Se llaman igual en Central y en CRMDev: si se llaman igual, son el mismo. Cambia antes el nombre en uno de los dos.")
     try:
-        with transaction(connection):
+        with _writing(connection):
             if state == "linked":
                 connection.execute("DELETE FROM remote_link WHERE connector_a = 'central' AND connector_b = 'crmdev' AND state = 'linked' AND (id_a = ? OR id_b = ?)",
                                    (central_id, crmdev_id))
             connection.execute("DELETE FROM remote_link WHERE connector_a = 'central' AND id_a = ? AND connector_b = 'crmdev' AND id_b = ?", (central_id, crmdev_id))
             connection.execute("INSERT INTO remote_link (connector_a, id_a, connector_b, id_b, state, created_at) VALUES ('central', ?, 'crmdev', ?, ?, ?)",
                                (central_id, crmdev_id, state, now()))
+            if state == "linked":
+                _check_applied(connection, lambda e: e["centralId"] == central_id, "crmdevId", crmdev_id)
     except sqlite3.IntegrityError:
         raise ClientError("No se pudo guardar el enlace: vuelve a intentarlo.") from None
 
@@ -399,10 +427,10 @@ def _links(connection: sqlite3.Connection):
     from .client_sources import Links
 
     local_crmdev: dict[int, dict] = {}
-    for row in connection.execute("SELECT client_id, remote_id, state FROM client_link WHERE connector = 'crmdev'"):
-        found = local_crmdev.setdefault(row["client_id"], {"linked": None, "distinct": set()})
+    for row in connection.execute("SELECT client_id, remote_id, state, created_at FROM client_link WHERE connector = 'crmdev'"):
+        found = local_crmdev.setdefault(row["client_id"], {"linked": None, "linkedAt": None, "distinct": set()})
         if row["state"] == "linked":
-            found["linked"] = row["remote_id"]
+            found["linked"], found["linkedAt"] = row["remote_id"], row["created_at"]
         else:
             found["distinct"].add(row["remote_id"])
     pairs = {(r["id_a"], r["id_b"]): r["state"] for r in
@@ -419,28 +447,96 @@ def active_sources(connection: sqlite3.Connection) -> dict[str, bool]:
             "crmdev": crmdev_sync.active(connection)}
 
 
+_CACHE: dict[str, tuple[object, tuple[list[dict], list[dict]]]] = {}  # database file → (what it was built from, result)
+_CACHE_LOCK = threading.Lock()
+_version = 0  # bumped by every write of this module, so a change in the same second is never missed
+
+
+def _changed() -> None:
+    global _version
+    with _CACHE_LOCK:
+        _version += 1
+
+
+def _signature(connection: sqlite3.Connection) -> object:
+    """What the directory is built from: the snapshots, the modules and connections, and the tables of clients and links."""
+    from . import central, central_api, crmdev_api, crmdev_sync, modules
+
+    keys = (central.SNAPSHOT_SETTING, crmdev_sync.SETTING, modules.SETTING, crmdev_api.SETTING, central_api.SETTING, central.LEGACY_SETTING)
+    settings = tuple(sorted((r["key"], hash(r["value"])) for r in connection.execute(
+        f"SELECT key, value FROM setting WHERE key IN ({', '.join('?' * len(keys))})", keys)))
+    tables = tuple(connection.execute(
+        "SELECT (SELECT count(*) || '|' || coalesce(max(updated_at), '') || '|' || coalesce(sum(id), 0) FROM client),"
+        " (SELECT count(*) || '|' || coalesce(max(created_at), '') FROM client_link),"
+        " (SELECT count(*) || '|' || coalesce(max(created_at), '') FROM remote_link),"
+        " (SELECT count(*) || '|' || coalesce(max(created_at), '') FROM client_distinct)").fetchone())
+    return _version, settings, tables
+
+
+def _copy(result: tuple[list[dict], list[dict]]) -> tuple[list[dict], list[dict]]:
+    """Every caller gets its own entries and lists (the cached ones are never handed out)."""
+    entries = [{**e, **{k: list(e[k]) for k in ("domains", "projects", "websites", "aliases", "differences", "sources")}} for e in result[0]]
+    return entries, [dict(s) for s in result[1]]
+
+
 def build(connection: sqlite3.Connection) -> tuple[list[dict], list[dict]]:
     """The directory and the suggestions of links (`client_sources` joins the three sources). Each entry has the
     snapshot's shape (`name`, `company`, `email`, `phone`, `taxId`, `domains`, `projects`, `websites`) plus `sources`
     (some of `central`, `crmdev`, `local`), `source` (only about Central and AgoraOne, as it always was: `central`,
     `local` or `ambos`), `localId`, `centralId`, `crmdevId`, `crmdevStatus`, `aliases` (other names it is known by),
-    `differences` (fields CRMDev has otherwise than Central) and `unplaced` (kept only here, with a remote source
-    where it could be and no link to it). A suggestion pairs `localId`/`centralId`/`crmdevId` two by two."""
+    `differences` (fields CRMDev has otherwise than Central), `repeated` (another entry has the same name), `unplaced`
+    (kept only here, with a remote source where it could be and no link to it) and `staleLink` (the CRM it was linked
+    with no longer returns that client). A suggestion pairs `localId`/`centralId`/`crmdevId` two by two. Kept in memory
+    while nothing it is built from changes."""
+    path = (connection.execute("PRAGMA database_list").fetchone() or {"file": ""})["file"] or f"memory:{id(connection)}"
+    signature = _signature(connection)
+    with _CACHE_LOCK:
+        kept = _CACHE.get(path)
+    if kept is not None and kept[0] == signature:
+        return _copy(kept[1])
+    result = _build(connection)
+    with _CACHE_LOCK:
+        _CACHE[path] = (signature, result)
+        while len(_CACHE) > 8:
+            del _CACHE[next(iter(_CACHE))]
+    return _copy(result)
+
+
+def _build(connection: sqlite3.Connection) -> tuple[list[dict], list[dict]]:
+    from . import central, crmdev_sync
     from .client_sources import join
 
     central_rows = [{"id": c.get("id"), "name": c["name"], "company": c.get("company"), "email": c.get("email"), "phone": c.get("phone"),
                      "taxId": c.get("taxId"), "domains": list(c.get("domains") or []), "projects": list(c.get("projects") or []),
                      "websites": list(c.get("websites") or [])} for c in _central(connection)]
+    crmdev_rows = _crmdev(connection)
     links = _links(connection)
     owns = local(connection)
-    entries, suggestions = join(central_rows, _crmdev(connection), owns, links)
+    entries, suggestions = join(central_rows, crmdev_rows, owns, links)
     active = active_sources(connection)
     if any(active.values()):
-        placed = {o["localId"] for o in owns if active["central"] and o["centralId"]}
-        placed |= {i for i, found in links.local_crmdev.items() if active["crmdev"] and found["linked"]}
+        central_read = central.snapshot(connection) or {}
+        crmdev_read = crmdev_sync.snapshot(connection) or {}
+        central_ids, crmdev_ids = {c["id"] for c in central_rows if c["id"]}, {c["id"] for c in crmdev_rows}
+        by_id = {o["localId"]: o for o in owns}
         for e in entries:
-            e["unplaced"] = e["sources"] == ["local"] and e["localId"] not in placed
-    entries.sort(key=lambda e: (e["name"].casefold(), e["source"]))
+            if e["sources"] != ["local"]:
+                continue
+            own, placed, stale = by_id[e["localId"]], False, None
+            if active["central"] and own["centralId"]:
+                # Just created or linked, and not read since: placed; a client Central no longer returns: not any more.
+                if own["centralId"] in central_ids or (central_read.get("fetchedAt") or "") <= own["updatedAt"]:
+                    placed = True
+                else:
+                    stale = "central"
+            linked = links.local_crmdev.get(own["localId"], {})
+            if active["crmdev"] and linked.get("linked"):
+                if linked["linked"] in crmdev_ids or crmdev_read.get("truncated") or (crmdev_read.get("fetchedAt") or "") <= (linked.get("linkedAt") or ""):
+                    placed = True
+                else:
+                    stale = stale or "crmdev"
+            e["unplaced"], e["staleLink"] = not placed, None if placed else stale
+    entries.sort(key=lambda e: (e["name"].casefold(), e["source"], e["crmdevId"] or "", e["localId"] or 0))
     return entries, suggestions
 
 
@@ -490,6 +586,8 @@ def find(entries: list[dict], address: str | None = None, phone: str | None = No
             fits = [(len(d), e) for e in entries for d in e["domains"] if client_domain(d) and (host == d or host.endswith("." + d))]
             closest = max((size for size, _ in fits), default=0)
             found = {id(e): e for size, e in fits if size == closest}
+            if len(found) > 1:  # a contact of CRMDev on the domain of a client of Central or kept here never makes it ambiguous
+                found = {k: e for k, e in found.items() if set(e.get("sources") or ["local"]) & {"central", "local"}} or found
             if found:
                 return _one(list(found.values()))
     if phone and (digits := phone_key(phone)):
