@@ -55,7 +55,7 @@ export function FabricaPanel({ state, discreet, mac, starting, started, onStart,
   return <div className="fabrica-panel">
     <article className={`card fabrica-state ${state}`}>
       <div className="fabrica-state-head">
-        <div><span className="fabrica-badge">{stateLabels[state]}</span><p>{stateText(state, mac, discreet)}</p></div>
+        <div><span className={`status-badge fabrica-badge ${state === 'running' ? 'good' : state === 'stopped' ? 'paused' : 'bad'}`}>{stateLabels[state]}</span><p>{stateText(state, mac, discreet)}</p></div>
         <div className="fabrica-state-actions">
           {canStart(state, mac) && <div className="actions fabrica-actions">
             <ActionButton icon="power" label="Arrancar la fábrica" tone="primary" busyLabel={starting && 'Arrancando…'} disabled={starting} onClick={onStart}/></div>}

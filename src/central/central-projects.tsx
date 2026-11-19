@@ -12,6 +12,7 @@ import { CentralNote } from './central-note';
 import { Block, Facts, RecordLayout } from '../ui/record-layout';
 import { dateLabel, forgetCentral, useCentralRead, useCentralReadings, viewKey } from './use-central-view';
 import { ActionButton } from '../ui/action-button';
+import { ProjectStatus } from './project-status';
 
 const ALL = '';
 const PAGE = '50';
@@ -31,7 +32,7 @@ function ProjectsPage({ filters, cursor, last, discreet, onMore, onPick, onOpen 
     {projects.map((p, index) => <tr key={p.id ?? index}>
       <td><strong>{p.name ?? '—'}</strong>{p.framework && <small className="muted"> · {p.framework}</small>}</td>
       <td>{p.client ?? '—'}</td>
-      <td>{label(projectStatusLabels, p.status)}</td>
+      <td><ProjectStatus status={p.status}/></td>
       <td>{p.phase ?? '—'}</td>
       <td className="central-date">{dateLabel(p.lastActivity)}</td>
       <td className="central-row-actions">{p.id && <span className="actions"><ActionButton icon="eye" label="Ver ficha" onClick={() => onPick(p.id!)}/>
@@ -111,7 +112,7 @@ export function CentralProjects({ discreet, onOpen }: { discreet: boolean; onOpe
         options={[{ value: ALL, label: 'Todos' }, ...Object.entries(projectStatusLabels).map(([value, text]) => ({ value, label: text }))]}/></label>
       <label className="field">Cliente<ModernSelect value={filters.cliente ?? ALL} onChange={value => apply({ ...filters, cliente: value || undefined })}
         options={[{ value: ALL, label: 'Todos' }, ...names.map(name => ({ value: name, label: name }))]}/></label>
-      <label className="field">Buscar<input value={typed} maxLength={200} onChange={event => setTyped(event.target.value)} placeholder="Nombre o tecnología"/></label>
+      <label className="field central-search">Buscar<input value={typed} maxLength={200} onChange={event => setTyped(event.target.value)} placeholder="Nombre o tecnología"/></label>
       <div className="actions central-actions"><ActionButton icon="search" label="Buscar" type="submit"/></div>
     </form>
     <table className="data-table central-table">

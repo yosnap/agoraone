@@ -113,7 +113,7 @@ export function ConnectorCard({ connector, modules, labels, focused = false, onS
   </span>;
   return <article ref={card} tabIndex={-1} className={`card connector-card${ring ? ' focused' : ''}`} aria-labelledby={`connector-${connector.id}`}
     data-connector={connector.id} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setRing(false); }}>
-    <div className="card-head"><h2 id={`connector-${connector.id}`}>{connector.name}</h2><span className={`chip ${tone}`}>{label}</span></div>
+    <div className="card-head"><h2 id={`connector-${connector.id}`}>{connector.name}</h2><span className={`status-badge ${tone === 'warn' ? 'waiting' : tone || 'neutral'}`}>{label}</span></div>
     <p>{connector.description}</p>
     <p className="connector-how"><strong>Cómo se conecta.</strong> {howText[connector.kind]}</p>
     {notice && <p className="notice" role="status">{notice}</p>}

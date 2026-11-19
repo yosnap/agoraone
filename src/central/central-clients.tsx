@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { getCentralClient, getCentralView, projectKindLabels, projectStatusLabels, type CentralNote as Note, type CentralWebsite } from '../api/central';
+import { getCentralClient, getCentralView, projectKindLabels, type CentralNote as Note, type CentralWebsite } from '../api/central';
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { CentralProblem, FallbackNote } from './central-connect';
 import { OpenInCentral } from './open-in-central';
+import { ProjectStatus } from './project-status';
 import { useWritePermissions } from './central-change';
 import { CentralEditClient } from './central-edit-client';
 import { CentralNote } from './central-note';
@@ -75,7 +76,7 @@ function ClientRecord({ id, discreet, onBack, onOpen }: { id: string; discreet: 
       {!c.projects.length ? <p className="muted">Sin proyectos.</p> : <table className="data-table central-table">
         <thead><tr><th>Proyecto</th><th>Tipo</th><th>Estado</th><th>Fase</th><th>Versión</th><th>Repositorio</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
         <tbody>{c.projects.map((p, index) => <tr key={p.id ?? index}>
-          <td><strong>{p.name}</strong></td><td>{projectKindLabels[p.kind ?? ''] ?? '—'}</td><td>{projectStatusLabels[p.status ?? ''] ?? p.status ?? '—'}</td>
+          <td><strong>{p.name}</strong></td><td>{projectKindLabels[p.kind ?? ''] ?? '—'}</td><td><ProjectStatus status={p.status}/></td>
           <td>{p.phase ?? '—'}</td><td>{p.version ?? '—'}</td><td>{p.repo ?? '—'}</td>
           <td className="central-row-actions">{p.id && <OpenInCentral page={`proyectos/${p.id}`} discreet={discreet}/>}</td>
         </tr>)}</tbody></table>}

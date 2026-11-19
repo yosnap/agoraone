@@ -43,6 +43,9 @@
   background:color-mix(in srgb, var(--c-e7ece2) 55%, transparent) }
 .data-table tbody tr:hover > td, .work-table tbody tr:hover > td, .fiscal-table tbody tr:hover > td {
   background:color-mix(in srgb, var(--c-dcebdc) 80%, transparent) }
+/* Chips, badges and button rows inside a cell never add their own vertical margin, so they line up with the text. */
+:is(.data-table, .work-table, .fiscal-table) td :is(.status-badge, .chip, .actions, .central-open, .button, p.error, p.ok-note) { margin-block:0 }
+:is(.data-table, .work-table, .fiscal-table) td > :is(.status-badge, .chip, .button, .central-open) { vertical-align:middle }
 .data-table tbody tr > td, .work-table tbody tr > td, .fiscal-table tbody tr > td { transition:background-color .12s ease }
 .data-table .num, .work-table .num, .fiscal-table .num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap }
 .segmented { display:inline-flex; background:var(--c-e7ece2); border-radius:10px; padding:3px; gap:2px }

@@ -24,7 +24,10 @@
 .central-url { overflow-wrap:anywhere }
 .central-chips { display:inline-flex; gap:6px; flex-wrap:wrap }
 .central-filters { margin-bottom:6px }
-.central-filters .field { flex:1 1 180px }
+.central-filters { gap:12px }
+/* Filters stay compact in one row: each select with a sensible width, the search a little wider; never one giant field. */
+.central-filters > .field { flex:0 1 200px; min-width:150px; max-width:240px }
+.central-filters > .field.central-search { flex:1 1 260px; max-width:380px }
 /* A change to Central: the form, then the exact change and its buttons on the right, apart from the fields. */
 .central-edit, .central-change { display:flex; flex-direction:column; gap:10px }
 .central-edit-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr)); gap:10px 16px }
