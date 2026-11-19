@@ -9,6 +9,31 @@ import pytest
 from agora_core import youtube
 
 
+
+@pytest.fixture(autouse=True)
+def _sin_oembed(monkeypatch):
+    """The page tests do not reach YouTube's oEmbed: every video counts as embeddable unless a test says otherwise."""
+    monkeypatch.setattr(youtube, "_embeddable", lambda ident: True)
+
+
+def test_los_videos_que_dejan_incrustarse_van_primero():
+    found = [{"id": "aaaaaaaaaaa"}, {"id": "bbbbbbbbbbb"}, {"id": "ccccccccccc"}, {"id": "ddddddddddd"}]
+    verdicts = {"aaaaaaaaaaa": False, "bbbbbbbbbbb": True, "ccccccccccc": None, "ddddddddddd": False}
+    ordered = youtube.embeddable_first(found, verdicts.get)
+    assert [v["id"] for v in ordered] == ["bbbbbbbbbbb", "ccccccccccc", "aaaaaaaaaaa", "ddddddddddd"]
+
+
+def test_oembed_401_es_no_incrustable(monkeypatch):
+    monkeypatch.undo()
+    monkeypatch.setattr(youtube.httpx, "get", lambda url, **k: httpx.Response(401 if "oembed" in url else 500))
+    assert youtube._embeddable("aaaaaaaaaaa") is False
+    monkeypatch.setattr(youtube.httpx, "get", lambda url, **k: httpx.Response(200, json={}))
+    assert youtube._embeddable("aaaaaaaaaaa") is True
+    def roto(url, **k):
+        raise httpx.ConnectError("sin red")
+    monkeypatch.setattr(youtube.httpx, "get", roto)
+    assert youtube._embeddable("aaaaaaaaaaa") is None
+
 def page(videos):
     data = {"contents": {"list": [{"videoRenderer": v} for v in videos]}}
     return f"<script>var ytInitialData = {json.dumps(data)};</script>"
