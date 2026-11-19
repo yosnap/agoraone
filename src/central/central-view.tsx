@@ -11,7 +11,7 @@ import { CentralServers } from './central-servers';
 import { CentralSummary } from './central-summary';
 import { CentralWebsites } from './central-websites';
 import { CentralPages, OpenInCentral } from './open-in-central';
-import { CONNECTION, centralTabs, forgetCentral, startCentral, useCentralRead } from './use-central-view';
+import { CONNECTION, centralTabs, forgetCentral, startCentral, useCentralRead, useCentralRereading } from './use-central-view';
 import './central.css';
 
 /** The «Central» section: Central's summary, alerts, pending projects, clients, projects, websites, servers and its
@@ -24,11 +24,12 @@ export function CentralView({ discreet, onOpen }: { discreet: boolean; onOpen: (
   const [tab, setTab] = useState<CentralViewName>('resumen');
   const connection = useCentralRead(CONNECTION, getCentralConnection);
   const connected = connection.data?.transport === 'http';
+  const rereading = useCentralRereading();
   return <section className="page central" aria-labelledby="central-title">
     <div className="eyebrow">CENTRAL{discreet ? ' · MODO DISCRETO' : ''}</div>
     <div className="central-head">
       <h1 id="central-title">Central</h1>
-      {connected && <div className="actions central-actions"><button type="button" className="button" onClick={forgetCentral}>Volver a leer</button></div>}
+      {connected && <div className="actions central-actions"><button type="button" className="button" disabled={rereading} onClick={forgetCentral}>{rereading ? 'Leyendo…' : 'Volver a leer'}</button></div>}
     </div>
     <p className="page-lead">Lo que tienes en Central, leído ahora mismo de su API. Con una clave con permiso «escritura», los datos de un cliente, sus notas y el estado y la fase de un proyecto se cambian desde su ficha, viendo antes el cambio exacto; lo demás, con «Abrir en Central».</p>
     {connection.failure ? <CentralProblem failure={connection.failure} onRetry={connection.reload} onOpen={onOpen}/>

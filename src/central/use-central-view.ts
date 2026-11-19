@@ -34,6 +34,9 @@ export function forgetCentral() {
 /** How many times «Volver a leer» was pressed: what depends on earlier pages (the cursors) starts again with it. */
 export const useCentralReadings = () => store.useReadings();
 
+/** Whether a «Volver a leer» is still waiting for its answers. */
+export const useCentralRereading = () => store.useRereading();
+
 /** A key for a view and its parameters, the same whatever the order of the parameters. */
 export const viewKey = (view: CentralViewName, params: Record<string, string | undefined> = {}) =>
   `${view}?${Object.entries(params).filter(([, v]) => v).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join('&')}`;

@@ -7,7 +7,7 @@ import { ApiError } from '../api/client';
 import { getCrmdevClient, getCrmdevHours, getCrmdevView, type CrmdevClient, type CrmdevPage, type CrmdevProject, type CrmdevTask, type CrmdevTicket } from '../api/crmdev';
 import { menu, sectionModule } from '../shell/shell-state';
 import { moduleOn } from '../shell/modules';
-import { CrmdevProblem } from './crmdev-common';
+import { CrmdevProblem, ReadAgain } from './crmdev-common';
 import { dayLabel, labelOf, minutesLabel, taskStatusLabels } from './crmdev-labels';
 import { ClientRecord, contactKey } from './crmdev-clients';
 import { ProjectHours, ProjectRecord, hoursByPerson } from './crmdev-projects';
@@ -118,11 +118,17 @@ test('«Volver a leer» pide otra vez, a CRMDev y en el momento, lo que hay en p
   crmdevStore.ensure('horas:p9', async () => ({}));  // read before, no longer on screen
   await settle();
   readAgain();
-  assert.deepEqual(calls, [false, true], 'pulsar pide en ese momento y con fresco');
+  const during = renderToStaticMarkup(createElement(ReadAgain, { times: [READ_AT] }));
+  assert.match(during, /<button[^>]*disabled=""[^>]*>Leyendo…<\/button>/, 'mientras vuelve a leer, el botón no se puede pulsar otra vez');
+  await settle();
+  assert.deepEqual(calls, [false, true], 'pulsar pide, tras pintar, con fresco');
   assert.equal(crmdevStore.has('horas:p9'), false, 'lo que no está en pantalla se olvida y se pedirá al volver');
+  await settle();
+  assert.doesNotMatch(renderToStaticMarkup(createElement(ReadAgain, { times: [READ_AT] })), /disabled/, 'con la respuesta, se puede volver a pulsar');
   stop();
   await settle();
   readAgain();
+  await settle();
   assert.deepEqual(calls, [false, true], 'sin nada en pantalla, nada que pedir');
 });
 

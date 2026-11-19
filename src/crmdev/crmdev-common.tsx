@@ -1,7 +1,7 @@
 import { openConnector } from '../connectors/open-connector';
 import type { Section } from '../shell/shell-state';
 import { statusTone, labelOf } from './crmdev-labels';
-import { orderNote, readAgain, readAtLabel, type CrmdevFailure } from './use-crmdev-view';
+import { orderNote, readAgain, readAtLabel, useRereading, type CrmdevFailure } from './use-crmdev-view';
 
 // Pieces shared by the tabs and records of the «CRMDev» section. Everything from CRMDev is React text: never HTML, never
 // Markdown, never a link, even when it looks like an address.
@@ -60,8 +60,9 @@ export function LongText({ text, discreet }: { text: string | null; discreet: bo
  * screen, on the right of its filters or in the head of a record. */
 export function ReadAgain({ times }: { times: (string | null | undefined)[] }) {
   const when = readAtLabel(times);
+  const busy = useRereading();
   return <div className="actions central-actions crmdev-read">
     {when && <small className="muted">{when}</small>}
-    <button type="button" className="button" onClick={readAgain}>Volver a leer</button>
+    <button type="button" className="button" disabled={busy} onClick={readAgain}>{busy ? 'Leyendo…' : 'Volver a leer'}</button>
   </div>;
 }

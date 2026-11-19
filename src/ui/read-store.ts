@@ -8,8 +8,8 @@ import { ApiError } from '../api/client';
 // - Nothing is asked while React renders: a read starts when a component subscribes (after it is on screen), or from
 //   a handler («Reintentar», «Volver a leer»). A render that React throws away asks nothing.
 // - Only the latest answer for a key counts (a generation per key).
-// - `forget` («Volver a leer») gives every watched read a new entry right away, so what is on screen is asked again
-//   at once; reads not on screen are dropped and asked when shown again.
+// - `forget` («Volver a leer») drops (or, keeping, marks) every read and, once the screen has painted again, asks
+//   again only those still watched; reads not on screen are dropped and asked when shown again.
 // - `start` (a new visit) only empties the store without notifying: calling it twice is harmless.
 
 /** Why a read failed: `kind` is the core's (`not_connected`, `off`, `busy`, `auth`, `unreachable`…). */
@@ -32,6 +32,7 @@ export function createReadStore(fallbackMessage: string) {
   const watching = new Map<string, number>();
   const listeners = new Set<() => void>();
   let readings = 0;
+  let rereads = 0;  // «Volver a leer» still waiting for its answers
   let recorder: ((key: string) => void) | null = null;
   const notify = () => listeners.forEach(listener => listener());
   const listen = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
@@ -45,17 +46,18 @@ export function createReadStore(fallbackMessage: string) {
   }
 
   /** Asks for `key` unless it is already read or being read (`again`: asks anyway, keeping what was read meanwhile). */
-  function ensure<T>(key: string, fetcher: Fetcher<T>, again = false, fresh = false) {
+  function ensure<T>(key: string, fetcher: Fetcher<T>, again = false, fresh = false): Promise<unknown> | undefined {
     fetchers.set(key, fetcher as Fetcher<unknown>);
-    if (!again && entries.has(key)) return;
+    if (!again && entries.has(key)) return undefined;
     const mine = (generations.get(key) ?? 0) + 1;
     generations.set(key, mine);
     const before = entries.get(key) as Read<T> | undefined;
     entries.set(key, { data: before?.data ?? null, failure: null, loading: true });
-    void fetcher(fresh).then(data => { if (generations.get(key) === mine) entries.set(key, { data, failure: null, loading: false }); },
+    const done = fetcher(fresh).then(data => { if (generations.get(key) === mine) entries.set(key, { data, failure: null, loading: false }); },
       error => { if (generations.get(key) === mine) entries.set(key, { data: null, failure: failureOf(error), loading: false }); })
       .finally(() => { if (generations.get(key) === mine) notify(); });
     if (again) notify();
+    return done;
   }
 
   /** Watches `key` while subscribed: asks for it if needed (after the render, never during it). */
@@ -82,17 +84,30 @@ export function createReadStore(fallbackMessage: string) {
     return { ...read, reload: () => { if (key) ensure(key, fetcher, true); } };
   }
 
-  /** «Volver a leer»: the reads on screen are asked again at once (`fresh` is passed to their fetchers; with `keep`
-   * what was read stays on screen until the new answer comes); the others, and all but `except`, are dropped. */
+  /** «Volver a leer»: the reads still on screen after the next paint are asked again (`fresh` is passed to their
+   * fetchers; with `keep` what was read stays on screen until the new answer comes); all but `except` are dropped. */
   function forget({ keep = false, fresh = false, except = [] as string[] } = {}) {
+    const pending = new Map<string, number>();  // key → its generation now: asked again only if nothing asked it since
     for (const key of [...entries.keys()]) {
       if (except.includes(key)) continue;
-      const fetcher = fetchers.get(key);
-      if (!keep || !watching.get(key) || !fetcher) entries.delete(key);
-      if (watching.get(key) && fetcher) ensure(key, fetcher, true, fresh);
+      if (!keep || !watching.get(key)) entries.delete(key);
+      pending.set(key, generations.get(key) ?? 0);
     }
     readings++;
+    rereads++;
     notify();
+    // After the screen has painted with the new reading (pages loaded with «Cargar más» are gone by then), only what is
+    // still watched is asked again: never a page that no longer shows.
+    setTimeout(() => {
+      const asked: Promise<unknown>[] = [];
+      for (const [key, generation] of pending) {
+        const fetcher = fetchers.get(key);
+        if (!watching.get(key) || !fetcher || (generations.get(key) ?? 0) !== generation) continue;
+        const done = ensure(key, fetcher, true, fresh);
+        if (done) asked.push(done);
+      }
+      void Promise.allSettled(asked).then(() => { rereads--; notify(); });
+    }, 0);
   }
 
   return {
@@ -101,6 +116,8 @@ export function createReadStore(fallbackMessage: string) {
     start: () => { entries.clear(); },
     /** How many times «Volver a leer» was pressed (what depends on earlier pages starts again with it). */
     useReadings: () => useSyncExternalStore(listen, () => readings, () => readings),
+    /** Whether a «Volver a leer» is still waiting for its answers (its button stays disabled meanwhile). */
+    useRereading: () => useSyncExternalStore(listen, () => rereads > 0, () => rereads > 0),
     /** For tests: the keys a server render would ask (not read yet), to count the requests of a screen. */
     recordServerReads: (record: ((key: string) => void) | null) => { recorder = record; },
     has: (key: string) => entries.has(key),

@@ -21,6 +21,8 @@ export function useCrmdevRead<T>(key: string | null, fetcher: Fetcher<T>): Crmde
 
 /** «Volver a leer»: asks CRMDev again, now, for everything on screen. */
 export const readAgain = () => crmdevStore.forget({ keep: true, fresh: true });
+/** Whether a «Volver a leer» is still waiting for its answers. */
+export const useRereading = () => crmdevStore.useRereading();
 
 /** A fresh start each time the section opens (harmless if called twice: it only empties the store). */
 export const startCrmdev = () => crmdevStore.start();
