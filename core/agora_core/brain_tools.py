@@ -289,7 +289,7 @@ class Toolbox:
         self.calls += 1
         from .engines import HIDDEN_TOOLS
         if name in HIDDEN_TOOLS:  # a tool of a module turned off, even if the model names it
-            return json.dumps({"error": "Esa herramienta está apagada en Ajustes › Módulos."}, ensure_ascii=False)
+            return json.dumps({"error": "Esa herramienta está apagada: su módulo se enciende en Ajustes › Módulos o en Conectores."}, ensure_ascii=False)
         try:
             if name == "buscar_en_cerebro":
                 return await self._search(str(args.get("consulta", ""))[:500], args.get("limite", 6))

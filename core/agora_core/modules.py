@@ -12,7 +12,7 @@ from .db import transaction
 SETTING = "modules"
 MODULES = {
     "correo": "Correo y Bandeja", "agenda": "Agenda y avisos", "fiscal": "Fiscal", "trabajos": "Trabajos",
-    "reuniones": "Reuniones", "voz": "Voz y dictado", "musica": "Música", "oficina": "Oficina 3D", "conectores": "Conectores", "orca": "Orca",
+    "reuniones": "Reuniones", "voz": "Voz y dictado", "musica": "Música", "oficina": "Oficina 3D", "orca": "Orca",
     "whatsapp": "WhatsApp", "jev": "Jev (decisiones)", "presupuestos": "Presupuestos", "central": "Central",
     "fabrica": "Mi fábrica",
 }
@@ -63,6 +63,8 @@ def save(connection: sqlite3.Connection, changes: dict) -> dict[str, bool]:
     """Keeps only what the user set: a module never touched keeps following its default."""
     row = connection.execute("SELECT value FROM setting WHERE key = ?", (SETTING,)).fetchone()
     saved = json.loads(row["value"]) if row else {}
+    # A module that no longer exists (such as the old «conectores») is dropped the next time anything is saved.
+    saved = {name: value for name, value in saved.items() if name in MODULES}
     saved.update({name: bool(value) for name, value in changes.items() if name in MODULES})
     with transaction(connection):
         connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value", (SETTING, json.dumps(saved)))

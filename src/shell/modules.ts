@@ -14,6 +14,8 @@ export function useModules() {
   if (!asked) { asked = true; void getModules().then(publish).catch(() => undefined); }
   return useSyncExternalStore(cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, snapshot);
 }
+/** Reads the modules again: saving a connection may turn on the modules that follow it. */
+export const refreshModules = () => getModules().then(publish);
 export const moduleOn = (state: Partial<Record<ModuleName, boolean>>, name: ModuleName) => state[name] !== false;
 export const moduleLabels = () => labels;
 export async function setModule(name: ModuleName, value: boolean) {

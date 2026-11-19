@@ -60,7 +60,7 @@ export function IssueFromSource({ source, client: firstClient, project: firstPro
   }
   if (projects && projects.length === 0) return <p className="muted">{centralOn
     ? 'Ningún proyecto de Central tiene repositorio de GitHub.'
-    : 'Tus clientes propios no tienen proyectos: una issue va al repositorio de un proyecto de Central, y Central está apagado en Ajustes › Módulos.'} <button type="button" className="button" onClick={() => onClose()}>Cerrar</button></p>;
+    : 'Tus clientes propios no tienen proyectos: una issue va al repositorio de un proyecto de Central, y Central está apagado en Conectores.'} <button type="button" className="button" onClick={() => onClose()}>Cerrar</button></p>;
   return <form className="project-note" aria-label="Crear issue" onSubmit={event => { event.preventDefault(); void create(); }}>
     {projects && <label className="field">Proyecto<ModernSelect value={chosen} onChange={look}
       options={projects.map(p => ({ value: keyOf(p.client, p.project), label: `${p.client} › ${p.project}` }))}/></label>}

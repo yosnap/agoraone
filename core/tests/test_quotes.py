@@ -277,7 +277,7 @@ def test_clave_sin_permiso_presupuestos(client, fake):
     fake.scopes = ["lectura"]
     for answer in (client.get("/quotes", headers=HEADERS), client.get("/quotes/rates", headers=HEADERS), client.post("/quotes", json=draft(), headers=HEADERS)):
         assert answer.status_code == 403 and answer.json()["status"] == "forbidden"
-        assert "permiso «presupuestos»" in answer.json()["error"] and "Ajustes › Central" in answer.json()["error"]
+        assert "permiso «presupuestos»" in answer.json()["error"] and "Conectores › Central" in answer.json()["error"]
     assert fake.created == []
 
 

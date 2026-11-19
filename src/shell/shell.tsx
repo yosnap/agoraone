@@ -78,15 +78,15 @@ export function Shell() {
       <FabricaDownloadNotice discreet={discreet}/>
     </div>
     <YouTubeMini/>
-    {ready && <FirstRun/>}
+    {ready && <FirstRun onOpen={go}/>}
     <div className="shell-content">
       {officeVisited && ready && <Office status={status} active={section === 'office'} onWaiting={setWaiting} onWatson={() => go('brain')}/>}
       {ready && section !== 'office' && <main className="shell-page"><Suspense fallback={<div className="page"><Loading label="Cargando la sección"/></div>}>
         {section === 'brain' ? <BrainView discreet={discreet} focus={focus} onFocus={setFocus} onRead={setReading} onSummary={() => go('summary')} onOpen={go}/>
           : section === 'summary' ? <SummaryView discreet={discreet} onRead={setReading}/>
           : section === 'assistant' ? <AssistantView onRead={setReading} onShowOnGraph={showOnGraph} discreet={discreet}/>
-          : section === 'connectors' ? <ConnectorsView/>
-          : section === 'settings' ? <SettingsView/>
+          : section === 'connectors' ? <ConnectorsView onOpen={go}/>
+          : section === 'settings' ? <SettingsView onOpen={go}/>
           : section === 'inbox' ? <InboxView discreet={discreet}/>
           : section === 'fiscal' ? <FiscalView discreet={discreet}/>
           : section === 'agenda' ? <AgendaView discreet={discreet} onOpen={go}/>

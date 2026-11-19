@@ -44,7 +44,7 @@ export type SystemNote = { key: string; text: string; detail?: string; tone: 'wa
 const KIND_LABEL: Record<AlertItem['kind'], string> = { call: 'Llamada perdida', meeting: 'Reunión próxima', commitment: 'Plazo de un correo', summary: 'Tu día' };
 // The doctor names the modules each piece serves in words; Watson and the brain are always on.
 const MODULE_BY_NAME: Record<string, ModuleName> = { Correo: 'correo', Agenda: 'agenda', Fiscal: 'fiscal', Trabajos: 'trabajos', Reuniones: 'reuniones',
-  Voz: 'voz', 'Música': 'musica', 'Oficina 3D': 'oficina', Conectores: 'conectores', Orca: 'orca' };
+  Voz: 'voz', 'Música': 'musica', 'Oficina 3D': 'oficina', Orca: 'orca' };
 /** The system's messages: what could not be read, the pieces missing for a module that is on, and the reminders due
  * now (meetings only with the agenda on, mail deadlines only with mail on). In discreet mode a reminder says only
  * what kind it is: calls, meetings and mail carry their own levels, often «solo en este Mac». */

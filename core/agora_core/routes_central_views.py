@@ -22,7 +22,7 @@ from .db import DB_NAME, connect
 from .settings import Settings
 
 OFF = "El módulo Central está apagado."
-NOT_CONNECTED = "Central no está conectado por su dirección y clave: conéctalo en Ajustes › Central."
+NOT_CONNECTED = "Central no está conectado por su dirección y clave: conéctalo en Conectores › Central."
 NO_VIEW = "Esa vista de Central no existe."
 BAD_ID = "El identificador no es válido."
 STATUS_CODES = {"forbidden": 403, "not_found": 404}

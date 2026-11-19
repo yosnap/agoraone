@@ -29,9 +29,9 @@ from .db import DB_NAME, connect, now, transaction
 from .settings import Settings
 
 OFF = "El módulo Presupuestos está apagado."
-NOT_CONNECTED = "Presupuestos necesita Central conectado por su dirección y clave: conéctalo en Ajustes › Central."
+NOT_CONNECTED = "Presupuestos necesita Central conectado por su dirección y clave: conéctalo en Conectores › Central."
 NO_PERMISSION = ("La clave de Central no tiene el permiso «presupuestos»: crea en Ajustes › Apps conectadas de Central una con ese permiso "
-                 "y guárdala en Ajustes › Central.")
+                 "y guárdala en Conectores › Central.")
 BAD_ID = "El identificador del presupuesto no es válido."
 NOT_IN_CENTRAL = "Ese cliente no está en Central: es un cliente propio de AgoraOne. Créalo antes en Central para hacerle un presupuesto."
 STATUS_CODES = {"forbidden": 403, "not_found": 404, "invalid": 422}

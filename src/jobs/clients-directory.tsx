@@ -80,8 +80,8 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
   return <div className="clients-directory">
     <div className="jobs-heading"><h2>Clientes</h2>
       {!discreet && editing === null && <button type="button" className="button primary" onClick={() => { setEditing('new'); setNote(''); }}>Nuevo cliente</button>}</div>
-    <p className="muted">{!data.central.on ? 'Central está apagado en Ajustes › Módulos: ves solo los clientes que guardas en AgoraOne.'
-      : !data.central.read ? 'Central no está conectado o aún no se ha leído (Ajustes › Central): ves solo los clientes que guardas en AgoraOne.'
+    <p className="muted">{!data.central.on ? 'Central está apagado en Conectores: ves solo los clientes que guardas en AgoraOne.'
+      : !data.central.read ? 'Central no está conectado o aún no se ha leído (Conectores › Central): ves solo los clientes que guardas en AgoraOne.'
       : 'Tus clientes de Central y los que guardas en AgoraOne, en una sola lista. Los de Central se cambian en Central.'}</p>
     {editing !== null && !discreet && <ClientForm key={editing} clientId={editing === 'new' ? null : editing} onCancel={() => setEditing(null)}
       onDone={saved => { setEditing(null); setNote(`«${saved.name}» guardado.`); load(); invalidateClients(); }}/>}

@@ -23,7 +23,7 @@ export function CentralCard({ discreet }: { discreet: boolean }) {
   return <article className="card summary-wide" aria-labelledby="central-title">
     <div className="card-head"><h2 id="central-title">Clientes y servidores · Central</h2>
       <button type="button" className="button" disabled={busy || !state?.configured} onClick={() => void refresh()}>{busy ? 'Leyendo…' : 'Actualizar'}</button></div>
-    {view === 'not_connected' ? <p className="muted">Central no está conectado: conéctalo en Ajustes › Central.</p> : !snapshot ? <p className="muted">Aún no se ha leído Central{state?.problem ? '' : ': se lee cada media hora o con «Actualizar»'}.</p> : <>
+    {view === 'not_connected' ? <p className="muted">Central no está conectado: conéctalo en Conectores › Central.</p> : !snapshot ? <p className="muted">Aún no se ha leído Central{state?.problem ? '' : ': se lee cada media hora o con «Actualizar»'}.</p> : <>
       <p className="muted">{snapshot.clients.length} clientes ({active.length} con proyectos activos) · {snapshot.servers.length} servidores · leído {new Date(snapshot.fetchedAt).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}. Solo lectura.</p>
       <div className="summary-split">
         <div><h3>Servidores</h3><ul className="central-list">{snapshot.servers.map(server => <li key={server.name}>

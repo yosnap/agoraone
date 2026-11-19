@@ -24,7 +24,7 @@ class CentralHealth:
         self.notice: str | None = None  # a setting worth saying once and quietly (a key that cannot read)
 
 
-NOT_CONFIGURED = "Central no está conectado: conéctalo en Ajustes › Central."
+NOT_CONFIGURED = "Central no está conectado: conéctalo en Conectores › Central."
 OFF = "El módulo Central está apagado."
 
 

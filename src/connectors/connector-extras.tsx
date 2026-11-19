@@ -1,0 +1,103 @@
+import { useEffect, useState, type ComponentType } from 'react';
+import { getBrainMcpSetup, getCostguardUsage, type AgentUsage, type BrainMcpSetup, type Connector } from '../api/core';
+import { scopeLabels, type CentralScope, type CentralStatus } from '../api/central';
+import type { Section } from '../shell/shell-state';
+import { Loading, LoadError } from '../ui/load-state';
+
+// What a connector adds to its card beyond the common skeleton, by id. A new connector without extras adds nothing.
+
+export type ExtraProps = { connector: Connector; tested: unknown; onOpen: (section: Section) => void };
+export type Extra = { Body?: ComponentType<ExtraProps>; keyPlaceholder?: string };
+
+const tokens = (value: number) => value.toLocaleString('es-ES');
+const quote = (value: string) => /^[\w./:=@-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
+
+const centralScopes: CentralScope[] = ['lectura', 'presupuestos', 'escritura'];
+const scopeMeaning: Record<CentralScope, string> = {
+  lectura: 'clientes, proyectos, webs, servidores y agenda', presupuestos: 'ver y crear presupuestos en borrador',
+  escritura: 'cambiar clientes, sus notas y el estado y la fase de un proyecto, viendo antes el cambio exacto',
+};
+
+const isCentralStatus = (value: unknown): value is CentralStatus =>
+  typeof value === 'object' && value !== null && Array.isArray((value as CentralStatus).scopes);
+
+/** Central: where the key is created and, after «Probar», what the key allows. */
+export function CentralScopes({ tested }: ExtraProps) {
+  return <>
+    <p>La clave se crea en <strong>Ajustes › Apps conectadas</strong> de Central. Sin Central no se ven sus clientes ni sus presupuestos.</p>
+    {isCentralStatus(tested) && <div>
+      <p><strong>Central {tested.version ?? 'sin versión'}</strong>{tested.runtime ? ` · ${tested.runtime === 'local' ? 'en este equipo' : 'en un servidor'}` : ''}. Lo que permite la clave:</p>
+      <ul className="install-list">{centralScopes.map(scope => <li key={scope} className="install-row">
+        <span><span className={`status-badge ${tested.scopes.includes(scope) ? 'good' : 'paused'}`}>{tested.scopes.includes(scope) ? 'Sí' : 'No'}</span> {scopeLabels[scope]}</span>
+        <small className="muted">{scopeMeaning[scope]}</small>
+      </li>)}</ul>
+    </div>}
+  </>;
+}
+
+/** CostGuard: the tokens each agent spent, read in read-only mode, once its data file is found. */
+export function CostguardUsage({ connector }: ExtraProps) {
+  const [hours, setHours] = useState(5);
+  const [usage, setUsage] = useState<AgentUsage[] | null>(null);
+  const [error, setError] = useState('');
+  const found = ['detected', 'recording'].includes(connector.state.status);
+  useEffect(() => {
+    if (!found) return;
+    let live = true;
+    setUsage(null); setError('');
+    getCostguardUsage(hours).then(data => { if (live) setUsage(data.agents); }).catch(failure => { if (live) setError(failure instanceof Error ? failure.message : 'No se pudo leer CostGuard.'); });
+    return () => { live = false; };
+  }, [hours, found]);
+  if (!found) return null;
+  return <section className="connector-extra" aria-labelledby="costguard-usage">
+    <div className="card-head"><h3 id="costguard-usage">Consumo de tokens</h3>
+      <div className="segmented" role="group" aria-label="Periodo">{[5, 24].map(value =>
+        <button key={value} type="button" aria-pressed={hours === value} onClick={() => setHours(value)}>{value} h</button>)}</div></div>
+    {error ? <LoadError message={error}/> : !usage ? <Loading label="Leyendo CostGuard" lines={3}/> : !usage.length ? <p>Sin consumo en las últimas {hours} horas.</p>
+      : <table className="data-table"><thead><tr><th>Agente</th><th className="num">Entrada</th><th className="num">Salida</th><th className="num">Caché</th><th className="num">Turnos</th></tr></thead>
+        <tbody>{usage.map(row => <tr key={row.agent}><td>{row.agent}</td><td className="num">{tokens(row.input)}</td><td className="num">{tokens(row.output)}</td>
+          <td className="num">{tokens(row.cacheRead + row.cacheWrite)}</td><td className="num">{tokens(row.turns)}</td></tr>)}</tbody></table>}
+  </section>;
+}
+
+/** MCP del cerebro: nothing to connect, only the orders to run by hand for a Hermes profile. */
+export function BrainMcp() {
+  const [setup, setSetup] = useState<BrainMcpSetup | null>(null);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    let live = true;
+    getBrainMcpSetup().then(found => { if (live) setSetup(found); }).catch(failure => { if (live) setError(failure instanceof Error ? failure.message : 'No disponible.'); });
+    return () => { live = false; };
+  }, []);
+  const command = setup && [
+    `hermes -p <perfil> mcp add ${setup.name} --command ${setup.command ? quote(setup.command) : '"$(which uv)"'}`
+      + Object.entries(setup.env).map(([key, value]) => ` --env ${key}=${quote(value)}`).join('')
+      + ` --args ${setup.args.map(quote).join(' ')}`,
+    `hermes -p <perfil> mcp test ${setup.name}`,
+    'hermes -p <perfil> gateway restart',
+  ].join('\n');
+  const copy = () => { if (command) navigator.clipboard?.writeText(command).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => undefined); };
+  return <>
+    <p>Ofrece tres herramientas a cualquier perfil de Hermes (por ejemplo, el bot central de Telegram): buscar en el cerebro, leer una nota y ver su estado. Nunca entrega notas privadas ni de solo este Mac, y funciona con AgoraOne cerrado.</p>
+    <p>AgoraOne no escribe en la configuración de Hermes: ejecuta tú estas órdenes en tu terminal, cambiando <code>&lt;perfil&gt;</code> por el perfil que quieras.</p>
+    {error ? <LoadError message={error}/> : !command ? <Loading label="Preparando la orden" lines={2}/> : <>
+      <pre className="code-block">{command}</pre>
+      <div className="actions"><button type="button" className="button" onClick={copy}>{copied ? 'Copiado' : 'Copiar órdenes'}</button>
+        <small className="muted">Usa el nombre {setup?.name}: así los chats de perfil no piden «Permitir» para estas tres herramientas.</small></div>
+    </>}
+  </>;
+}
+
+/** Mi fábrica: its panel lives in its own section. */
+export function FabricaLink({ onOpen }: ExtraProps) {
+  return <div className="actions"><button type="button" className="button" onClick={() => onOpen('fabrica')}>Ir a Mi fábrica</button>
+    <small className="muted">AgoraOne solo comprueba si está y si responde en este equipo; no la arranca, detiene ni modifica.</small></div>;
+}
+
+export const extras: Record<string, Extra> = {
+  central: { Body: CentralScopes, keyPlaceholder: 'cen_…' },
+  costguard: { Body: CostguardUsage },
+  'cerebro-mcp': { Body: BrainMcp },
+  fabrica: { Body: FabricaLink },
+};

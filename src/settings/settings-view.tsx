@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { AssistantSettingsCard } from './settings-assistant';
 import { PrivacySettingsCard } from './settings-privacy';
 import { BackupsCard } from './settings-backups';
@@ -18,14 +18,15 @@ import { AppsSettingsCard } from './settings-apps';
 import { MusicSettingsCard } from './settings-music';
 import { InstallSettingsCard } from './settings-install';
 import { ModulesSettingsCard } from './settings-modules';
-import { CentralSettingsCard } from './settings-central';
+import { openConnector } from '../connectors/open-connector';
+import type { Section } from '../shell/shell-state';
 import './settings.css';
 
-type Tab = { id: string; label: string; cards: () => ReactNode };
+type Tab = { id: string; label: string; cards: (onOpen: (section: Section) => void) => ReactNode };
 // One tab per area; what belongs together stays together (a mail account and its rules).
 const tabs: Tab[] = [
   { id: 'general', label: 'General', cards: () => <AppearanceCard/> },
-  { id: 'instalacion', label: 'Instalación', cards: () => <><InstallSettingsCard/><ModulesSettingsCard/></> },
+  { id: 'instalacion', label: 'Instalación', cards: onOpen => <><InstallSettingsCard/><ModulesSettingsCard onOpen={onOpen}/></> },
   { id: 'asistente', label: 'Asistente', cards: () => <AssistantSettingsCard/> },
   { id: 'correo', label: 'Correo', cards: () => <><MailSettingsCard/><MailRulesCard/></> },
   { id: 'whatsapp', label: 'WhatsApp', cards: () => <WhatsAppSettingsCard/> },
@@ -35,21 +36,37 @@ const tabs: Tab[] = [
   { id: 'trabajos', label: 'Trabajos', cards: () => <JobsSettingsCard/> },
   { id: 'voz', label: 'Voz', cards: () => <><VoiceSettingsCard/><MeetingSettingsCard/><MusicSettingsCard/><AppsSettingsCard/></> },
   { id: 'privacidad', label: 'Privacidad y copias', cards: () => <><PrivacySettingsCard/><BackupsCard/></> },
-  { id: 'central', label: 'Central', cards: () => <CentralSettingsCard/> },
 ];
 const STORED = 'agora.settings.tab';
 
-/** The tab a link names (?pestana=correo), else the last one used in this browser, else General. */
-function firstTab(): string {
-  const linked = new URLSearchParams(window.location.search).get('pestana');
-  if (linked && tabs.some(t => t.id === linked)) return linked;
-  try { const stored = localStorage.getItem(STORED); if (stored && tabs.some(t => t.id === stored)) return stored; } catch { /* no storage */ }
-  return 'general';
+// Tabs that left Ajustes for a connector card: an old link (?pestana=central) or the tab saved in this browser opens
+// Conectores on that card instead.
+export const movedTabs: Record<string, string> = { central: 'central' };
+
+/** The tab to show from the link and from this browser, or the connector an old tab moved to. */
+export function resolveTab(linked: string | null, stored: string | null): { tab: string; connector: string | null } {
+  if (linked && movedTabs[linked]) return { tab: 'general', connector: movedTabs[linked] };
+  if (linked && tabs.some(t => t.id === linked)) return { tab: linked, connector: null };
+  if (stored && movedTabs[stored]) return { tab: 'general', connector: movedTabs[stored] };
+  if (stored && tabs.some(t => t.id === stored)) return { tab: stored, connector: null };
+  return { tab: 'general', connector: null };
+}
+
+function firstTab(): { tab: string; connector: string | null } {
+  let stored: string | null = null;
+  try { stored = localStorage.getItem(STORED); } catch { /* no storage */ }
+  return resolveTab(new URLSearchParams(window.location.search).get('pestana'), stored);
 }
 
 /** Settings, one tab per area. Everything is kept on this Mac: settings in the brain's database, keys in the Keychain. */
-export function SettingsView() {
-  const [tab, setTab] = useState(firstTab);
+export function SettingsView({ onOpen }: { onOpen: (section: Section) => void }) {
+  const [start] = useState(firstTab);
+  const [tab, setTab] = useState(start.tab);
+  useEffect(() => {
+    if (!start.connector) return;
+    try { localStorage.setItem(STORED, 'general'); } catch { /* no storage */ }
+    openConnector(start.connector, onOpen);
+  }, [start, onOpen]);
   const buttons = useRef<Record<string, HTMLButtonElement | null>>({});
   const choose = (id: string, focus = false) => {
     setTab(id);
@@ -76,7 +93,7 @@ export function SettingsView() {
         aria-selected={t.id === current.id} aria-controls="settings-panel" tabIndex={t.id === current.id ? 0 : -1} onClick={() => choose(t.id)}>{t.label}</button>)}
     </div>
     <div id="settings-panel" className="settings-panel" role="tabpanel" aria-labelledby={`settings-tab-${current.id}`} key={current.id}>
-      {current.cards()}
+      {current.cards(onOpen)}
     </div>
   </section>;
 }

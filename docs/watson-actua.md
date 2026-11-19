@@ -24,7 +24,7 @@ proyectos, correos, reuniones, tareas y próximos pasos.
 El módulo Presupuestos (entrada «Presupuestos», justo antes de «Central») lee los presupuestos de Central por su
 API con una clave que tenga el permiso `presupuestos`, aunque el módulo Central esté apagado
 (`core/agora_core/central_quotes.py`, `routes_quotes.py`, `src/quotes/`). Sin conexión o sin ese permiso, la
-sección lo explica y lleva a Ajustes › Central. Con el módulo apagado no aparece en el menú, sus rutas responden 404
+sección lo explica y lleva a Conectores › Central. Con el módulo apagado no aparece en el menú, sus rutas responden 404
 y Watson no ve `proponer_presupuesto`.
 
 - Lista con número, cliente, título, estado y total con IVA, con filtros por cliente (exacto) y estado; ficha con
