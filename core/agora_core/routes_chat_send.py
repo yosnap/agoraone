@@ -10,15 +10,17 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictInt
 
-from . import chat_inbox, chat_send, mail_send, zernio
+from . import chat_inbox, chat_send, zernio
 from .db import DB_NAME, connect
-from .routes_mail_send import claude_drafter
+from .drafting import DraftError, claude_drafter
 from .settings import Settings
 
 
 class ChatDraftIn(BaseModel):
     conversationId: StrictInt
     text: Annotated[str, Field(max_length=chat_send.MAX_TEXT + 1000)]
+    # The contact's last message the preview answered: set by the preview, sent back with «Enviar».
+    lastIncomingId: Annotated[str, Field(min_length=1, max_length=200)] | None = None
 
 
 class ChatSendIn(BaseModel):
@@ -45,7 +47,11 @@ def chat_send_router(settings: Settings, secrets, drafter=None) -> APIRouter:
         return await run_in_threadpool(run)
 
     def refuse(error: chat_send.ChatSendError) -> JSONResponse:
-        return JSONResponse({"error": str(error), **({"outcome": error.outcome} if error.outcome else {})}, status_code=error.status)
+        # `notSent`: the message surely did not leave (refused before the request, or rejected), so the screen may let the
+        # user press «Enviar» again; a 409 (sent, being sent or unknown) and an unknown outcome never say so.
+        not_sent = error.outcome is None and error.status != 409
+        return JSONResponse({"error": str(error), "notSent": not_sent, **({"outcome": error.outcome} if error.outcome else {}),
+                             **({"code": error.code} if error.code else {})}, status_code=error.status)
 
     @router.get("/chat/summaries/{conversation_id}/reply")
     async def reply(conversation_id: int):
@@ -60,7 +66,7 @@ def chat_send_router(settings: Settings, secrets, drafter=None) -> APIRouter:
             return {"text": await db(lambda c: chat_send.compose(c, conversation_id, body.instructions, write))}
         except chat_send.ChatSendError as error:
             return refuse(error)
-        except mail_send.SendError as error:  # no engine could draft
+        except DraftError as error:  # no engine could draft
             return JSONResponse({"error": str(error)}, status_code=422)
 
     @router.post("/chat/drafts/preview")
@@ -73,7 +79,10 @@ def chat_send_router(settings: Settings, secrets, drafter=None) -> APIRouter:
 
     @router.post("/chat/send", status_code=201)
     async def send(body: ChatSendIn):
-        key = await run_in_threadpool(secrets.get, zernio.SECRET) if secrets else None
+        try:
+            key = await run_in_threadpool(secrets.get, zernio.SECRET) if secrets else None
+        except Exception:  # noqa: BLE001 - a locked or unavailable Keychain: nothing has been sent
+            return refuse(chat_send.ChatSendError("No se pudo leer la clave de Zernio del Llavero (¿está bloqueado?): no se ha enviado.", 503))
 
         def work(connection):
             result = chat_send.send(connection, body.draft.model_dump(), body.digest, key)

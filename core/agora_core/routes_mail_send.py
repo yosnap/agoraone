@@ -2,8 +2,7 @@
 Watson (only for mail the model may read), the sealed preview, and the send itself, only with the user's
 «Enviar» on exactly that preview (user's decision, 14/11/2026)."""
 
-import asyncio
-from contextlib import aclosing, contextmanager
+from contextlib import contextmanager
 from typing import Annotated
 
 from fastapi import APIRouter
@@ -13,7 +12,7 @@ from pydantic import BaseModel, Field, StrictInt
 
 from . import mail, mail_inbox, mail_send
 from .db import DB_NAME, connect
-from .engines import AnthropicApiEngine, ClaudeCodeEngine, Turn, usable
+from .drafting import DraftError, claude_drafter
 from .routes_mail import microsoft_token
 from .settings import Settings
 
@@ -34,29 +33,6 @@ class SendIn(BaseModel):
 
 class ComposeIn(BaseModel):
     instructions: Annotated[str, Field(max_length=2000)] = ""
-
-
-def claude_drafter(settings: Settings, secrets):
-    """`write(system, text)` with the user's Claude Code session, then the API key; SendError when neither answers.
-    Shared by the mail and WhatsApp replies: it only drafts, it never sends."""
-    def write(system: str, text: str) -> str:
-        engines = [e for e in usable([ClaudeCodeEngine(settings.data_dir / "claude-code"), AnthropicApiEngine(secrets)])
-                   if e.name in ("claude-code", "anthropic-api")]
-        error: Exception | None = None
-        for engine in engines:
-            async def run(engine=engine):
-                parts = []
-                async with aclosing(engine.stream(Turn(system, [{"role": "user", "content": text}], "sonnet"))) as stream:
-                    async for piece in stream:
-                        if piece:
-                            parts.append(piece)
-                return "".join(parts)
-            try:
-                return asyncio.run(run())
-            except Exception as failure:  # noqa: BLE001 - try the next engine
-                error = failure
-        raise mail_send.SendError("No hay ningún motor de Claude disponible para redactar." if error is None else "El asistente no ha podido redactar ahora.")
-    return write
 
 
 def mail_send_router(settings: Settings, secrets, drafter=None) -> APIRouter:
@@ -93,7 +69,7 @@ def mail_send_router(settings: Settings, secrets, drafter=None) -> APIRouter:
     async def compose(message_id: int, body: ComposeIn):
         try:
             return {"body": await db(lambda c: mail_send.compose(c, message_id, body.instructions, write))}
-        except mail_send.SendError as error:
+        except (mail_send.SendError, DraftError) as error:
             return refuse(error)
 
     @router.post("/mail/drafts/preview")

@@ -1,11 +1,14 @@
 """Replying on WhatsApp (user's decision, 18/11/2026): only after the user sees the exact text and presses «Enviar».
 
-The preview is sealed with a digest of the account, the conversation and the text; the server sends only a draft whose
-seal matches, once: a seal being sent, already sent or left with an unknown outcome is refused. Right before the
-single request it checks again, from the database, that the conversation is in the Bandeja with the module on, the
-account is enabled and Meta's 24 h window (counted from the contact's last message AgoraOne keeps, which is never newer
-than the real one) has at least a minute left. There is no automatic retry: a time limit leaves the outcome unknown and
-that seal blocked. Every attempt goes to the action log with its seal and result, never the text or the key.
+The preview is sealed with a digest of the account, the conversation, the contact's last message received and the text;
+the server sends only a draft whose seal matches, once. Sending checks again, from the database, that the conversation is
+in the Bandeja with the module on, the account is enabled, nothing new has been received since the preview (user's
+decision, 19/11/2026: then the user reviews it first) and Meta's 24 h window, counted from that last message, has at least
+a minute left. The seal is then reserved in one write transaction, so neither a second press nor a second core on the same
+database can send it again: a seal being sent, already sent or left with an unknown outcome is refused. There is no
+automatic retry: a time limit leaves the outcome unknown and that seal blocked; a different text may be sent at once
+(user's decision, 19/11/2026), after checking the phone. Every attempt goes to the action log with its seal and result,
+never the text or the key.
 
 Watson only drafts, for conversations the model may read (normal), with the messages as data inside a mark with a
 random name; nothing here sends because a message asks for it."""
@@ -20,25 +23,32 @@ import unicodedata
 from datetime import UTC, datetime, timedelta
 
 from . import chat_inbox, zernio
-from .chat_sync import _when
-from .db import now
+from .chat_sync import parse_moment
+from .db import now, transaction
 
 MAX_TEXT = 4096  # WhatsApp's limit for a text message
 WINDOW = timedelta(hours=24)
 MARGIN = timedelta(seconds=60)  # a window this close to closing counts as closed
 ACTION = "chat.send"
-_SENDING: set[str] = set()  # seals being sent right now
+NEW_MESSAGE = "Ha llegado un mensaje nuevo: revisa antes de enviar."
+UNKNOWN_REASON = "No se sabe si llegó: compruébalo en el móvil"
+_REASONS = {"sending": "Enviando tras confirmar la vista previa", "sent": "Enviado tras confirmar la vista previa",
+            "unknown": UNKNOWN_REASON, "rejected": "No se envió: Zernio o WhatsApp lo rechazaron",
+            "window_closed": "No se envió: la ventana de 24 h estaba cerrada"}
+_SENDING: set[str] = set()  # seals being sent right now in this core
 _SETTLED: set[str] = set()  # seals sent or left unknown in this run, should the log write ever fail
 _LOCK = threading.Lock()
 
 
 class ChatSendError(RuntimeError):
-    """`status` is the HTTP answer the route gives; `outcome` is 'unknown' when nobody can know if it left."""
+    """`status` is the HTTP answer the route gives; `outcome` is 'unknown' when nobody can know if it left; `code`
+    names a reason the screen acts on ('new_message')."""
 
-    def __init__(self, message: str, status: int = 422, outcome: str | None = None):
+    def __init__(self, message: str, status: int = 422, outcome: str | None = None, code: str | None = None):
         super().__init__(message)
         self.status = status
         self.outcome = outcome
+        self.code = code
 
 
 def normalize(text: object) -> str:
@@ -49,6 +59,8 @@ def normalize(text: object) -> str:
 
 
 def clean(draft: dict) -> dict:
+    """The draft as it will be sent. `lastIncomingId` is the contact's last message the preview answered (None before
+    the preview, or when there is none)."""
     conversation_id = draft.get("conversationId")
     if isinstance(conversation_id, bool) or not isinstance(conversation_id, int):
         raise ChatSendError("Falta la conversación.")
@@ -57,7 +69,10 @@ def clean(draft: dict) -> dict:
         raise ChatSendError("El mensaje está vacío.")
     if len(text) > MAX_TEXT:
         raise ChatSendError(f"WhatsApp admite como mucho {MAX_TEXT} caracteres por mensaje.")
-    return {"conversationId": conversation_id, "text": text}
+    last = draft.get("lastIncomingId")
+    if last is not None and (not isinstance(last, str) or not 1 <= len(last) <= 200):
+        raise ChatSendError("La vista previa no es válida: vuelve a prepararla.")
+    return {"conversationId": conversation_id, "text": text, "lastIncomingId": last}
 
 
 def _target(connection: sqlite3.Connection, conversation_id: int) -> sqlite3.Row:
@@ -70,11 +85,20 @@ def _target(connection: sqlite3.Connection, conversation_id: int) -> sqlite3.Row
     return row
 
 
+def last_incoming(connection: sqlite3.Connection, conversation_id: int) -> sqlite3.Row | None:
+    """The contact's last message AgoraOne keeps, by WhatsApp's own time only: a message without it never counts, because
+    the time AgoraOne stored it is later than the real one. What the seal and the window are both based on."""
+    return connection.execute(
+        """SELECT remote_id, sent_at FROM chat_message WHERE conversation_id = ? AND direction = 'incoming' AND sent_at IS NOT NULL
+           ORDER BY sent_at DESC, id DESC LIMIT 1""", (conversation_id,)).fetchone()
+
+
 def digest(connection: sqlite3.Connection, draft: dict) -> str:
-    """The seal of exactly what the user saw: Zernio's account, the remote conversation and the normalized text."""
+    """The seal of exactly what the user saw: Zernio's account, the remote conversation, the contact's last message the
+    reply answers and the normalized text. The same text may be sent again once the contact writes something new."""
     draft = clean(draft)
     row = _target(connection, draft["conversationId"])
-    sealed = {"account": row["account_remote_id"], "conversation": row["remote_id"], "text": draft["text"]}
+    sealed = {"account": row["account_remote_id"], "conversation": row["remote_id"], "lastIncoming": draft["lastIncomingId"], "text": draft["text"]}
     return hashlib.sha256(json.dumps(sealed, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -83,13 +107,11 @@ def _stamp(moment: datetime) -> str:
 
 
 def window_state(connection: sqlite3.Connection, conversation_id: int, moment: datetime | None = None) -> dict:
-    """Meta's 24 h window for a free text, from the last message received that AgoraOne keeps: open only while at least
-    MARGIN is left. What the user sends never opens it."""
+    """Meta's 24 h window for a free text, from the contact's last message AgoraOne keeps (never newer than the real
+    one): open only while at least MARGIN is left. What the user sends never opens it."""
     moment = moment or datetime.now(UTC)
-    row = connection.execute(
-        """SELECT max(COALESCE(sent_at, created_at)) AS at FROM chat_message WHERE conversation_id = ? AND direction = 'incoming'""",
-        (conversation_id,)).fetchone()
-    last = _when(row["at"]) if row else None
+    row = last_incoming(connection, conversation_id)
+    last = parse_moment(row["sent_at"]) if row else None
     if last is None:
         return {"open": False, "until": None, "lastIncomingAt": None}
     until = last + WINDOW
@@ -118,27 +140,49 @@ def reply_draft(connection: sqlite3.Connection, conversation_id: int, moment: da
 
 
 def preview(connection: sqlite3.Connection, draft: dict, moment: datetime | None = None) -> dict:
-    """Exactly what «Enviar» will send, its seal and the window now. No attachments ever."""
+    """Exactly what «Enviar» will send, answering the contact's last message as it is now, its seal and the window.
+    No attachments ever."""
     draft = clean(draft)
     level = _level(connection, draft["conversationId"])
     row = _target(connection, draft["conversationId"])
+    last = last_incoming(connection, draft["conversationId"])
+    draft = {**draft, "lastIncomingId": last["remote_id"] if last else None}
     return {"draft": draft, "digest": digest(connection, draft), "confidentiality": level, **_people(row, level),
             "attachments": [], "window": window_state(connection, draft["conversationId"], moment)}
 
 
 def _blocked(connection: sqlite3.Connection, sealed: str) -> str | None:
-    """Why a seal may not be sent again: it left, it is being sent or nobody knows whether it left."""
-    if sealed in _SENDING:
-        return "Este mensaje ya se está enviando."
+    """Why a seal may not be sent: it left, it is being sent or nobody knows whether it left."""
     found = connection.execute(
         f"""SELECT outcome, json_extract(detail, '$.result') AS result FROM action_log WHERE action = '{ACTION}'
             AND json_extract(detail, '$.seal') = ? AND (outcome = 'done' OR json_extract(detail, '$.result') IN ('sending', 'unknown'))
             ORDER BY id DESC LIMIT 1""", (sealed,)).fetchone()
     if found is None and sealed not in _SETTLED:
         return None
+    if found is not None and found["result"] == "sending":
+        return "Este mensaje se está enviando o se quedó a medias: compruébalo en el móvil o con «Leer ahora» antes de enviar otro texto."
     if found is not None and found["outcome"] != "done":
-        return "No se sabe si este mensaje llegó, así que no se envía otra vez: compruébalo en el móvil o con «Leer ahora»."
+        return ("No se sabe si este mensaje llegó, así que no se envía otra vez: compruébalo en el móvil o con «Leer ahora». "
+                "Si no llegó, puedes enviar otro texto.")
     return "Este mensaje ya se envió. Para mandar otro, cámbialo y vuelve a la vista previa."
+
+
+def _reserve(connection: sqlite3.Connection, sealed: str, detail: dict) -> int:
+    """Checks and takes the seal in one write transaction (BEGIN IMMEDIATE), so two presses, two windows or two cores on
+    the same database never both get past it. Returns the log entry, written as «sending» before any request."""
+    with _LOCK:
+        if sealed in _SENDING:
+            raise ChatSendError("Este mensaje ya se está enviando.", 409)
+        try:
+            with transaction(connection):
+                reason = _blocked(connection, sealed)
+                if reason:
+                    raise ChatSendError(reason, 409)
+                entry = _log(connection, None, "failed", {**detail, "result": "sending"})
+        except sqlite3.Error as error:
+            raise ChatSendError("No se pudo anotar el envío en la base de datos: no se ha enviado.", 503) from error
+        _SENDING.add(sealed)
+    return entry
 
 
 def send(connection: sqlite3.Connection, draft: dict, sealed: str, key: str | None, client=None, clock=None) -> dict:
@@ -147,19 +191,6 @@ def send(connection: sqlite3.Connection, draft: dict, sealed: str, key: str | No
     draft = clean(draft)
     if digest(connection, draft) != sealed:
         raise ChatSendError("El mensaje cambió desde la vista previa: revísalo y confirma otra vez.")
-    with _LOCK:  # one press, one message: the same seal is never sent twice
-        reason = _blocked(connection, sealed)
-        if reason:
-            raise ChatSendError(reason, 409)
-        _SENDING.add(sealed)
-    try:
-        return _send(connection, draft, sealed, key, client, clock or (lambda: datetime.now(UTC)))
-    finally:
-        with _LOCK:
-            _SENDING.discard(sealed)
-
-
-def _send(connection: sqlite3.Connection, draft: dict, sealed: str, key: str | None, client, clock) -> dict:
     conversation_id = draft["conversationId"]
     _level(connection, conversation_id)  # in the Bandeja, module on, not silenced by a rule of today
     row = _target(connection, conversation_id)
@@ -168,20 +199,37 @@ def _send(connection: sqlite3.Connection, draft: dict, sealed: str, key: str | N
         raise ChatSendError("Esa cuenta de WhatsApp está en pausa en Ajustes: no se ha enviado.")
     if not key:
         raise ChatSendError("Falta la clave de API de Zernio en Ajustes › WhatsApp: no se ha enviado.")
-    window = window_state(connection, conversation_id, clock())  # read again right before the request
+    last = last_incoming(connection, conversation_id)
+    if (last["remote_id"] if last else None) != draft["lastIncomingId"]:
+        raise ChatSendError(NEW_MESSAGE, code="new_message")
+    window = window_state(connection, conversation_id, (clock or (lambda: datetime.now(UTC)))())  # right before the request
     if not window["open"]:
         _log(connection, None, "denied", {**detail, "result": "window_closed"})
         raise ChatSendError("Han pasado más de 24 h desde su último mensaje: WhatsApp solo deja responder con plantillas "
                             "aprobadas, que AgoraOne no envía. No se ha enviado.")
-    entry = _log(connection, None, "failed", {**detail, "result": "sending"})  # blocks the seal should the core stop now
+    entry = _reserve(connection, sealed, detail)
     try:
-        message_id = zernio.send_message(key, row["account_remote_id"], row["remote_id"], draft["text"], f"agoraone-{sealed[:48]}", client)
+        return _post(connection, row, draft["text"], sealed, key, client, entry, detail)
+    finally:
+        with _LOCK:
+            _SENDING.discard(sealed)
+
+
+def _post(connection: sqlite3.Connection, row: sqlite3.Row, text: str, sealed: str, key: str, client, entry: int, detail: dict) -> dict:
+    """The single request. The message read back by the next reading is the only copy kept: AgoraOne does not store it
+    beforehand, so a reading never stops early at it."""
+    try:
+        message_id = zernio.send_message(key, row["account_remote_id"], row["remote_id"], text, f"agoraone-{sealed[:48]}", client)
     except zernio.ZernioSendError as error:
         unknown = error.sent is None
         if unknown:
             with _LOCK:
                 _SETTLED.add(sealed)
-        _log(connection, entry, "failed", {**detail, "result": "unknown" if unknown else "rejected", **({"code": error.code} if error.code else {})})
+        result = "unknown" if unknown else "rejected"
+        try:
+            _log(connection, entry, "failed", {**detail, "result": result, **({"code": error.code} if error.code else {})})
+        except sqlite3.Error:
+            pass  # «sending» stays, which blocks the seal just as «unknown» does
         raise ChatSendError(str(error), 502, "unknown" if unknown else None) from error
     # From here the message has left: nothing below may look like a failure (trying again would send it twice).
     with _LOCK:
@@ -190,25 +238,19 @@ def _send(connection: sqlite3.Connection, draft: dict, sealed: str, key: str | N
         _log(connection, entry, "done", {**detail, "result": "sent", **({"messageId": message_id} if message_id else {})})
     except sqlite3.Error:
         pass
-    if message_id:
-        try:  # kept now so the next reading does not add it twice; as outgoing it never reopens the card
-            connection.execute(
-                """INSERT OR IGNORE INTO chat_message (conversation_id, remote_id, direction, body, attachments, source, sent_at, created_at)
-                   VALUES (?, ?, 'outgoing', ?, '[]', 'agoraone', ?, ?)""", (conversation_id, message_id, draft["text"], now(), now()))
-        except sqlite3.Error:
-            pass
     return {"sent": True, "messageId": message_id}
 
 
 def _log(connection: sqlite3.Connection, entry: int | None, outcome: str, detail: dict) -> int:
-    """Writes (or, with `entry`, completes) the attempt in the action log: seal, conversation and result only."""
-    text = json.dumps(detail, ensure_ascii=False)
+    """Writes (or, with `entry`, completes) the attempt in the action log: seal, conversation and result only, with a
+    reason in the user's words."""
+    text, reason = json.dumps(detail, ensure_ascii=False), _REASONS.get(detail.get("result"), "")
     if entry is not None:
-        connection.execute("UPDATE action_log SET outcome = ?, detail = ? WHERE id = ?", (outcome, text, entry))
+        connection.execute("UPDATE action_log SET outcome = ?, reason = ?, detail = ? WHERE id = ?", (outcome, reason, text, entry))
         return entry
     return connection.execute(
         f"INSERT INTO action_log (occurred_at, actor, action, reason, outcome, detail) VALUES (?, 'user', '{ACTION}', ?, ?, ?)",
-        (now(), "Enviado tras confirmar la vista previa", outcome, text)).lastrowid
+        (now(), reason, outcome, text)).lastrowid
 
 
 COMPOSE_SYSTEM = (

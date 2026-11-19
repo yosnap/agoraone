@@ -80,22 +80,27 @@ Meta corta la conexión si la app del móvil no se abre en 14 días.
 - La vista previa enseña a quién va (en lo privado, solo «Conversación privada»), desde qué número, el texto exacto,
   «Adjuntos: ninguno», la ventana de 24 h, el aviso de que responder puede marcar como leídos sus mensajes
   anteriores (decisión del usuario, 19/11/2026) y el coste de Meta. El servidor la sella (`sha256` de la cuenta de
-  Zernio, la conversación y el texto normalizado).
-- «Enviar» manda el borrador y el sello. El núcleo comprueba que el sello coincide; que no se ha enviado ya, no se
-  está enviando ni quedó sin saber si llegó; que la conversación sigue en la Bandeja con el módulo encendido y la
-  cuenta activa; y, **justo antes**, que a la ventana le queda al menos un minuto. Hace una sola petición
+  Zernio, la conversación, el último mensaje recibido y el texto normalizado), así que el mismo texto se puede volver a
+  enviar cuando la persona escribe algo nuevo (decisión del usuario, 19/11/2026).
+- «Enviar» manda el borrador y el sello. El núcleo comprueba que el sello coincide; que la conversación sigue en la
+  Bandeja con el módulo encendido y la cuenta activa; que no ha llegado nada nuevo desde la vista previa (si llega,
+  avisa «Ha llegado un mensaje nuevo: revisa antes de enviar» y pide otra vista previa); y, **justo antes**, que a la
+  ventana le queda al menos un minuto. Después reserva el sello en una sola transacción de escritura: si ya se envió,
+  se está enviando o quedó sin saber si llegó, se niega, también con dos núcleos sobre la misma base. Hace una sola petición
   (`POST /v1/inbox/conversations/{id}/messages` con `accountId`, `message` e `Idempotency-Key`), sin reintentos.
-- Ventana de 24 h: Zernio no la expone; se cuenta desde el último mensaje **recibido** que guarda AgoraOne, que nunca
-  es más nuevo que el real (el cálculo sale conservador). Lo que escribes no la abre. Cerrada, la tarjeta desactiva
+- Ventana de 24 h: Zernio no la expone; se cuenta desde el último mensaje **recibido** que guarda AgoraOne, con la
+  hora de WhatsApp (un mensaje sin ella no cuenta), que nunca es más nueva que la real (el cálculo sale conservador). Lo que escribes no la abre. Cerrada, la tarjeta desactiva
   «Vista previa» y «Enviar» y explica que WhatsApp solo deja responder con plantillas aprobadas, que AgoraOne no envía.
 - Un rechazo (ventana cerrada para Meta, número que no puede recibir, demasiados mensajes seguidos, clave caducada,
   límite de peticiones o saldo de Zernio) se explica sin la clave ni la respuesta en bruto, y se puede volver a
   pulsar a mano. Un tiempo agotado o un error del servidor deja el resultado como **desconocido**: no se reintenta,
-  ese envío queda bloqueado y se pide comprobarlo en el móvil o con «Leer ahora».
+  ese envío queda bloqueado y se pide comprobarlo en el móvil o con «Leer ahora». Otro texto se puede enviar enseguida,
+  con ese aviso a la vista (decisión del usuario, 19/11/2026). Si el Llavero no deja leer la clave, se dice y no sale nada.
 - Cada intento queda en el registro de acciones (`chat.send`, con el sello, la conversación y el resultado; nunca el
-  texto ni la clave). Antes de la petición se anota como «enviando», así que si el núcleo se parase a medias ese
-  envío también queda bloqueado. Enviado, la tarjeta pasa a «Hechos» y, si Zernio devuelve el id del mensaje, se
-  guarda ya como saliente para que la lectura no lo duplique.
+  texto ni la clave), con un motivo legible. Antes de la petición se anota como «enviando», así que si el núcleo se
+  parase a medias ese envío también queda bloqueado. En la Actividad, un envío desconocido sale como «Desconocido»,
+  con «comprueba en el móvil si llegó». Enviado, la tarjeta pasa a «Hechos»; el mensaje enviado llega con la siguiente
+  lectura (sin duplicar, por su id) y no reabre la tarjeta.
 - Nada más se envía: ni el indicador de «escribiendo», ni el de leído, ni reacciones, ni plantillas.
 - Modo discreto: «Responder…» se desactiva.
 - **Coste de Meta** (aviso en Ajustes › WhatsApp, según su página de precios el 19/11/2026): cada respuesta es un

@@ -6,6 +6,8 @@ export const META_COST_NOTICE = 'Responder desde AgoraOne envía un mensaje de s
   + 'los que pasen de esos 1.000 no se entregan. Consulta tu cuenta de Meta.';
 /** The user's decision (19/11/2026): replying may mark the contact's earlier messages as read, as on the phone. */
 export const READ_NOTICE = 'Al responder, WhatsApp puede marcar como leídos sus mensajes anteriores, como al contestar desde el móvil.';
+/** After a send whose outcome is unknown, another text may go at once (user's decision, 19/11/2026), after checking. */
+export const UNSURE_NOTICE = 'El último envío quedó sin confirmar: comprueba en el móvil o con «Leer ahora» si llegó antes de enviar otro texto.';
 export const CLOSED_REASON = 'Han pasado más de 24 h desde su último mensaje: WhatsApp solo deja responder con plantillas aprobadas, que AgoraOne no envía.';
 const NEVER_REASON = 'No hay ningún mensaje suyo guardado: WhatsApp solo deja responder en las 24 h siguientes a su último mensaje.';
 const CLOSING_REASON = 'A su ventana de 24 h le queda menos de un minuto: ya no da tiempo a enviar con seguridad.';

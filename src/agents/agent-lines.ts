@@ -18,7 +18,7 @@ export const RUNNING = new Set(['claimed', 'running', 'review']);
 export const BLOCKED = new Set(['blocked', 'failed', 'crashed', 'timed_out']);
 export const sourceLabel: Record<string, string> = { telegram: 'Telegram', desktop: 'Desktop', cron: 'tarea programada', cli: 'terminal', api: 'API', acp: 'editor', subagent: 'subagente' };
 
-export type Outcome = 'hecho' | 'falló' | 'rechazado' | 'deshecho' | null;
+export type Outcome = 'hecho' | 'falló' | 'rechazado' | 'deshecho' | 'desconocido' | null;
 export type Line = { at: string; who: string; text: string; outcome: Outcome; key: string };
 
 export function describe(event: ActivityEvent, who: string, discreet = false): Line {
@@ -45,11 +45,12 @@ const decided = (action: string) => action.startsWith('proponer_') || action ===
 
 export function describeWatson(event: WatsonEvent, assistant: string): Line {
   const who = event.actor === 'user' ? 'Tú' : assistant;
+  if (event.unknown) return { key: `w|${event.id}`, at: event.at, who, text: `${watsonLabels[event.action] ?? event.action}: comprueba en el móvil si llegó`, outcome: 'desconocido' };
   return { key: `w|${event.id}`, at: event.at, who, text: watsonLabels[event.action] ?? event.action.replace(/[_.]/g, ' '),
     outcome: decided(event.action) || event.outcome !== 'done' ? outcomes[event.outcome] : null };
 }
 
-export const outcomeLabel = (outcome: Outcome) => outcome === 'hecho' ? 'Hecho' : outcome === 'falló' ? 'Falló' : outcome === 'rechazado' ? 'Rechazado' : outcome === 'deshecho' ? 'Deshecho' : '·';
+export const outcomeLabel = (outcome: Outcome) => outcome === 'hecho' ? 'Hecho' : outcome === 'falló' ? 'Falló' : outcome === 'rechazado' ? 'Rechazado' : outcome === 'deshecho' ? 'Deshecho' : outcome === 'desconocido' ? 'Desconocido' : '·';
 
 /** Two entries can share time and kind (two sessions started in the same second): each key made unique. */
 export function uniqueKeys(lines: Line[]): Line[] {

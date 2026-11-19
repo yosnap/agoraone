@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ChatPreview, ChatReplyDraft, ChatWindow } from '../api/core';
 import { ChatReplyForm, ChatReplyPreview } from './chat-reply';
-import { CLOSED_REASON, closedReason, counter, META_COST_NOTICE, READ_NOTICE, windowText } from './chat-reply-text';
+import { CLOSED_REASON, closedReason, counter, META_COST_NOTICE, READ_NOTICE, UNSURE_NOTICE, windowText } from './chat-reply-text';
 
 const now = new Date('2026-11-19T12:00:00Z');
 const hoursFromNow = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
@@ -66,4 +66,12 @@ test('Watson solo redacta en lo normal', () => {
     assert.doesNotMatch(html, /Redactar con Watson|Indicaciones para/);
     assert.match(html, /Watson no la lee, escribe la respuesta tú/);
   }
+});
+
+test('tras un envío desconocido se avisa de comprobar el móvil, sin impedir otro texto', () => {
+  const html = renderToStaticMarkup(createElement(ChatReplyForm, { reply: reply(), text: 'Otro texto', instructions: '', busy: '', error: '', assistant: 'Watson',
+    unsure: true, onText: noop, onInstructions: noop, onCompose: noop, onPreview: noop, onCancel: noop }));
+  assert.ok(html.includes(UNSURE_NOTICE));
+  assert.match(html, /<button type="submit" class="button primary">Vista previa/);
+  assert.doesNotMatch(form(reply()), /quedó sin confirmar/);
 });

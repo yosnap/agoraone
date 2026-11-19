@@ -63,7 +63,8 @@ export const getPersonas = () => core<{ personas: Persona[]; tone: Record<ToneKe
 export const getAssistantSettings = () => core<AssistantSettings>('/assistant/settings');
 export const putAssistantSettings = (changes: Partial<AssistantSettings>) => core<AssistantSettings>('/assistant/settings', changes, 'PUT');
 /** The «Agentes» section: whether Watson is answering now and what it did in 24 h (actions and outcomes only). */
-export type WatsonEvent = { id: number; at: string; actor: 'watson' | 'user'; action: string; outcome: 'done' | 'denied' | 'failed' | 'undone' };
+/** `unknown`: a WhatsApp send that may have left (nobody can know): the user checks the phone. */
+export type WatsonEvent = { id: number; at: string; actor: 'watson' | 'user'; action: string; outcome: 'done' | 'denied' | 'failed' | 'undone'; unknown?: boolean };
 export type WatsonActivity = { answering: number; since: string | null; lastAt: string | null; count: number; events: WatsonEvent[] };
 /** Claude Code and Codex sessions of this Mac moved in 24 h: metadata only, never the conversation. */
 export type CodingHost = 'orca' | 'vscode' | 'codex-app' | 'claude-desktop' | 'terminal' | 'sdk';
@@ -249,7 +250,8 @@ export const getChatMessages = (id: number) => core<{ messages: ChatMessage[] }>
 export type ChatWindow = { open: boolean; until: string | null; lastIncomingAt: string | null };
 type ChatPeople = { to: { name: string | null; phone: string | null } | null; from: { phone: string | null; label: string | null } };
 export type ChatReplyDraft = ChatPeople & { conversationId: number; accountId: number; text: string; confidentiality: Level; window: ChatWindow; maxLength: number };
-export type ChatDraft = { conversationId: number; text: string };
+/** `lastIncomingId`: the contact's last message the preview answered (set by the preview, sent back with «Enviar»). */
+export type ChatDraft = { conversationId: number; text: string; lastIncomingId?: string | null };
 export type ChatPreview = ChatPeople & { draft: ChatDraft; digest: string; confidentiality: Level; attachments: never[]; window: ChatWindow };
 export const getChatReply = (id: number) => core<ChatReplyDraft>(`/chat/summaries/${id}/reply`);
 /** Watson's draft, only for a normal conversation (the core refuses the rest); it never sends. */

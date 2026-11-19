@@ -70,8 +70,9 @@ def card(db, level: str = "normal", account_level: str = "normal", hours_ago: fl
 
 
 def sealed(db, conv: int, text: str = "Sí, te confirmo el lunes a las 10.") -> tuple[dict, str]:
-    draft = {"conversationId": conv, "text": text}
-    return draft, chat_send.digest(db, draft)
+    """The draft and seal exactly as the preview gives them (answering the contact's last message now)."""
+    shown = chat_send.preview(db, {"conversationId": conv, "text": text})
+    return shown["draft"], shown["digest"]
 
 
 def logged(db) -> list[dict]:
@@ -87,6 +88,8 @@ def test_sin_vista_previa_o_con_el_sello_de_otro_texto_no_envia(db):
         chat_send.send(db, draft, other, KEY, fake.client())
     with pytest.raises(chat_send.ChatSendError):
         chat_send.send(db, {**draft, "text": "   "}, other, KEY, fake.client())
+    with pytest.raises(chat_send.ChatSendError, match="cambió desde la vista previa"):
+        chat_send.send(db, {**draft, "lastIncomingId": None}, other, KEY, fake.client())
     with pytest.raises(chat_send.ChatSendError, match="4096"):
         chat_send.clean({"conversationId": conv, "text": "a" * 4097})
     assert fake.requests == [] and logged(db) == []
@@ -233,7 +236,7 @@ def test_un_envio_que_quedo_a_medias_por_una_parada_del_nucleo_bloquea_el_sello(
     draft, seal = sealed(db, conv)
     chat_send._log(db, None, "failed", {"conversationId": conv, "seal": seal, "result": "sending"})
     fake = FakeZernio()
-    with pytest.raises(chat_send.ChatSendError, match="No se sabe"):
+    with pytest.raises(chat_send.ChatSendError, match="se quedó a medias"):
         chat_send.send(db, draft, seal, KEY, fake.client())
     assert fake.requests == []
 
@@ -249,15 +252,100 @@ def test_no_se_conecta_y_no_sale_nada(db):
     assert error.value.outcome is None and logged(db)[-1]["result"] == "rejected"
 
 
-def test_el_id_devuelto_se_guarda_y_la_lectura_no_lo_duplica_ni_reabre_la_tarjeta(db):
+def test_lo_enviado_no_se_guarda_antes_y_la_lectura_no_salta_ni_duplica_nada(db):
     fake = FakeZernio()
     conv = card(db)
     draft, seal = sealed(db, conv)
     chat_send.send(db, draft, seal, KEY, fake.client())
-    item = {"id": "wamid.prueba1", "message": "Sí, te confirmo el lunes a las 10.", "direction": "outgoing", "sentAt": datetime.now(UTC).isoformat()}
-    added, _ = chat_sync._keep(db, conv, [item], datetime.now(UTC) - timedelta(days=30), stop_at_known=True)
-    assert added == 0
-    assert db.execute("SELECT count(*) FROM chat_message WHERE conversation_id = ? AND direction = 'outgoing'", (conv,)).fetchone()[0] == 1
+    outgoing = "SELECT count(*) FROM chat_message WHERE conversation_id = ? AND direction = 'outgoing'"
+    assert db.execute(outgoing, (conv,)).fetchone()[0] == 0, "solo lo trae la lectura"
+    moment = datetime.now(UTC)
+    page = [{"id": "wamid.prueba1", "message": draft["text"], "direction": "outgoing", "sentAt": moment.isoformat()},
+            {"id": "wamid.nuevo", "message": "¿Y a las 11?", "direction": "incoming", "sentAt": (moment - timedelta(seconds=30)).isoformat()}]
+    cutoff = moment - timedelta(days=30)
+    assert chat_sync._keep(db, conv, page, cutoff, stop_at_known=True) == (2, False), "nada se da por conocido antes de tiempo"
+    assert chat_sync._keep(db, conv, page, cutoff, stop_at_known=True) == (0, True), "leer otra vez no duplica"
+    assert db.execute(outgoing, (conv,)).fetchone()[0] == 1
+
+
+def test_la_ventana_no_cuenta_un_entrante_sin_hora_de_whatsapp(db):
+    conv = card(db, hours_ago=30)
+    db.execute("INSERT INTO chat_message (conversation_id, remote_id, direction, body, sent_at, created_at) VALUES (?, 'sin-hora', 'incoming', 'x', NULL, ?)",
+               (conv, _stamp()))
+    assert chat_send.window_state(db, conv)["open"] is False
+
+
+def test_un_mensaje_nuevo_entre_la_vista_previa_y_el_envio_pide_revisar(db):
+    fake = FakeZernio()
+    conv = card(db)
+    draft, seal = sealed(db, conv)
+    say(db, conv, "Mejor el martes", days_ago=0.01)
+    with pytest.raises(chat_send.ChatSendError, match="Ha llegado un mensaje nuevo") as error:
+        chat_send.send(db, draft, seal, KEY, fake.client())
+    assert error.value.code == "new_message" and error.value.status == 422 and fake.requests == []
+    again, new_seal = sealed(db, conv)
+    assert new_seal != seal and chat_send.send(db, again, new_seal, KEY, fake.client())["sent"]
+
+
+def test_el_mismo_texto_se_puede_volver_a_enviar_cuando_el_contacto_escribe_algo_nuevo(db):
+    fake = FakeZernio()
+    conv = card(db)
+    draft, seal = sealed(db, conv, "Gracias")
+    chat_send.send(db, draft, seal, KEY, fake.client())
+    with pytest.raises(chat_send.ChatSendError, match="ya se envió"):
+        chat_send.send(db, *sealed(db, conv, "Gracias"), KEY, fake.client())
+    say(db, conv, "Te lo he mandado", days_ago=0.01)
+    assert chat_send.send(db, *sealed(db, conv, "Gracias"), KEY, fake.client())["sent"]
+    assert len(fake.posts) == 2
+
+
+def test_tras_un_desconocido_se_puede_enviar_otro_texto_enseguida(db):
+    def late(request):
+        raise httpx.ReadTimeout("tarde", request=request)
+    fake = FakeZernio(late)
+    conv = card(db)
+    with pytest.raises(chat_send.ChatSendError, match="No se sabe"):
+        chat_send.send(db, *sealed(db, conv, "Hola"), KEY, fake.client())
+    fake.answer = lambda request: httpx.Response(200, json={"success": True, "data": {"messageId": "wamid.otra"}})
+    assert chat_send.send(db, *sealed(db, conv, "Hola, ¿te llegó?"), KEY, fake.client())["sent"]
+    unknown = db.execute("SELECT reason FROM action_log WHERE json_extract(detail, '$.result') = 'unknown'").fetchone()
+    assert unknown["reason"] == chat_send.UNKNOWN_REASON
+
+
+def test_dos_nucleos_con_la_misma_base_dan_una_sola_peticion(db, tmp_path, monkeypatch):
+    """Two cores share the database but not their memory: the seal is checked and taken in one write transaction."""
+    class Forgetful(set):  # each «core» sees no seal of the other in memory
+        def __contains__(self, item):
+            return False
+    monkeypatch.setattr(chat_send, "_SENDING", Forgetful())
+    started, release = threading.Event(), threading.Event()
+
+    def slow(request):
+        started.set()
+        release.wait(5)
+        return httpx.Response(200, json={"success": True, "data": {"messageId": "wamid.dos"}})
+    fake = FakeZernio(slow)
+    conv = card(db)
+    draft, seal = sealed(db, conv)
+    results: list = []
+
+    def core():
+        connection = connect(tmp_path / DB_NAME)
+        try:
+            results.append(chat_send.send(connection, draft, seal, KEY, fake.client())["sent"])
+        except chat_send.ChatSendError as error:
+            results.append(error.status)
+        finally:
+            connection.close()
+    first = threading.Thread(target=core)
+    first.start()
+    assert started.wait(5)
+    second = threading.Thread(target=core)
+    second.start()
+    second.join(5)
+    release.set()
+    first.join(5)
+    assert len(fake.posts) == 1 and sorted(results, key=str) == [409, True]
 
 
 def test_la_cuenta_en_pausa_o_sin_clave_no_envia(db):
@@ -375,6 +463,30 @@ def test_con_el_modulo_apagado_o_sin_clave_no_se_envia_nada(app):
     assert fake.requests == []
 
 
+def test_el_llavero_que_falla_explica_que_no_se_ha_enviado(app):
+    test_client, database, fake, secrets, _ = app
+    conv = card(database)
+    shown = test_client.post("/chat/drafts/preview", json={"conversationId": conv, "text": "Hola"}, headers=HEADERS).json()
+
+    def locked(account):
+        raise RuntimeError("Llavero bloqueado")
+    secrets.get = locked
+    answer = test_client.post("/chat/send", json={"draft": shown["draft"], "digest": shown["digest"]}, headers=HEADERS)
+    assert answer.status_code == 503 and answer.json()["notSent"] is True and "Llavero" in answer.json()["error"]
+    assert fake.requests == []
+
+
+def test_un_mensaje_nuevo_por_la_ruta_lleva_su_codigo(app):
+    test_client, database, fake, _, _ = app
+    conv = card(database)
+    shown = test_client.post("/chat/drafts/preview", json={"conversationId": conv, "text": "Hola"}, headers=HEADERS).json()
+    say(database, conv, "Otra cosa", days_ago=0.01)
+    database.commit()
+    answer = test_client.post("/chat/send", json={"draft": shown["draft"], "digest": shown["digest"]}, headers=HEADERS)
+    assert answer.status_code == 422 and answer.json()["code"] == "new_message" and answer.json()["notSent"] is True
+    assert fake.requests == []
+
+
 def test_un_tiempo_agotado_por_la_ruta_dice_desconocido(app, monkeypatch):
     test_client, database, fake, _, _ = app
 
@@ -384,7 +496,9 @@ def test_un_tiempo_agotado_por_la_ruta_dice_desconocido(app, monkeypatch):
     conv = card(database)
     shown = test_client.post("/chat/drafts/preview", json={"conversationId": conv, "text": "Hola"}, headers=HEADERS).json()
     answer = test_client.post("/chat/send", json={"draft": shown["draft"], "digest": shown["digest"]}, headers=HEADERS)
-    assert answer.status_code == 502 and answer.json()["outcome"] == "unknown"
+    assert answer.status_code == 502 and answer.json()["outcome"] == "unknown" and answer.json()["notSent"] is False
+    events = test_client.get("/agents/watson", headers=HEADERS).json()["events"]
+    assert [e.get("unknown") for e in events if e["action"] == "chat.send"] == [True]
     assert database.execute("SELECT state FROM chat_summary WHERE conversation_id = ?", (conv,)).fetchone()[0] == "pending"
     assert test_client.post("/chat/send", json={"draft": shown["draft"], "digest": shown["digest"]}, headers=HEADERS).status_code == 409
     assert len(fake.posts) == 1
