@@ -198,9 +198,21 @@ if (typeof window !== 'undefined') window.addEventListener('message', event => {
   }
 });
 
+// Whether the player is folded to a small bar, remembered on this Mac.
+const FOLDED = 'agora.youtube.plegado';
+let foldedNow = (() => { try { return localStorage.getItem(FOLDED) === '1'; } catch { return false; } })();
+const foldListeners = new Set<() => void>();
+function setFolded(value: boolean) {
+  foldedNow = value;
+  try { if (value) localStorage.setItem(FOLDED, '1'); else localStorage.removeItem(FOLDED); } catch { /* private window */ }
+  foldListeners.forEach(listener => listener());
+}
+const useFolded = () => useSyncExternalStore(listener => { foldListeners.add(listener); return () => foldListeners.delete(listener); }, () => foldedNow);
+
 /** The small player, always on screen while something plays, in every section. */
 export function YouTubeMini() {
   const now = useYouTube();
+  const folded = useFolded();
   if (!now.video) return now.error ? <aside className="yt-mini" aria-label="YouTube en AgoraOne" role="alert">
     <div className="yt-head"><strong>YouTube</strong><button type="button" className="icon-button" aria-label="Cerrar el aviso" onClick={stopYouTube}>×</button></div>
     <small className="dock-note">{now.error}</small>
@@ -225,10 +237,14 @@ export function YouTubeMini() {
       window.setTimeout(() => knock(left - 1), 1000); };
     knock(10);
   };
-  return <aside className="yt-mini" aria-label="YouTube en AgoraOne">
-    <div className="yt-head"><strong title={now.video.title}>{now.video.title}</strong>
-      <button type="button" className="icon-button" aria-label="Parar YouTube" onClick={stopYouTube}>×</button></div>
-    {now.starting && <small className="dock-note" role="status">Preparando el vídeo…</small>}
+  // Folded: the video keeps playing (the player stays in the page, only out of sight) and a small bar remains.
+  return <aside className={`yt-mini${folded ? ' folded' : ''}`} aria-label="YouTube en AgoraOne">
+    <div className="yt-head"><strong title={now.video.title}>{folded ? `♪ ${now.video.title}` : now.video.title}</strong>
+      {folded && <button type="button" className="icon-button" aria-label={now.playing ? 'Pausar' : 'Seguir'} onClick={() => youtubeControl('toggle')}>{now.playing ? '❚❚' : '▶'}</button>}
+      <button type="button" className="icon-button" aria-label={folded ? 'Mostrar el vídeo' : 'Ocultar el vídeo (sigue sonando)'} title={folded ? 'Mostrar el vídeo' : 'Ocultar el vídeo (sigue sonando)'}
+        onClick={() => setFolded(!folded)}>{folded ? '▢' : '–'}</button>
+      <button type="button" className="icon-button" aria-label="Parar YouTube" title="Parar YouTube" onClick={stopYouTube}>×</button></div>
+    {now.starting && !folded && <small className="dock-note" role="status">Preparando el vídeo…</small>}
     <iframe key={now.video.id} ref={attach} onLoad={listen} src={src} title={`YouTube: ${now.video.title}`}
       allow="autoplay; encrypted-media" referrerPolicy="strict-origin-when-cross-origin" sandbox="allow-scripts allow-same-origin allow-presentation"/>
   </aside>;
