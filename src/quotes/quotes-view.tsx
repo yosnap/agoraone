@@ -65,7 +65,7 @@ export function QuotesView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
               <td className="num">{discreet ? HIDDEN : amountRange(q.total, q.totalMax)}</td>
               <td className="central-date">{dateLabel(q.issuedAt)}</td>
               <td className="central-row-actions">{q.id && <span className="actions">
-                <ActionButton icon="search" label="Ver" onClick={() => setMode({ kind: 'record', id: q.id! })}/>
+                <ActionButton icon="eye" label="Ver" onClick={() => setMode({ kind: 'record', id: q.id! })}/>
                 <OpenInCentral page={`presupuestos/${q.id}`} discreet={discreet}/></span>}</td>
             </tr>)}</tbody>
           </table>}
