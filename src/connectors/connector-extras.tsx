@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType } from 'react';
 import { getBrainMcpSetup, getCostguardUsage, type AgentUsage, type BrainMcpSetup, type Connector } from '../api/core';
 import { scopeLabels, type CentralScope, type CentralStatus } from '../api/central';
+import { isCrmdevProbe } from '../api/crmdev';
 import type { Section } from '../shell/shell-state';
 import { Loading, LoadError } from '../ui/load-state';
 
@@ -31,6 +32,25 @@ export function CentralScopes({ tested }: ExtraProps) {
         <span><span className={`status-badge ${tested.scopes.includes(scope) ? 'good' : 'paused'}`}>{tested.scopes.includes(scope) ? 'Sí' : 'No'}</span> {scopeLabels[scope]}</span>
         <small className="muted">{scopeMeaning[scope]}</small>
       </li>)}</ul>
+    </div>}
+  </>;
+}
+
+const crmdevTools: Record<string, string> = {
+  list_projects: 'Proyectos', list_tasks: 'Tareas', list_tickets: 'Tickets', list_clients: 'Clientes', list_members: 'Miembros',
+  get_project_time_report: 'Horas de un proyecto',
+};
+
+/** CRMDev: where the organization key is created and, after «Probar», what AgoraOne reads with it. */
+export function CrmdevTools({ tested }: ExtraProps) {
+  return <>
+    <p>La clave de organización se crea en <strong>Ajustes › API Keys</strong> de CRMDev (solo propietarios y administradores). AgoraOne solo lee
+      proyectos, tareas, tickets, clientes y miembros, y nunca borra nada en CRMDev.</p>
+    {isCrmdevProbe(tested) && <div>
+      <p><strong>Conectado: organización</strong>. Lo que AgoraOne usa:</p>
+      {tested.tools.length ? <ul className="install-list">{tested.tools.map(tool => <li key={tool} className="install-row">
+        <span><span className="status-badge good">Sí</span> {crmdevTools[tool] ?? tool}</span>
+      </li>)}</ul> : <p className="muted">CRMDev no ofrece ninguna de las consultas que usa AgoraOne.</p>}
     </div>}
   </>;
 }
@@ -97,6 +117,7 @@ export function FabricaLink({ onOpen }: ExtraProps) {
 
 export const extras: Record<string, Extra> = {
   central: { Body: CentralScopes, keyPlaceholder: 'cen_…' },
+  crmdev: { Body: CrmdevTools, keyPlaceholder: 'crm_…' },
   costguard: { Body: CostguardUsage },
   'cerebro-mcp': { Body: BrainMcp },
   fabrica: { Body: FabricaLink },
