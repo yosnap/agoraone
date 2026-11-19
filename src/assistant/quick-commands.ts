@@ -1,7 +1,7 @@
 import { ApiError } from '../api/client';
 import { controlMusic, getApps, getLibrary, getMusic, openApp, playMusic, searchYouTube, type MusicAction } from '../api/core';
 import { localActive, localControl, playLocal } from '../brain/local-player';
-import { askTicket, playYouTube, stopYouTube, youtubeActive, youtubeControl } from '../brain/youtube-player';
+import { askTicket, playYouTube, stopYouTube, youtubeActive, youtubeControl, youtubeProblem } from '../brain/youtube-player';
 import { lastChoice, meetingRecorder, startRecording, stopRecording } from '../meetings/meeting-recorder';
 import { meetingOrder } from './meeting-commands';
 
@@ -113,6 +113,7 @@ function command(text: string): (() => Promise<QuickResult>) | null {
         const { videos } = await searchYouTube(ANY.test(plain(query)) ? 'música relajante para concentrarse' : query);
         const playing = (await getMusic().catch(() => null))?.players[0];
         if (!playYouTube(videos, query, mine)) return { reply: 'Lo dejo: me has pedido otra cosa mientras buscaba.', failed: false };
+        if (!youtubeActive()) return { reply: `${before}${youtubeProblem()}`, failed: true };  // e.g. the browser preview
         if (localActive()) localControl('pause');
         if (playing?.state === 'playing' && (playing.player === 'music' || playing.player === 'spotify')) await controlMusic(playing.player, 'pause').catch(() => undefined);
         return { reply: `${before}Pongo «${videos[0].title}» en YouTube, aquí en AgoraOne.`, failed: false };

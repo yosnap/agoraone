@@ -5,7 +5,12 @@ import { hiddenYouTube, hiddenYouTubeAvailable, openYouTube, type HiddenCommand,
  * playing across sections) that is only controlled from AgoraOne: the music card, Watson and its own ✕. The player
  * is YouTube's embed (no cookies domain) driven by messages; YouTube's script never runs inside AgoraOne. A video
  * that cannot be embedded (most record labels) plays in the desktop app's hidden window with YouTube's own page; in the
- * browser, where that window does not exist, it is skipped. */
+ * browser, where that window does not exist, it is skipped.
+ * YouTube refuses its embed in a page served from a bare IP (onError 150/153 even for videos that allow embedding), and
+ * AgoraOne is always served from http://127.0.0.1. «localhost» is not used on purpose: another program could listen on
+ * [::1] with the same port, get the window (localhost resolves to ::1 first) and read the access token from the
+ * address. So in the desktop app videos go straight to the hidden window, and the browser preview, which has no hidden
+ * window, says so at once and offers «Abrir en YouTube» instead of trying every video. */
 type State = { video: Video | null; playing: boolean; position: number; duration: number; volume: number; error: string; hidden: boolean; ad: boolean; starting: boolean };
 const EMBED = 'https://www.youtube-nocookie.com';
 let state: State = { video: null, playing: false, position: 0, duration: 0, volume: 100, error: '', hidden: false, ad: false, starting: false };
@@ -31,6 +36,9 @@ const order = (command: HiddenCommand) => { orders = orders.then(() => hiddenYou
 // Only the desktop app's own window can hear the hidden window (a browser tab would steer it blind).
 const desktop = () => (window as { __agoraDesktop?: boolean }).__agoraDesktop === true;
 const BLOCKED = 'Ninguno de estos vídeos deja reproducirse fuera de YouTube: las discográficas suelen bloquearlo.';
+const PREVIEW = 'En la vista previa del navegador YouTube no deja reproducir dentro de AgoraOne. Ábrelo en YouTube o usa la app de escritorio.';
+// Served from an IP address (always 127.0.0.1): YouTube's embed refuses to play here (see the note above).
+const ipOrigin = () => /^(\d{1,3}\.){3}\d{1,3}$|^\[/.test(window.location.hostname);
 // The hidden window has this long to say the video plays before AgoraOne gives up on it.
 let started = '';
 let watchdog = 0;
@@ -47,6 +55,8 @@ const SILENT = 12000;
 const BROKEN = 'agora.youtube.embed-roto';
 const WEEK = 7 * 86400_000;
 let embedBroken = (() => { try { return Date.now() - Number(localStorage.getItem(BROKEN) ?? 0) < WEEK; } catch { return false; } })();
+// The embed cannot work here: it failed without a word recently, or the page is served from an IP address.
+const embedRefused = () => embedBroken || ipOrigin();
 const rememberBroken = (broken: boolean) => {
   embedBroken = broken;
   try { if (broken) localStorage.setItem(BROKEN, String(Date.now())); else localStorage.removeItem(BROKEN); } catch { /* private window */ }
@@ -59,7 +69,7 @@ function go(index: number) {
   heard = false;
   embedAlive = false;
   frame = null;  // a late message of the previous video's player must not count for this one
-  if (!state.hidden && embedBroken && desktop()) state = { ...state, hidden: true };
+  if (!state.hidden && embedRefused() && desktop()) state = { ...state, hidden: true };
   set({ video, playing: false, position: 0, duration: 0, error: '', ad: false, starting: !state.hidden });
   if (state.hidden) { playHidden(video); return; }
   // The embed can fail without saying so (error 153, «configuración del reproductor»: its page shows the error and
@@ -84,6 +94,10 @@ function playHidden(video: Video) {
   order({ action: 'play', id: video.id });
   window.clearTimeout(watchdog);
   const mine = ticket;
+  // Without the hidden window (the app is not listening for it) nothing would play: said now, not after 30 s.
+  void hiddenYouTubeAvailable().then(answer => answer.available, () => false).then(there => {
+    if (!there && mine === ticket && state.hidden && state.video?.id === video.id) fail('La ventana oculta de YouTube no responde. Ábrelo en YouTube.');
+  });
   watchdog = window.setTimeout(() => {
     if (mine === ticket && state.hidden && state.video?.id === video.id && started !== video.id) {
       if (embedBroken) rememberBroken(false);  // the shortcut did not help: the next video tries the embed again
@@ -116,13 +130,16 @@ async function refused(silent = false) {
 /** Plays these videos from the first, if this request (its ticket) is still the last one; false when it is not. */
 export function playYouTube(videos: Video[], query = '', mine = ticket): boolean {
   if (mine !== ticket) return false;
-  if (state.hidden && !(embedBroken && desktop())) { order({ action: 'stop' }); set({ hidden: false }); }
+  if (state.hidden && !(embedRefused() && desktop())) { order({ action: 'stop' }); set({ hidden: false }); }
   queue = videos.filter(video => VIDEO_ID.test(video.id)).slice(0, 20);
   asked = query; at = -1;
+  if (!desktop() && ipOrigin()) { queue = []; fail(PREVIEW); return true; }
   go(0);
   return true;
 }
 export const youtubeActive = () => state.video !== null && !state.error;
+/** Why YouTube could not play what was asked (e.g. the browser preview), or '' when it plays. */
+export const youtubeProblem = () => state.error;
 export function stopYouTube() {
   ticket += 1; queue = []; at = -1; frame = null; window.clearTimeout(watchdog); window.clearTimeout(alive);
   if (state.hidden) order({ action: 'stop' });
