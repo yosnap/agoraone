@@ -45,11 +45,12 @@ def test_conectar_probar_y_el_modulo_sigue_a_la_conexion(tmp_path, fake):
         assert entry["state"]["status"] == "saved" and entry["state"]["configured"] == {"url": URL, "hasKey": True}
         assert entry["modules"] == {"crmdev": True}, "con una dirección guardada se enciende"
         tested = client.post("/connectors/crmdev/test", headers=HEADERS)
-        assert tested.status_code == 200 and tested.json() == {"version": None, "scopes": ["organizacion"], "tools": sorted(crmdev_api.READ_TOOLS)}
+        assert tested.status_code == 200 and tested.json()["tools"] == sorted(crmdev_api.READ_TOOLS - {"list_tickets"})
+        assert tested.json()["unverified"] == ["list_tickets"]
         for answer in (entry, tested.json(), client.get("/connectors", headers=HEADERS).json()):
             assert KEY not in str(answer)
         refused = client.post("/connectors/crmdev/test", json={"key": "crm_" + "f" * 48}, headers=HEADERS)
-        assert refused.status_code == 502 and refused.json()["status"] == "forbidden" and refused.json()["error"] == crmdev_api.FORBIDDEN
+        assert refused.status_code == 502 and refused.json()["status"] == "auth" and refused.json()["error"] == crmdev_api.REVOKED
         assert client.put("/connectors/crmdev", json={"url": URL, "key": "cp_" + "a" * 43}, headers=HEADERS).status_code == 422
         assert client.put("/connectors/crmdev", json={"url": "http://crm.example.com", "key": KEY}, headers=HEADERS).status_code == 422
     assert secrets.get(crmdev_api.SECRET) == KEY and secrets.get(central_api.SECRET) is None
@@ -80,7 +81,7 @@ def test_vistas_y_cache(tmp_path, fake):
         assert first.status_code == 200 and first.json() == again.json()
         assert fake.tools() == ["list_tasks"], "dos lecturas seguidas, una sola petición"
         body = first.json()
-        assert body["limit"] == 100 and body["more"] is False and body["items"][0]["assignee"] == {"id": "u1", "name": "Ana"}
+        assert body["limit"] == 100 and body["more"] is False and body["order"] == "recientes" and body["items"][0]["assignee"] == {"id": "u1", "name": "Ana"}
         assert "ana@example.com" not in first.text
         connected(client)  # saving the connection empties the cache
         client.get("/crmdev/views/tareas", headers=HEADERS)
@@ -172,3 +173,22 @@ def test_olvidar_crmdev_no_toca_central(tmp_path, fake, monkeypatch):
         assert secrets.get(central_api.SECRET) == CENTRAL_KEY and secrets.get(crmdev_api.SECRET) is None
         assert crmdev_api._cache == {}, "olvidar vacía la caché"
         assert client.get("/connectors/central", headers=HEADERS).json()["state"]["status"] == "saved"
+
+
+def test_miembros_son_los_primeros_y_tickets_apagados_lo_dicen(tmp_path, fake, monkeypatch):
+    settings, app = app_with(tmp_path, MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        connected(client)
+        assert client.get("/crmdev/views/miembros", headers=HEADERS).json()["order"] == "primeros", "CRMDev los ordena por antigüedad"
+        monkeypatch.setattr(crmdev_api, "TRANSPORT", httpx.MockTransport(lambda r: httpx.Response(403, json={"error": "MODULE_DISABLED"})))
+        off = client.get("/crmdev/views/tickets", headers=HEADERS)
+        assert off.status_code == 403 and off.json() == {"error": crmdev_api.TICKETS_OFF, "status": "forbidden"}
+
+
+def test_probar_con_429_responde_429(tmp_path, monkeypatch):
+    monkeypatch.setattr(crmdev_api, "TRANSPORT", httpx.MockTransport(lambda r: httpx.Response(429, json={"retryAfter": 10})))
+    settings, app = app_with(tmp_path, MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as client:
+        connected(client)
+        tested = client.post("/connectors/crmdev/test", headers=HEADERS)
+        assert tested.status_code == 429 and tested.json()["status"] == "busy"

@@ -5,8 +5,9 @@ import { request } from './client';
 // data from CRMDev: shown as text, never acted upon. Lists carry no assignee's or guest's address.
 const core = <T>(path: string) => request<T>(`/core${path}`);
 
-/** What «Probar» answers: the scope of an organization key and the tools of the closed list CRMDev offers. */
-export type CrmdevProbe = { version: null; scopes: 'organizacion'[]; tools: string[] };
+/** What «Probar» answers: the scope of an organization key, the tools of the closed list CRMDev offers and those that
+ * also depend on a module of the plan (tickets), only known when their view is opened. */
+export type CrmdevProbe = { version: null; scopes: 'organizacion'[]; tools: string[]; unverified?: string[] };
 export const isCrmdevProbe = (value: unknown): value is CrmdevProbe =>
   typeof value === 'object' && value !== null && Array.isArray((value as CrmdevProbe).tools) && Array.isArray((value as CrmdevProbe).scopes);
 
@@ -18,15 +19,18 @@ export type CrmdevTicket = { id: string | null; title: string | null; descriptio
 export type CrmdevClient = { id: string | null; name: string | null; company: string | null; status: string | null };
 export type CrmdevMember = { id: string | null; name: string | null; role: string | null };
 export type CrmdevHours = { project: string | null; total: string | null; entries: number | null;
-  rows: { task: string | null; user: string | null; minutes: number | null }[] };
+  rows: { task: string | null; user: string | null; minutes: number | null }[];
+  /** Only the first 500 rows are here; `total` and `entries` are CRMDev's for the whole project. */
+  cut: boolean };
 
 export type CrmdevLists = { proyectos: CrmdevProject; tareas: CrmdevTask; tickets: CrmdevTicket; clientes: CrmdevClient; miembros: CrmdevMember };
 export type CrmdevViewName = keyof CrmdevLists;
 /** The filters each view takes (the core refuses any other). */
 export type CrmdevFilters = { proyectos: { estado?: string }; tareas: { estado?: string; proyecto?: string }; tickets: { estado?: string; cliente?: string };
   clientes: { estado?: string }; miembros: Record<string, never> };
-/** The 100 most recent rows; `more` when the list is full (CRMDev has no pages: the rest is only seen in CRMDev). */
-export type CrmdevPage<T> = { items: T[]; limit: number; more: boolean };
+/** At most 100 rows; `more` when the list is full (CRMDev has no pages: the rest is only seen in CRMDev). `order` says
+ * which rows a full list holds: the most recent ones, or for members the 100 who joined first. */
+export type CrmdevPage<T> = { items: T[]; limit: number; more: boolean; order: 'recientes' | 'primeros' };
 
 export function getCrmdevView<V extends CrmdevViewName>(view: V, filters: CrmdevFilters[V] = {} as CrmdevFilters[V]) {
   const query = new URLSearchParams(Object.entries(filters).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '')).toString();

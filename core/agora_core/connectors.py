@@ -118,7 +118,7 @@ class WebApiAdapter:
                 raise ConnectorError(f"Escribe la dirección y la clave de {self.spec.name}.")
             return self.probe(web_api.Connection(target, key))
         except web_api.WebApiError as error:
-            raise ConnectorError(str(error), 422 if error.status == "config" else 502, error.status) from None
+            raise ConnectorError(str(error), {"config": 422, "busy": 429}.get(error.status, 502), error.status) from None
 
     def forget(self, connection, secrets) -> None:
         """Forgets the key only: the URL is not secret and stays, and so does whatever was read."""

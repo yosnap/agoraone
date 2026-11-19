@@ -1,7 +1,8 @@
 """HTTP routes of the «CRMDev» section, read live from CRMDev's REST API with the saved connection, read-only:
 `GET /crmdev/views/{view}` (proyectos, tareas, tickets, clientes and miembros, with the filters `estado`, `proyecto`
 for tasks and `cliente` for tickets) and `GET /crmdev/proyectos/{id}/horas`. Each view maps to one tool of the
-closed list in `crmdev_api`, which checks the arguments before anything leaves; lists are the 100 most recent.
+closed list in `crmdev_api`, which checks the arguments before anything leaves; lists are the 100 most recent
+(members: the 100 who joined first, the order CRMDev gives them).
 
 With the «CRMDev» module off every route answers 404 and nothing is asked. Without a connection (no URL or no key)
 the answer is 409 `not_connected`. A failure of CRMDev is said in plain words, never with the key nor its address.
@@ -13,7 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
-from . import crmdev_api, modules, web_api
+from . import crmdev_api, crmdev_shapes, modules, web_api
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -24,12 +25,14 @@ BAD_FILTER = "Ese filtro no existe en esta vista de CRMDev."
 STATUS_CODES = {"forbidden": 403, "not_found": 404, "invalid": 422, "busy": 429, "config": 409}
 # view → (tool, its shape, the filters it takes: query name → argument of the tool)
 VIEWS = {
-    "proyectos": ("list_projects", crmdev_api.shape_project, {"estado": "status"}),
-    "tareas": ("list_tasks", crmdev_api.shape_task, {"estado": "status", "proyecto": "projectId"}),
-    "tickets": ("list_tickets", crmdev_api.shape_ticket, {"estado": "status", "cliente": "clientId"}),
-    "clientes": ("list_clients", crmdev_api.shape_client, {"estado": "status"}),
-    "miembros": ("list_members", crmdev_api.shape_member, {}),
+    "proyectos": ("list_projects", crmdev_shapes.shape_project, {"estado": "status"}),
+    "tareas": ("list_tasks", crmdev_shapes.shape_task, {"estado": "status", "proyecto": "projectId"}),
+    "tickets": ("list_tickets", crmdev_shapes.shape_ticket, {"estado": "status", "cliente": "clientId"}),
+    "clientes": ("list_clients", crmdev_shapes.shape_client, {"estado": "status"}),
+    "miembros": ("list_members", crmdev_shapes.shape_member, {}),
 }
+# Which rows a full list holds: CRMDev sorts members by when they joined, everything else newest first.
+ORDER = {"miembros": "primeros"}
 
 
 def crmdev_router(settings: Settings, secrets) -> APIRouter:
@@ -50,7 +53,7 @@ def crmdev_router(settings: Settings, secrets) -> APIRouter:
         with database() as connection:
             if not modules.state(connection)["crmdev"]:
                 return False, None
-            return True, web_api.connection_of(crmdev_api.SPEC, connection, secrets)
+            return True, crmdev_api.connection_of(connection, secrets)
 
     async def answer(tool: str, arguments: dict, shape):
         on, target = await run_in_threadpool(prepare)
@@ -79,19 +82,20 @@ def crmdev_router(settings: Settings, secrets) -> APIRouter:
             crmdev_api.checked_arguments(tool, arguments)
         except web_api.WebApiError as error:
             return problem(422, str(error), "invalid")
-        return await answer(tool, {**arguments, "limit": crmdev_api.MAX_ROWS}, lambda data: _page(shape, data))
+        return await answer(tool, {**arguments, "limit": crmdev_api.MAX_ROWS}, lambda data: _page(shape, data, ORDER.get(view, "recientes")))
 
     # «path» so that an id with «/» reaches the check (422) instead of missing the route.
     @router.get("/crmdev/proyectos/{project:path}/horas")
     async def hours(project: str, request: Request):
         if not crmdev_api.ID.fullmatch(project) or request.query_params:
             return problem(422, "El identificador no es válido.", "invalid")
-        return await answer("get_project_time_report", {"projectId": project}, crmdev_api.shape_hours)
+        return await answer("get_project_time_report", {"projectId": project}, crmdev_shapes.shape_hours)
 
     return router
 
 
-def _page(shape, data: object) -> dict:
-    """The reduced rows; `more` when the list is full, since CRMDev has no pages and older rows are only seen there."""
-    items = crmdev_api.shape_list(shape, data)
-    return {"items": items, "limit": crmdev_api.MAX_ROWS, "more": len(items) >= crmdev_api.MAX_ROWS}
+def _page(shape, data: object, order: str) -> dict:
+    """The reduced rows; `more` when the list is full, since CRMDev has no pages and the rest is only seen there.
+    `order` says which rows a full list holds: the most recent ones or (members) the first ones."""
+    items = crmdev_shapes.shape_list(shape, data)
+    return {"items": items, "limit": crmdev_api.MAX_ROWS, "more": len(items) >= crmdev_api.MAX_ROWS, "order": order}

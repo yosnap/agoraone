@@ -6,7 +6,7 @@ export const moduleMeaning: Partial<Record<ModuleName, string>> = {
   central: 'deja de leer Central y no usa sus clientes; la conexión se conserva',
   presupuestos: 'Watson no propone presupuestos ni se crean en Central',
   fabrica: 'oculta Mi fábrica y cierra su ventana; la fábrica sigue funcionando por su cuenta',
-  crmdev: 'deja de leer CRMDev y oculta su sección; la conexión se conserva',
+  crmdev: 'deja de leer CRMDev; la conexión se conserva',
 };
 
 /** A readable name for a module before its label arrives (or if it never does): the core's label, else the given

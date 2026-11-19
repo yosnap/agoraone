@@ -33,18 +33,23 @@ CACHE_ENTRIES = 64
 # Tests replace it with an httpx.MockTransport; None is the real network.
 TRANSPORT: httpx.BaseTransport | None = None
 
-SPEC = web_api.WebApiSpec(
-    secret=SECRET, setting=SETTING, key_pattern=r"crm_[0-9a-f]{48}", key_hint="empieza por «crm_» y sigue con 48 letras y números",
-    key_source="Ajustes › API Keys de CRMDev (solo propietarios y administradores)", example_url=EXAMPLE_URL, name="CRMDev",
-    path_prefix=PATH, scopes=SCOPES, transport=lambda: TRANSPORT)
 
 # The closed list: the only tools AgoraOne ever sends. Nothing that deletes is or will be here.
 READ_TOOLS = frozenset({"list_projects", "list_tasks", "list_clients", "list_tickets", "list_members", "get_project_time_report"})
 WRITE_TOOLS: frozenset[str] = frozenset()
+# Tools that also need a module of the organization's plan, which only a call reveals.
+MODULE_TOOLS = frozenset({"list_tickets"})
 NOT_ALLOWED = "Herramienta de CRMDev no permitida."
 FORBIDDEN = "La clave no vale o tu plan de CRMDev no incluye la API (módulo MCP)."
 BUSY = "CRMDev pide esperar unos segundos (demasiadas peticiones seguidas): vuelve a intentarlo en un momento."
 ODD = "CRMDev devolvió una respuesta que no se entiende."
+REVOKED = "CRMDev no acepta la clave: puede estar revocada o caducada. Crea otra en Ajustes › API Keys de CRMDev."
+NOT_MEMBER = "Quien creó la clave ya no es miembro de la organización en CRMDev: crea otra clave en Ajustes › API Keys."
+NO_PLAN = "Tu plan de CRMDev no incluye la API (módulo MCP)."
+TICKETS_OFF = "Los tickets no están activos en tu plan de CRMDev (módulo de soporte)."
+TOO_BIG = "CRMDev devolvió una respuesta demasiado grande."  # web_api's own sentence for an answer over the cap
+HOURS_TOO_BIG = "El informe de horas de este proyecto es demasiado grande para leerlo aquí: míralo en CRMDev."
+DEFAULT_WAIT = 10.0  # seconds, when CRMDev does not say how long
 
 ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 PRIORITIES = ("LOW", "MEDIUM", "HIGH", "URGENT")
@@ -54,7 +59,7 @@ STATUSES = {
     "list_clients": ("LEAD", "PROSPECT", "CUSTOMER", "INACTIVE", "CHURNED"),
     "list_tickets": ("OPEN", "IN_PROGRESS", "WAITING_CLIENT", "RESOLVED", "CLOSED"),
 }
-CATEGORIES = ("BUG", "FEATURE_REQUEST", "QUESTION", "SUPPORT", "BILLING")
+CATEGORIES = ("BUG", "FEATURE_REQUEST", "QUESTION", "SUPPORT", "BILLING", "PERFORMANCE", "SECURITY", "OTHER")
 
 
 def _limit(value: object) -> int:
@@ -101,32 +106,96 @@ def checked_arguments(tool: str, arguments: object) -> dict:
     return {name: rules[name](value) for name, value in arguments.items()}
 
 
+def _allowed_request(request: httpx.Request) -> bool:
+    """The last check before anything leaves with CRMDev's key: only the REST endpoint, a GET without a body (the
+    tool list) or a POST of a tool of the closed list with valid arguments."""
+    if not request.url.path.endswith(PATH):
+        return False
+    body = request.read()
+    if request.method == "GET":
+        return not body
+    if request.method != "POST":
+        return False
+    try:
+        sent = json.loads(body)
+    except ValueError:
+        return False
+    if not isinstance(sent, dict) or set(sent) != {"tool", "arguments"}:
+        return False
+    tool, arguments = sent["tool"], sent["arguments"]
+    if not isinstance(tool, str) or tool not in READ_TOOLS | WRITE_TOOLS:
+        return False
+    try:
+        return checked_arguments(tool, arguments) == arguments
+    except WebApiError:
+        return False
+
+
+class _Guard(httpx.BaseTransport):
+    """Wraps the real transport (or the tests' one) of CRMDev's SPEC: whoever uses the SPEC, a request outside the
+    closed list never reaches the network. With a transport of its own, httpx ignores proxies set in the environment."""
+
+    def __init__(self, inner: httpx.BaseTransport):
+        self.inner = inner
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        if not _allowed_request(request):
+            raise WebApiError("error", NOT_ALLOWED)
+        return self.inner.handle_request(request)
+
+    def close(self) -> None:
+        self.inner.close()
+
+
+def _guarded() -> httpx.BaseTransport:
+    return _Guard(TRANSPORT if TRANSPORT is not None else httpx.HTTPTransport())
+
+
+SPEC = web_api.WebApiSpec(
+    secret=SECRET, setting=SETTING, key_pattern=r"crm_[0-9a-f]{48}", key_hint="empieza por «crm_» y sigue con 48 letras y números",
+    key_source="Ajustes › API Keys de CRMDev (solo propietarios y administradores)", example_url=EXAMPLE_URL, name="CRMDev",
+    path_prefix=PATH, scopes=SCOPES, transport=_guarded)
+
+
 _cache: dict[tuple, tuple[float, object]] = {}
+_flights: dict[tuple, threading.Lock] = {}  # one reading at a time per cache key: the second waits for the first
+_busy_until: dict[tuple, float] = {}  # per connection: CRMDev asked to wait until then
+_generation = 0  # bumped when the cache is emptied: a reading begun before never fills it afterwards
 _cache_lock = threading.Lock()
 
 
+def _clock() -> float:
+    return time.monotonic()
+
+
 def clear_cache() -> None:
+    """Forgets every reading and every «wait» (on saving or forgetting the connection)."""
+    global _generation
     with _cache_lock:
         _cache.clear()
+        _busy_until.clear()
+        _generation += 1
 
 
-def _cache_key(target: Connection, tool: str, arguments: dict) -> tuple:
+def _who(target: Connection) -> tuple:
     # The key is part of it only as a digest, so another key never reads what this one did.
-    return target.url, hashlib.sha256(target.key.encode()).hexdigest(), tool, json.dumps(arguments, sort_keys=True)
+    return target.url, hashlib.sha256(target.key.encode()).hexdigest()
 
 
 def _kept(key: tuple) -> object | None:
     with _cache_lock:
         found = _cache.get(key)
-        if found and time.monotonic() - found[0] < CACHE_SECONDS:
+        if found and _clock() - found[0] < CACHE_SECONDS:
             return found[1]
         _cache.pop(key, None)
         return None
 
 
-def _keep(key: tuple, data: object) -> None:
+def _keep(key: tuple, data: object, generation: int) -> None:
     with _cache_lock:
-        now = time.monotonic()
+        if generation != _generation:
+            return
+        now = _clock()
         for old in [k for k, (at, _) in _cache.items() if now - at >= CACHE_SECONDS]:
             del _cache[old]
         while len(_cache) >= CACHE_ENTRIES:
@@ -134,113 +203,108 @@ def _keep(key: tuple, data: object) -> None:
         _cache[key] = (now, data)
 
 
+def _flight(key: tuple) -> threading.Lock:
+    with _cache_lock:
+        if len(_flights) > 4 * CACHE_ENTRIES:
+            for idle in [k for k, lock in _flights.items() if not lock.locked()]:
+                del _flights[idle]
+        return _flights.setdefault(key, threading.Lock())
+
+
+def _wait_first(who: tuple) -> None:
+    with _cache_lock:
+        until = _busy_until.get(who, 0.0)
+    if _clock() < until:
+        raise WebApiError("busy", BUSY)
+
+
+def _forbidden(text: str, key: str) -> WebApiError:
+    """CRMDev answers 403 for several reasons, told apart by its own `error`."""
+    reason = web_api.said(text, key)
+    if reason == "Invalid API Key":
+        return WebApiError("auth", REVOKED)
+    if reason == "MCP_UNAUTHORIZED":
+        return WebApiError("auth", NOT_MEMBER)
+    if reason == "MODULE_DISABLED":
+        return WebApiError("forbidden", TICKETS_OFF)
+    if "plan" in reason.lower():
+        return WebApiError("forbidden", NO_PLAN)
+    return WebApiError("forbidden", FORBIDDEN)
+
+
+def _retry_after(text: str) -> float:
+    try:
+        seconds = json.loads(text).get("retryAfter")
+    except (ValueError, AttributeError):
+        seconds = None
+    return float(seconds) if isinstance(seconds, (int, float)) and not isinstance(seconds, bool) and 1 <= seconds <= 300 else DEFAULT_WAIT
+
+
+def _send(target: Connection, method: str, body: dict | None, who: tuple) -> dict:
+    """The one exchange with CRMDev (`call` sends a tool by POST, `probe` a GET of the list); the guarded transport
+    checks it again before it leaves."""
+    with web_api.session(SPEC, web_api.REQUEST_SECONDS) as (client, deadline):
+        status, _, raw = web_api.exchange(SPEC, target, method, PATH, None, body, client, deadline, MAX_BYTES, "application/json")
+    text = raw.decode("utf-8", errors="replace")
+    if status == 403:
+        raise _forbidden(text, target.key)
+    if status == 429:
+        with _cache_lock:
+            _busy_until[who] = _clock() + _retry_after(text)
+        raise WebApiError("busy", BUSY)
+    web_api.refuse(SPEC, status, text, target.key)
+    return web_api.json_object(SPEC, text)
+
+
 def call(target: Connection, tool: str, arguments: dict | None = None) -> object:
     """The only way AgoraOne runs a tool of CRMDev: the tool must be in the closed list and its arguments valid
-    before any connection is opened. Answers the `data` CRMDev returns (cached 60 s for reads) or a WebApiError
-    without the key; a 429 is `busy` and never retried here."""
+    before any connection is opened. Answers the `data` CRMDev returns (cached 60 s for reads, one reading at a time
+    for the same question) or a WebApiError without the key; a 429 is `busy`, remembered for the time CRMDev says
+    and never retried here."""
     if not isinstance(tool, str) or tool not in READ_TOOLS | WRITE_TOOLS:
         raise WebApiError("error", NOT_ALLOWED)
     arguments = checked_arguments(tool, arguments if arguments is not None else {})
-    key = _cache_key(target, tool, arguments)
-    if tool in READ_TOOLS and (kept := _kept(key)) is not None:
-        return kept
+    who = _who(target)
+    key = (*who, tool, json.dumps(arguments, sort_keys=True))
+    if tool not in READ_TOOLS:
+        return _run(target, tool, arguments, who)
+    with _flight(key):
+        if (kept := _kept(key)) is not None:
+            return kept
+        generation = _generation
+        data = _run(target, tool, arguments, who)
+        _keep(key, data, generation)
+        return data
+
+
+def _run(target: Connection, tool: str, arguments: dict, who: tuple) -> object:
+    _wait_first(who)
     try:
-        answer = web_api.request(SPEC, target, "POST", PATH, body={"tool": tool, "arguments": arguments}, max_bytes=MAX_BYTES)
+        answer = _send(target, "POST", {"tool": tool, "arguments": arguments}, who)
     except WebApiError as error:
-        if error.status == "busy":
-            raise WebApiError("busy", BUSY) from None
+        if tool == "get_project_time_report" and str(error) == TOO_BIG:
+            raise WebApiError("error", HOURS_TOO_BIG) from None
         raise
     if answer.get("success") is not True or "data" not in answer:
         raise WebApiError("error", ODD)
-    data = answer["data"]
-    if tool in READ_TOOLS:
-        _keep(key, data)
-    return data
+    return answer["data"]
 
 
 def probe(target: Connection) -> dict:
-    """«Probar»: asks the tool list with a GET (no tool runs) and answers which of the closed list CRMDev offers."""
-    try:
-        answer = web_api.request(SPEC, target, "GET", PATH, max_bytes=MAX_BYTES)
-    except WebApiError as error:
-        if error.status == "forbidden":
-            raise WebApiError("forbidden", FORBIDDEN) from None
-        if error.status == "busy":
-            raise WebApiError("busy", BUSY) from None
-        raise
+    """«Probar»: asks the tool list with a GET (no tool runs, and CRMDev does not count it against its limit) and
+    answers which of the closed list CRMDev offers. Tools that depend on a module of the plan (tickets) are only
+    known when their view is opened: they go in `unverified`, never as available."""
+    answer = _send(target, "GET", None, _who(target))
     tools = answer.get("tools")
     if answer.get("success") is not True or not isinstance(tools, (dict, list)):
         raise WebApiError("error", ODD)
-    allowed = READ_TOOLS | WRITE_TOOLS
-    return {"version": None, "scopes": list(SCOPES), "tools": sorted(name for name in tools if isinstance(name, str) and name in allowed)}
+    offered = {name for name in tools if isinstance(name, str) and name in READ_TOOLS | WRITE_TOOLS}
+    return {"version": None, "scopes": list(SCOPES), "tools": sorted(offered - MODULE_TOOLS), "unverified": sorted(offered & MODULE_TOOLS)}
 
 
-# Reduced shapes: only what the views show, text cut, missing fields as None. Lists that go to the screen carry no
-# assignee's or guest's address; a client's address only with `contact` (its record, hidden in discreet mode).
-TITLE, DESCRIPTION, SHORT = 300, 4000, 120
+def connection_of(connection, secrets) -> Connection | None:
+    return web_api.connection_of(SPEC, connection, secrets)
 
 
-def _text(value: object, limit: int = SHORT) -> str | None:
-    if not isinstance(value, str):
-        return None
-    text = value.strip()
-    return text[:limit] if text else None
-
-
-def _row_id(value: object) -> str | None:
-    return value if isinstance(value, str) and ID.fullmatch(value) else None
-
-
-def _number(value: object) -> int | None:
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
-def _name_of(value: object) -> str | None:
-    return _text(value.get("name")) if isinstance(value, dict) else None
-
-
-def shape_project(row: dict) -> dict:
-    progress = _number(row.get("progress"))
-    return {"id": _row_id(row.get("id")), "name": _text(row.get("name"), TITLE), "status": _text(row.get("status")),
-            "progress": progress if progress is not None and 0 <= progress <= 100 else None, "type": _text(row.get("type")),
-            "deadline": _text(row.get("deadline"))}
-
-
-def shape_task(row: dict) -> dict:
-    assignee = row.get("assignee") if isinstance(row.get("assignee"), dict) else {}
-    return {"id": _row_id(row.get("id")), "title": _text(row.get("title"), TITLE), "description": _text(row.get("description"), DESCRIPTION),
-            "status": _text(row.get("status")), "priority": _text(row.get("priority")), "dueDate": _text(row.get("dueDate")),
-            "assignee": {"id": _row_id(assignee.get("id")), "name": _text(assignee.get("name"))} if assignee else None,
-            "project": _name_of(row.get("project"))}
-
-
-def shape_client(row: dict, contact: bool = False) -> dict:
-    shaped = {"id": _row_id(row.get("id")), "name": _text(row.get("name"), TITLE), "company": _text(row.get("company"), TITLE),
-              "status": _text(row.get("status"))}
-    return {**shaped, "email": _text(row.get("email"), TITLE)} if contact else shaped
-
-
-def shape_ticket(row: dict) -> dict:
-    return {"id": _row_id(row.get("id")), "title": _text(row.get("title"), TITLE), "description": _text(row.get("description"), DESCRIPTION),
-            "status": _text(row.get("status")), "priority": _text(row.get("priority")), "category": _text(row.get("category")),
-            "requester": _text(row.get("guestName"), TITLE), "client": _name_of(row.get("client")), "project": _name_of(row.get("project")),
-            "createdAt": _text(row.get("createdAt")), "updatedAt": _text(row.get("updatedAt"))}
-
-
-def shape_member(row: dict) -> dict:
-    user = row.get("user") if isinstance(row.get("user"), dict) else {}
-    return {"id": _row_id(user.get("id")), "name": _text(user.get("name"), TITLE), "role": _text(row.get("role"))}
-
-
-def shape_hours(data: object) -> dict:
-    data = data if isinstance(data, dict) else {}
-    entries = data.get("entries") if isinstance(data.get("entries"), list) else []
-    return {"project": _text(data.get("projectName"), TITLE), "total": _text(data.get("totalHours")), "entries": _number(data.get("totalEntries")),
-            "rows": [{"task": _text(e.get("task"), TITLE), "user": _text(e.get("user")), "minutes": _number(e.get("minutes"))}
-                     for e in entries[:500] if isinstance(e, dict)]}
-
-
-def shape_list(shape: Callable[[dict], dict], data: object) -> list[dict]:
-    if not isinstance(data, list):
-        raise WebApiError("error", ODD)
-    return [shape(row) for row in data[:MAX_ROWS] if isinstance(row, dict)]
+def saved_url(connection) -> str | None:
+    return web_api.saved_url(SPEC, connection)

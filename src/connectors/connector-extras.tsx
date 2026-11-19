@@ -46,11 +46,19 @@ export function CrmdevTools({ tested }: ExtraProps) {
   return <>
     <p>La clave de organización se crea en <strong>Ajustes › API Keys</strong> de CRMDev (solo propietarios y administradores). AgoraOne solo lee
       proyectos, tareas, tickets, clientes y miembros, y nunca borra nada en CRMDev.</p>
+    <p className="muted">CRMDev admite 10 consultas cada 10 segundos por clave, compartidas con cualquier otra app que use la misma clave (por
+      ejemplo, Claude Code). AgoraOne guarda cada lista un minuto y, si CRMDev pide esperar, espera sin volver a preguntar.</p>
     {isCrmdevProbe(tested) && <div>
       <p><strong>Conectado: organización</strong>. Lo que AgoraOne usa:</p>
-      {tested.tools.length ? <ul className="install-list">{tested.tools.map(tool => <li key={tool} className="install-row">
-        <span><span className="status-badge good">Sí</span> {crmdevTools[tool] ?? tool}</span>
-      </li>)}</ul> : <p className="muted">CRMDev no ofrece ninguna de las consultas que usa AgoraOne.</p>}
+      {tested.tools.length || tested.unverified?.length ? <ul className="install-list">
+        {tested.tools.map(tool => <li key={tool} className="install-row">
+          <span><span className="status-badge good">Sí</span> {crmdevTools[tool] ?? tool}</span>
+        </li>)}
+        {(tested.unverified ?? []).map(tool => <li key={tool} className="install-row">
+          <span><span className="status-badge paused">Al abrirlos</span> {crmdevTools[tool] ?? tool}</span>
+          <small className="muted">dependen del módulo de soporte de tu plan: se comprueba al abrir su vista</small>
+        </li>)}
+      </ul> : <p className="muted">CRMDev no ofrece ninguna de las consultas que usa AgoraOne.</p>}
     </div>}
   </>;
 }

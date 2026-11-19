@@ -6,7 +6,7 @@ import json
 import sqlite3
 import threading
 
-from . import addons, engines
+from . import addons, crmdev_api, engines
 from .db import transaction
 
 SETTING = "modules"
@@ -43,9 +43,7 @@ def state(connection: sqlite3.Connection) -> dict[str, bool]:
     if FOLLOW_FABRICA not in saved:
         default[FOLLOW_FABRICA] = bool(addons.config(connection, "fabrica").get("path"))
     if FOLLOW_CRMDEV not in saved:
-        from . import crmdev_api, web_api
-
-        default[FOLLOW_CRMDEV] = web_api.saved_url(crmdev_api.SPEC, connection) is not None
+        default[FOLLOW_CRMDEV] = crmdev_api.saved_url(connection) is not None
     return {name: saved.get(name, default[name]) is not False for name in MODULES}
 
 

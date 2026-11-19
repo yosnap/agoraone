@@ -21,17 +21,19 @@ test('la tarjeta de CRMDev pide su dirección y una clave crm_ y tiene su interr
   assert.match(html, /placeholder="https:\/\/crm.example.com"/);
   assert.match(html, /API Keys/);
   assert.match(html, /nunca borra nada en CRMDev/);
+  assert.match(html, /compartidas con cualquier otra app que use la misma clave/);
   assert.match(html, /type="checkbox"/);
   assert.doesNotMatch(html, /<select|border-l/);
 });
 
 test('tras «Probar» se ve «Conectado: organización» con lo que se usa, y lo raro como texto', () => {
-  const tested = { version: null, scopes: ['organizacion'], tools: ['list_projects', 'list_tickets', '<img src=x onerror=alert(1)>'] };
+  const tested = { version: null, scopes: ['organizacion'], tools: ['list_projects', '<img src=x onerror=alert(1)>'], unverified: ['list_tickets'] };
   assert.ok(isCrmdevProbe(tested));
   const html = renderToStaticMarkup(createElement(CrmdevTools, { connector: crmdev({ url: 'https://crm.example.com', hasKey: true }), tested, onOpen: noop }));
   assert.match(html, /Conectado: organización/);
   assert.match(html, /Proyectos/);
-  assert.match(html, /Tickets/);
+  assert.match(html, /Al abrirlos<\/span> Tickets/);
+  assert.doesNotMatch(html, /Sí<\/span> Tickets/, 'los tickets no se dan por disponibles');
   assert.doesNotMatch(html, /<img/);
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
   const none = renderToStaticMarkup(createElement(CrmdevTools, { connector: crmdev(), tested: { version: null, scopes: ['organizacion'], tools: [] }, onOpen: noop }));
