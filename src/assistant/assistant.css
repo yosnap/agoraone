@@ -94,3 +94,6 @@ section.assistant { display:grid; grid-template-columns:260px minmax(0,1fr); gri
 .cleanup-text .reorg-warn { color:var(--c-7a5717) }
 .cleanup-text .ok-note { color:var(--c-24563a); background:none; padding:0 }
 .issue-body { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; max-height:320px; overflow:auto; background:var(--c-edf0e8); padding:10px; border-radius:8px; margin:0 }
+
+/* Text from a Hermes profile, with its line breaks. */
+.note-proposal .pre-wrap { white-space: pre-wrap; }

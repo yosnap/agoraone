@@ -7,6 +7,8 @@ import { EventProposals, useEventProposals } from './event-proposals';
 import { QuoteProposals, useQuoteProposals } from './quote-proposals';
 import { IssueProposals, useIssueProposals } from './issue-proposals';
 import { OrcaProposals, useOrcaProposals } from './orca-proposals';
+import { HermesProposals, useHermesProposals } from './hermes-proposals';
+import type { Delegated } from '../api/core';
 import { ChatReplyProposals, useChatReplyProposals } from './chat-reply-proposals';
 import { inboxStep } from './assistant-labels';
 import { CleanupProposals, useCleanupProposals } from './cleanup-proposals';
@@ -66,6 +68,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const quotes = useQuoteProposals();
   const issues = useIssueProposals();
   const orcas = useOrcaProposals();
+  const hermes = useHermesProposals();
   const chatReplies = useChatReplyProposals();
   const cleanups = useCleanupProposals();
   const reorgs = useReorgProposals();
@@ -84,7 +87,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [refreshList]);
   const open = useCallback(async (id: number) => {
     abort.current?.abort();
-    setCurrent(id); setLive(null); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); chatReplies.clear(); writeLast(id); shownId.current = id;
+    setCurrent(id); setLive(null); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); hermes.clear(); chatReplies.clear(); writeLast(id); shownId.current = id;
     if (embedded) setListOpen(false);
     try { const found = (await getAssistantConversation(id)).messages; setMessages(found); onSources?.(lastSources(found)); }
     catch (failure) { setMessages([]); setCurrent(null); writeLast(null); setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.'); }
@@ -98,8 +101,9 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [open]);
   const talking = useSpeaking();
   const voiceNote = useVoiceNotice();
-  const send = useCallback(async (text: string, into: number | null) => {
+  const send = useCallback(async (text: string, into: number | null, delegated?: Delegated): Promise<boolean> => {
     let id = into;
+    let ok = false;
     let spokeFinal = false;
     setError('');
     try {
@@ -128,6 +132,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         else if (event.kind === 'tool' && event.tool === 'quote_proposal') quotes.add(event.id, event.quote);
         else if (event.kind === 'tool' && event.tool === 'issue_proposal') issues.add(event.id, event.issue);
         else if (event.kind === 'tool' && event.tool === 'orca_proposal') orcas.add(event.proposal);
+        else if (event.kind === 'tool' && event.tool === 'hermes_proposal') hermes.add(event.proposal);
         else if (event.kind === 'tool' && event.tool === 'chat_reply_proposal') chatReplies.add(event.id, event.reply);
         else if (event.kind === 'tool' && event.tool === 'cleanup_proposal') cleanups.add(event.id, event.action, event.messages);
         else if (event.kind === 'tool' && event.tool === 'reorg_proposal') reorgs.add(event.id, event.summary, event.moves);
@@ -137,9 +142,10 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         event.kind === 'stage' ? { ...previous, stage: event.stage, engine: event.engine ?? previous.engine, model: event.model ?? previous.model }
           : event.kind === 'sources' ? (onSources?.(event.sources.map(sourceId)), { ...previous, sources: event.sources })
           : event.kind === 'delta' ? { ...previous, text: previous.text + event.text }
-          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? inboxStep(event.count, event.chats) : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'meetings' ? `Buscó en las reuniones · ${event.count}` : event.tool === 'meeting' ? `Leyó la reunión «${event.title}»` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'note_proposal' ? `Propuso la nota «${event.note.title}»` : event.tool === 'event_proposal' ? `Propuso el evento «${event.event.title}»` : event.tool === 'quote_proposal' ? `Propuso el presupuesto «${event.quote.title}»` : event.tool === 'issue_proposal' ? `Propuso una issue en ${event.issue.repo}` : event.tool === 'orca_proposal' ? `Propuso llevar un encargo a Orca en ${event.proposal.repo}` : event.tool === 'chat_reply_proposal' ? 'Propuso una respuesta de WhatsApp' : event.tool === 'cleanup_proposal' ? `Preparó ${event.messages.length} correos para ${event.action === 'trash' ? 'la Papelera' : 'archivar'}` : event.tool === 'reorg_proposal' ? `Propuso ${event.moves.length} cambios para ordenar el vault` : event.tool === 'vault_outline' ? `Revisó el vault · ${event.notes} notas en ${event.folders} carpetas` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
+          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? inboxStep(event.count, event.chats) : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'meetings' ? `Buscó en las reuniones · ${event.count}` : event.tool === 'meeting' ? `Leyó la reunión «${event.title}»` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'note_proposal' ? `Propuso la nota «${event.note.title}»` : event.tool === 'event_proposal' ? `Propuso el evento «${event.event.title}»` : event.tool === 'quote_proposal' ? `Propuso el presupuesto «${event.quote.title}»` : event.tool === 'issue_proposal' ? `Propuso una issue en ${event.issue.repo}` : event.tool === 'orca_proposal' ? `Propuso llevar un encargo a Orca en ${event.proposal.repo}` : event.tool === 'hermes_proposal' ? `Propuso un encargo para ${event.proposal.profile} (Hermes)` : event.tool === 'chat_reply_proposal' ? 'Propuso una respuesta de WhatsApp' : event.tool === 'cleanup_proposal' ? `Preparó ${event.messages.length} correos para ${event.action === 'trash' ? 'la Papelera' : 'archivar'}` : event.tool === 'reorg_proposal' ? `Propuso ${event.moves.length} cambios para ordenar el vault` : event.tool === 'vault_outline' ? `Revisó el vault · ${event.notes} notas en ${event.folders} carpetas` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
           : previous));
-      }, controller.signal);
+      }, controller.signal, delegated);
+      ok = true;
     } catch (failure) {
       if (!(failure instanceof DOMException && failure.name === 'AbortError')) setError(failure instanceof Error ? failure.message : 'No se pudo responder.');
     } finally {
@@ -158,6 +164,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       if (id === null || shownId.current === id) setLive(null);
       void refreshList();
     }
+    return ok;
   }, [refreshList, onSources]);
   // A question asked from the brain's page starts a new conversation, once.
   useEffect(() => { if (question) { onQuestionTaken?.(); void send(question, null); } }, [question, onQuestionTaken, send]);
@@ -192,7 +199,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
-  const fresh = () => { abort.current?.abort(); stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setLive(null); setError(''); proposals.clear(); issues.clear(); orcas.clear(); chatReplies.clear(); onSources?.([]); if (embedded) setListOpen(false); };
+  const fresh = () => { abort.current?.abort(); stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setLive(null); setError(''); proposals.clear(); issues.clear(); orcas.clear(); hermes.clear(); chatReplies.clear(); onSources?.([]); if (embedded) setListOpen(false); };
   const sourceList = (sources: Source[]) => sources.length > 0 && <div className="sources">
     <span className="muted">Fuentes</span>
     <ol>{sources.map(source => <li key={source.n} value={source.n}><button onClick={() => onRead({ vault: source.source, note: source.ref })}>{source.title}</button><small>{source.folder || 'Raíz'}</small></li>)}</ol>
@@ -253,6 +260,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <QuoteProposals state={quotes}/>
         <IssueProposals state={issues}/>
         <OrcaProposals state={orcas}/>
+        <HermesProposals state={hermes} name={name} busy={live !== null} onPassBack={(profile, label, reply) => send(`Esto ha respondido ${label} al encargo. Resúmemelo.`, current, { profile, reply })}/>
         <ChatReplyProposals state={chatReplies} discreet={discreet}/>
         <CleanupProposals state={cleanups} discreet={discreet}/>
         <ReorgProposals state={reorgs}/>
