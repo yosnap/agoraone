@@ -46,7 +46,7 @@ export function AlertsSettingsCard() {
       </div>
     </>}
     <ul className="alerts-permissions">
-      <li><span>Historial de llamadas{callsBlocked ? ': necesita «Acceso total al disco»' : callsProblem === 'unavailable' ? ': solo disponible en macOS' : callsProblem === 'missing' ? ': este Mac no tiene historial' : callsProblem === 'unreadable' ? ': no se pudo leer' : ''}</span>
+      <li><span>Historial de llamadas{callsBlocked ? ': necesita «Acceso total al disco»' : callsProblem === 'unavailable' ? ': todavía no está disponible en este sistema' : callsProblem === 'missing' ? ': este Mac no tiene historial' : callsProblem === 'unreadable' ? ': no se pudo leer' : ''}</span>
         {callsBlocked && <button type="button" className="button" onClick={() => void openFullDiskAccess().catch(() => undefined)}>Abrir Ajustes del Sistema</button>}</li>
       <li><span>Contactos (nombres de las llamadas): {contacts === 'granted' ? 'con permiso' : contacts === 'denied' ? 'denegado en Ajustes del Sistema' : contacts === 'unavailable' ? 'no disponible en este sistema' : 'sin permiso'}</span>
         {contacts === 'undetermined' && <button type="button" className="button"

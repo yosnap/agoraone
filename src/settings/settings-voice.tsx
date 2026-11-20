@@ -113,7 +113,7 @@ function WakeWord({ platform }: { platform: string }) {
     <label className="check"><input type="checkbox" checked={supported && wake?.enabled === true} disabled={!supported || wake === null} onChange={event => void change(event.target.checked)}/> Escuchar «Oye Watson»</label>
     <small className="muted">{supported
       ? 'Di «Oye Watson» desde cualquier app y Watson empieza a escuchar, como con ⌃⌥W. Se reconoce en este Mac (sin internet) y no se guarda ni se envía nada de lo que oye. Mientras esté activo, el micrófono queda abierto y macOS enseña su punto naranja. Solo en la app de escritorio del Mac; la primera vez macOS pide los permisos de micrófono y reconocimiento de voz.'
-      : `«Oye Watson» usa el reconocimiento en el dispositivo de macOS y aún no está disponible aquí; en la app de escritorio puedes llamar a Watson desde cualquier ventana con ${listenShortcut}.`}</small>
+      : `«Oye Watson» todavía no está disponible en este sistema; en la app de escritorio puedes llamar a Watson desde cualquier ventana con ${listenShortcut}.`}</small>
     {supported && status && <small className={status.ok ? 'ok-note' : 'dictation-error'} role="status">{status.text}</small>}
     {supported && status && !status.ok && status.retry && <div className="inbox-actions">
       <ActionButton icon="refresh" label="Reintentar" onClick={() => void change(true)}/>

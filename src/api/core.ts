@@ -389,7 +389,8 @@ export type CalendarInfo = { id: string; title: string; kind: 'event' | 'reminde
 export type CalendarOrigin = { calendar?: string | null; account?: string | null; scope?: { name: string; color: string | null } | null };
 export type CalendarEvent = { id: string; calendarId: string; title: string; start: string; end: string; allDay: boolean; location: string | null } & CalendarOrigin;
 export type CalendarReminder = { id: string; calendarId: string; title: string; due: string | null } & CalendarOrigin;
-export type Agenda = { events: CalendarEvent[]; reminders: CalendarReminder[]; overlaps: [string, string][]; problem: string | null };
+// `unavailable`: this system has no calendar AgoraOne can read yet (not something to fix, so not a notice).
+export type Agenda = { events: CalendarEvent[]; reminders: CalendarReminder[]; overlaps: [string, string][]; problem: string | null; unavailable?: boolean };
 export type NewEvent = { calendarId?: string | null; title: string; start: string; end: string; allDay?: boolean; location?: string | null;
   notes?: string | null; overlapOk?: boolean; inboxId?: number | null; chatId?: number | null };
 export const getCalendarStatus = () => core<CalendarStatus>('/calendar/status');

@@ -44,7 +44,7 @@ def read_calls(days: int = 7, db: Path = DB) -> list[dict]:
     shared-memory file is left out: SQLite rebuilds it). A copy taken while macOS writes may come out
     inconsistent, so it is tried twice."""
     if db == DB and sys.platform != "darwin":
-        raise CallsUnavailable("El historial de llamadas sincronizado con iPhone solo está disponible en macOS.", "unavailable")
+        raise CallsUnavailable("El historial de llamadas todavía no está disponible en este sistema.", "unavailable")
     try:
         stamp = tuple(Path(f"{db}{suffix}").stat().st_mtime_ns if Path(f"{db}{suffix}").exists() else 0 for suffix in ("", "-wal"))
     except PermissionError as error:

@@ -61,7 +61,7 @@ export function HomeBlocks({ discreet, onOpen }: { discreet: boolean; onOpen: (s
   const open = doneButOpen(data.done ?? [], discreet);
   const { servers, down } = serversByTrouble(data.central?.snapshot?.servers ?? []);
   const readingProblems = mailOn || agendaOn ? data.alerts?.problems ?? [] : [];
-  const notes = systemNotes(data.alerts?.alerts ?? [], [mailOn ? data.mailProblem : null, agendaOn ? data.agenda?.problem : null, centralOn ? data.central?.problem : null,
+  const notes = systemNotes(data.alerts?.alerts ?? [], [mailOn ? data.mailProblem : null, agendaOn && !data.agenda?.unavailable ? data.agenda?.problem : null, centralOn ? data.central?.problem : null,
     data.alertsProblem, ...readingProblems], data.pieces, name => moduleOn(modules, name), discreet);
   return <div className="home" role="region" aria-label="Panel de inicio">
     <div className="home-head">

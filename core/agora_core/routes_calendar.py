@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt
 from . import calendar_edit, calendar_store, chat_inbox, mail_inbox
 from .db import DB_NAME, connect
 from .settings import Settings
+from . import system_words
 
 Level = Literal["normal", "local_only", "private"]
 
@@ -81,7 +82,7 @@ def calendar_router(settings: Settings) -> APIRouter:
     def ready(store) -> str | None:
         status = store.status()
         if status["events"] == "unavailable":
-            return "El calendario de macOS no está disponible aquí."
+            return "El calendario de macOS no está disponible aquí." if system_words.MAC else "La agenda todavía no está disponible en este sistema."
         if status["events"] != "granted":
             return "AgoraOne aún no tiene permiso para leer tus calendarios: dáselo en Ajustes › Calendarios."
         return None
@@ -125,7 +126,8 @@ def calendar_router(settings: Settings) -> APIRouter:
         calendar views (day, week, month, year)."""
         store = calendar_store.shared()
         if problem := ready(store):
-            return {"events": [], "reminders": [], "overlaps": [], "problem": problem}
+            return {"events": [], "reminders": [], "overlaps": [], "problem": problem,
+                    "unavailable": store.status()["events"] == "unavailable"}
         if (first is None) != (last is None):
             return JSONResponse({"error": "Indica «from» y «to» juntos."}, status_code=422)
         try:

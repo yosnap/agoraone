@@ -8,6 +8,7 @@ import { moduleOn, useModules } from '../shell/modules';
 import { AgendaMeetings } from './agenda-meetings';
 import { EventDetailCard } from './event-detail';
 import { EventForm, hourMinute } from './event-form';
+import { isMac } from '../ui/platform';
 import './calendar.css';
 
 type When = 'hoy' | 'mañana' | 'semana';
@@ -79,7 +80,7 @@ export function AgendaView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
     <div className={`agenda-layout${notices ? '' : ' alone'}`}>
       <div className="agenda-main">
         {status === null && !error ? <Loading label="Leyendo el calendario"/> : status && status.events !== 'granted' ? <article className="card">
-          <p>{status.events === 'unavailable' ? 'El calendario de macOS no está disponible aquí.' : 'AgoraOne necesita tu permiso para leer los calendarios y los recordatorios. macOS te lo preguntará una vez.'}</p>
+          <p>{status.events === 'unavailable' ? (isMac ? 'El calendario de macOS no está disponible aquí.' : 'La agenda todavía no está disponible en este sistema.') : 'AgoraOne necesita tu permiso para leer los calendarios y los recordatorios. macOS te lo preguntará una vez.'}</p>
           {status.events !== 'unavailable' && <p><button type="button" className="button primary" onClick={() => void allow()}>Dar permiso</button></p>}
         </article> : <>
           <div className="fiscal-bar agenda-bar">
