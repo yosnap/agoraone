@@ -8,7 +8,8 @@ import { QuoteProposals, useQuoteProposals } from './quote-proposals';
 import { IssueProposals, useIssueProposals } from './issue-proposals';
 import { OrcaProposals, useOrcaProposals } from './orca-proposals';
 import { HermesProposals, useHermesProposals } from './hermes-proposals';
-import type { Delegated } from '../api/core';
+import { ResearchProposals, useResearchProposals } from './research-proposals';
+import type { Delegated, ResearchProposal } from '../api/core';
 import { ChatReplyProposals, useChatReplyProposals } from './chat-reply-proposals';
 import { answeringIn, startTurn, stopTurn, forgetTurn, useLiveTurns } from './live-turns';
 import { CleanupProposals, useCleanupProposals } from './cleanup-proposals';
@@ -66,6 +67,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const issues = useIssueProposals();
   const orcas = useOrcaProposals();
   const hermes = useHermesProposals();
+  const researches = useResearchProposals();
   const chatReplies = useChatReplyProposals();
   const cleanups = useCleanupProposals();
   const reorgs = useReorgProposals();
@@ -83,7 +85,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [refreshList]);
   const open = useCallback(async (id: number) => {
     stopSpeaking();
-    setCurrent(id); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); hermes.clear(); chatReplies.clear(); writeLast(id);
+    setCurrent(id); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); hermes.clear(); researches.clear(); chatReplies.clear(); writeLast(id);
     taken.current.delete(id);
     if (embedded) setListOpen(false);
     const asked = performance.now();
@@ -136,6 +138,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       else if (event.tool === 'issue_proposal') issues.add(event.id, event.issue);
       else if (event.tool === 'orca_proposal') orcas.add(event.proposal);
       else if (event.tool === 'hermes_proposal') hermes.add(event.proposal);
+      else if (event.tool === 'research_proposal') researches.add(event.proposal);
       else if (event.tool === 'chat_reply_proposal') chatReplies.add(event.id, event.reply);
       else if (event.tool === 'cleanup_proposal') cleanups.add(event.id, event.action, event.messages);
       else if (event.tool === 'reorg_proposal') reorgs.add(event.id, event.summary, event.moves);
@@ -152,7 +155,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       void refreshList();
     }
   }, [turn]);  // only when the turn changes: the callbacks are the view's own, stable enough for this
-  const send = useCallback(async (text: string, into: number | null, delegated?: Delegated): Promise<boolean> => {
+  const send = useCallback(async (text: string, into: number | null, delegated?: Delegated, research?: ResearchProposal): Promise<boolean> => {
     let id = into;
     setError('');
     // One answer at a time, so two voices never mix: Watson finishes the other conversation first.
@@ -163,7 +166,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       setError(failure instanceof Error ? failure.message : 'No se pudo responder.');
       return false;
     }
-    return startTurn(id, text, delegated, spokenTurn.current);
+    return startTurn(id, text, delegated, spokenTurn.current, research);
   }, [persona]);
   // A question asked from the brain's page starts a new conversation, once.
   useEffect(() => { if (question) { onQuestionTaken?.(); void send(question, null); } }, [question, onQuestionTaken, send]);
@@ -198,7 +201,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
-  const fresh = () => { stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setError(''); proposals.clear(); issues.clear(); orcas.clear(); hermes.clear(); chatReplies.clear(); onSources?.([]); if (embedded) setListOpen(false); };
+  const fresh = () => { stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setError(''); proposals.clear(); issues.clear(); orcas.clear(); hermes.clear(); researches.clear(); chatReplies.clear(); onSources?.([]); if (embedded) setListOpen(false); };
   const sourceList = (sources: Source[]) => sources.length > 0 && <div className="sources">
     <span className="muted">Fuentes</span>
     <ol>{sources.map(source => <li key={source.n} value={source.n}><button onClick={() => onRead({ vault: source.source, note: source.ref })}>{source.title}</button><small>{source.folder || 'Raíz'}</small></li>)}</ol>
@@ -259,6 +262,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <QuoteProposals state={quotes}/>
         <IssueProposals state={issues}/>
         <OrcaProposals state={orcas}/>
+        <ResearchProposals state={researches} busy={live !== null} onInvestigate={proposal => void send(`Investiga: ${proposal.question}`, current, undefined, proposal)}/>
         <HermesProposals state={hermes} name={name} busy={live !== null} onPassBack={(profile, label, reply) => send(`Esto ha respondido ${label} al encargo. Resúmemelo.`, current, { profile, reply })}/>
         <ChatReplyProposals state={chatReplies} discreet={discreet}/>
         <CleanupProposals state={cleanups} discreet={discreet}/>

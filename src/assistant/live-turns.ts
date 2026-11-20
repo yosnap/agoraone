@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { askAssistant, getAssistantConversation, type AssistantEvent, type AssistantMessage, type Delegated, type Source, type Stage } from '../api/core';
+import { askAssistant, getAssistantConversation, type AssistantEvent, type AssistantMessage, type Delegated, type ResearchProposal, type Source, type Stage } from '../api/core';
 import { play } from '../sound/sound';
 import { answerSoFar, beginAnswer, speak } from './speech';
 import { toolStep } from './assistant-labels';
@@ -50,7 +50,7 @@ export function answeringIn(): number | null {
 
 /** Asks Watson and follows the answer to its end whatever the screen does. True when it was answered; false at once
  * when another answer is still on its way. */
-export async function startTurn(conversation: number, question: string, delegated?: Delegated, spoken = false): Promise<boolean> {
+export async function startTurn(conversation: number, question: string, delegated?: Delegated, spoken = false, research?: ResearchProposal): Promise<boolean> {
   if (answeringIn() !== null) return false;
   const id = ++counter;
   turns.set(conversation, { id, conversation, live: { question, stage: null, sources: [], text: '', steps: [] }, events: [], reading: [], done: false, error: '', messages: null, finishedAt: 0 });
@@ -77,7 +77,7 @@ export async function startTurn(conversation: number, question: string, delegate
           : event.kind === 'tool' ? { ...live, steps: [...live.steps, toolStep(event)] }
           : live };
       });
-    }, controller.signal, delegated);
+    }, controller.signal, delegated, research);
     ok = true;
   } catch (failure) {
     if (!(failure instanceof DOMException && failure.name === 'AbortError')) error = failure instanceof Error ? failure.message : 'No se pudo responder.';

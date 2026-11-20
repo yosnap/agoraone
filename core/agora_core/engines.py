@@ -38,6 +38,8 @@ class Turn:
     messages: list[dict]  # [{"role": "user"|"assistant", "content": str}]
     model: str  # key of MODELS for Claude engines; the provider's model name for compatible ones
     toolbox: object | None = None  # brain_tools.Toolbox: read-only brain tools for this answer
+    tools: tuple[str, ...] | None = None  # only these of the brain's tools (a research turn); None: the usual ones
+    searches: int = 0  # web searches allowed (a research turn, on Anthropic's servers); 0: none
 
 
 class Engine(Protocol):
@@ -76,15 +78,19 @@ class ClaudeCodeEngine:
     def options(self, turn: Turn):
         from claude_agent_sdk import ClaudeAgentOptions
 
-        servers, allowed, turns = {}, [], 1
+        servers, allowed, turns, builtin = {}, [], 1, []
         if turn.toolbox is not None:
-            # Only the brain's tools, served in this process: no built-in tool, none of the user's MCP servers.
-            servers = {"cerebro": _sdk_server(turn.toolbox)}
-            allowed = [f"mcp__cerebro__{spec['name']}" for spec in _specs()]
+            # Only the brain's tools, served in this process: none of the user's MCP servers.
+            servers = {"cerebro": _sdk_server(turn.toolbox, turn.tools)}
+            allowed = [f"mcp__cerebro__{spec['name']}" for spec in _specs(names=turn.tools)]
             turns = turn.toolbox.max_calls + 2
+        if turn.searches:
+            # A research turn searches on Anthropic's servers; pages are read by the core (leer_pagina), never by
+            # Claude Code's WebFetch, which would fetch from this Mac without the core's checks.
+            builtin, allowed, turns = ["WebSearch"], [*allowed, "WebSearch"], turns + turn.searches
         return ClaudeAgentOptions(
             system_prompt=turn.system, model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]),
-            tools=[], allowed_tools=allowed, mcp_servers=servers, strict_mcp_config=True, setting_sources=[],
+            tools=builtin, allowed_tools=allowed, mcp_servers=servers, strict_mcp_config=True, setting_sources=[],
             max_turns=turns, cwd=str(self.workdir) if self.workdir else None,
             extra_args={"no-session-persistence": None},
             # Only what is on this computer counts: the account's claude.ai connectors (Gmail, Drive…) may
@@ -146,18 +152,24 @@ class AnthropicApiEngine:
         if not key:
             raise EngineError("Falta la clave de API de Anthropic.")
         toolbox = turn.toolbox
-        tools = [{"name": s["name"], "description": s["description"], "input_schema": s["schema"]} for s in _specs()] if toolbox else []
+        tools = [{"name": s["name"], "description": s["description"], "input_schema": s["schema"]} for s in _specs(names=turn.tools)] if toolbox else []
+        if turn.searches:  # searched on Anthropic's servers, at most this many times in the whole answer
+            tools.append({"type": "web_search_20260318", "name": "web_search", "max_uses": turn.searches})
         messages = list(turn.messages)
         try:
             async with anthropic.AsyncAnthropic(api_key=key, max_retries=1) as client:
-                for _ in range((toolbox.max_calls + 1) if toolbox else 1):
+                for _ in range((toolbox.max_calls + 1 + turn.searches) if toolbox else 1):
                     async with client.messages.stream(
-                        model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]), max_tokens=4096,
+                        model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]), max_tokens=8192 if turn.searches else 4096,
                         system=turn.system, messages=messages, **({"tools": tools} if tools else {}),
                     ) as stream:
                         async for text in stream.text_stream:
                             yield text
                         final = await stream.get_final_message()
+                    if final.stop_reason == "pause_turn":  # a long web search paused the turn: it goes on from there
+                        messages += [{"role": "assistant", "content": final.content}]
+                        yield None
+                        continue
                     if final.stop_reason != "tool_use":
                         return
                     results = [{"type": "tool_result", "tool_use_id": block.id, "content": await toolbox.call(block.name, block.input)}
@@ -189,7 +201,7 @@ class CompatibleEngine:
         if toolbox is not None:
             toolbox.mail = False
         tools = [{"type": "function", "function": {"name": s["name"], "description": s["description"], "parameters": s["schema"]}}
-                 for s in _specs(mail=False)] if toolbox else []
+                 for s in _specs(mail=False, names=turn.tools)] if toolbox else []
         messages = [{"role": "system", "content": turn.system}, *turn.messages]
         try:
             async with httpx.AsyncClient(timeout=120, follow_redirects=False, trust_env=False) as client:
@@ -239,16 +251,19 @@ PRIVATE_TOOLS = {"consultar_bandeja", "consultar_clientes", "consultar_agenda", 
 HIDDEN_TOOLS: set[str] = set()  # tools of the modules turned off in Settings (modules.apply keeps it)
 
 
-def _specs(mail: bool = True) -> list[dict]:
+def _specs(mail: bool = True, names: tuple[str, ...] | None = None) -> list[dict]:
     from .brain_tools import SPECS
+    from .research import ONLY_HERE
 
-    shown = [spec for spec in SPECS if spec["name"] not in HIDDEN_TOOLS]
+    if names is not None:  # a research turn: exactly these, never a private one
+        return [spec for spec in SPECS if spec["name"] in names and spec["name"] not in PRIVATE_TOOLS and spec["name"] not in HIDDEN_TOOLS]
+    shown = [spec for spec in SPECS if spec["name"] not in HIDDEN_TOOLS and spec["name"] not in ONLY_HERE]
     if not mail:  # normal mail is read by Claude only (plan of 1.1, 14/11/2026), never by the compatible provider
         return [spec for spec in shown if spec["name"] not in PRIVATE_TOOLS]
     return shown
 
 
-def _sdk_server(toolbox):
+def _sdk_server(toolbox, names: tuple[str, ...] | None = None):
     """The brain's tools as an in-process MCP server for the Agent SDK."""
     from claude_agent_sdk import create_sdk_mcp_server, tool
 
@@ -256,7 +271,7 @@ def _sdk_server(toolbox):
         async def handler(args):
             return {"content": [{"type": "text", "text": await toolbox.call(spec["name"], args)}]}
         return tool(spec["name"], spec["description"], spec["schema"])(handler)
-    return create_sdk_mcp_server("cerebro", tools=[make(spec) for spec in _specs()])
+    return create_sdk_mcp_server("cerebro", tools=[make(spec) for spec in _specs(names=names)])
 
 
 def scrub_api_keys(environ=None) -> None:
