@@ -224,7 +224,7 @@ fn wake_loop(app: AppHandle, link: agora_server::core::CoreLink) {
                 match helper.as_ref().map(|h| {
                     let mut command = tokio::process::Command::new(h);
                     command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).kill_on_drop(true);
-                    // On Windows the listener goes in a job that closes with the app (macOS: its input pipe closes).
+                    // Windows: no console window for the listener.
                     #[cfg(windows)]
                     agora_server::platform::configure_group(&mut command);
                     command.spawn()

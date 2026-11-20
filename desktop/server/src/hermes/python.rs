@@ -77,11 +77,12 @@ pub async fn run_python(python: &Path, source: &str, env: &[(&str, String)], req
     for (key, value) in env {
         command.env(key, value);
     }
-    if group {
-        crate::platform::configure_group(&mut command);
-    }
-    let mut child = command.spawn().map_err(|_| RunError::Spawn)?;
-    let proc_group = group.then(|| crate::platform::ProcessGroup::attach(&child));
+    let (mut child, proc_group) = if group {
+        let (child, proc_group) = crate::platform::spawn_in_group(&mut command).map_err(|_| RunError::Spawn)?;
+        (child, Some(proc_group))
+    } else {
+        (command.spawn().map_err(|_| RunError::Spawn)?, None)
+    };
     if let Some(mut stdin) = child.stdin.take() {
         // A script that exits before reading its request simply answers nothing.
         let _ = stdin.write_all(request.to_string().as_bytes()).await;

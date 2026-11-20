@@ -238,10 +238,9 @@ pub async fn prepare(paths: &Paths) -> anyhow::Result<Server> {
         None => eprintln!("AgoraOne: no se encuentra el núcleo (carpeta core); se sigue sin él."),
         Some(launch) => match start(launch, &link, &paths.data.join("core")) {
             Err(_) => eprintln!("AgoraOne: no se pudo arrancar el núcleo; instala uv (https://docs.astral.sh/uv/) y reinicia."),
-            Ok(mut child) => {
+            Ok((mut child, group)) => {
                 // On Windows the core and whatever it starts share a Job Object: closing or killing it stops
                 // them all at once (there is no SIGTERM). On macOS and Linux the core stops as it always did.
-                let group = crate::platform::ProcessGroup::attach(&child);
                 #[cfg(windows)]
                 let waiter_group = group.clone();
                 let (stop, stopped) = oneshot::channel::<()>();

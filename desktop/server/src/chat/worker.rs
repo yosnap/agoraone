@@ -169,9 +169,7 @@ fn start(key: &str, spawn: &Spawn) -> Result<Arc<Worker>, String> {
         // Never forward provider logs or raw exceptions.
         .stderr(Stdio::null());
     crate::platform::apply_minimal_os_env(&mut command);
-    crate::platform::configure_group(&mut command);
-    let mut child = command.spawn().map_err(|_| FAILURE.to_string())?;
-    let group = crate::platform::ProcessGroup::attach(&child);
+    let (mut child, group) = crate::platform::spawn_in_group(&mut command).map_err(|_| FAILURE.to_string())?;
     let worker = Arc::new(Worker { group, stdin: tokio::sync::Mutex::new(child.stdin.take()), state: Mutex::default(), exited: AtomicBool::new(false) });
     let stdout = child.stdout.take();
     let (reader_key, reader) = (key.to_string(), worker.clone());

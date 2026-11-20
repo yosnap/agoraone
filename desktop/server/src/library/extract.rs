@@ -115,9 +115,7 @@ async fn run(extractor: &Extractor, kind: &str, bytes: Vec<u8>) -> Result<String
         .stderr(Stdio::null())
         .kill_on_drop(true);
     crate::platform::apply_minimal_os_env(&mut command);
-    crate::platform::configure_group(&mut command);
-    let mut child = command.spawn().map_err(|_| "No se pudo iniciar la extracción.")?;
-    let group = crate::platform::ProcessGroup::attach(&child);
+    let (mut child, group) = crate::platform::spawn_in_group(&mut command).map_err(|_| "No se pudo iniciar la extracción.")?;
     let (mut stdin, stdout) = (child.stdin.take(), child.stdout.take());
     let work = async {
         // The extractor reads all its input before answering; one that stops early just ends the write.

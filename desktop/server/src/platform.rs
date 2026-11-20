@@ -13,6 +13,10 @@ use tokio::process::{Child, Command};
 
 #[cfg(windows)]
 mod windows_owner_only_dacl;
+#[cfg(windows)]
+mod windows_suspended_spawn;
+#[cfg(windows)]
+pub(crate) use windows_suspended_spawn::spawn_suspended_in_job;
 #[cfg(all(windows, test))]
 pub(crate) use windows_owner_only_dacl::is_owner_only;
 
@@ -467,6 +471,22 @@ pub fn configure_group(command: &mut Command) {
     }
 }
 
+/// Starts `command` in its own group, which stops it and whatever it starts: on Unix a process group; on Windows
+/// a Job Object the process joins before it runs (created suspended, assigned, then resumed).
+pub fn spawn_in_group(command: &mut Command) -> io::Result<(Child, ProcessGroup)> {
+    #[cfg(unix)]
+    {
+        command.process_group(0);
+        let child = command.spawn()?;
+        let group = ProcessGroup::attach(&child);
+        Ok((child, group))
+    }
+    #[cfg(windows)]
+    {
+        spawn_suspended_in_job(command)
+    }
+}
+
 #[cfg(unix)]
 #[derive(Clone)]
 pub struct ProcessGroup {
@@ -620,5 +640,26 @@ mod tests {
         assert!(!is_real_dir(&linked_dir));
         assert!(open_nofollow_read(&linked_dir).is_err());
         assert!(open_nofollow_rw(&linked_dir).is_err());
+    }
+
+    /// A grouped process runs (it is resumed after joining its job), and stopping the group also stops what it
+    /// started: here cmd.exe and the ping it launches, which would otherwise keep running for 30 seconds.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn un_proceso_agrupado_arranca_y_se_para_con_lo_que_lanzo() {
+        let out = tempfile::tempdir().unwrap();
+        let mark = out.path().join("empezado");
+        let mut command = Command::new("cmd.exe");
+        // raw_arg: cmd.exe reads its line itself and does not understand Rust's quoting.
+        command.arg("/d").raw_arg(format!("/c echo x>\"{}\"& ping -n 30 127.0.0.1 >NUL", mark.display()));
+        let (mut child, group) = spawn_in_group(&mut command).unwrap();
+        let started = std::time::Instant::now();
+        while !mark.exists() {
+            assert!(started.elapsed() < Duration::from_secs(10), "el proceso se reanuda y llega a ejecutarse");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        group.kill();
+        let status = tokio::time::timeout(Duration::from_secs(5), child.wait()).await.expect("se para con su grupo").unwrap();
+        assert!(!status.success());
     }
 }
