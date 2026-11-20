@@ -111,6 +111,8 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'meetings'; query: string; count: number }
   | { kind: 'tool'; tool: 'issue_proposal'; id: string; issue: ProposedIssue }
   | { kind: 'tool'; tool: 'orca_proposal'; proposal: OrcaProposal }
+  | { kind: 'tool'; tool: 'crmdev_proposal'; proposal: import('../assistant/crmdev-proposals').CrmdevProposal }
+  | { kind: 'tool'; tool: 'crmdev_read'; what: 'tareas' | 'tickets'; count: number }
   | { kind: 'tool'; tool: 'hermes_proposal'; proposal: HermesProposal }
   | { kind: 'tool'; tool: 'research_proposal'; proposal: ResearchProposal }
   | { kind: 'tool'; tool: 'chat_reply_proposal'; id: string; reply: ProposedChatReply }

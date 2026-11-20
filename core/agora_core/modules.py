@@ -29,7 +29,8 @@ FOLLOW_FABRICA = "fabrica"
 FOLLOW_CRMDEV = "crmdev"
 # Watson's tools that belong to a module.
 TOOLS = {"correo": {"proponer_regla", "proponer_limpieza"}, "whatsapp": {"proponer_respuesta_whatsapp"}, "agenda": {"consultar_agenda", "proponer_evento"}, "trabajos": {"consultar_trabajos"}, "presupuestos": {"proponer_presupuesto"},
-         "reuniones": {"consultar_reuniones", "leer_reunion", "proponer_issue"}, "orca": {"proponer_encargo_orca"}}
+         "reuniones": {"consultar_reuniones", "leer_reunion", "proponer_issue"}, "orca": {"proponer_encargo_orca"},
+         "crmdev": {"consultar_crmdev", "proponer_cambio_crmdev"}}
 CHECK_EVERY = 20.0
 
 

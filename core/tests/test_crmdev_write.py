@@ -352,10 +352,14 @@ def test_ni_la_clave_ni_la_direccion_en_las_respuestas(setup, fake):
     assert answer.status_code == 422 and KEY not in answer.text and URL not in answer.text
 
 
-def test_watson_no_tiene_herramientas_de_crmdev():
-    source = Path(brain_tools.__file__).read_text(encoding="utf-8")
-    assert "crmdev" not in source.lower()
-    assert not {spec["name"] for spec in brain_tools.SPECS if "crmdev" in spec["name"]}
+def test_watson_solo_lee_y_propone_en_crmdev():
+    """Since 20/11/2026 Watson reads tasks and tickets and proposes changes; it has no way to save them."""
+    from agora_core import crmdev_tools
+
+    assert {spec["name"] for spec in brain_tools.SPECS if "crmdev" in spec["name"]} == {"consultar_crmdev", "proponer_cambio_crmdev"}
+    source = Path(crmdev_tools.__file__).read_text(encoding="utf-8")
+    assert "crmdev_write._values" in source and "crmdev_api.call(target, LISTS[what]" in source
+    assert "/crmdev/write/confirm\"" not in source and not any(f"\"{tool}\"" in source for tool in crmdev_api.WRITE_TOOLS)
 
 
 def test_el_simulado_ignora_los_campos_vacios_como_crmdev():

@@ -6,6 +6,7 @@ import { NoteProposals, useNoteProposals } from './note-proposals';
 import { EventProposals, useEventProposals } from './event-proposals';
 import { QuoteProposals, useQuoteProposals } from './quote-proposals';
 import { IssueProposals, useIssueProposals } from './issue-proposals';
+import { CrmdevProposals, useCrmdevProposals } from './crmdev-proposals';
 import { OrcaProposals, useOrcaProposals } from './orca-proposals';
 import { HermesProposals, useHermesProposals } from './hermes-proposals';
 import { ResearchProposals, useResearchProposals } from './research-proposals';
@@ -66,6 +67,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const quotes = useQuoteProposals();
   const issues = useIssueProposals();
   const orcas = useOrcaProposals();
+  const crmdevs = useCrmdevProposals();
   const hermes = useHermesProposals();
   const researches = useResearchProposals();
   const chatReplies = useChatReplyProposals();
@@ -85,7 +87,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [refreshList]);
   const open = useCallback(async (id: number) => {
     stopSpeaking();
-    setCurrent(id); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); hermes.clear(); researches.clear(); chatReplies.clear(); writeLast(id);
+    setCurrent(id); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); crmdevs.clear(); hermes.clear(); researches.clear(); chatReplies.clear(); writeLast(id);
     taken.current.delete(id);
     if (embedded) setListOpen(false);
     const asked = performance.now();
@@ -137,6 +139,8 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       else if (event.tool === 'quote_proposal') quotes.add(event.id, event.quote);
       else if (event.tool === 'issue_proposal') issues.add(event.id, event.issue);
       else if (event.tool === 'orca_proposal') orcas.add(event.proposal);
+      else if (event.tool === 'crmdev_proposal') crmdevs.add(event.proposal);
+      else if (event.tool === 'crmdev_read') onThinking?.({ stage: 'busca', label: `Consultando ${event.what} de CRMDev`, reading });
       else if (event.tool === 'hermes_proposal') hermes.add(event.proposal);
       else if (event.tool === 'research_proposal') researches.add(event.proposal);
       else if (event.tool === 'chat_reply_proposal') chatReplies.add(event.id, event.reply);
@@ -201,7 +205,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
-  const fresh = () => { stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setError(''); proposals.clear(); issues.clear(); orcas.clear(); hermes.clear(); researches.clear(); chatReplies.clear(); onSources?.([]); if (embedded) setListOpen(false); };
+  const fresh = () => { stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setError(''); proposals.clear(); issues.clear(); orcas.clear(); crmdevs.clear(); hermes.clear(); researches.clear(); chatReplies.clear(); onSources?.([]); if (embedded) setListOpen(false); };
   const sourceList = (sources: Source[]) => sources.length > 0 && <div className="sources">
     <span className="muted">Fuentes</span>
     <ol>{sources.map(source => <li key={source.n} value={source.n}><button onClick={() => onRead({ vault: source.source, note: source.ref })}>{source.title}</button><small>{source.folder || 'Raíz'}</small></li>)}</ol>
@@ -262,6 +266,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <QuoteProposals state={quotes}/>
         <IssueProposals state={issues}/>
         <OrcaProposals state={orcas}/>
+        <CrmdevProposals state={crmdevs}/>
         <ResearchProposals state={researches} busy={answeringIn() !== null} onInvestigate={proposal => send(`Investiga: ${proposal.question}`, current, undefined, proposal)}/>
         <HermesProposals state={hermes} name={name} busy={live !== null} onPassBack={(profile, label, reply) => send(`Esto ha respondido ${label} al encargo. Resúmemelo.`, current, { profile, reply })}/>
         <ChatReplyProposals state={chatReplies} discreet={discreet}/>

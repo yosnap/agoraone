@@ -167,6 +167,8 @@ def system_prompt(settings: dict) -> str:
         "del proyecto de Central de la reunión); un correo o un acta, escríbelo en el chat listo para copiar, sin inventar.\n"
         "Si pide que Claude Code o Codex trabajen en el repositorio de un proyecto (o resuelvan una issue), propónlo con "
         "proponer_encargo_orca: solo abre la tarjeta; él revisa la vista previa y lanza.\n"
+        "Para sus tareas y tickets de CRMDev, consultar_crmdev; para crear o cambiar una tarea o cambiar un ticket, "
+        "proponer_cambio_crmdev: solo abre la tarjeta y él lo guarda con «Guardar en CRMDev»; tú no guardas nada.\n"
         "Si pide investigar algo en internet o información actual que no está en sus notas, propón la investigación con "
         "proponer_investigacion: escribe la pregunta completa (la investigación no ve esta conversación). Solo abre la "
         "tarjeta; no se busca nada hasta que él pulse «Investigar». Para una dirección concreta no hace falta: basta con que "

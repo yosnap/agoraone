@@ -137,7 +137,7 @@ CRMDev». **Nunca se borra nada.**
 - Un alta que no recibió respuesta puede haberse creado: durante 24 h, repetirla pide revisarlo en CRMDev y solo
   sale con «Crear de todos modos».
 - Cada cambio queda en el registro de acciones, solo con los nombres de los campos.
-- Watson no tiene herramientas de CRMDev.
+- Watson lee tareas y tickets y solo propone cambios (desde la 1.9; ver [watson-actua.md](watson-actua.md#watson-y-crmdev-19)).
 
 La API de CRMDev está documentada en su propio repositorio (`docs/api/`).
 
