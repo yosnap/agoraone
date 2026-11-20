@@ -1,6 +1,7 @@
 """CRMDev's clients as a snapshot for the directory of clients, so the mail, WhatsApp, meetings, Fiscal and Watson know
 them as they know Central's: `crmdev.clients` in `setting`, `{clients: [{id, name, company, email, status, domains}],
-projects: [{id, name, status, type, clientId}], fetchedAt, truncated, projectsTruncated}`. Read with `list_clients`
+projects: [{id, name, status, type, clientId}], counts: {tareas, tickets}, fetchedAt, truncated, projectsTruncated}`
+(`counts` holds only how many tasks and tickets there are, for the tabs' counters). Read with `list_clients`
 and `list_projects` (tools of the closed list) and a limit of 1000, since CRMDev has no pages: a full answer is
 `truncated` and the directory says so. The projects are for linking them with Central's (`project_links`); their
 client comes only when CRMDev gives it. Refreshed every half hour while the «CRMDev» module is
@@ -80,6 +81,16 @@ def shape_projects(data: object) -> list[dict]:
     return found
 
 
+def _count(target: Connection, tool: str) -> dict | None:
+    """How many tasks or tickets CRMDev gives (only the number, for the tabs' counters; CRMDev gives 100 at most, so
+    `more` says there may be more). None when it cannot say (its support module off, or it asks to wait)."""
+    try:
+        rows = crmdev_api.call(target, tool, {"limit": crmdev_api.MAX_ROWS})
+    except WebApiError:
+        return None
+    return {"n": len(rows), "more": len(rows) >= crmdev_api.MAX_ROWS} if isinstance(rows, list) else None
+
+
 def refresh(connection: sqlite3.Connection, target: Connection) -> dict:
     """Reads CRMDev's clients now and keeps the snapshot; a WebApiError (without the key) when it cannot."""
     if not _REFRESHING.acquire(blocking=False):
@@ -96,6 +107,7 @@ def refresh(connection: sqlite3.Connection, target: Connection) -> dict:
         projects = crmdev_api.call(target, "list_projects", {"limit": crmdev_api.SYNC_ROWS}, fresh=True)
         snapshot["projects"] = shape_projects(projects)
         snapshot["projectsTruncated"] = isinstance(projects, list) and len(projects) >= crmdev_api.SYNC_ROWS
+        snapshot["counts"] = {name: _count(target, tool) for name, tool in (("tareas", "list_tasks"), ("tickets", "list_tickets"))}
     finally:
         _REFRESHING.release()
     with transaction(connection):

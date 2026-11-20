@@ -347,8 +347,9 @@ def test_instantanea_recortada_y_con_tope(setup, fake):  # noqa: F811
                                   "status": "RARO", "notes": "no se guarda"} for n in range(crmdev_api.SYNC_ROWS)]
     data = read_crmdev(client)
     assert data["truncated"] is True and data["count"] == crmdev_api.SYNC_ROWS
-    assert [s["tool"] for s in fake.seen[-2:]] == ["list_clients", "list_projects"]
-    assert all(s["arguments"] == {"limit": crmdev_api.SYNC_ROWS} for s in fake.seen[-2:])
+    assert [s["tool"] for s in fake.seen[-4:]] == ["list_clients", "list_projects", "list_tasks", "list_tickets"]
+    assert all(s["arguments"] == {"limit": crmdev_api.SYNC_ROWS} for s in fake.seen[-4:-2])
+    assert all(s["arguments"] == {"limit": crmdev_api.MAX_ROWS} for s in fake.seen[-2:])  # only counted, for the tabs
     connection = database(settings)
     try:
         kept = crmdev_sync.stored(connection)["clients"][0]

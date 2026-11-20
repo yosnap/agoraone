@@ -8,6 +8,7 @@ import { CrmdevProjects } from './crmdev-projects';
 import { CrmdevTasks } from './crmdev-tasks';
 import { CrmdevTickets } from './crmdev-tickets';
 import { clearChanges } from './use-crmdev-change';
+import { useTabCounts, withCount } from '../shell/tab-counts';
 import { crmdevTabs, startCrmdev, useCrmdevRead, type CrmdevTabName } from './use-crmdev-view';
 import '../central/central.css';
 import './crmdev.css';
@@ -17,9 +18,11 @@ export const crmdevConnected = (connector: Connector | null) => Boolean(connecto
 
 /** The tabs and the open one; split from the section so it renders without reading the connection. */
 export function CrmdevTabs({ tab, onTab, discreet, onOpen }: { tab: CrmdevTabName; onTab: (tab: CrmdevTabName) => void; discreet: boolean; onOpen: (section: Section) => void }) {
+  const { counts } = useTabCounts();
   return <>
     <div className="segmented central-tabs" role="group" aria-label="Pestañas de CRMDev">
-      {crmdevTabs.map(t => <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => onTab(t.id)}>{t.label}</button>)}
+      {crmdevTabs.map(t => <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => onTab(t.id)}>
+        {withCount(t.label, counts?.crmdev?.[t.id], counts?.crmdev?.[`${t.id}More`])}</button>)}
     </div>
     <div className="central-panel">
       {tab === 'proyectos' ? <CrmdevProjects discreet={discreet} onOpen={onOpen}/>
