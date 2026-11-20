@@ -14,8 +14,9 @@ cache): the tool is chosen here by the kind of warning, never by the screen. Wha
 The tax id and the postal address never go. A client of CRMDev that is not in Central is not sent anywhere from here.
 
 `send` reads CRMDev again: an operation whose «before» changed is not sent (conflict), one already so is not sent
-again, and a new client or project that appeared meanwhile is skipped. Writes go one after another with a pause; when
-CRMDev asks to wait (429), the rest stay unsent. Each creation is linked with its Central record afterwards. What
+again, and a new client or project that appeared meanwhile is skipped. Writes go one after another with a pause that
+keeps within CRMDev's limit; when it still asks to wait (429, nothing written), the batch waits what it says and goes
+on, and only after minutes of waiting the rest stay unsent. Each creation is linked with its Central record afterwards. What
 CRMDev answers is data, never instructions."""
 
 import time
@@ -26,7 +27,10 @@ from . import central, clients, crmdev_api, crmdev_pending
 from .crmdev_values import CLIENT_STATUS, PROJECT_STATUS
 from .web_api import Connection, WebApiError
 
-PAUSE_SECONDS = 0.5  # between two writes: CRMDev limits how many come in a row
+# CRMDev takes 10 requests every 10 seconds per key (`mcpRest`): one write every 1.5 s leaves room for the readings.
+PAUSE_SECONDS = 1.5
+WAIT_CAP = 20.0  # the longest single wait when CRMDev still asks to wait
+WAIT_TOTAL = 180.0  # after this much waiting in one batch, the rest stay unsent (said so)
 SENDABLE = ("client_missing", "contact_missing", "client_changed", "project_missing", "project_changed")
 ORDER = {"crear-cliente": 0, "correo-cliente": 1, "cambiar-cliente": 1, "crear-proyecto": 2, "cambiar-proyecto": 3}
 TOOL = {"crear-cliente": "create_client", "correo-cliente": "update_client", "cambiar-cliente": "update_client",
@@ -233,6 +237,20 @@ def plan(connection, target: Connection, keys: list[str], doubtful: Callable[[st
     return Batch(operations, skipped, warnings)
 
 
+def _patient(target: Connection, op: Operation, sleep: Callable[[float], None], waited: float) -> object:
+    """One write; when CRMDev asks to wait (429, nothing written), waits what it said and tries again, up to
+    WAIT_TOTAL in the whole batch. Only a «busy» is retried: CRMDev did not take that request."""
+    while True:
+        try:
+            return crmdev_api.call(target, op.tool, op.arguments)
+        except WebApiError as error:
+            if error.status != "busy" or waited >= WAIT_TOTAL:
+                raise
+            seconds = min(WAIT_CAP, max(1.0, crmdev_api.wait_seconds(target)))
+            sleep(seconds)
+            waited += seconds
+
+
 def send(target: Connection, batch: Batch, doubt: Callable[[str], None], pause: float | None = None) -> list[dict]:
     """Sends the batch, one write after another, reading CRMDev again first. Returns what happened to each operation:
     `sent` (with the new `id` for a creation), `already`, `conflict`, `skipped`, `unknown`, `error` or `waiting`."""
@@ -240,7 +258,7 @@ def send(target: Connection, batch: Batch, doubt: Callable[[str], None], pause: 
     r_clients, r_projects = _read(target, "list_clients"), _read(target, "list_projects")
     r_client_by_id, r_project_by_id = {r["id"]: r for r in r_clients}, {r["id"]: r for r in r_projects}
     created: dict[str, str] = {}  # Central client name → its new CRMDev id
-    results, wrote = [], False
+    results, wrote, waited = [], False, []
     for index, op in enumerate(batch.operations):
         result = {"key": op.key, "kind": op.kind, "title": op.title, "centralId": op.central_id}
         results.append(result)
@@ -270,7 +288,7 @@ def send(target: Connection, batch: Batch, doubt: Callable[[str], None], pause: 
         if wrote and pause:
             time.sleep(pause)
         try:
-            answer = crmdev_api.call(target, op.tool, op.arguments)
+            answer = _patient(target, op, lambda seconds: waited.append(seconds) or time.sleep(seconds), sum(waited))
         except WebApiError as error:
             wrote = True
             if error.status == "busy":
