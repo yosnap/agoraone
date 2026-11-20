@@ -264,6 +264,7 @@ class Toolbox:
         self.chats_seen: set[int] = set()  # a reply is only proposed to a conversation consultar_bandeja showed
         self.only: tuple[str, ...] | None = None  # a research turn: the only tools that answer, whatever is asked
         self.pages_left = 0  # pages a research turn may still read
+        self.known_urls: set[str] = set()  # the only addresses it may open (search results, the user's question)
 
     def register(self, results: list[dict], listed: bool = False) -> list[dict]:
         """Numbers the notes found (a note found again keeps its number). `listed` notes were only seen by title in

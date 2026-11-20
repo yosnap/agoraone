@@ -133,6 +133,17 @@ def _logged(event: dict) -> tuple[str, str]:
 ANSWERING: dict = {"now": 0, "since": None}
 
 
+async def _until(stream, deadline: float | None):
+    """The engine's stream, with a time limit on each wait for it (not on what the caller does in between)."""
+    while True:
+        try:
+            async with asyncio.timeout_at(deadline):
+                item = await anext(stream)
+        except StopAsyncIteration:
+            return
+        yield item
+
+
 def _event(kind: str, data) -> str:
     return f"event: {kind}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
@@ -379,6 +390,8 @@ def assistant_router(
     @router.post("/conversations/{conversation_id}/messages")
     async def send(conversation_id: int, body: MessageIn, request: Request):
         owner = owner_of(request)
+        if body.research:  # what is kept and searched is the question itself, whatever the screen sent
+            body.message, body.delegated = f"{research.ASKED}{body.research.question}", None
 
         def prepare(connection):
             conversation = owned(connection, conversation_id, owner or "")
@@ -389,7 +402,7 @@ def assistant_router(
                    WHERE conversation_id = ? AND failed = 0 ORDER BY id DESC LIMIT ?) ORDER BY id""",
                 (conversation_id, HISTORY),
             )]
-            return dict(conversation), assistant.load_settings(connection), history
+            return dict(conversation), assistant.load_settings(connection), research.as_data(history)
         prepared = await db(prepare)
         if prepared is None:
             return JSONResponse({"error": "Conversación no encontrada."}, status_code=404)
@@ -439,7 +452,9 @@ def assistant_router(
                 yield _event("sources", {"sources": toolbox.sources})
                 # Only the addresses the user wrote in this message; the core reads them, Watson has no network.
                 pages_block = ""
-                urls = web_page.urls_in(body.message)
+                urls = [] if body.research else web_page.urls_in(body.message)  # a research reads its pages itself
+                if body.research:
+                    research.remember(toolbox, f"{body.research.question} {body.research.scope}")
                 if urls:
                     yield _event("stage", {"stage": "web"})
                     pages = await web_page.fetch_all(urls)
@@ -460,7 +475,9 @@ def assistant_router(
                     toolbox.history.append({"tool": "hermes_reply", "profile": body.delegated.profile, "chars": len(body.delegated.reply)})
                 question = f"{context}\n\n{pages_block + chr(10) + chr(10) if pages_block else ''}Pregunta: {body.message}"
                 if body.research:
-                    question = f"{context}\n\nInvestiga: {body.research.question}"
+                    question = f"{context}\n\n{body.message}"
+                    candidates = candidates[:1]  # never again on another engine, with the budget spent and the clock reset
+                deadline = asyncio.get_running_loop().time() + caps["minutes"] * 60 if caps else None
                 last_error = None
                 for engine in candidates:
                     model = current["compatible"]["model"] if engine.name == "compatible" else current["model"]
@@ -473,8 +490,9 @@ def assistant_router(
                     parts = []
                     try:
                         # aclosing: if the browser leaves, the engine (and Claude Code's process) is closed too.
-                        async with asyncio.timeout(caps["minutes"] * 60 if caps else None), aclosing(engine.stream(turn)) as stream:
-                            async for text in stream:
+                        async with aclosing(engine.stream(turn)) as stream:
+                            # The research's time counts only while the engine works, never while the browser reads.
+                            async for text in _until(stream, deadline):
                                 # What the tools did, as soon as it is known: an engine may announce a tool round
                                 # before the tool runs (Claude Code does), so it is collected again here.
                                 done_now = toolbox.drain()

@@ -18,7 +18,7 @@ export function useResearchProposals() {
 }
 
 export function ResearchProposals({ state, busy, onInvestigate }: {
-  state: ReturnType<typeof useResearchProposals>; busy: boolean; onInvestigate: (proposal: ResearchProposal) => void;
+  state: ReturnType<typeof useResearchProposals>; busy: boolean; onInvestigate: (proposal: ResearchProposal) => Promise<boolean>;
 }) {
   const [limits, setLimits] = useState<ResearchLimits | null>(null);
   const [engine, setEngine] = useState<string | null>(null);
@@ -29,7 +29,8 @@ export function ResearchProposals({ state, busy, onInvestigate }: {
   }, [state.list.length, limits]);
   if (!state.list.length) return null;
   return <>{state.list.map(({ key, proposal }) => <ResearchCard key={key} id={`research-${key}`} proposal={proposal} limits={limits} engine={engine}
-    busy={busy} onClose={() => state.close(key)} onInvestigate={value => { onInvestigate(value); state.close(key); }}/>)}</>;
+    // Pressed only while Watson is free (the button is disabled otherwise), so the research does start: the card goes.
+    busy={busy} onClose={() => state.close(key)} onInvestigate={value => { if (busy) return; state.close(key); void onInvestigate(value); }}/>)}</>;
 }
 
 function ResearchCard({ id, proposal, limits, engine, busy, onClose, onInvestigate }: {
@@ -38,13 +39,13 @@ function ResearchCard({ id, proposal, limits, engine, busy, onClose, onInvestiga
 }) {
   const [question, setQuestion] = useState(proposal.question);
   const [scope, setScope] = useState(proposal.scope);
-  const caps = limits ? `Hasta ${limits.searches} búsquedas, ${limits.pages} páginas y ${limits.minutes} minutos (se cambia en Ajustes › Asistente).` : '';
-  const where = engine === 'compatible' ? 'Tu proveedor compatible no tiene buscador: solo leerá las páginas que conozca.'
-    : engine === 'anthropic-api' ? 'Busca con la API de Anthropic: cada búsqueda se cobra aparte (unos 0,01 $), además del texto.'
-    : 'Busca con tu sesión de Claude Code.';
+  const caps = limits ? `Hasta ${limits.pages} páginas y ${limits.minutes} minutos (se cambia en Ajustes › Asistente).` : '';
+  const where = engine === 'compatible' ? 'Tu proveedor compatible no tiene buscador: solo leerá las direcciones que escribas en la pregunta.'
+    : engine === 'anthropic-api' ? `Busca con la API de Anthropic, como mucho ${limits?.searches ?? 5} veces: cada búsqueda se cobra aparte (unos 0,01 $), además del texto.`
+    : `Busca con tu sesión de Claude Code, dentro de tu plan (unas ${limits?.searches ?? 5} búsquedas: Claude Code no deja contarlas exactas).`;
   return <article className="card note-proposal" aria-label="Investigación propuesta">
     <strong>Investigación propuesta</strong>
-    <small>Sale a internet solo al pulsar «Investigar». No ve esta conversación ni tu correo, mensajes o clientes: solo la pregunta, tus notas normales y la web. Al terminar te propone guardar el informe en «Investigaciones».</small>
+    <small>Sale a internet solo al pulsar «Investigar». No ve esta conversación ni tu correo, mensajes o clientes: solo la pregunta, tus notas normales y la web, y solo abre páginas de los resultados de búsqueda o de tu pregunta. Al terminar te propone guardar el informe en «Investigaciones».</small>
     <label htmlFor={`${id}-question`}>Pregunta</label>
     <textarea id={`${id}-question`} value={question} onChange={event => setQuestion(event.target.value)} maxLength={1000} rows={3}/>
     <label htmlFor={`${id}-scope`}>Alcance (opcional)</label>

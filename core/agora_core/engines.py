@@ -99,7 +99,9 @@ class ClaudeCodeEngine:
         )
 
     async def stream(self, turn: Turn) -> AsyncIterator[str | None]:
-        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock, query
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolResultBlock, ToolUseBlock, UserMessage, query
+
+        from .research import remember
 
         # The child inherits this process's environment, from which scrub_api_keys() removed the API
         # variables at startup: an empty value would not do (an empty base URL breaks the connection).
@@ -110,12 +112,22 @@ class ClaudeCodeEngine:
             workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
             # Text written before a tool call is the model thinking aloud, not the answer: it is held and
-            # dropped when a tool call follows.
+            # dropped when a tool call follows, unless the call only proposes something (the answer comes first).
             held: list[str] = []
+            searches: set[str] = set()  # ids of WebSearch calls, whose results say which pages may be read
             async for message in query(prompt=prompt, options=options):
+                if isinstance(message, UserMessage) and searches and not isinstance(message.content, str):
+                    for block in message.content:
+                        if isinstance(block, ToolResultBlock) and block.tool_use_id in searches:
+                            remember(turn.toolbox, json.dumps(block.content, ensure_ascii=False, default=str))
+                    continue
                 if isinstance(message, AssistantMessage):
-                    if any(isinstance(block, ToolUseBlock) for block in message.content):
-                        held = []
+                    calls = [block for block in message.content if isinstance(block, ToolUseBlock)]
+                    if calls:
+                        searches |= {block.id for block in calls if block.name == "WebSearch"}
+                        proposing = turn.tools is not None and all(block.name.startswith("mcp__cerebro__proponer_") for block in calls)
+                        texts = [block.text for block in message.content if isinstance(block, TextBlock) and block.text]
+                        held = [*held, *texts] if proposing else []
                         yield None
                         continue
                     for block in message.content:
@@ -156,21 +168,32 @@ class AnthropicApiEngine:
         if turn.searches:  # searched on Anthropic's servers, at most this many times in the whole answer
             tools.append({"type": "web_search_20260318", "name": "web_search", "max_uses": turn.searches})
         messages = list(turn.messages)
+        container = None
         try:
             async with anthropic.AsyncAnthropic(api_key=key, max_retries=1) as client:
                 for _ in range((toolbox.max_calls + 1 + turn.searches) if toolbox else 1):
                     async with client.messages.stream(
                         model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]), max_tokens=8192 if turn.searches else 4096,
                         system=turn.system, messages=messages, **({"tools": tools} if tools else {}),
+                        **({"container": container} if container else {}),
                     ) as stream:
+                        held = []  # a research turn keeps only the last round's text: the rest is the model searching aloud
                         async for text in stream.text_stream:
-                            yield text
+                            if turn.searches:
+                                held.append(text)
+                            else:
+                                yield text
                         final = await stream.get_final_message()
+                    container = getattr(getattr(final, "container", None), "id", None) or container
+                    if turn.searches:
+                        _remember_results(toolbox, final.content)
                     if final.stop_reason == "pause_turn":  # a long web search paused the turn: it goes on from there
                         messages += [{"role": "assistant", "content": final.content}]
                         yield None
                         continue
                     if final.stop_reason != "tool_use":
+                        for text in held:
+                            yield text
                         return
                     results = [{"type": "tool_result", "tool_use_id": block.id, "content": await toolbox.call(block.name, block.input)}
                                for block in final.content if block.type == "tool_use"]
@@ -178,6 +201,15 @@ class AnthropicApiEngine:
                     yield None
         except anthropic.APIError as error:
             raise EngineError(f"La API de Anthropic respondió con un error ({type(error).__name__}).") from error
+
+
+def _remember_results(toolbox, content) -> None:
+    """The addresses of the API's web_search results: the only pages a research turn may read."""
+    from .research import remember
+
+    for block in content:
+        if getattr(block, "type", "") == "web_search_tool_result" and isinstance(getattr(block, "content", None), list):
+            remember(toolbox, " ".join(str(getattr(item, "url", "")) for item in block.content))
 
 
 class CompatibleEngine:

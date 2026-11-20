@@ -262,7 +262,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <QuoteProposals state={quotes}/>
         <IssueProposals state={issues}/>
         <OrcaProposals state={orcas}/>
-        <ResearchProposals state={researches} busy={live !== null} onInvestigate={proposal => void send(`Investiga: ${proposal.question}`, current, undefined, proposal)}/>
+        <ResearchProposals state={researches} busy={answeringIn() !== null} onInvestigate={proposal => send(`Investiga: ${proposal.question}`, current, undefined, proposal)}/>
         <HermesProposals state={hermes} name={name} busy={live !== null} onPassBack={(profile, label, reply) => send(`Esto ha respondido ${label} al encargo. Resúmemelo.`, current, { profile, reply })}/>
         <ChatReplyProposals state={chatReplies} discreet={discreet}/>
         <CleanupProposals state={cleanups} discreet={discreet}/>
