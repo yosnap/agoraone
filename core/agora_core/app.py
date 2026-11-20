@@ -259,7 +259,7 @@ def create_app(
     app.include_router(apps_router(settings))
     app.include_router(doctor_router(settings, secrets))
     app.include_router(agents_router(settings))
-    app.include_router(orca_router(settings))
+    app.include_router(orca_router(settings, secrets))
     app.include_router(note_sources_router(settings, secrets))
     app.include_router(issues_router(settings))
     return app

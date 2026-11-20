@@ -63,3 +63,13 @@ test('«Crear en Central» propone sin correos ni números y solo crea tras revi
   assert.match(list, /const can = canCentral && !discreet/);
   assert.ok(!/<select/.test(list) && !/border-l/.test(list));
 });
+
+test('«Lanzar en Orca» en tareas y tickets solo con proyecto enlazado y nunca en modo discreto', () => {
+  for (const file of ['../crmdev/crmdev-tasks.tsx', '../crmdev/crmdev-tickets.tsx']) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.match(source, /const launchable = \(t: CrmdevT\w+\) => !discreet && t\.id && t\.projectId \? orca\.get\(t\.projectId\) : undefined/, file);
+  }
+  const row = readFileSync(new URL('../orca/crmdev-to-orca.tsx', import.meta.url), 'utf8');
+  assert.match(row, /choices=\{\[choice\]\}/);  // only its linked project
+  assert.match(row, /source=\{\{ kind, remote: id \}\}/);  // the core reads the record, the screen never sends its text
+});

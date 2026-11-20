@@ -47,6 +47,13 @@ Claude Code o Codex con un encargo. Plan: `plans/261117-0940-modulo-orca`.
   va debajo del encargo como datos; se vuelve a comprobar al lanzar. Solo vale si el índice tiene la misma versión
   que la nota abierta (fecha y tamaño): una nota recién cambiada espera a la siguiente lectura del índice (5 min).
 - **Issue de Watson:** una vez creada, «Resolver en Orca…» lanza con `--issue <n>` y el agente la lee con `gh`.
+- **Tareas y tickets de CRMDev** (1.9): «Lanzar en Orca» en cada tarea o ticket cuyo proyecto de CRMDev está
+  enlazado con un proyecto de Central que ya está en Orca (`src/orca/crmdev-to-orca.tsx`), nunca en modo discreto.
+  La tarjeta solo ofrece ese proyecto. La pantalla manda solo el id (`source: {kind: "crmdev_task" | "crmdev_ticket",
+  remote}`): el núcleo lee la tarea o el ticket de CRMDev con la lista cerrada, comprueba que su proyecto sigue
+  enlazado con el proyecto de Central elegido (`core/agora_core/orca_crmdev.py`) y lo pone debajo del encargo como
+  datos: título, estado, prioridad, categoría, fecha y descripción, sin líneas con pinta de clave ni enlaces y nunca
+  el nombre ni el correo de quien abrió el ticket. Se vuelve a leer al lanzar.
 - **Watson:** la herramienta `proponer_encargo_orca` (solo con Claude, módulo Orca) comprueba que el proyecto está
   en Orca y abre la tarjeta rellenada en el chat; no lanza nada. El registro guarda repositorio y agente, nunca el
   encargo.

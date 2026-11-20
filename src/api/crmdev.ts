@@ -21,9 +21,9 @@ export const isCrmdevProbe = (value: unknown): value is CrmdevProbe =>
 
 export type CrmdevProject = { id: string | null; name: string | null; status: string | null; progress: number | null; type: string | null; deadline: string | null };
 export type CrmdevTask = { id: string | null; title: string | null; description: string | null; status: string | null; priority: string | null;
-  dueDate: string | null; assignee: { id: string | null; name: string | null } | null; project: string | null };
+  dueDate: string | null; assignee: { id: string | null; name: string | null } | null; project: string | null; projectId?: string | null };
 export type CrmdevTicket = { id: string | null; title: string | null; description: string | null; status: string | null; priority: string | null;
-  category: string | null; requester: string | null; client: string | null; project: string | null; createdAt: string | null; updatedAt: string | null };
+  category: string | null; requester: string | null; client: string | null; project: string | null; projectId?: string | null; createdAt: string | null; updatedAt: string | null };
 export type CrmdevClient = { id: string | null; name: string | null; company: string | null; status: string | null };
 export type CrmdevMember = { id: string | null; name: string | null; role: string | null };
 export type CrmdevHours = { project: string | null; total: string | null; entries: number | null;

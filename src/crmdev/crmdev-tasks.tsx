@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
+import { CrmdevOrcaRow, useCrmdevOrca } from '../orca/crmdev-to-orca';
 import { getCrmdevView, type CrmdevFilters, type CrmdevTask } from '../api/crmdev';
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
@@ -16,20 +17,28 @@ import { ActionButton } from '../ui/action-button';
 export function TasksTable({ tasks, discreet, withProject = true, onEdit }: {
   tasks: CrmdevTask[]; discreet: boolean; withProject?: boolean; onEdit?: (id: string) => void;
 }) {
+  const orca = useCrmdevOrca();
+  const [launching, setLaunching] = useState<string | null>(null);
   if (!tasks.length) return <p className="muted">Ninguna tarea.</p>;
+  const launchable = (t: CrmdevTask) => !discreet && t.id && t.projectId ? orca.get(t.projectId) : undefined;
+  const columns = 4 + (discreet ? 0 : 1) + (withProject ? 1 : 0) + (onEdit || orca.size ? 1 : 0);
   return <table className="data-table central-table">
     <thead><tr><th>Tarea</th><th>Estado</th><th>Prioridad</th><th>Fecha</th>{!discreet && <th>Asignada a</th>}{withProject && <th>Proyecto</th>}
-      {onEdit && <th><span className="visually-hidden">Acciones</span></th>}</tr></thead>
-    <tbody>{tasks.map((t, index) => <tr key={t.id ?? index}>
+      {(onEdit || orca.size > 0) && <th><span className="visually-hidden">Acciones</span></th>}</tr></thead>
+    <tbody>{tasks.map((t, index) => <Fragment key={t.id ?? index}><tr>
       <td className="crmdev-title"><strong>{t.title ?? '—'}</strong><LongText text={t.description} discreet={discreet}/></td>
       <td><Badge labels={taskStatusLabels} value={t.status}/></td>
       <td><Badge labels={priorityLabels} value={t.priority}/></td>
       <td className="central-date">{dayLabel(t.dueDate)}</td>
       {!discreet && <td>{t.assignee?.name ?? '—'}</td>}
       {withProject && <td>{t.project ?? '—'}</td>}
-      {onEdit && <td className="central-row-actions">{t.id && <ActionButton icon="edit" label="Editar" aria-label={`Editar la tarea ${t.title ?? ''}`}
-        onClick={() => onEdit(t.id as string)}/>}</td>}
-    </tr>)}</tbody>
+      {(onEdit || orca.size > 0) && <td className="central-row-actions"><span className="actions">
+        {onEdit && t.id && <ActionButton icon="edit" label="Editar" aria-label={`Editar la tarea ${t.title ?? ''}`} onClick={() => onEdit(t.id as string)}/>}
+        {launchable(t) && <ActionButton icon="play" label="Lanzar en Orca" aria-label={`Lanzar en Orca la tarea ${t.title ?? ''}`}
+          onClick={() => setLaunching(launching === t.id ? null : t.id)}/>}</span></td>}
+    </tr>
+    {launching === t.id && launchable(t) && <CrmdevOrcaRow kind="crmdev_task" id={t.id as string} title={t.title} choice={launchable(t)!} columns={columns}
+      onClose={() => setLaunching(null)}/>}</Fragment>)}</tbody>
   </table>;
 }
 
