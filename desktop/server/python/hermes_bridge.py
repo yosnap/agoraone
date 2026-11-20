@@ -41,8 +41,14 @@ def main(request):
     started = time.monotonic()
     emit({"type": "status", "stage": "starting"})
     installation = Path(os.environ["AGORA_HERMES_PATH"]).resolve()
-    import shutil
-    git = shutil.which("git") or "/usr/bin/git"
+    # macOS and Linux keep the fixed system git, so a git earlier in PATH is never run; Windows has no fixed
+    # path for it, so only there it comes from PATH.
+    if sys.platform == "win32":
+        import shutil
+
+        git = shutil.which("git") or "git"
+    else:
+        git = "/usr/bin/git"
     revision = subprocess.check_output(
         [git, "-C", str(installation), "rev-parse", "HEAD"], text=True
     ).strip()
