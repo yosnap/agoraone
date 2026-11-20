@@ -87,9 +87,31 @@ mod tests {
             assert_eq!(fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
             assert_eq!(fs::metadata(file.parent().unwrap()).unwrap().permissions().mode() & 0o777, 0o700);
         }
+        #[cfg(windows)]
+        {
+            use crate::platform::is_owner_only;
+            let folder = file.parent().unwrap();
+            assert!(is_owner_only(&file).unwrap(), "el token solo lo lee su usuario");
+            assert!(is_owner_only(folder).unwrap(), "la carpeta de datos solo la abre su usuario");
+            fs::write(folder.join("otro"), "x").unwrap();
+            assert!(is_owner_only(&folder.join("otro")).unwrap(), "lo que se crea dentro hereda la protección");
+            assert!(!is_owner_only(dir.path()).unwrap(), "la carpeta de fuera sigue como estaba");
+        }
         assert_eq!(load_token(&file).unwrap(), first);
         fs::write(&file, "no-es-un-token").unwrap();
         assert_ne!(load_token(&file).unwrap(), first, "un archivo dañado se sustituye");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn un_token_existente_con_permisos_abiertos_se_protege_al_leerlo() {
+        use crate::platform::is_owner_only;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("access-token");
+        fs::write(&file, format!("{}\n", "b".repeat(64))).unwrap();
+        assert!(!is_owner_only(&file).unwrap(), "un archivo nuevo hereda los permisos de su carpeta");
+        assert_eq!(load_token(&file).unwrap(), "b".repeat(64));
+        assert!(is_owner_only(&file).unwrap());
     }
 
     #[test]

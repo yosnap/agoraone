@@ -11,6 +11,17 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use tokio::process::{Child, Command};
 
+#[cfg(windows)]
+mod windows_owner_only_dacl;
+#[cfg(all(windows, test))]
+pub(crate) use windows_owner_only_dacl::is_owner_only;
+
+/// A Unix mode without group or other bits (0o700, 0o600): on Windows it becomes an owner-only DACL.
+#[cfg(windows)]
+fn is_private(mode: u32) -> bool {
+    mode & 0o077 == 0
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct FileId(pub u64, pub u64);
 
@@ -198,9 +209,15 @@ pub fn create_dir_mode(path: &Path, recursive: bool, mode: u32) -> io::Result<()
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(mode);
     }
-    #[cfg(not(unix))]
-    let _ = mode;
-    builder.create(path)
+    #[cfg(windows)]
+    let existed = path.is_dir();
+    builder.create(path)?;
+    // As on Unix, the mode only applies to a folder created here (an existing one keeps what it has).
+    #[cfg(windows)]
+    if !existed && is_private(mode) {
+        windows_owner_only_dacl::restrict_to_owner(path)?;
+    }
+    Ok(())
 }
 
 pub fn set_mode(path: &Path, mode: u32) -> io::Result<()> {
@@ -209,7 +226,11 @@ pub fn set_mode(path: &Path, mode: u32) -> io::Result<()> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(path, fs::Permissions::from_mode(mode))
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        if is_private(mode) { windows_owner_only_dacl::restrict_to_owner(path) } else { Ok(()) }
+    }
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = (path, mode);
         Ok(())
@@ -229,9 +250,15 @@ pub fn create_mode_file(path: &Path, create_new: bool, truncate: bool, mode: u32
         use std::os::unix::fs::OpenOptionsExt;
         opts.mode(mode);
     }
-    #[cfg(not(unix))]
-    let _ = mode;
-    opts.open(path)
+    #[cfg(windows)]
+    let existed = path.exists();
+    let file = opts.open(path)?;
+    // As on Unix, the mode only applies to a file created here.
+    #[cfg(windows)]
+    if !existed && is_private(mode) {
+        windows_owner_only_dacl::restrict_to_owner(path)?;
+    }
+    Ok(file)
 }
 
 #[cfg(unix)]
