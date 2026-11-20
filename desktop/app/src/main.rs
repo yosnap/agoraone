@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use agora_server::PORT;
 use agora_server::launch::{Paths, access_url, app_support, copy_first_run, load_dotenv, prepare, widen_path};
+use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, RunEvent, Url, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
@@ -161,6 +162,13 @@ fn notify_loop(app: AppHandle, link: agora_server::core::CoreLink) {
 /// Only AgoraOne itself loads inside the window.
 fn own(url: &Url) -> bool {
     url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(PORT)
+}
+
+/// Any other web page goes to the user's browser, never inside AgoraOne's window.
+fn to_browser(url: &Url) {
+    if !own(url) && matches!(url.scheme(), "http" | "https") {
+        let _ = agora_server::platform::open_url(url.as_str());
+    }
 }
 
 /// ⌃⌥W from any app (user's choice, 15/11/2026): AgoraOne comes to the front and Watson starts listening.
@@ -320,10 +328,14 @@ fn main() {
                     if own(url) {
                         return true;
                     }
-                    if matches!(url.scheme(), "http" | "https") {
-                        let _ = agora_server::platform::open_url(url.as_str());
-                    }
+                    to_browser(url);
                     false
+                })
+                // Links that ask for a new tab (target="_blank") follow the same rule. Without this handler the
+                // webview drops them silently, on macOS and on Windows alike. AgoraOne never opens a second window.
+                .on_new_window(|url, _features| {
+                    to_browser(&url);
+                    NewWindowResponse::Deny
                 })
                 .build()?;
             // A termination signal closes the app the normal way, so the core and the bridges stop with it.
