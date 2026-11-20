@@ -1,5 +1,8 @@
 //! Ported from server/hermes-activity.test.ts and hermes-summary.test.ts.
 
+#[path = "support/test_links.rs"]
+mod test_links;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,7 +12,8 @@ use agora_server::hermes::activity_log::job_runs;
 use agora_server::hermes::catalog::ProfileTarget;
 use agora_server::hermes::summary::{read_hermes_summary, tally_words, top_words};
 use agora_server::js::parse_date_ms;
-use agora_server::platform::{canonicalize, create_test_link as symlink};
+use agora_server::platform::canonicalize;
+use test_links::{create_test_link as symlink};
 use rusqlite::{Connection, params};
 use serde_json::{Map, Value, json};
 

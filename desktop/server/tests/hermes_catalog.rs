@@ -1,5 +1,8 @@
 //! Ported from server/hermes-catalog.test.ts, mcp-tools.test.ts and resource-discovery.test.ts.
 
+#[path = "support/test_links.rs"]
+mod test_links;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -8,7 +11,8 @@ use agora_server::hermes::location::{HermesLocation, hermes_location};
 use agora_server::hermes::mcp_tools::{mcp_fingerprint, read_mcp_tools};
 use agora_server::hermes::resources::{mcp_metadata, obsidian_vaults};
 use agora_server::hermes::safe_read::redact_str;
-use agora_server::platform::{canonicalize, create_test_link as symlink};
+use agora_server::platform::canonicalize;
+use test_links::{create_test_link as symlink};
 use rusqlite::Connection;
 use serde_json::{Map, Value, json};
 

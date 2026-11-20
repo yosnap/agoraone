@@ -341,7 +341,7 @@ mod tests {
         std::fs::create_dir_all(from.join("library/dueño")).unwrap();
         std::fs::write(from.join("access-token"), "token").unwrap();
         std::fs::write(from.join("library/dueño/copia.json"), "{}").unwrap();
-        crate::platform::create_test_link(Path::new("/etc/hosts"), from.join("enlace")).unwrap();
+        crate::test_links::create_test_link(Path::new("/etc/hosts"), from.join("enlace")).unwrap();
         assert!(copy_first_run(&from, &to).unwrap());
         assert_eq!(std::fs::read_to_string(to.join("library/dueño/copia.json")).unwrap(), "{}");
         assert!(from.join("access-token").exists(), "el original se queda");

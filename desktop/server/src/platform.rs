@@ -560,55 +560,6 @@ impl ProcessGroup {
     }
 }
 
-/// Creates a link in tests (a POSIX symlink, or on unprivileged Windows an NTFS directory junction).
-pub fn create_test_link(target: impl AsRef<Path>, link: impl AsRef<Path>) -> io::Result<()> {
-    let (target, link) = (target.as_ref(), link.as_ref());
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(target, link)
-    }
-    #[cfg(windows)]
-    {
-        let res = if target.is_dir() {
-            std::os::windows::fs::symlink_dir(target, link)
-        } else {
-            std::os::windows::fs::symlink_file(target, link)
-        };
-        match res {
-            Ok(()) => Ok(()),
-            Err(err) if err.raw_os_error() == Some(1314) => {
-                let junction_target = if target.is_dir() {
-                    canonicalize(target).unwrap_or_else(|_| target.to_path_buf())
-                } else {
-                    target
-                        .parent()
-                        .filter(|p| p.is_dir())
-                        .and_then(|p| canonicalize(p).ok())
-                        .unwrap_or_else(std::env::temp_dir)
-                };
-                let win_link = link.to_string_lossy().replace('/', r"\");
-                let win_target = junction_target.to_string_lossy().replace('/', r"\");
-                let status = std::process::Command::new("cmd.exe")
-                    .args(["/c", "mklink", "/J", &win_link, &win_target])
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status()?;
-                if status.success() {
-                    Ok(())
-                } else {
-                    Err(err)
-                }
-            }
-            Err(err) => Err(err),
-        }
-    }
-}
-
-pub fn remove_test_link(link: impl AsRef<Path>) -> io::Result<()> {
-    let link = link.as_ref();
-    fs::remove_file(link).or_else(|_| fs::remove_dir(link))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -638,7 +589,7 @@ mod tests {
         assert_eq!(inspect_path_nofollow(&file).unwrap().nlink, 2);
 
         let linked_dir = base.join("carpeta-enlazada");
-        create_test_link(&outside, &linked_dir).unwrap();
+        crate::test_links::create_test_link(&outside, &linked_dir).unwrap();
         assert!(!is_real_dir(&linked_dir));
         assert!(open_nofollow_read(&linked_dir).is_err());
         assert!(open_nofollow_rw(&linked_dir).is_err());

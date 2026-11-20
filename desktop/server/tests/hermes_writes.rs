@@ -1,6 +1,9 @@
 //! Ported from server/profile-editor.test.ts and hermes-skills.test.ts: real writes through the built-in
 //! Python writer on fictitious profiles.
 
+#[path = "support/test_links.rs"]
+mod test_links;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -8,7 +11,8 @@ use agora_server::hermes::catalog::{HermesDiscovery, file_revision};
 use agora_server::hermes::location::HermesLocation;
 use agora_server::hermes::profile_editor::{ProfileEdit, backup_memories, save_profile_file};
 use agora_server::hermes::skills::{NewSkill, SkillEdit, create_profile_skill, list_profile_skills, read_profile_skill, save_profile_skill};
-use agora_server::platform::{canonicalize, create_test_link as symlink, remove_test_link};
+use agora_server::platform::canonicalize;
+use test_links::{create_test_link as symlink, remove_test_link};
 use agora_server::secret_lines::mask_secrets;
 use agora_server::security::Failure;
 use serde_json::Value;

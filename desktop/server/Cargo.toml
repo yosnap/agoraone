@@ -45,3 +45,7 @@ http-body-util = "0.1"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
+
+# The tests' NTFS junctions (tests/support/test_links.rs): DeviceIoControl, only for the tests.
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_IO"] }

@@ -15,6 +15,11 @@ pub mod secret_lines;
 pub mod security;
 pub mod vault;
 
+// Links for the unit tests, shared with the integration tests; never part of the server.
+#[cfg(test)]
+#[path = "../tests/support/test_links.rs"]
+pub(crate) mod test_links;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 

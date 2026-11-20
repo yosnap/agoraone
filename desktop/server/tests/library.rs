@@ -2,6 +2,9 @@
 //! routes of app.test.ts: examples by id, private copies per owner, PDF/DOCX extraction with the core's
 //! Python inside the sandbox, and the HTTP contract.
 
+#[path = "support/test_links.rs"]
+mod test_links;
+
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -12,7 +15,8 @@ use agora_server::core::CoreLaunch;
 use agora_server::hermes::location::HermesLocation;
 use agora_server::library::extract::{Extractor, extract_upload, sandboxed};
 use agora_server::library::{PrivateLibrary, read_example};
-use agora_server::platform::{canonicalize, create_test_link as symlink, remove_test_link};
+use agora_server::platform::canonicalize;
+use test_links::{create_test_link as symlink, remove_test_link};
 use agora_server::{AppState, Config, router};
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};

@@ -1,6 +1,9 @@
 //! Ported from the conversation tests of server/app.test.ts, with a recording adapter instead of Hermes:
 //! owners, history, streaming, profile identity and revocation, attachments, approvals and turn limits.
 
+#[path = "support/test_links.rs"]
+mod test_links;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -10,7 +13,8 @@ use agora_server::chat::worker::Progress;
 use agora_server::chat::{Adapter, Turn};
 use agora_server::hermes::location::HermesLocation;
 use agora_server::hermes::resources::obsidian_vaults;
-use agora_server::platform::{canonicalize, create_test_link as symlink};
+use agora_server::platform::canonicalize;
+use test_links::{create_test_link as symlink};
 use agora_server::{AppState, Config, router};
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};

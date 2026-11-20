@@ -1,5 +1,8 @@
 //! Ported from server/brain-sync.test.ts against a stand-in for the core's internal index routes.
 
+#[path = "support/test_links.rs"]
+mod test_links;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -7,7 +10,8 @@ use std::sync::{Arc, Mutex};
 
 use agora_server::brain_sync::{BrainSync, SyncReport};
 use agora_server::core::CoreLink;
-use agora_server::platform::{canonicalize, create_test_link as symlink};
+use agora_server::platform::canonicalize;
+use test_links::{create_test_link as symlink};
 use agora_server::vault::VaultNotes;
 use axum::extract::{Request, State};
 use axum::http::StatusCode;

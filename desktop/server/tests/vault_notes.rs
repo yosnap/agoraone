@@ -1,6 +1,9 @@
 //! Ported from server/vault-notes.test.ts: listing, reading, search, the consult cut, hidden lines, and
 //! editing or creating notes without following links or overwriting; plus the routes through the router.
 
+#[path = "support/test_links.rs"]
+mod test_links;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -8,7 +11,8 @@ use std::sync::Arc;
 use agora_server::access::proof;
 use agora_server::hermes::location::HermesLocation;
 use agora_server::hermes::resources::obsidian_vaults;
-use agora_server::platform::{canonicalize, create_test_link as symlink, inspect_path_nofollow};
+use agora_server::platform::{canonicalize, inspect_path_nofollow};
+use test_links::{create_test_link as symlink};
 use agora_server::security::Failure;
 use agora_server::vault::{NoteEdit, NoteMove, VaultNote, VaultNotes};
 use agora_server::{AppState, Config, router};
