@@ -76,7 +76,7 @@ class StatefulCrmdev:
             row = next(r for r in self.rows[table] if r["id"] == args[key])
             row.update(applied(tool, args))
             return self._answer({"id": row["id"]})
-        table = {"create_task": "list_tasks", "create_client": "list_clients"}[tool]
+        table = {"create_task": "list_tasks", "create_client": "list_clients", "create_project": "list_projects"}[tool]
         made = {"id": f"n{len(self.rows[table]) + 1}", **args}
         self.rows[table].insert(0, made)
         return self._answer({"id": made["id"]})
@@ -127,7 +127,10 @@ def confirm(client, token):
 def test_ninguna_herramienta_de_escritura_borra():
     assert not any(name.startswith("delete_") for name in crmdev_api.WRITE_TOOLS)
     assert set(crmdev_write.KIND_TOOL.values()) <= crmdev_api.WRITE_TOOLS
-    assert set(crmdev_write.KIND_TOOL.values()) == crmdev_api.WRITE_TOOLS, "cada herramienta de escritura tiene su clase de cambio"
+    from agora_core import crmdev_batch
+
+    assert set(crmdev_write.KIND_TOOL.values()) | set(crmdev_batch.TOOL.values()) == crmdev_api.WRITE_TOOLS, "cada herramienta de escritura tiene su clase de cambio"
+    assert "create_project" not in crmdev_write.KIND_TOOL.values()  # a project is created only from «Enviar a CRMDev»
 
 
 @pytest.mark.parametrize("kind", ["borrar", "delete_task", "delete_client", "tarea ", "", "TAREA"])

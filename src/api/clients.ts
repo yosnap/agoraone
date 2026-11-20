@@ -104,3 +104,14 @@ export type CrmdevPending = { active: boolean; items: PendingItem[]; counts: Rec
 export const getCrmdevPending = (withDismissed = false) => core<CrmdevPending>(`/crmdev-pending${withDismissed ? '?all=true' : ''}`);
 /** «Descartar» with the signature it was shown with, or «Volver a mostrar» (null). */
 export const dismissPending = (key: string, signature: string | null) => core<{ done: true }>('/crmdev-pending/dismiss', { key, signature });
+
+/** «Enviar a CRMDev»: the exact operations for the ticked warnings (the core chooses each tool), and what cannot go. */
+export type BatchRow = { field: string; label: string; before: string | null; after: string | null };
+export type BatchOperation = { key: string; kind: string; title: string; rows: BatchRow[]; notes: string[] };
+export type BatchSkipped = { key: string; name: string; reason: string };
+export type BatchPreview = { token: string; operations: BatchOperation[]; skipped: BatchSkipped[]; warnings: string[] };
+export type BatchOutcome = 'sent' | 'already' | 'conflict' | 'skipped' | 'unknown' | 'error' | 'waiting';
+export type BatchResult = { done: true; sent: number; results: { key: string; title: string; outcome: BatchOutcome; message?: string }[]; warning?: string };
+
+export const previewBatch = (keys: string[], anyway: string[] = []) => core<BatchPreview>('/crmdev/batch/preview', { keys, anyway });
+export const confirmBatch = (token: string) => core<BatchResult>('/crmdev/batch/confirm', { token });

@@ -61,6 +61,7 @@ from .routes_central_write import central_write_router
 from .routes_central_window import central_window_router
 from .routes_crmdev import crmdev_router
 from .routes_crmdev_window import crmdev_window_router
+from .routes_crmdev_batch import crmdev_batch_router
 from .routes_crmdev_write import crmdev_write_router
 from .routes_fabrica_window import fabrica_window_router
 from .routes_quotes import quotes_router
@@ -239,6 +240,7 @@ def create_app(
     app.include_router(crmdev_router(settings, secrets, crmdev_health))
     app.include_router(crmdev_window_router(settings))
     app.include_router(crmdev_write_router(settings, secrets))
+    app.include_router(crmdev_batch_router(settings, secrets))
     app.include_router(fabrica_window_router(settings))
     app.include_router(quotes_router(settings, secrets))
     app.include_router(clients_router(settings, secrets, crmdev_health))

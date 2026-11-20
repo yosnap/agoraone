@@ -33,3 +33,13 @@ test('la lista y la tarjeta no usan selects nativos ni bordes de acento a la izq
     assert.ok(!/<select/.test(source) && !/border-l/.test(source), file);
   }
 });
+
+test('el envío a CRMDev se revisa antes y solo sale con «Enviar a CRMDev»', () => {
+  const review = readFileSync(new URL('./crmdev-batch-review.tsx', import.meta.url), 'utf8');
+  assert.match(review, /previewBatch\(keys/);
+  assert.match(review, /confirmBatch\(shown\.token\)/);
+  assert.ok(!/<select/.test(review) && !/border-l/.test(review));
+  const list = readFileSync(new URL('./crmdev-pending-list.tsx', import.meta.url), 'utf8');
+  assert.match(list, /!discreet && <ActionButton icon="send"/);  // in discreet mode nothing can be sent
+  assert.ok(!list.includes("'crmdev_only'") || /SENDABLE = new Set<PendingKind>\(\['client_missing', 'contact_missing', 'client_changed', 'project_missing', 'project_changed'\]\)/.test(list));
+});

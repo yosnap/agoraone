@@ -37,9 +37,10 @@ TRANSPORT: httpx.BaseTransport | None = None
 
 # The closed list: the only tools AgoraOne ever sends. Nothing that deletes is or will be here.
 READ_TOOLS = frozenset({"list_projects", "list_tasks", "list_clients", "list_tickets", "list_members", "get_project_time_report"})
-# What AgoraOne may create or change, only from a form the user confirms (crmdev_write); never `delete_*`, never
-# `create_project` (CRMDev's own form) nor `create_ticket` (tickets come from clients).
-WRITE_TOOLS = frozenset({"create_task", "update_task", "update_project", "create_client", "update_client", "update_ticket"})
+# What AgoraOne may create or change, only from a form or a list the user confirms (crmdev_write, crmdev_batch); never
+# `delete_*` nor `create_ticket` (tickets come from clients). `create_project` only for a project of Central sent with
+# «Enviar a CRMDev» (user's decision, 20/11/2026: Central is the source and CRMDev follows it).
+WRITE_TOOLS = frozenset({"create_task", "update_task", "create_project", "update_project", "create_client", "update_client", "update_ticket"})
 # Tools that also need a module of the organization's plan, which only a call reveals.
 MODULE_TOOLS = frozenset({"list_tickets", "update_ticket"})
 NOT_ALLOWED = "Herramienta de CRMDev no permitida."
@@ -67,6 +68,7 @@ STATUSES = {
     "list_clients": ("LEAD", "PROSPECT", "CUSTOMER", "INACTIVE", "CHURNED"),
     "list_tickets": ("OPEN", "IN_PROGRESS", "WAITING_CLIENT", "RESOLVED", "CLOSED"),
 }
+PROJECT_TYPES = ("GITHUB", "WORDPRESS", "VERCEL", "OTHER")
 CATEGORIES = ("BUG", "FEATURE_REQUEST", "QUESTION", "SUPPORT", "BILLING", "PERFORMANCE", "SECURITY", "OTHER")
 
 
@@ -132,6 +134,9 @@ ARGUMENTS: dict[str, dict[str, Callable[[object], object]]] = {
                     "status": _one_of(STATUSES["list_tasks"]), "priority": _one_of(PRIORITIES), "dueDate": _day},
     "update_task": {"taskId": _id, "title": _words(300), "description": _words(4000, lines=True, empty=True),
                     "status": _one_of(STATUSES["list_tasks"]), "priority": _one_of(PRIORITIES)},
+    # Only from «Enviar a CRMDev», for a project of Central: its description is written once, when it is created.
+    "create_project": {"name": _words(300), "description": _words(4000, lines=True), "type": _one_of(PROJECT_TYPES),
+                       "status": _one_of(STATUSES["list_projects"]), "clientId": _id},
     # Never `description`: the list does not give it, so its current value could not be shown.
     "update_project": {"projectId": _id, "name": _words(300), "status": _one_of(STATUSES["list_projects"]), "progress": _progress},
     "create_client": {"name": _words(300), "email": _words(200), "company": _words(300), "phone": _words(40),
@@ -142,7 +147,7 @@ ARGUMENTS: dict[str, dict[str, Callable[[object], object]]] = {
     "update_ticket": {"ticketId": _id, "status": _one_of(STATUSES["list_tickets"]), "priority": _one_of(PRIORITIES),
                       "category": _one_of(CATEGORIES)},
 }
-REQUIRED = {"get_project_time_report": ("projectId",), "create_task": ("title",), "update_task": ("taskId",),
+REQUIRED = {"get_project_time_report": ("projectId",), "create_task": ("title",), "create_project": ("name",), "update_task": ("taskId",),
             "update_project": ("projectId",), "create_client": ("name",), "update_client": ("clientId",), "update_ticket": ("ticketId",)}
 
 
