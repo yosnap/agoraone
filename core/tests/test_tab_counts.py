@@ -3,7 +3,7 @@ Central or CRMDev; only numbers, and «more» when CRMDev may have more than it 
 
 import pytest
 
-from agora_core import central, clients, crmdev_sync, tab_counts
+from agora_core import central, client_births, clients, crmdev_pending, crmdev_sync, tab_counts
 from agora_core.db import connect, migrate
 
 
@@ -15,7 +15,9 @@ def connection(tmp_path, monkeypatch):
                                                          "projects": [{"id": "p1"}], "servers": [{"name": "s"}]})
     monkeypatch.setattr(crmdev_sync, "snapshot", lambda _c: {"clients": [{"id": "c1"}], "projects": [], "truncated": False,
                                                              "counts": {"tareas": {"n": 100, "more": True}, "tickets": None}})
-    monkeypatch.setattr(clients, "directory", lambda _c: [{}, {}, {}])
+    monkeypatch.setattr(clients, "directory", lambda _c: [{"centralId": "c1"}, {"localId": 4}, {"crmdevId": "r9"}])
+    monkeypatch.setattr(client_births, "build", lambda _c: {"items": [{}], "dismissed": 0})
+    monkeypatch.setattr(crmdev_pending, "build", lambda _c: {"active": True, "counts": {"client_missing": 2, "project_missing": 5}})
     yield found
     found.close()
 
@@ -23,7 +25,8 @@ def connection(tmp_path, monkeypatch):
 def test_counts_from_what_is_kept(connection):
     found = tab_counts.build(connection)
     assert found["clientes"] == 3
-    assert found["central"] == {"clientes": 2, "proyectos": 1, "webs": 2, "servidores": 1}
+    assert found["central"] == {"clientes": 2, "proyectos": 1, "webs": 2, "servidores": 1, "por-crear": 3}  # a client kept here, one of CRMDev, a proposal
+    assert found["crmdev"]["central"] == 7  # «Desde Central»: what is pending in CRMDev
     assert found["crmdev"]["clientes"] == 1 and found["crmdev"]["tareas"] == 100 and found["crmdev"]["tareasMore"] is True
     assert found["crmdev"]["tickets"] is None  # not known: the tab shows no number
 

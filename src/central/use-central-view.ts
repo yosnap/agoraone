@@ -41,13 +41,20 @@ export const useCentralRereading = () => store.useRereading();
 export const viewKey = (view: CentralViewName, params: Record<string, string | undefined> = {}) =>
   `${view}?${Object.entries(params).filter(([, v]) => v).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join('&')}`;
 
-export type CentralTab = { id: CentralViewName; label: string };
+/** A tab of the section: one of Central's views, or «Por crear» (clients to create in Central, from AgoraOne). */
+export type CentralTabName = CentralViewName | 'por-crear';
+export type CentralTab = { id: CentralTabName; label: string };
 /** The tabs of the section, in order; each one reads only its own view when opened. */
 export const centralTabs: CentralTab[] = [
   { id: 'resumen', label: 'Resumen' }, { id: 'alertas', label: 'Alertas' }, { id: 'pendientes', label: 'Pendientes' },
   { id: 'clientes', label: 'Clientes' }, { id: 'proyectos', label: 'Proyectos' }, { id: 'webs', label: 'Webs' },
-  { id: 'servidores', label: 'Servidores' }, { id: 'agenda', label: 'Agenda de Central' },
+  { id: 'servidores', label: 'Servidores' }, { id: 'agenda', label: 'Agenda de Central' }, { id: 'por-crear', label: 'Por crear' },
 ];
+
+// The tab another section asks Central to open with (the Resumen's «Crear en Central»), taken once.
+let requestedTab: CentralTabName | null = null;
+export const openCentralTab = (tab: CentralTabName) => { requestedTab = tab; };
+export const takeCentralTab = (): CentralTabName => { const tab = requestedTab ?? 'resumen'; requestedTab = null; return tab; };
 
 /** The badge of each of Central's levels. */
 export const levelTone: Record<CentralLevel, string> = { green: 'good', amber: 'waiting', red: 'bad', grey: 'neutral' };

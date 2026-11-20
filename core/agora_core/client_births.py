@@ -21,6 +21,7 @@ from .db import now, transaction
 KINDS = ("client", "job")
 DAYS = 180
 LIMIT = 200
+UNNAMED = "Contacto de WhatsApp sin nombre"  # the user names it when ticking it
 KEY = re.compile(r"^(?:mail|chat|meeting|person):[0-9a-f]{24}$|^chat:\d{1,12}$")
 
 
@@ -76,8 +77,10 @@ def _all(connection: sqlite3.Connection) -> list[dict]:
             "JOIN chat_summary s ON s.conversation_id = c.id WHERE s.kind IN ('client', 'job') AND s.confidentiality = 'normal' "
             "ORDER BY c.last_incoming_at DESC LIMIT 2000"):
         phone = (row["phone"] or "").strip() or None
-        name = " ".join((row["name"] or "").split()) or phone
-        if not name or (phone and clients.find(entries, phone=phone)) or clients._named(entries, name):
+        name = " ".join((row["name"] or "").split())
+        if not name or sum(c.isdigit() for c in name) >= 6:  # no name, or a number as its name: never shown on the list
+            name = UNNAMED
+        if (phone and clients.find(entries, phone=phone)) or (name != UNNAMED and clients._named(entries, name)):
             continue
         add(f"chat:{row['id']}", "whatsapp", name, None, {"name": name, "phone": phone}, row["at"])
 

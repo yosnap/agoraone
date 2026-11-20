@@ -77,6 +77,9 @@ def fill(connection):
     connection.execute("INSERT INTO chat_conversation (id, account_id, remote_id, participant_name, participant_phone, last_incoming_at) "
                        "VALUES (7, 1, 'conv', 'Marta Reformas', '+34 611 222 333', ?)", (NOW,))
     connection.execute("INSERT INTO chat_summary (conversation_id, kind, source, confidentiality, updated_at) VALUES (7, 'job', 'local', 'normal', ?)", (NOW,))
+    connection.execute("INSERT INTO chat_conversation (id, account_id, remote_id, participant_name, participant_phone, last_incoming_at) "
+                       "VALUES (8, 1, 'conv2', '34618440999', '+34 618 440 999', ?)", (NOW,))
+    connection.execute("INSERT INTO chat_summary (conversation_id, kind, source, confidentiality, updated_at) VALUES (8, 'client', 'local', 'normal', ?)", (NOW,))
     connection.execute("INSERT INTO meeting (owner, title, status, started_at, mic_type, client, people, confidentiality) "
                        "VALUES ('yo', 'Kickoff', 'recorded', ?, 'webm', 'Gamma Labs', ?, 'normal')",
                        (NOW, json.dumps([{"name": "Eva", "email": "eva@gamma.example"}, {"name": "Ana", "email": "ana@acme-studio.es"}])))
@@ -93,10 +96,10 @@ def test_proposals_only_from_normal_and_never_known(setup):
     client, _ = setup
     found = births(client)
     names = {i["name"]: i for i in found["items"]}
-    assert set(names) == {"Acme Studio", "Pepe Pérez", "Marta Reformas", "Gamma Labs", "Eva"}
+    assert set(names) == {"Acme Studio", "Pepe Pérez", "Marta Reformas", "Gamma Labs", "Eva", client_births.UNNAMED}  # a number is never a name
     assert names["Acme Studio"]["count"] == 3 and names["Acme Studio"]["hint"] == "acme-studio.es"  # two mails and a meeting
-    text = json.dumps(found)
-    assert "@" not in text and "611" not in text  # never an address nor a number in the list
+    text = json.dumps([{k: v for k, v in i.items() if k != "key"} for i in found["items"]])  # the keys are hashes
+    assert "@" not in text and "611" not in text and "618" not in text  # never an address nor a number in the list
 
 
 def test_a_dismissed_proposal_can_come_back(setup):

@@ -79,7 +79,7 @@ def _project_items(pairs: dict, crmdev_client_of: dict[str, str]) -> list[dict]:
             continue
         if not p.get("crmdevId"):
             items.append({"key": f"project_missing:{p['id']}", "kind": "project_missing", "name": p["name"], "centralId": p["id"],
-                          "client": p.get("client"), "status": p.get("status"), "maybe": hinted.get(p["id"])})
+                          "client": p.get("client"), "status": p.get("status"), "projectKind": p.get("kind"), "maybe": hinted.get(p["id"])})
             continue
         other = theirs.get(p["crmdevId"]) or {}
         changes = []
