@@ -91,9 +91,9 @@ export type ChatProgress = { type: 'status'; stage: 'starting' | 'generating' } 
 export const cancelTurn = (conversationId: string) => request<{ cancelled: string }>(`/conversations/${encodeURIComponent(conversationId)}/cancel`, {});
 export const answerApproval = (conversationId: string, requestId: string, choice: 'once' | 'deny') =>
   request<{ answered: string }>(`/conversations/${encodeURIComponent(conversationId)}/approvals/${encodeURIComponent(requestId)}`, { choice });
-export async function sendMessage(id: string, message: string, documentId?: string, onProgress?: (event: ChatProgress) => void): Promise<Conversation> {
+export async function sendMessage(id: string, message: string, documentId?: string, onProgress?: (event: ChatProgress) => void, signal?: AbortSignal): Promise<Conversation> {
   const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/messages`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson', 'X-Agora-CSRF': csrf },
+    method: 'POST', signal, headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson', 'X-Agora-CSRF': csrf },
     body: JSON.stringify({ message, documentId }),
   });
   if (!response.ok) { const data = await response.json(); throw new Error(data.error || 'No se pudo enviar.'); }

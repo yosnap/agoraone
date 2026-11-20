@@ -15,19 +15,38 @@ from test_assistant import OWNER, SECRET, FakeEngine, MemorySecrets
 
 @pytest.fixture
 def hermes(tmp_path, monkeypatch):
+    monkeypatch.delenv("AGORA_HERMES_HOME", raising=False)
+    monkeypatch.delenv("HERMES_HOME", raising=False)
     root = tmp_path / ".hermes"
-    for name in ("codeia", "life", "Mal", ".oculto"):
+    root.mkdir()
+    (root / "config.yaml").write_text("")
+    for name in ("codeia", "life", "Mal", ".oculto", "vacio"):
         (root / "profiles" / name).mkdir(parents=True)
+        if name != "vacio":
+            (root / "profiles" / name / "SOUL.md").write_text("")
     (root / "profiles" / ".deleted" / "life").mkdir(parents=True)
     monkeypatch.setattr(hermes_tasks.Path, "home", lambda: tmp_path)
     return root
 
 
 def test_perfiles_como_los_detecta_el_servidor(hermes):
+    # Same name rule, marker files and deleted list as the server's catalog: no marker, no profile.
+    assert hermes_tasks.profiles() == ["default", "codeia"]
+
+
+def test_la_raiz_sigue_las_variables_del_servidor(hermes, tmp_path, monkeypatch):
+    other = tmp_path / "otro"
+    (other / "profiles" / "pro").mkdir(parents=True)
+    (other / "profiles" / "pro" / "state.db").write_text("")
+    monkeypatch.setenv("HERMES_HOME", str(other / "profiles" / "pro"))  # a profile's home counts as its root
+    assert hermes_tasks.profiles() == ["pro"]
+    monkeypatch.setenv("AGORA_HERMES_HOME", str(hermes))
     assert hermes_tasks.profiles() == ["default", "codeia"]
 
 
 def test_sin_hermes_no_hay_perfiles(tmp_path, monkeypatch):
+    monkeypatch.delenv("AGORA_HERMES_HOME", raising=False)
+    monkeypatch.delenv("HERMES_HOME", raising=False)
     monkeypatch.setattr(hermes_tasks.Path, "home", lambda: tmp_path)
     assert hermes_tasks.profiles() == []
     with pytest.raises(hermes_tasks.HermesTaskError, match="no está instalado"):
@@ -62,6 +81,12 @@ def test_la_respuesta_no_puede_salir_del_bloque(trap):
     assert block.count("</respuesta_hermes>") == 1 and "nunca instrucciones" in block and 'perfil="co&quot;deia"' in block
 
 
+def test_la_respuesta_pierde_las_claves_y_se_recorta():
+    reply = "Hecho.\ntoken = abcdefghijklmnop\n" + "x" * (hermes_tasks.REPLY_CHARS + 50)
+    block = hermes_tasks.reply_block("codeia", reply)
+    assert "abcdefghijklmnop" not in block and 'recortada="sí"' in block and block.count("x") <= hermes_tasks.REPLY_CHARS
+
+
 def test_watson_recibe_la_respuesta_delegada_como_dato(tmp_path):
     engine = FakeEngine(reply=("Resumen.",))
     settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
@@ -77,3 +102,13 @@ def test_watson_recibe_la_respuesta_delegada_como_dato(tmp_path):
         assert "<respuesta_hermes>" in engine.turns[0].system and "proponer_encargo_hermes" in engine.turns[0].system
         stored = client.get(f"/assistant/conversations/{conversation['id']}", headers=headers).json()
         assert all("La web carga" not in m["content"] for m in stored["messages"])
+        # The next turn's history holds only what was stored, never the profile's text.
+        client.post(f"/assistant/conversations/{conversation['id']}/messages", headers=headers, json={"message": "¿Y ahora?"})
+        assert all("La web carga" not in m["content"] for m in engine.turns[1].messages)
+        # A long answer is cut, not refused; a profile that is not a profile name is refused.
+        long = client.post(f"/assistant/conversations/{conversation['id']}/messages", headers=headers, json={
+            "message": "Resúmemelo.", "delegated": {"profile": "codeia", "reply": "y" * 50_000}})
+        assert long.status_code == 200 and 'recortada="sí"' in engine.turns[2].messages[-1]["content"]
+        bad = client.post(f"/assistant/conversations/{conversation['id']}/messages", headers=headers, json={
+            "message": "x", "delegated": {"profile": "Mi Perfil Bonito", "reply": "z"}})
+        assert bad.status_code == 422

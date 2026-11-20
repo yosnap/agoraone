@@ -101,8 +101,9 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [open]);
   const talking = useSpeaking();
   const voiceNote = useVoiceNotice();
-  const send = useCallback(async (text: string, into: number | null, delegated?: Delegated) => {
+  const send = useCallback(async (text: string, into: number | null, delegated?: Delegated): Promise<boolean> => {
     let id = into;
+    let ok = false;
     let spokeFinal = false;
     setError('');
     try {
@@ -144,6 +145,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
           : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? inboxStep(event.count, event.chats) : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'meetings' ? `Buscó en las reuniones · ${event.count}` : event.tool === 'meeting' ? `Leyó la reunión «${event.title}»` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'note_proposal' ? `Propuso la nota «${event.note.title}»` : event.tool === 'event_proposal' ? `Propuso el evento «${event.event.title}»` : event.tool === 'quote_proposal' ? `Propuso el presupuesto «${event.quote.title}»` : event.tool === 'issue_proposal' ? `Propuso una issue en ${event.issue.repo}` : event.tool === 'orca_proposal' ? `Propuso llevar un encargo a Orca en ${event.proposal.repo}` : event.tool === 'hermes_proposal' ? `Propuso un encargo para ${event.proposal.profile} (Hermes)` : event.tool === 'chat_reply_proposal' ? 'Propuso una respuesta de WhatsApp' : event.tool === 'cleanup_proposal' ? `Preparó ${event.messages.length} correos para ${event.action === 'trash' ? 'la Papelera' : 'archivar'}` : event.tool === 'reorg_proposal' ? `Propuso ${event.moves.length} cambios para ordenar el vault` : event.tool === 'vault_outline' ? `Revisó el vault · ${event.notes} notas en ${event.folders} carpetas` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
           : previous));
       }, controller.signal, delegated);
+      ok = true;
     } catch (failure) {
       if (!(failure instanceof DOMException && failure.name === 'AbortError')) setError(failure instanceof Error ? failure.message : 'No se pudo responder.');
     } finally {
@@ -162,6 +164,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       if (id === null || shownId.current === id) setLive(null);
       void refreshList();
     }
+    return ok;
   }, [refreshList, onSources]);
   // A question asked from the brain's page starts a new conversation, once.
   useEffect(() => { if (question) { onQuestionTaken?.(); void send(question, null); } }, [question, onQuestionTaken, send]);
@@ -257,7 +260,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         <QuoteProposals state={quotes}/>
         <IssueProposals state={issues}/>
         <OrcaProposals state={orcas}/>
-        <HermesProposals state={hermes} name={name} onPassBack={(profile, reply) => void send(`Esto ha respondido ${profile} al encargo. Resúmemelo.`, current, { profile, reply })}/>
+        <HermesProposals state={hermes} name={name} busy={live !== null} onPassBack={(profile, label, reply) => send(`Esto ha respondido ${label} al encargo. Resúmemelo.`, current, { profile, reply })}/>
         <ChatReplyProposals state={chatReplies} discreet={discreet}/>
         <CleanupProposals state={cleanups} discreet={discreet}/>
         <ReorgProposals state={reorgs}/>

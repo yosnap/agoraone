@@ -53,8 +53,8 @@ def default_engines(settings: dict, secrets, workdir=None) -> list[Engine]:
 
 
 class DelegatedIn(BaseModel):
-    profile: str = Field(min_length=1, max_length=64)
-    reply: str = Field(min_length=1, max_length=hermes_tasks.REPLY_CHARS)
+    profile: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")
+    reply: str = Field(min_length=1, max_length=hermes_tasks.REPLY_LIMIT)  # cut to REPLY_CHARS, never refused for length
 
 
 class MessageIn(BaseModel):
@@ -98,6 +98,8 @@ def _logged(event: dict) -> tuple[str, str]:
         return "proponer_regla", json.dumps({"action": event["rule"].get("action")}, ensure_ascii=False)
     if event["tool"] == "orca_proposal":  # which repository and agent, not the task
         return "proponer_encargo_orca", json.dumps({"repositorio": event["proposal"].get("repo"), "agente": event["proposal"].get("agent")}, ensure_ascii=False)
+    if event["tool"] == "hermes_reply":  # that a profile's answer reached Watson, and how long; never its text
+        return "respuesta_hermes", json.dumps({"perfil": event["profile"], "caracteres": event["chars"]}, ensure_ascii=False)
     if event["tool"] == "hermes_proposal":  # which profile, not the task
         return "proponer_encargo_hermes", json.dumps({"perfil": event["proposal"].get("profile")}, ensure_ascii=False)
     if event["tool"] == "issue_proposal":  # which repository, not what it says
@@ -439,6 +441,7 @@ def assistant_router(
                 system = assistant.system_prompt(current)
                 if body.delegated:
                     pages_block = "\n\n".join(filter(None, [hermes_tasks.reply_block(body.delegated.profile, body.delegated.reply), pages_block]))
+                    toolbox.history.append({"tool": "hermes_reply", "profile": body.delegated.profile, "chars": len(body.delegated.reply)})
                 question = f"{context}\n\n{pages_block + chr(10) + chr(10) if pages_block else ''}Pregunta: {body.message}"
                 last_error = None
                 for engine in candidates:
