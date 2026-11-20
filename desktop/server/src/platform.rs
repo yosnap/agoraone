@@ -338,7 +338,38 @@ pub fn inspect_handle(file: &File) -> io::Result<FileInfo> {
     let is_file = (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) == 0;
     let len = ((info.nFileSizeHigh as u64) << 32) | (info.nFileSizeLow as u64);
     let index = ((info.nFileIndexHigh as u64) << 32) | (info.nFileIndexLow as u64);
-    Ok(FileInfo { is_file, nlink: info.nNumberOfLinks as u64, len, id: FileId(info.dwVolumeSerialNumber as u64, index) })
+    let nlink = link_count(info.nNumberOfLinks, || volume_has_hard_links(file));
+    Ok(FileInfo { is_file, nlink, len, id: FileId(info.dwVolumeSerialNumber as u64, index) })
+}
+
+/// Some volumes cannot hold hard links and report no link count at all: Google Drive's drive (which Windows sees
+/// as FAT32) says 0 for every file. There a file has no other name, so it counts as one link. A volume that does
+/// hold hard links and still says 0 keeps 0, refused like any count but 1.
+#[cfg(windows)]
+fn link_count(reported: u32, volume_has_hard_links: impl FnOnce() -> bool) -> u64 {
+    if reported == 0 && !volume_has_hard_links() { 1 } else { u64::from(reported) }
+}
+
+/// Whether the file's volume can hold hard links. When Windows cannot tell, it is assumed it can (the safe side).
+#[cfg(windows)]
+fn volume_has_hard_links(file: &File) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::GetVolumeInformationByHandleW;
+    const FILE_SUPPORTS_HARD_LINKS: u32 = 0x0040_0000;
+    let mut flags = 0u32;
+    let ok = unsafe {
+        GetVolumeInformationByHandleW(
+            file.as_raw_handle() as _,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut flags,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    ok == 0 || flags & FILE_SUPPORTS_HARD_LINKS != 0
 }
 
 #[cfg(unix)]
@@ -619,6 +650,22 @@ mod tests {
             assert_eq!(strip_verbatim(PathBuf::from(r"\\?\UNC\servidor\recurso\carpeta")), PathBuf::from(r"\\servidor\recurso\carpeta"));
         }
         assert_eq!(normalize(Path::new("/otro/a/../b")), PathBuf::from("/otro/b"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn un_disco_sin_enlaces_duros_cuenta_cada_archivo_como_un_enlace() {
+        // Google Drive's drive says 0 links for every file and cannot hold hard links: one link each.
+        assert_eq!(link_count(0, || false), 1);
+        // A volume with hard links that says 0 is not trusted, nor are more names than one anywhere.
+        assert_eq!(link_count(0, || true), 0);
+        assert_eq!(link_count(2, || false), 2);
+        assert_eq!(link_count(1, || panic!("con un enlace no se pregunta al disco")), 1);
+        // On this test's NTFS folder Windows says the volume holds hard links.
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("nota.md");
+        fs::write(&file, "x").unwrap();
+        assert!(volume_has_hard_links(&File::open(&file).unwrap()));
     }
 
     #[test]
