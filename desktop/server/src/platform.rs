@@ -154,6 +154,16 @@ pub fn apply_minimal_os_env(command: &mut Command) {
                 command.env(name, value);
             }
         }
+        // Python on Windows finds the user's folder in USERPROFILE, not HOME: the HOME a caller sets is
+        // passed there too, unless the caller already chose its own USERPROFILE.
+        let envs: Vec<(std::ffi::OsString, Option<std::ffi::OsString>)> =
+            command.as_std().get_envs().map(|(k, v)| (k.to_os_string(), v.map(|v| v.to_os_string()))).collect();
+        let set = |name: &str| envs.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).and_then(|(_, v)| v.clone());
+        if set("USERPROFILE").is_none()
+            && let Some(home) = set("HOME")
+        {
+            command.env("USERPROFILE", home);
+        }
     }
     #[cfg(not(windows))]
     {
