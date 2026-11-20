@@ -291,6 +291,13 @@ def _wait_first(who: tuple) -> None:
         raise WebApiError("busy", BUSY)
 
 
+def wait_seconds(target: Connection) -> float:
+    """How long CRMDev asked this connection to wait (0 when it did not): a batch waits it out instead of stopping."""
+    with _cache_lock:
+        until = _busy_until.get(_who(target), 0.0)
+    return max(0.0, until - _clock())
+
+
 def _forbidden(text: str, key: str) -> WebApiError:
     """CRMDev answers 403 for several reasons, told apart by its own `error`."""
     reason = web_api.said(text, key)

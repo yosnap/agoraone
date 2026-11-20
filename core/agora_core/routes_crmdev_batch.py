@@ -146,7 +146,13 @@ def crmdev_batch_router(settings: Settings, secrets) -> APIRouter:
             with database() as connection:
                 if any(r.get("outcome") == "sent" for r in results):  # also a change: «Pendiente en CRMDev» shows what is now
                     try:
-                        crmdev_sync.refresh(connection, target)
+                        try:
+                            crmdev_sync.refresh(connection, target)
+                        except web_api.WebApiError as error:  # right after a batch CRMDev may ask to wait: once
+                            if error.status != "busy":
+                                raise
+                            time.sleep(min(crmdev_batch.WAIT_CAP, max(1.0, crmdev_api.wait_seconds(target))))
+                            crmdev_sync.refresh(connection, target)
                     except web_api.WebApiError:
                         warning = "Enviado, pero no se pudo volver a leer CRMDev: pulsa «Actualizar CRMDev» para ver los enlaces."
                 for r in created:

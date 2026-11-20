@@ -2,6 +2,8 @@
 fixed by the core, Central's tax id never sent, a project's client created in the same batch, a change that moved in
 CRMDev not sent, a batch sent once and each creation linked afterwards. CRMDev is test_crmdev_write's stand-in."""
 
+import json
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -132,3 +134,25 @@ def test_a_batch_of_changes_alone_reads_crmdev_again(setup, fake):  # noqa: F811
     body = preview(client, ["client_changed:k1:c1"]).json()
     assert client.post("/crmdev/batch/confirm", headers=HEADERS, json={"token": body["token"]}).json()["sent"] == 1
     assert "client_changed:k1:c1" not in pending(client)  # the warning goes at once, not at the next reading
+
+
+def test_when_crmdev_asks_to_wait_the_batch_waits_and_goes_on(setup, fake, monkeypatch):  # noqa: F811
+    from agora_core import crmdev_api
+
+    client, _ = setup
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(crmdev_api, "_clock", lambda: clock["now"])
+    monkeypatch.setattr(crmdev_batch.time, "sleep", lambda seconds: clock.update(now=clock["now"] + seconds))
+    writes = {"n": 0}
+
+    def limited(request):
+        if request.method == "POST" and not json.loads(request.content)["tool"].startswith("list_"):
+            writes["n"] += 1
+            if writes["n"] == 2:  # the second write: CRMDev's 429, nothing written
+                return httpx.Response(429, json={"error": "Too many requests", "retryAfter": 7})
+        return fake(request)
+    monkeypatch.setattr(crmdev_api, "TRANSPORT", httpx.MockTransport(limited))
+    body = preview(client, ["client_missing:k2", "client_changed:k1:c1", "project_missing:q2"]).json()
+    sent = client.post("/crmdev/batch/confirm", headers=HEADERS, json={"token": body["token"]}).json()
+    assert [r["outcome"] for r in sent["results"]] == ["sent", "sent", "sent"], sent
+    assert len(fake.writes()) == 3 and clock["now"] >= 1007  # it waited what CRMDev said
