@@ -1,4 +1,4 @@
-# Watson que actúa (1.7)
+# Watson que actúa (1.7 y 1.8)
 
 Plan: `plans/261115-2240-watson-actua/plan.md`. Decisión del usuario del 15/11/2026, recogida en `AGENTS.md`:
 Watson propone y el usuario confirma cada acción viendo exactamente qué se hará. Nada se ejecuta sin pulsar el
@@ -14,6 +14,8 @@ botón de la tarjeta. Watson solo lo usa cuando el usuario se lo pide, nunca por
 | `proponer_limpieza` | La lista de correos de la bandeja de entrada, cada uno con su casilla | Solo los marcados se mueven al archivo o a la Papelera de su cuenta. |
 | `proponer_reorganizacion` | Un lote de hasta 40 notas para mover o renombrar, cada una con su casilla, su motivo y el aviso de enlaces que se romperían | Solo los cambios marcados, uno a uno, por la ruta de mover del vault. |
 | `proponer_regla` (1.2) | La regla del correo tal cual | Se crea la regla. |
+| `proponer_investigacion` (1.8) | La pregunta y el alcance, editables, con los topes de Ajustes | Se lanza la investigación en internet aparte de la conversación (ver «Watson y la web»). |
+| `proponer_encargo_hermes` (1.8) | El perfil y el texto exacto del encargo, editables | Se abre una conversación con ese perfil y se le envía el encargo (ver «Encargos a perfiles de Hermes»). |
 
 Además, si se le pide una **ficha de cliente**, Watson reúne lo que sabe por Central, la Bandeja y el cerebro, y
 la propone como nota en «Clientes/<Nombre>». La ficha tiene siempre las mismas secciones: resumen, contacto,
@@ -117,6 +119,51 @@ huérfanas, repetidas o casi vacías) y propone con `proponer_reorganizacion` (`
 - Al pulsar «Aplicar», cada nota marcada se vuelve a leer para su revisión y se mueve con la ruta del vault: copia
   previa, mismo archivo (Obsidian conserva su fecha), nunca pisa otra nota y nunca borra. La tarjeta muestra el
   resultado de cada una; un fallo no detiene las demás.
+
+## Watson y la web (1.8)
+
+Decisión del usuario del 20/11/2026, recogida en `AGENTS.md`. Plan: `plans/261120-0251-watson-web-y-hermes/plan.md`.
+
+**Direcciones pegadas por el usuario.** Si el último mensaje que escribe el usuario lleva direcciones web (como mucho
+3), el núcleo las lee antes de responder con su propio lector (`core/agora_core/web_page.py`): solo `https` y `http`
+públicos, nunca este Mac ni la red local (se comprueba la dirección resuelta en cada redirección, como mucho 5), sin
+cookies ni credenciales, 2 MB y 25 s por página, HTML, texto o PDF, y hasta 40 000 caracteres. El texto llega a
+Watson delimitado como dato de terceros, nunca como instrucciones. Las direcciones de un correo, una nota, un mensaje
+o de la propia página nunca se abren solas. Watson no tiene red propia.
+
+**Investigación.** Cuando el usuario pide investigar o buscar información actual, Watson propone
+`proponer_investigacion`. No se busca nada hasta pulsar «Investigar». Entonces corre un turno aparte:
+
+- Sin el historial de la conversación ni las herramientas privadas (correo, WhatsApp, clientes, agenda, reuniones,
+  Orca, Hermes). Solo tiene las notas normales del cerebro (`buscar_en_cerebro`, `leer_nota`), `proponer_nota` y la web.
+- Busca con los servidores de Anthropic: la herramienta `web_search` de la API, con tope exacto de búsquedas, o
+  `WebSearch` de Claude Code, con tope aproximado porque no deja contarlas. El proveedor compatible no tiene
+  buscador y solo lee las direcciones que vengan en la pregunta.
+- Las páginas las lee el lector del núcleo (`leer_pagina`), nunca `WebFetch`. Solo abre direcciones que salieron en
+  los resultados de búsqueda o en la pregunta, copiadas tal cual: el modelo no puede inventar una ni añadirle nada,
+  así que una página no puede hacer que los datos de las notas salgan en una dirección (decisión del usuario: notas
+  sí, web acotada).
+- Topes en Ajustes › Asistente: búsquedas (5), páginas (6) y minutos (4). Si se superan los minutos, la investigación
+  se corta y lo dice. Si el motor falla, no se pasa a otro.
+- El resultado es un informe en Markdown con resumen, hallazgos con su fuente, dudas y fuentes. Al final propone
+  guardarlo con `proponer_nota` en «Investigaciones», y solo se guarda si el usuario lo confirma. En las respuestas
+  siguientes de esa conversación el informe llega a Watson marcado como dato de terceros.
+- Lo que Watson pone en una búsqueda llega al buscador de Anthropic. Tiene la instrucción de no meter datos de las
+  notas que no estén ya en la pregunta: es una instrucción, no un bloqueo.
+
+## Encargos a perfiles de Hermes (1.8)
+
+Watson puede proponer un encargo para un perfil de Hermes con `proponer_encargo_hermes` (perfil y texto exacto,
+hasta 4000 caracteres). El núcleo nunca habla con Hermes: la tarjeta, al pulsar «Enviar a <perfil>», abre una
+conversación con ese perfil por las rutas de chat del servidor (`/api/conversations`), donde cada herramienta que no
+sea de lectura local sigue pidiendo «Permitir». La respuesta del perfil vuelve a Watson solo si el usuario pulsa
+«Pasar la respuesta a Watson». Llega delimitada como dato de terceros, sin las líneas que parecen claves y cortada a
+20 000 caracteres. Los perfiles se detectan como en el catálogo del servidor, comprobando solo que sus archivos
+existen, sin leerlos. Ver [conversaciones-perfiles.md](conversaciones-perfiles.md).
+
+**Watson sigue en segundo plano.** La respuesta de Watson ya no depende de que su chat esté en pantalla: si el
+usuario cambia de sección o de conversación, la respuesta sigue y al volver se ve dónde va o cómo terminó, con sus
+tarjetas. Responde a una pregunta cada vez (`src/assistant/live-turns.ts`).
 
 ## Rutas del núcleo
 
