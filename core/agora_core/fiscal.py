@@ -167,16 +167,20 @@ def choose_system_folder(prompt: str, runner=None) -> str | None:
         done = run(["/usr/bin/osascript", "-e", script], capture_output=True, text=True, timeout=110)
         return (done.stdout or "").strip().rstrip("/") or None if done.returncode == 0 else None
     if sys.platform == "win32":
+        import os
+
+        # The title goes in an environment variable, so no text can ever become part of the script.
         ps = (
             "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
             "Add-Type -AssemblyName System.Windows.Forms; "
             "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
-            f"$d.Description = '{prompt}'; $d.UseDescriptionForTitle = $true; "
+            "$d.Description = $env:AGORA_PICKER_PROMPT; $d.UseDescriptionForTitle = $true; "
             "if ($d.ShowDialog() -eq 'OK') { [Console]::Out.WriteLine($d.SelectedPath) }"
         )
         flags = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if runner is None else {}
+        env = {**os.environ, "AGORA_PICKER_PROMPT": prompt}
         done = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-Command", ps],
-                   capture_output=True, text=True, encoding="utf-8", timeout=110, **flags)
+                   capture_output=True, text=True, encoding="utf-8", timeout=110, env=env, **flags)
         chosen = (done.stdout or "").strip()
         if done.returncode != 0 or not chosen:
             return None

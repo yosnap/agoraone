@@ -505,3 +505,21 @@ def test_desactivar_claude_para_la_lectura_en_curso(db, tmp_path):
         fiscal_scan._remember(connection, 1, root, paths[0], {**fiscal_scan._cached(connection, 1, root, paths[0]), "ai": {"total": "99.00"}})
     off = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set(), use_model=False)[1]
     assert all(e["total"] != "99.00" for e in off), "con Claude desactivado solo cuentan las reglas locales"
+
+
+def test_el_selector_de_windows_recibe_el_titulo_como_dato(monkeypatch):
+    """The chooser's title reaches PowerShell in an environment variable, never inside the script it runs."""
+    import subprocess
+    import sys
+
+    seen = {}
+
+    def runner(args, **kwargs):
+        seen.update(script=args[-1], env=kwargs["env"])
+        return subprocess.CompletedProcess(args, 0, stdout="C:\\Datos\\Fiscal\r\n")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    title = "Elige'; Remove-Item C:/ -Recurse; '"
+    assert fiscal.choose_system_folder(title, runner=runner) == "C:\\Datos\\Fiscal"
+    assert title not in seen["script"] and "Remove-Item" not in seen["script"]
+    assert seen["env"]["AGORA_PICKER_PROMPT"] == title
