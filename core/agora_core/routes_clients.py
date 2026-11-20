@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import central, client_cards, clients, crmdev_api, crmdev_pending, crmdev_sync, modules, project_links
+from . import central, client_cards, clients, crmdev_api, crmdev_pending, crmdev_sync, modules, project_links, tab_counts
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -194,6 +194,11 @@ def clients_router(settings: Settings, secrets=None, crmdev_health: crmdev_sync.
         except project_links.ProjectLinkError as error:
             return refuse(str(error))
         return {"done": True}
+
+    @router.get("/tab-counts")
+    async def get_tab_counts():
+        """How many there are in each tab, from what AgoraOne keeps (never asking Central nor CRMDev)."""
+        return await db(tab_counts.build)
 
     @router.get("/crmdev-pending")
     async def get_crmdev_pending(all: bool = False):
