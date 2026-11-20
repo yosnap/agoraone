@@ -174,9 +174,10 @@ y Watson.
   (`crmdev_pending.py`) y avisa de clientes de Central sin CRMDev, contactos de Central que no están en ninguna de
   sus personas de CRMDev, clientes y proyectos enlazados con nombre, empresa, correo, estado o cliente distintos,
   proyectos de Central (no archivados) sin CRMDev y clientes de CRMDev que no están en Central. Un correo distinto
-  solo dice que difiere: su valor nunca va en el aviso. Se ve en Trabajos › Clientes › «Pendiente en CRMDev» y,
+  solo dice que difiere: su valor nunca va en el aviso. Se ve en la pestaña CRMDev › «Desde Central» y,
   contado, en una tarjeta del Resumen. «Descartar» guarda solo la clave del aviso y una huella de lo que decía, y el
-  aviso vuelve cuando algo cambia.
+  aviso vuelve cuando algo cambia. Las dos listas (esta y «Por crear») usan la misma tabla (`src/sync/`): grupos con
+  contador, búsqueda, filtros por tipo y estado, una casilla por fila y una barra con lo marcado y «Revisar».
 - **Enviar a CRMDev** (1.9): en esa lista se marcan los avisos que se quieren enviar y «Revisar envío» enseña cada
   operación con sus campos antes y después, leída de CRMDev en ese momento, y lo que no puede ir con su motivo. La
   herramienta la elige el núcleo (`crmdev_batch.py`): un cliente que falta va con `create_client` (nombre, correo,
@@ -190,7 +191,7 @@ y Watson.
   envíos van uno tras otro con una pausa y, si CRMDev pide esperar, el resto se queda sin enviar. Un alta sin
   respuesta no se vuelve a ofrecer en 24 h salvo con «Revisado en CRMDev: incluirlos». Cada alta queda enlazada con
   su ficha de Central. El registro de acciones solo guarda la clase de cambio y los nombres de los campos.
-- **Los clientes nacen en Central** (1.9): Trabajos › Clientes › «Crear en Central» reúne los clientes que solo
+- **Los clientes nacen en Central** (1.9): la pestaña Central › «Por crear» reúne los clientes que solo
   están en AgoraOne, los de CRMDev que no están en Central y propuestas de quien escribe o se reúne con el usuario
   sin ser cliente (`client_births.py`). Las propuestas salen de correos y conversaciones de WhatsApp clasificados
   como de cliente o de trabajo (los correos, agrupados por dominio cuando representa a un cliente, nunca el de un

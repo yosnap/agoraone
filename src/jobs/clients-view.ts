@@ -3,7 +3,7 @@ import type { ClientBirth, ClientsDirectory, CrmdevPending, DirectoryClient, Lin
 // What the directory of clients shows, without React: the filter, the counts of the header and the sentence of each
 // suggestion of links between the three sources (Central, CRMDev and the clients kept in AgoraOne).
 
-export type ClientsFilter = 'all' | 'unplaced' | 'cards' | 'pending' | 'births';
+export type ClientsFilter = 'all' | 'unplaced' | 'cards';
 
 export function filterClients(clients: DirectoryClient[], filter: ClientsFilter): DirectoryClient[] {
   return filter === 'unplaced' ? clients.filter(client => client.unplaced) : clients;

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { getCrmdevPending, type CrmdevPending } from '../api/clients';
 import { pendingTotal } from '../jobs/clients-view';
-import { openClientsFilter } from '../jobs/jobs-tab';
+import { openCrmdevTab } from '../crmdev/use-crmdev-view';
 import type { Section } from '../shell/shell-state';
 
 /** What Central has and CRMDev lacks or has otherwise, only counted (no name, so also in discreet mode); «Ver» opens
- * the list in Trabajos › Clientes › Pendiente en CRMDev. Hidden while there is nothing or either is not read. */
+ * the list in CRMDev › Desde Central. Hidden while there is nothing or either is not read. */
 export function CrmdevPendingCard({ onOpen }: { onOpen: (section: Section) => void }) {
   const [data, setData] = useState<CrmdevPending | null>(null);
   useEffect(() => {
@@ -26,7 +26,7 @@ export function CrmdevPendingCard({ onOpen }: { onOpen: (section: Section) => vo
     <p className="muted">Lo que tiene Central y falta o es distinto en CRMDev.</p>
     <div className="field-row">
       {parts.map(([n, label]) => <span key={label}>{n} {label}</span>)}
-      <span className="actions"><button type="button" className="button" onClick={() => { openClientsFilter('pending'); onOpen('jobs'); }}>Ver lo pendiente</button></span>
+      <span className="actions"><button type="button" className="button" onClick={() => { openCrmdevTab('central'); onOpen('crmdev'); }}>Ver lo pendiente</button></span>
     </div>
   </article>;
 }

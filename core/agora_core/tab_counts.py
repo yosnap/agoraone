@@ -4,7 +4,7 @@ spends their limits; a tab whose number is not known shows none. Only numbers: a
 
 import sqlite3
 
-from . import central, clients, crmdev_sync
+from . import central, client_births, clients, crmdev_pending, crmdev_sync
 
 
 def build(connection: sqlite3.Connection) -> dict:
@@ -15,11 +15,16 @@ def build(connection: sqlite3.Connection) -> dict:
     if mine is not None:
         found["central"] = {"clientes": len(mine.get("clients") or []), "proyectos": len(mine.get("projects") or []),
                             "webs": sum(len(c.get("websites") or []) for c in mine.get("clients") or []),
-                            "servidores": len(mine.get("servers") or [])}
+                            "servidores": len(mine.get("servers") or []),
+                            # «Por crear»: clients kept here or of CRMDev without Central, and the proposals not dismissed.
+                            "por-crear": sum(1 for e in entries if not e.get("centralId") and (e.get("localId") or e.get("crmdevId")))
+                            + len(client_births.build(connection)["items"])}
     if theirs is not None:
         counts = theirs.get("counts") or {}
         found["crmdev"] = {"clientes": len(theirs.get("clients") or []), "clientesMore": bool(theirs.get("truncated")),
                            "proyectos": len(theirs.get("projects") or []), "proyectosMore": bool(theirs.get("projectsTruncated")),
                            **{name: (counts.get(name) or {}).get("n") for name in ("tareas", "tickets")},
                            **{f"{name}More": bool((counts.get(name) or {}).get("more")) for name in ("tareas", "tickets")}}
+        pending = crmdev_pending.build(connection) if mine is not None else None
+        found["crmdev"]["central"] = sum(pending["counts"].values()) if pending and pending["active"] else None
     return found

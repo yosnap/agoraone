@@ -4,9 +4,9 @@ import { request } from '../api/client';
 /** How many there are in each tab, from what AgoraOne keeps (the core never asks Central nor CRMDev for this). */
 export type TabCounts = {
   clientes: number;
-  central: { clientes: number; proyectos: number; webs: number; servidores: number } | null;
+  central: { clientes: number; proyectos: number; webs: number; servidores: number; 'por-crear': number } | null;
   crmdev: { clientes: number; clientesMore: boolean; proyectos: number; proyectosMore: boolean;
-    tareas: number | null; tareasMore: boolean; tickets: number | null; ticketsMore: boolean } | null;
+    tareas: number | null; tareasMore: boolean; tickets: number | null; ticketsMore: boolean; central: number | null } | null;
 };
 
 export const getTabCounts = () => request<TabCounts>('/core/tab-counts');

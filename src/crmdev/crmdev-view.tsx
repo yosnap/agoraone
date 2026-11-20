@@ -9,7 +9,9 @@ import { CrmdevTasks } from './crmdev-tasks';
 import { CrmdevTickets } from './crmdev-tickets';
 import { clearChanges } from './use-crmdev-change';
 import { useTabCounts, withCount } from '../shell/tab-counts';
-import { crmdevTabs, startCrmdev, useCrmdevRead, type CrmdevTabName } from './use-crmdev-view';
+import { CrmdevFromCentral } from '../sync/crmdev-from-central';
+import { useModules, moduleOn } from '../shell/modules';
+import { takeCrmdevTab, crmdevTabs, startCrmdev, useCrmdevRead, type CrmdevTabName } from './use-crmdev-view';
 import '../central/central.css';
 import './crmdev.css';
 
@@ -18,16 +20,19 @@ export const crmdevConnected = (connector: Connector | null) => Boolean(connecto
 
 /** The tabs and the open one; split from the section so it renders without reading the connection. */
 export function CrmdevTabs({ tab, onTab, discreet, onOpen }: { tab: CrmdevTabName; onTab: (tab: CrmdevTabName) => void; discreet: boolean; onOpen: (section: Section) => void }) {
-  const { counts } = useTabCounts();
+  const { counts, reload } = useTabCounts();
+  const modules = useModules();
+  const tabs = crmdevTabs.filter(t => t.id !== 'central' || moduleOn(modules, 'central'));
   return <>
     <div className="segmented central-tabs" role="group" aria-label="Pestañas de CRMDev">
-      {crmdevTabs.map(t => <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => onTab(t.id)}>
-        {withCount(t.label, counts?.crmdev?.[t.id], counts?.crmdev?.[`${t.id}More`])}</button>)}
+      {tabs.map(t => <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => onTab(t.id)}>
+        {withCount(t.label, counts?.crmdev?.[t.id], t.id !== 'central' && counts?.crmdev?.[`${t.id}More`])}</button>)}
     </div>
     <div className="central-panel">
       {tab === 'proyectos' ? <CrmdevProjects discreet={discreet} onOpen={onOpen}/>
         : tab === 'tareas' ? <CrmdevTasks discreet={discreet} onOpen={onOpen}/>
         : tab === 'tickets' ? <CrmdevTickets discreet={discreet} onOpen={onOpen}/>
+        : tab === 'central' ? <CrmdevFromCentral discreet={discreet} onChanged={reload}/>
         : <CrmdevClients discreet={discreet} onOpen={onOpen}/>}
       {tab === 'tareas' && <OpenInCrmdev page="tareas" label="Abrir las tareas en CRMDev" discreet={discreet}/>}
     </div>
@@ -40,7 +45,7 @@ export function CrmdevView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
   // Once per visit: nothing read before (or before connecting) is shown as current. It only empties the store, asks
   // nothing and is harmless if React runs it twice; the reads start once their components are on screen.
   useState(() => { startCrmdev(); clearChanges(); });
-  const [tab, setTab] = useState<CrmdevTabName>('proyectos');
+  const [tab, setTab] = useState<CrmdevTabName>(takeCrmdevTab);
   const connection = useCrmdevRead('conexion', () => getConnector('crmdev'));
   const connected = crmdevConnected(connection.data);
   return <section className="page central crmdev" aria-labelledby="crmdev-title">

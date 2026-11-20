@@ -11,7 +11,7 @@ export function takeJobsTab(): JobsTab {
 }
 
 // The filter the directory of clients opens with (the Resumen's «Ver sin ubicar»), taken once by the directory.
-export type ClientsFilterRequest = 'all' | 'unplaced' | 'cards' | 'pending' | 'births';
+export type ClientsFilterRequest = 'all' | 'unplaced' | 'cards';
 let filterRequested: ClientsFilterRequest | null = null;
 
 export function openClientsFilter(filter: ClientsFilterRequest) { requested = 'clients'; filterRequested = filter; }

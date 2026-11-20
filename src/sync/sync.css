@@ -1,0 +1,26 @@
+/* The lists to send to another app («Desde Central» in CRMDev, «Por crear» in Central) and their exact review. */
+.sync { display:flex; flex-direction:column; gap:12px; min-width:0 }
+.sync-bar { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap }
+.sync-groups { flex-wrap:wrap }
+.sync-hint { margin:0; font-size:12px }
+.sync-filters { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end }
+.sync-filters .field { min-width:180px }
+.sync-search { flex:1 1 240px; max-width:360px }
+.sync-selection { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 12px; border:1px solid var(--c-dfe3d6);
+  border-radius:12px; background:var(--c-fffffa); font-size:12px; color:var(--c-355a50); position:sticky; top:0; z-index:2 }
+.sync-selection .action-button { margin-left:auto }
+.sync-scroll { overflow-x:auto; min-width:0 }
+.sync-table .sync-check { width:1%; text-align:center }
+.sync-table input[type="checkbox"] { width:15px; height:15px; accent-color:var(--c-173d3c); cursor:pointer; vertical-align:middle }
+.sync-table .sync-name { white-space:nowrap }
+.sync-table .sync-detail { color:var(--c-355a50); opacity:.85 }
+.sync-changes { list-style:none; margin:4px 0 0; padding:0; display:flex; flex-direction:column; gap:2px }
+.sync-name-input { width:100%; min-width:180px; font:inherit; padding:4px 8px; border:1px solid var(--c-dfe3d6); border-radius:8px;
+  background:var(--c-fffffa); color:var(--c-173d3c) }
+.sync-table tr.sync-dismissed > td { opacity:.55 }
+.batch-review { display:flex; flex-direction:column; gap:12px }
+.batch-review-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:14px }
+.batch-review-list > li { display:flex; flex-direction:column; gap:6px }
+.batch-review-list .data-table th { width:22%; white-space:nowrap }
+.batch-review-list .sync-before { opacity:.7 }
+.batch-review-skipped { list-style:none; margin:4px 0 0; padding:0; font-size:12px }

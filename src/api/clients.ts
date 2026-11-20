@@ -94,7 +94,7 @@ export type PendingItem = {
   /** client_missing: its projects in Central; contact_missing: its people in CRMDev. */
   projects?: number; contacts?: number;
   /** crmdev_only: its commercial state in CRMDev. project_missing: its state in Central. */
-  status?: string | null; client?: string | null;
+  status?: string | null; client?: string | null; projectKind?: string | null;
   /** project_missing: a CRMDev project whose name looks alike (link it in the project's record). */
   maybe?: string | null;
   changes?: PendingChange[];

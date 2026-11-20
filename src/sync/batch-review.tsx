@@ -4,6 +4,7 @@ import type { BatchOutcome, BatchPreview, BatchResult, BatchSkipped } from '../a
 import { invalidateClients } from '../data/clients-store';
 import { ActionButton } from '../ui/action-button';
 import { LoadError } from '../ui/load-state';
+import './sync.css';
 
 export const OUTCOMES: Record<BatchOutcome, string> = {
   sent: 'Hecho', already: 'Ya estaba así', conflict: 'No enviado: cambió desde la revisión', skipped: 'No enviado: ya apareció',
@@ -49,19 +50,22 @@ export function BatchReview({ dest, onClose, onDone }: { dest: BatchDest; onClos
     {error && <LoadError message={error}/>}
     {result ? <>
       <p role="status" className="task-done">{result.sent === 1 ? `Un cambio hecho en ${dest.name}.` : `${result.sent} cambios hechos en ${dest.name}.`}{result.warning ? ` ${result.warning}` : ''}</p>
-      <ul className="plain-list">{result.results.map(r => <li key={r.key}><strong>{r.title}</strong> <small className="muted">· {OUTCOMES[r.outcome]}{r.message && r.outcome === 'error' ? `: ${r.message}` : ''}</small></li>)}</ul>
+      <table className="data-table"><thead><tr><th>Cambio</th><th>Resultado</th></tr></thead>
+        <tbody>{result.results.map(r => <tr key={r.key}><td><strong>{r.title}</strong></td>
+          <td>{OUTCOMES[r.outcome]}{r.message && r.outcome === 'error' ? `: ${r.message}` : ''}</td></tr>)}</tbody></table>
       <span className="actions"><ActionButton icon="check" label="Cerrar" onClick={onClose}/></span>
     </> : <>
       {busy && !shown && <p className="muted">Leyendo {dest.name} para preparar el envío…</p>}
-      {shown && <ol className="plain-list">{shown.operations.map(op => <li key={op.key}>
+      {shown && <ol className="batch-review-list">{shown.operations.map(op => <li key={op.key}>
         <strong>{op.title}</strong>{op.origin && <small className="muted"> · {op.origin}</small>}
-        <table className="work-table"><tbody>{op.rows.map(row => <tr key={row.field}>
-          <th scope="row">{row.label}</th><td className="muted">{row.before ?? '—'}</td><td>→ {row.after ?? '—'}</td></tr>)}</tbody></table>
+        <table className="data-table"><thead><tr><th>Campo</th><th>Ahora</th><th>Quedará</th></tr></thead>
+          <tbody>{op.rows.map(row => <tr key={row.field}>
+            <th scope="row">{row.label}</th><td className="sync-before">{row.before ?? '—'}</td><td><strong>{row.after ?? '—'}</strong></td></tr>)}</tbody></table>
         {(op.notes ?? []).map(note => <small key={note} className="muted">{note} </small>)}
       </li>)}</ol>}
       {shown?.warnings.map(w => <p key={w} className="notice">{w}</p>)}
       {skipped.length > 0 && <div><small>No se envía:</small>
-        <ul className="plain-list muted">{skipped.map(s => <li key={s.key}><small>{s.name}: {s.reason}</small></li>)}</ul></div>}
+        <ul className="batch-review-skipped muted">{skipped.map(s => <li key={s.key}><strong>{s.name}</strong>: {s.reason}</li>)}</ul></div>}
       <span className="actions">
         <ActionButton icon="close" label="Cancelar" disabled={busy} onClick={onClose}/>
         {doubtful.length > 0 && <button type="button" className="button" disabled={busy} onClick={() => void review(doubtful)}>Revisado en {dest.name}: incluirlos</button>}
