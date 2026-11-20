@@ -29,12 +29,20 @@ class MusicError(RuntimeError):
         self.reason = reason
 
 
+def _which(script: str) -> str:
+    """The script's first meaningful line, for the log: never its arguments (what the user asked to play)."""
+    return next((line.strip() for line in script.splitlines() if line.strip() and not line.strip().startswith("on run")), "")[:80]
+
+
 def _osascript(script: str, *args: str, timeout: float = TIMEOUT) -> str:
+    started = time.perf_counter()  # not monotonic(): the «pon …» budget is measured with that one
     try:
         done = subprocess.run(["/usr/bin/osascript", "-e", script, *args], capture_output=True, text=True, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"AgoraOne núcleo: música sin respuesta en {time.perf_counter() - started:.1f} s ({type(error).__name__}): {_which(script)}", file=sys.stderr)
         raise MusicError("El reproductor no responde.", "silent") from error
     if done.returncode != 0:
+        print(f"AgoraOne núcleo: música falló ({done.stderr.strip()[-160:]}): {_which(script)}", file=sys.stderr)
         if "-1743" in done.stderr or "not allowed" in done.stderr.lower():
             raise MusicError("macOS no deja a AgoraOne controlar la música: dale permiso en Ajustes del Sistema › Privacidad y seguridad › Automatización.")
         raise MusicError("El reproductor no pudo hacerlo.")
