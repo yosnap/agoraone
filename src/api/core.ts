@@ -86,7 +86,7 @@ export const createAssistantConversation = () => core<{ id: number; persona: str
 export const getAssistantConversation = (id: number) =>
   core<ConversationSummary & { messages: AssistantMessage[] }>(`/assistant/conversations/${id}`);
 
-export type Stage = 'recuerda' | 'piensa' | 'responde';
+export type Stage = 'recuerda' | 'web' | 'piensa' | 'responde';
 /** A mail rule Watson proposed: created only with the user's «Crear regla» (or a plain «sí»), exactly as shown. */
 export type ProposedRule = { name: string; action: MailRuleAction; sender?: string; subject?: string; words?: string; confidentiality?: Level };
 export const acceptProposal = (id: string) => core<{ id: number; name: string }>(`/assistant/proposals/${encodeURIComponent(id)}/accept`, {});
@@ -111,6 +111,7 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'orca_proposal'; proposal: OrcaProposal }
   | { kind: 'tool'; tool: 'chat_reply_proposal'; id: string; reply: ProposedChatReply }
   | { kind: 'tool'; tool: 'meeting'; title: string; part: number }
+  | { kind: 'tool'; tool: 'web'; pages: { host: string; ok: boolean }[] }
   | { kind: 'tool'; tool: 'agenda' | 'day' | 'projects'; [key: string]: unknown }
   | { kind: 'done'; engine: string; model: string };
 
