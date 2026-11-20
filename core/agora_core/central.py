@@ -32,6 +32,7 @@ class NoReadingError(CentralError):
     """The connected key has no «lectura» permission: nothing to read over HTTP, and nothing broken."""
 
 
+_PROJECT_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _GITHUB = re.compile(r"(?:https://(?:www\.)?github\.com/|git@github\.com:)((?!-)[A-Za-z0-9-]{1,39})/([A-Za-z0-9._-]{1,100}?)(?:\.git)?/?")
 
 
@@ -66,11 +67,17 @@ def shape(raw: dict) -> dict:
         if client:
             client["projects"].append({"name": project.get("name"), "status": project.get("status"), "phase": project.get("phase"),
                                        "repo": github_repo(project.get("repo"))})
+    # Every project with its id, also those without a client (own ones), for linking them with CRMDev's.
+    projects = [{"id": p["id"], "name": str(p["name"])[:200], "client": p.get("client") if isinstance(p.get("client"), str) else None,
+                 "kind": p.get("kind") if isinstance(p.get("kind"), str) else None, "status": p.get("status") if isinstance(p.get("status"), str) else None,
+                 "repo": github_repo(p.get("repo") or p.get("repoUrl"))}
+                for p in raw.get("projects", []) if isinstance(p, dict) and isinstance(p.get("id"), str) and _PROJECT_ID.fullmatch(p["id"])
+                and isinstance(p.get("name"), str) and p["name"].strip()]
     servers = [{"name": s.get("name"), "status": s.get("status") or s.get("liveStatus"), "provider": s.get("provider"),
                 "projects": [p.get("name") if isinstance(p, dict) else p for p in (s.get("projects") or [])][:20]}
                for s in raw.get("servers", []) if isinstance(s, dict) and s.get("name")]
     clients = [{**c, "domains": sorted(c["domains"])} for c in sorted(by_client.values(), key=lambda c: c["name"].casefold())]
-    return {"clients": clients, "servers": servers, "fetchedAt": now()}
+    return {"clients": clients, "projects": projects, "servers": servers, "fetchedAt": now()}
 
 
 def source(connection: sqlite3.Connection, secrets) -> central_api.Connection | None:

@@ -71,3 +71,15 @@ export const linkCrmdevClient = (id: number, remoteId: string, state: 'linked' |
 /** The same between one of Central's clients and one of CRMDev's, without a client kept here. */
 export const linkClientPair = (centralId: string, crmdevId: string, state: 'linked' | 'distinct' | 'undistinct') =>
   core<{ done: true }>('/clients/pairs', { centralId, crmdevId, state });
+
+/** Central's and CRMDev's projects, each with its pair: linked by the user (`user`) or by the same unique name (`name`). */
+export type LinkedCentralProject = { id: string; name: string; client: string | null; kind: string | null; status: string | null; repo: string | null;
+  crmdevId: string | null; how: 'user' | 'name' | null };
+export type LinkedCrmdevProject = { id: string; name: string; status: string | null; type: string | null; clientId: string | null;
+  centralId: string | null; how: 'user' | 'name' | null };
+export type ProjectPairHint = { centralId: string; centralName: string | null; crmdevId: string; crmdevName: string | null };
+export type ProjectLinks = { central: LinkedCentralProject[]; crmdev: LinkedCrmdevProject[]; suggestions: ProjectPairHint[]; distinct: ProjectPairHint[] };
+export const getProjectLinks = () => core<ProjectLinks>('/project-links');
+/** «Enlazar», «Son distintos» or undoing either between one of Central's projects and one of CRMDev's. */
+export const setProjectLink = (centralId: string, crmdevId: string, state: 'linked' | 'distinct' | 'unlinked') =>
+  core<{ done: true }>('/project-links', { centralId, crmdevId, state });

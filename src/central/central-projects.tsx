@@ -13,6 +13,8 @@ import { Block, Facts, RecordLayout } from '../ui/record-layout';
 import { dateLabel, forgetCentral, useCentralRead, useCentralReadings, viewKey } from './use-central-view';
 import { ActionButton } from '../ui/action-button';
 import { ProjectStatus } from './project-status';
+import { ProjectPair } from '../connectors/project-pair';
+import { moduleOn, useModules } from '../shell/modules';
 
 const ALL = '';
 const PAGE = '50';
@@ -51,6 +53,7 @@ function ProjectRecord({ id, discreet, onBack, onOpen }: { id: string; discreet:
   const can = useWritePermissions();
   const [editing, setEditing] = useState<Editing>(null);
   const [said, setSaid] = useState('');
+  const modules = useModules();
   const back = <ActionButton icon="back" label="Volver a la lista" onClick={onBack}/>;
   if (read.failure) return <><div className="actions central-actions">{back}</div><CentralProblem failure={read.failure} onRetry={read.reload} onOpen={onOpen}/></>;
   if (!read.data) return <><div className="actions central-actions">{back}</div><Loading label="Leyendo la ficha del proyecto" lines={4}/></>;
@@ -74,6 +77,7 @@ function ProjectRecord({ id, discreet, onBack, onOpen }: { id: string; discreet:
       {editable && editing === 'estado' ? <CentralEditProject key={editable.revision} project={editable} onDone={done} onCancel={() => setEditing(null)} onReview={forgetCentral}/>
         : <Facts items={state}/>}
     </Block>
+    {moduleOn(modules, 'crmdev') && <Block title="En CRMDev"><ProjectPair side="central" id={id}/></Block>}
     <Block title="Código"><Facts items={facts}/></Block>
     <Block title="Despliegue"><Facts items={deploy}/></Block>
     <Block title="Notas" actions={editable && editing !== 'nota' && <ActionButton icon="plus" label="Añadir nota" onClick={() => open('nota')}/>}>

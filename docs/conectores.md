@@ -163,6 +163,12 @@ y Watson.
   la dirección guardada. Al apagar el módulo o desconectar, la instantánea **se conserva sin usarse** hasta que se
   vuelva a encender, igual que la de Central, y los enlaces del usuario tampoco se borran. Olvidar solo la clave
   sigue usando lo ya leído; «Crear en CRMDev» desaparece porque necesita la clave.
+- **Proyectos enlazados** (1.9, decisión del usuario del 20/11/2026: Central es la fuente y CRMDev la sigue): la
+  instantánea de CRMDev guarda también sus proyectos (id, nombre, estado, tipo y cliente si CRMDev lo da) y la de
+  Central el id de cada proyecto. Un proyecto de Central y uno de CRMDev son el mismo si el usuario los enlaza, o si
+  se llaman igual, cada nombre es único en su lado y sus clientes no se contradicen. Lo que solo se parece es una
+  sugerencia («Enlazar» / «Son distintos», reversible). La ficha de proyecto de cada lado enseña su par (bloques «En
+  CRMDev» y «En Central»). Enlazar no copia nada entre ellos.
 - Watson (`consultar_clientes`) recibe de cada cliente su nombre, su empresa, su origen (Central, AgoraOne o ambos),
   sus dominios, sus webs, sus proyectos activos o en mantenimiento, su estado en CRMDev (si tiene ficha allí) y si
   está sin ubicar. Nunca recibe el correo, el teléfono, el NIF, las notas, las diferencias entre fuentes ni los
