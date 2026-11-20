@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import central, client_cards, clients, crmdev_api, crmdev_sync, modules, project_links
+from . import central, client_cards, clients, crmdev_api, crmdev_pending, crmdev_sync, modules, project_links
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -55,6 +55,13 @@ class ProjectLinkIn(BaseModel):
     centralId: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     crmdevId: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     state: str = Field(pattern=r"^(linked|distinct|unlinked)$")
+
+
+class PendingDismissIn(BaseModel):
+    """«Descartar» a warning of «Pendiente en CRMDev» with the signature it was shown with, or «Volver a mostrar» (null)."""
+    model_config = {"extra": "forbid"}
+    key: str = Field(min_length=1, max_length=200)
+    signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 def clients_router(settings: Settings, secrets=None, crmdev_health: crmdev_sync.CrmdevHealth | None = None) -> APIRouter:
@@ -185,6 +192,19 @@ def clients_router(settings: Settings, secrets=None, crmdev_health: crmdev_sync.
         try:
             await db(lambda c: project_links.set_link(c, body.centralId, body.crmdevId, body.state))
         except project_links.ProjectLinkError as error:
+            return refuse(str(error))
+        return {"done": True}
+
+    @router.get("/crmdev-pending")
+    async def get_crmdev_pending(all: bool = False):
+        """What Central has and CRMDev lacks or has otherwise; only reads (never an address nor a phone)."""
+        return await db(lambda c: crmdev_pending.build(c, include_dismissed=all))
+
+    @router.post("/crmdev-pending/dismiss")
+    async def dismiss_crmdev_pending(body: PendingDismissIn):
+        try:
+            await db(lambda c: crmdev_pending.dismiss(c, body.key, body.signature))
+        except crmdev_pending.PendingError as error:
             return refuse(str(error))
         return {"done": True}
 

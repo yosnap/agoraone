@@ -1,5 +1,6 @@
 import { CentralCard } from './central-card';
 import { ClientsFollowCard } from './clients-follow-card';
+import { CrmdevPendingCard } from './crmdev-pending-card';
 import type { Section } from '../shell/shell-state';
 import { moduleOn, useModules } from '../shell/modules';
 import { useAssistantName } from '../assistant/assistant-name';
@@ -139,6 +140,7 @@ export function SummaryView({ discreet, onRead, onOpen }: { discreet: boolean; o
       </article>
       {centralOn && <CentralCard discreet={discreet}/>}
       {moduleOn(modules, 'trabajos') && <ClientsFollowCard discreet={discreet} onOpen={onOpen}/>}
+      {moduleOn(modules, 'trabajos') && centralOn && moduleOn(modules, 'crmdev') && <CrmdevPendingCard onOpen={onOpen}/>}
     </div>
   </section>;
 }

@@ -83,3 +83,24 @@ export const getProjectLinks = () => core<ProjectLinks>('/project-links');
 /** «Enlazar», «Son distintos» or undoing either between one of Central's projects and one of CRMDev's. */
 export const setProjectLink = (centralId: string, crmdevId: string, state: 'linked' | 'distinct' | 'unlinked') =>
   core<{ done: true }>('/project-links', { centralId, crmdevId, state });
+
+/** «Pendiente en CRMDev»: what Central has and CRMDev lacks or has otherwise. Only read; never an address nor a phone
+ * (a different address only says that it differs). A dismissed warning comes back when what it says changes. */
+export type PendingKind = 'client_missing' | 'contact_missing' | 'client_changed' | 'crmdev_only' | 'project_missing' | 'project_changed';
+export type PendingChange = { field: string; label: string; central?: string | null; crmdev?: string | null };
+export type PendingItem = {
+  key: string; kind: PendingKind; name: string; signature: string; dismissed: boolean;
+  centralId?: string; crmdevId?: string | null; localId?: number | null;
+  /** client_missing: its projects in Central; contact_missing: its people in CRMDev. */
+  projects?: number; contacts?: number;
+  /** crmdev_only: its commercial state in CRMDev. project_missing: its state in Central. */
+  status?: string | null; client?: string | null;
+  /** project_missing: a CRMDev project whose name looks alike (link it in the project's record). */
+  maybe?: string | null;
+  changes?: PendingChange[];
+};
+export type CrmdevPending = { active: boolean; items: PendingItem[]; counts: Record<PendingKind, number>; dismissed: number; truncated: boolean };
+
+export const getCrmdevPending = (withDismissed = false) => core<CrmdevPending>(`/crmdev-pending${withDismissed ? '?all=true' : ''}`);
+/** «Descartar» with the signature it was shown with, or «Volver a mostrar» (null). */
+export const dismissPending = (key: string, signature: string | null) => core<{ done: true }>('/crmdev-pending/dismiss', { key, signature });
