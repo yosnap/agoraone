@@ -178,7 +178,7 @@ def test_rutas_de_issue_y_nota_en_repositorio_rechazan_lo_privado(app, monkeypat
     monkeypatch.setattr(repo_notes, "local_root", lambda connection, who, project: ("Acme/Web", str(root)))
     passed = test_client.post("/orca/repo-note", json={**note, "content": "Nota de la conversación", "source": {"kind": "chat", "id": normal}}, headers=HEADERS)
     assert passed.status_code == 201 and passed.json()["path"] == "docs/notas/Nota.md"
-    assert (root / "docs" / "notas" / "Nota.md").read_text() == "Nota de la conversación\n"
+    assert (root / "docs" / "notas" / "Nota.md").read_text(encoding="utf-8") == "Nota de la conversación\n"
     made = test_client.post("/issues", json={"client": "Acme", "project": "Web", "title": "x", "body": "y", "source": {"kind": "chat", "id": normal}}, headers=HEADERS)
     assert made.status_code == 201 and len(sent) == 1
 
