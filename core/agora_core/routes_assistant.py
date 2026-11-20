@@ -1,5 +1,6 @@
 """HTTP routes of the assistant: settings, engines, keys and conversations answered by Server-Sent Events."""
 
+import asyncio
 import json
 import re
 import sqlite3
@@ -12,9 +13,9 @@ from typing import Literal
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
-from . import assistant, hermes_tasks, web_page
+from . import assistant, hermes_tasks, research, web_page
 from .brain_tools import Toolbox
 from .db import DB_NAME, connect, now, transaction
 from .embed import Embedder, VectorCache
@@ -57,9 +58,15 @@ class DelegatedIn(BaseModel):
     reply: str = Field(min_length=1, max_length=hermes_tasks.REPLY_LIMIT)  # cut to REPLY_CHARS, never refused for length
 
 
+class ResearchIn(BaseModel):
+    question: str = Field(min_length=1, max_length=research.QUESTION_CHARS)
+    scope: str = Field(default="", max_length=research.QUESTION_CHARS)
+
+
 class MessageIn(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     delegated: DelegatedIn | None = None  # a Hermes profile's answer the user passes on: data, never instructions
+    research: ResearchIn | None = None  # the user pressed «Investigar»: a web research turn, apart from this conversation
 
 
 class KeyIn(BaseModel):
@@ -72,6 +79,7 @@ class SettingsIn(BaseModel):
     engine: str | None = None
     tone: dict[str, str] | None = None
     compatible: dict[str, str | None] | None = None
+    research: dict[str, StrictInt] | None = None
 
 
 def _logged(event: dict) -> tuple[str, str]:
@@ -98,6 +106,10 @@ def _logged(event: dict) -> tuple[str, str]:
         return "proponer_regla", json.dumps({"action": event["rule"].get("action")}, ensure_ascii=False)
     if event["tool"] == "orca_proposal":  # which repository and agent, not the task
         return "proponer_encargo_orca", json.dumps({"repositorio": event["proposal"].get("repo"), "agente": event["proposal"].get("agent")}, ensure_ascii=False)
+    if event["tool"] == "research_proposal":  # that one was proposed, never the question
+        return "proponer_investigacion", "{}"
+    if event["tool"] == "research":  # the caps it ran with, never the question
+        return "investigar", json.dumps({k: event[k] for k in ("busquedas", "paginas", "minutos")}, ensure_ascii=False)
     if event["tool"] == "hermes_reply":  # that a profile's answer reached Watson, and how long; never its text
         return "respuesta_hermes", json.dumps({"perfil": event["profile"], "caracteres": event["chars"]}, ensure_ascii=False)
     if event["tool"] == "hermes_proposal":  # which profile, not the task
@@ -119,6 +131,17 @@ def _logged(event: dict) -> tuple[str, str]:
 
 # Answers being written right now, for the «Agentes» section (only how many and since when).
 ANSWERING: dict = {"now": 0, "since": None}
+
+
+async def _until(stream, deadline: float | None):
+    """The engine's stream, with a time limit on each wait for it (not on what the caller does in between)."""
+    while True:
+        try:
+            async with asyncio.timeout_at(deadline):
+                item = await anext(stream)
+        except StopAsyncIteration:
+            return
+        yield item
 
 
 def _event(kind: str, data) -> str:
@@ -367,6 +390,8 @@ def assistant_router(
     @router.post("/conversations/{conversation_id}/messages")
     async def send(conversation_id: int, body: MessageIn, request: Request):
         owner = owner_of(request)
+        if body.research:  # what is kept and searched is the question itself, whatever the screen sent
+            body.message, body.delegated = f"{research.ASKED}{body.research.question}", None
 
         def prepare(connection):
             conversation = owned(connection, conversation_id, owner or "")
@@ -377,7 +402,7 @@ def assistant_router(
                    WHERE conversation_id = ? AND failed = 0 ORDER BY id DESC LIMIT ?) ORDER BY id""",
                 (conversation_id, HISTORY),
             )]
-            return dict(conversation), assistant.load_settings(connection), history
+            return dict(conversation), assistant.load_settings(connection), research.as_data(history)
         prepared = await db(prepare)
         if prepared is None:
             return JSONResponse({"error": "Conversación no encontrada."}, status_code=404)
@@ -419,11 +444,17 @@ def assistant_router(
                 # The first notes come with the question; the tools number the next ones after them.
                 toolbox = Toolbox(database, embedder, cache)
                 toolbox.proposals, toolbox.owner = proposals, owner
+                caps = research.limits(current) if body.research else None
+                if caps:  # only the web, normal notes and proponer_nota: never mail, chats, clients or the history
+                    toolbox.only, toolbox.pages_left, toolbox.max_calls = research.TOOLS, caps["pages"], caps["pages"] + 6
+                    toolbox.history.append({"tool": "research", "busquedas": caps["searches"], "paginas": caps["pages"], "minutos": caps["minutes"]})
                 toolbox.register(found[:included])
                 yield _event("sources", {"sources": toolbox.sources})
                 # Only the addresses the user wrote in this message; the core reads them, Watson has no network.
                 pages_block = ""
-                urls = web_page.urls_in(body.message)
+                urls = [] if body.research else web_page.urls_in(body.message)  # a research reads its pages itself
+                if body.research:
+                    research.remember(toolbox, f"{body.research.question} {body.research.scope}")
                 if urls:
                     yield _event("stage", {"stage": "web"})
                     pages = await web_page.fetch_all(urls)
@@ -443,15 +474,25 @@ def assistant_router(
                     pages_block = "\n\n".join(filter(None, [hermes_tasks.reply_block(body.delegated.profile, body.delegated.reply), pages_block]))
                     toolbox.history.append({"tool": "hermes_reply", "profile": body.delegated.profile, "chars": len(body.delegated.reply)})
                 question = f"{context}\n\n{pages_block + chr(10) + chr(10) if pages_block else ''}Pregunta: {body.message}"
+                if body.research:
+                    question = f"{context}\n\n{body.message}"
+                    candidates = candidates[:1]  # never again on another engine, with the budget spent and the clock reset
+                deadline = asyncio.get_running_loop().time() + caps["minutes"] * 60 if caps else None
                 last_error = None
                 for engine in candidates:
                     model = current["compatible"]["model"] if engine.name == "compatible" else current["model"]
-                    turn = Turn(system, [*history, {"role": "user", "content": question}], model, toolbox)
+                    if caps:
+                        searches = 0 if engine.name == "compatible" else caps["searches"]
+                        turn = Turn(research.system_prompt(system, body.research.scope, caps["searches"], bool(searches)),
+                                    [{"role": "user", "content": question}], model, toolbox, research.TOOLS, searches)
+                    else:
+                        turn = Turn(system, [*history, {"role": "user", "content": question}], model, toolbox)
                     parts = []
                     try:
                         # aclosing: if the browser leaves, the engine (and Claude Code's process) is closed too.
                         async with aclosing(engine.stream(turn)) as stream:
-                            async for text in stream:
+                            # The research's time counts only while the engine works, never while the browser reads.
+                            async for text in _until(stream, deadline):
                                 # What the tools did, as soon as it is known: an engine may announce a tool round
                                 # before the tool runs (Claude Code does), so it is collected again here.
                                 done_now = toolbox.drain()
@@ -465,6 +506,8 @@ def assistant_router(
                                     yield _event("stage", {"stage": "responde", "engine": engine.name, "model": model})
                                 parts.append(text)
                                 yield _event("delta", {"text": text})
+                    except TimeoutError as error:
+                        raise EngineError(f"La investigación ha superado los {caps['minutes']} minutos de Ajustes: no se ha guardado.") from error
                     except EngineError as error:
                         if parts:  # already half-answered: no silent switch to another engine
                             raise

@@ -58,7 +58,9 @@ export const getBrainMcpSetup = () => core<BrainMcpSetup>('/brain-mcp');
 
 export type Persona = { id: string; name: string; origin: string; conveys: string; language: string; voice: string };
 export type ToneKey = 'register' | 'humor' | 'length' | 'address' | 'language';
-export type AssistantSettings = { persona: string; model: string; engine: string | null; tone: Record<ToneKey, string>; compatible: { baseUrl: string | null; model: string | null } };
+export type AssistantSettings = { persona: string; model: string; engine: string | null; tone: Record<ToneKey, string>; compatible: { baseUrl: string | null; model: string | null }; research: ResearchLimits };
+/** Caps of a web research (Ajustes › Asistente). */
+export type ResearchLimits = { searches: number; pages: number; minutes: number };
 export const getPersonas = () => core<{ personas: Persona[]; tone: Record<ToneKey, string[]> }>('/assistant/personas');
 export const getAssistantSettings = () => core<AssistantSettings>('/assistant/settings');
 export const putAssistantSettings = (changes: Partial<AssistantSettings>) => core<AssistantSettings>('/assistant/settings', changes, 'PUT');
@@ -110,6 +112,7 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'issue_proposal'; id: string; issue: ProposedIssue }
   | { kind: 'tool'; tool: 'orca_proposal'; proposal: OrcaProposal }
   | { kind: 'tool'; tool: 'hermes_proposal'; proposal: HermesProposal }
+  | { kind: 'tool'; tool: 'research_proposal'; proposal: ResearchProposal }
   | { kind: 'tool'; tool: 'chat_reply_proposal'; id: string; reply: ProposedChatReply }
   | { kind: 'tool'; tool: 'meeting'; title: string; part: number }
   | { kind: 'tool'; tool: 'web'; pages: { host: string; ok: boolean }[] }
@@ -120,13 +123,15 @@ export type AssistantEvent =
 export type HermesProposal = { profile: string; task: string };
 /** A Hermes profile's answer the user passes on to Watson, which receives it delimited as data. */
 export type Delegated = { profile: string; reply: string };
+/** A web research Watson proposed: nothing is searched until the user presses «Investigar». */
+export type ResearchProposal = { question: string; scope: string };
 
 /** Sends a question and follows the answer's Server-Sent Events until it ends; an `error` event throws. */
-export async function askAssistant(id: number, message: string, onEvent: (event: AssistantEvent) => void, signal?: AbortSignal, delegated?: Delegated) {
+export async function askAssistant(id: number, message: string, onEvent: (event: AssistantEvent) => void, signal?: AbortSignal, delegated?: Delegated, research?: ResearchProposal) {
   const response = await fetch(`/api/core/assistant/conversations/${id}/messages`, {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Agora-CSRF': csrfToken() },
-    body: JSON.stringify(delegated ? { message, delegated } : { message }),
+    body: JSON.stringify({ message, ...(delegated ? { delegated } : {}), ...(research ? { research } : {}) }),
   });
   if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'No se pudo enviar la pregunta.'); }
   const reader = response.body?.getReader();

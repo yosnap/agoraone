@@ -38,6 +38,8 @@ class Turn:
     messages: list[dict]  # [{"role": "user"|"assistant", "content": str}]
     model: str  # key of MODELS for Claude engines; the provider's model name for compatible ones
     toolbox: object | None = None  # brain_tools.Toolbox: read-only brain tools for this answer
+    tools: tuple[str, ...] | None = None  # only these of the brain's tools (a research turn); None: the usual ones
+    searches: int = 0  # web searches allowed (a research turn, on Anthropic's servers); 0: none
 
 
 class Engine(Protocol):
@@ -76,15 +78,19 @@ class ClaudeCodeEngine:
     def options(self, turn: Turn):
         from claude_agent_sdk import ClaudeAgentOptions
 
-        servers, allowed, turns = {}, [], 1
+        servers, allowed, turns, builtin = {}, [], 1, []
         if turn.toolbox is not None:
-            # Only the brain's tools, served in this process: no built-in tool, none of the user's MCP servers.
-            servers = {"cerebro": _sdk_server(turn.toolbox)}
-            allowed = [f"mcp__cerebro__{spec['name']}" for spec in _specs()]
+            # Only the brain's tools, served in this process: none of the user's MCP servers.
+            servers = {"cerebro": _sdk_server(turn.toolbox, turn.tools)}
+            allowed = [f"mcp__cerebro__{spec['name']}" for spec in _specs(names=turn.tools)]
             turns = turn.toolbox.max_calls + 2
+        if turn.searches:
+            # A research turn searches on Anthropic's servers; pages are read by the core (leer_pagina), never by
+            # Claude Code's WebFetch, which would fetch from this Mac without the core's checks.
+            builtin, allowed, turns = ["WebSearch"], [*allowed, "WebSearch"], turns + turn.searches
         return ClaudeAgentOptions(
             system_prompt=turn.system, model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]),
-            tools=[], allowed_tools=allowed, mcp_servers=servers, strict_mcp_config=True, setting_sources=[],
+            tools=builtin, allowed_tools=allowed, mcp_servers=servers, strict_mcp_config=True, setting_sources=[],
             max_turns=turns, cwd=str(self.workdir) if self.workdir else None,
             extra_args={"no-session-persistence": None},
             # Only what is on this computer counts: the account's claude.ai connectors (Gmail, Drive…) may
@@ -93,7 +99,9 @@ class ClaudeCodeEngine:
         )
 
     async def stream(self, turn: Turn) -> AsyncIterator[str | None]:
-        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock, query
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolResultBlock, ToolUseBlock, UserMessage, query
+
+        from .research import remember
 
         # The child inherits this process's environment, from which scrub_api_keys() removed the API
         # variables at startup: an empty value would not do (an empty base URL breaks the connection).
@@ -104,12 +112,22 @@ class ClaudeCodeEngine:
             workdir.mkdir(parents=True, exist_ok=True, mode=0o700)
         try:
             # Text written before a tool call is the model thinking aloud, not the answer: it is held and
-            # dropped when a tool call follows.
+            # dropped when a tool call follows, unless the call only proposes something (the answer comes first).
             held: list[str] = []
+            searches: set[str] = set()  # ids of WebSearch calls, whose results say which pages may be read
             async for message in query(prompt=prompt, options=options):
+                if isinstance(message, UserMessage) and searches and not isinstance(message.content, str):
+                    for block in message.content:
+                        if isinstance(block, ToolResultBlock) and block.tool_use_id in searches:
+                            remember(turn.toolbox, json.dumps(block.content, ensure_ascii=False, default=str))
+                    continue
                 if isinstance(message, AssistantMessage):
-                    if any(isinstance(block, ToolUseBlock) for block in message.content):
-                        held = []
+                    calls = [block for block in message.content if isinstance(block, ToolUseBlock)]
+                    if calls:
+                        searches |= {block.id for block in calls if block.name == "WebSearch"}
+                        proposing = turn.tools is not None and all(block.name.startswith("mcp__cerebro__proponer_") for block in calls)
+                        texts = [block.text for block in message.content if isinstance(block, TextBlock) and block.text]
+                        held = [*held, *texts] if proposing else []
                         yield None
                         continue
                     for block in message.content:
@@ -146,19 +164,36 @@ class AnthropicApiEngine:
         if not key:
             raise EngineError("Falta la clave de API de Anthropic.")
         toolbox = turn.toolbox
-        tools = [{"name": s["name"], "description": s["description"], "input_schema": s["schema"]} for s in _specs()] if toolbox else []
+        tools = [{"name": s["name"], "description": s["description"], "input_schema": s["schema"]} for s in _specs(names=turn.tools)] if toolbox else []
+        if turn.searches:  # searched on Anthropic's servers, at most this many times in the whole answer
+            tools.append({"type": "web_search_20260318", "name": "web_search", "max_uses": turn.searches})
         messages = list(turn.messages)
+        container = None
         try:
             async with anthropic.AsyncAnthropic(api_key=key, max_retries=1) as client:
-                for _ in range((toolbox.max_calls + 1) if toolbox else 1):
+                for _ in range((toolbox.max_calls + 1 + turn.searches) if toolbox else 1):
                     async with client.messages.stream(
-                        model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]), max_tokens=4096,
+                        model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]), max_tokens=8192 if turn.searches else 4096,
                         system=turn.system, messages=messages, **({"tools": tools} if tools else {}),
+                        **({"container": container} if container else {}),
                     ) as stream:
+                        held = []  # a research turn keeps only the last round's text: the rest is the model searching aloud
                         async for text in stream.text_stream:
-                            yield text
+                            if turn.searches:
+                                held.append(text)
+                            else:
+                                yield text
                         final = await stream.get_final_message()
+                    container = getattr(getattr(final, "container", None), "id", None) or container
+                    if turn.searches:
+                        _remember_results(toolbox, final.content)
+                    if final.stop_reason == "pause_turn":  # a long web search paused the turn: it goes on from there
+                        messages += [{"role": "assistant", "content": final.content}]
+                        yield None
+                        continue
                     if final.stop_reason != "tool_use":
+                        for text in held:
+                            yield text
                         return
                     results = [{"type": "tool_result", "tool_use_id": block.id, "content": await toolbox.call(block.name, block.input)}
                                for block in final.content if block.type == "tool_use"]
@@ -166,6 +201,15 @@ class AnthropicApiEngine:
                     yield None
         except anthropic.APIError as error:
             raise EngineError(f"La API de Anthropic respondió con un error ({type(error).__name__}).") from error
+
+
+def _remember_results(toolbox, content) -> None:
+    """The addresses of the API's web_search results: the only pages a research turn may read."""
+    from .research import remember
+
+    for block in content:
+        if getattr(block, "type", "") == "web_search_tool_result" and isinstance(getattr(block, "content", None), list):
+            remember(toolbox, " ".join(str(getattr(item, "url", "")) for item in block.content))
 
 
 class CompatibleEngine:
@@ -189,7 +233,7 @@ class CompatibleEngine:
         if toolbox is not None:
             toolbox.mail = False
         tools = [{"type": "function", "function": {"name": s["name"], "description": s["description"], "parameters": s["schema"]}}
-                 for s in _specs(mail=False)] if toolbox else []
+                 for s in _specs(mail=False, names=turn.tools)] if toolbox else []
         messages = [{"role": "system", "content": turn.system}, *turn.messages]
         try:
             async with httpx.AsyncClient(timeout=120, follow_redirects=False, trust_env=False) as client:
@@ -239,16 +283,19 @@ PRIVATE_TOOLS = {"consultar_bandeja", "consultar_clientes", "consultar_agenda", 
 HIDDEN_TOOLS: set[str] = set()  # tools of the modules turned off in Settings (modules.apply keeps it)
 
 
-def _specs(mail: bool = True) -> list[dict]:
+def _specs(mail: bool = True, names: tuple[str, ...] | None = None) -> list[dict]:
     from .brain_tools import SPECS
+    from .research import ONLY_HERE
 
-    shown = [spec for spec in SPECS if spec["name"] not in HIDDEN_TOOLS]
+    if names is not None:  # a research turn: exactly these, never a private one
+        return [spec for spec in SPECS if spec["name"] in names and spec["name"] not in PRIVATE_TOOLS and spec["name"] not in HIDDEN_TOOLS]
+    shown = [spec for spec in SPECS if spec["name"] not in HIDDEN_TOOLS and spec["name"] not in ONLY_HERE]
     if not mail:  # normal mail is read by Claude only (plan of 1.1, 14/11/2026), never by the compatible provider
         return [spec for spec in shown if spec["name"] not in PRIVATE_TOOLS]
     return shown
 
 
-def _sdk_server(toolbox):
+def _sdk_server(toolbox, names: tuple[str, ...] | None = None):
     """The brain's tools as an in-process MCP server for the Agent SDK."""
     from claude_agent_sdk import create_sdk_mcp_server, tool
 
@@ -256,7 +303,7 @@ def _sdk_server(toolbox):
         async def handler(args):
             return {"content": [{"type": "text", "text": await toolbox.call(spec["name"], args)}]}
         return tool(spec["name"], spec["description"], spec["schema"])(handler)
-    return create_sdk_mcp_server("cerebro", tools=[make(spec) for spec in _specs()])
+    return create_sdk_mcp_server("cerebro", tools=[make(spec) for spec in _specs(names=names)])
 
 
 def scrub_api_keys(environ=None) -> None:

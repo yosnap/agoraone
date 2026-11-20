@@ -76,6 +76,13 @@ export function AssistantSettingsCard() {
     {engines && <ul className="engine-list" aria-label="Motores">{engines.map(engine => <li key={engine.name}>
       <span className={`chip ${engine.available ? 'good' : ''}`}>{engine.available ? 'Disponible' : 'No disponible'}</span> {engineLabels[engine.name] ?? engine.name}</li>)}</ul>}
     <small className="muted">Orden automático: tu sesión de Claude Code, luego la API de Anthropic y por último el proveedor compatible. AgoraOne no pide ni guarda credenciales de claude.ai.</small>
+    <fieldset className="field-row"><legend className="muted">Investigación en internet (solo al pulsar «Investigar»)</legend>
+      {([['searches', 'Búsquedas', [3, 5, 10, 20]], ['pages', 'Páginas leídas', [3, 6, 10, 15]], ['minutes', 'Minutos', [2, 4, 8, 15]]] as const).map(([key, label, values]) =>
+        <div key={key} className="field"><label htmlFor={`research-${key}`}>{label}</label>
+          <ModernSelect id={`research-${key}`} value={String(settings.research[key])} onChange={value => void change({ research: { ...settings.research, [key]: Number(value) } }, 'Investigación')}
+            options={[...new Set([...values, settings.research[key]])].sort((a, b) => a - b).map(value => ({ value: String(value), label: String(value) }))}/></div>)}
+    </fieldset>
+    <small className="muted">Con la API de Anthropic cada búsqueda se cobra aparte (unos 0,01 $) y el tope es exacto; con tu sesión de Claude Code va en tu plan y el tope es aproximado. Las páginas las lee AgoraOne, solo de los resultados de búsqueda o de la pregunta, nunca de este Mac ni de tu red local.</small>
     <KeyField kind="anthropic" label="Clave de API de Anthropic"/>
     <form className="field-row" onSubmit={event => { event.preventDefault(); void change({ compatible: { baseUrl: provider.baseUrl.trim() || null, model: provider.model.trim() || null } }, 'Proveedor'); }}>
       <label className="field">Proveedor compatible (https, público)<input value={provider.baseUrl} onChange={event => setProvider({ ...provider, baseUrl: event.target.value })} placeholder="https://…/v1" spellCheck={false}/></label>
