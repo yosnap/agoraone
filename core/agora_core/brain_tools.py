@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager
 
 from fastapi.concurrency import run_in_threadpool
 
-from . import brain_chat, meeting_tools, orca_launch
+from . import brain_chat, hermes_tasks, meeting_tools, orca_launch
 from .embed import Embedder, VectorCache
 from .search import search
 
@@ -209,6 +209,7 @@ SPECS.append({
 SPECS.extend(meeting_tools.SPECS)
 SPECS.append(orca_launch.SPEC)
 SPECS.append(brain_chat.SPEC)
+SPECS.append(hermes_tasks.SPEC)
 NOTE_TEXT = 20000
 SECRET_LINE = re.compile(r"(?i)(contrase(n|ñ)a|password|passwd|api[_ -]?key|token|secret|clave)\s*[:=]\s*\S{6,}")
 _ACTION_OF_ACCION = {"factura": "invoice", "cliente": "client", "personal": "personal", "importante": "important", "ignorar": "ignore"}
@@ -330,6 +331,8 @@ class Toolbox:
                 return await self._propose_chat_reply(args)
             if name == orca_launch.SPEC["name"]:
                 return await self._propose_orca(args)
+            if name == hermes_tasks.NAME:
+                return await self._propose_hermes(args)
             if name in meeting_tools.NAMES:
                 return await self._meetings(name, args)
         except (TypeError, ValueError):
@@ -446,6 +449,15 @@ class Toolbox:
         return json.dumps({"propuesta": {"repositorio": proposal["repo"], "agente": orca_launch.AGENTS[proposal["agent"]]},
                            "estado": "Tarjeta abierta en la pantalla del usuario: tiene que ver la vista previa y pulsar «Lanzar en Orca». No se ha lanzado nada."},
                           ensure_ascii=False)
+
+    async def _propose_hermes(self, args: dict) -> str:
+        """Opens the card to send a task to a Hermes profile; only the user's «Enviar» sends it."""
+        try:
+            proposal = await run_in_threadpool(lambda: hermes_tasks.propose(args))
+        except hermes_tasks.HermesTaskError as error:
+            return json.dumps({"error": str(error)}, ensure_ascii=False)
+        self._record({"tool": "hermes_proposal", "proposal": proposal})
+        return hermes_tasks.result(proposal)
 
     async def _propose_chat_reply(self, args: dict) -> str:
         """Keeps a WhatsApp reply Watson wrote as a proposal; the screen opens the reply composer with it and only the

@@ -109,18 +109,24 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'meetings'; query: string; count: number }
   | { kind: 'tool'; tool: 'issue_proposal'; id: string; issue: ProposedIssue }
   | { kind: 'tool'; tool: 'orca_proposal'; proposal: OrcaProposal }
+  | { kind: 'tool'; tool: 'hermes_proposal'; proposal: HermesProposal }
   | { kind: 'tool'; tool: 'chat_reply_proposal'; id: string; reply: ProposedChatReply }
   | { kind: 'tool'; tool: 'meeting'; title: string; part: number }
   | { kind: 'tool'; tool: 'web'; pages: { host: string; ok: boolean }[] }
   | { kind: 'tool'; tool: 'agenda' | 'day' | 'projects'; [key: string]: unknown }
   | { kind: 'done'; engine: string; model: string };
 
+/** A task Watson proposed for a Hermes profile: only sent when the user presses «Enviar». */
+export type HermesProposal = { profile: string; task: string };
+/** A Hermes profile's answer the user passes on to Watson, which receives it delimited as data. */
+export type Delegated = { profile: string; reply: string };
+
 /** Sends a question and follows the answer's Server-Sent Events until it ends; an `error` event throws. */
-export async function askAssistant(id: number, message: string, onEvent: (event: AssistantEvent) => void, signal?: AbortSignal) {
+export async function askAssistant(id: number, message: string, onEvent: (event: AssistantEvent) => void, signal?: AbortSignal, delegated?: Delegated) {
   const response = await fetch(`/api/core/assistant/conversations/${id}/messages`, {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Agora-CSRF': csrfToken() },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify(delegated ? { message, delegated } : { message }),
   });
   if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'No se pudo enviar la pregunta.'); }
   const reader = response.body?.getReader();
