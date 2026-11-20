@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
+import { CrmdevOrcaRow, useCrmdevOrca } from '../orca/crmdev-to-orca';
 import { getCrmdevView, type CrmdevFilters, type CrmdevTicket } from '../api/crmdev';
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
@@ -20,11 +21,15 @@ export const screenFiltered = (tickets: CrmdevTicket[], { prioridad, proyecto }:
 export function TicketsTable({ tickets, discreet, withClient = true, onEdit }: {
   tickets: CrmdevTicket[]; discreet: boolean; withClient?: boolean; onEdit?: (id: string) => void;
 }) {
+  const orca = useCrmdevOrca();
+  const [launching, setLaunching] = useState<string | null>(null);
   if (!tickets.length) return <p className="muted">Ningún ticket.</p>;
+  const launchable = (t: CrmdevTicket) => !discreet && t.id && t.projectId ? orca.get(t.projectId) : undefined;
+  const columns = 7 + (discreet ? 0 : 1) + (withClient ? 1 : 0);
   return <table className="data-table central-table">
     <thead><tr><th>Ticket</th><th>Estado</th><th>Prioridad</th><th>Categoría</th>{!discreet && <th>Abierto por</th>}{withClient && <th>Cliente</th>}<th>Proyecto</th><th>Fecha</th>
       <th><span className="visually-hidden">Acciones</span></th></tr></thead>
-    <tbody>{tickets.map((t, index) => <tr key={t.id ?? index}>
+    <tbody>{tickets.map((t, index) => <Fragment key={t.id ?? index}><tr>
       <td className="crmdev-title"><strong>{t.title ?? '—'}</strong><LongText text={t.description} discreet={discreet}/></td>
       <td><Badge labels={ticketStatusLabels} value={t.status}/></td>
       <td><Badge labels={priorityLabels} value={t.priority}/></td>
@@ -35,8 +40,12 @@ export function TicketsTable({ tickets, discreet, withClient = true, onEdit }: {
       <td className="central-date">{dayLabel(t.createdAt)}</td>
       <td className="central-row-actions">{t.id && <span className="actions">
         {onEdit && <ActionButton icon="edit" label="Editar" aria-label={`Editar el ticket ${t.title ?? ''}`} onClick={() => onEdit(t.id as string)}/>}
-        <OpenInCrmdev page={`tickets/${t.id}`} discreet={discreet}/></span>}</td>
-    </tr>)}</tbody>
+        <OpenInCrmdev page={`tickets/${t.id}`} discreet={discreet}/>
+        {launchable(t) && <ActionButton icon="play" label="Lanzar en Orca" aria-label={`Lanzar en Orca el ticket ${t.title ?? ''}`}
+          onClick={() => setLaunching(launching === t.id ? null : t.id)}/>}</span>}</td>
+    </tr>
+    {launching === t.id && launchable(t) && <CrmdevOrcaRow kind="crmdev_ticket" id={t.id as string} title={t.title} choice={launchable(t)!} columns={columns}
+      onClose={() => setLaunching(null)}/>}</Fragment>)}</tbody>
   </table>;
 }
 

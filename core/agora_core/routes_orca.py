@@ -9,7 +9,7 @@ from typing import Literal
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, StrictInt
+from pydantic import BaseModel, Field, StrictInt
 
 from . import chat_inbox, github_issues, modules, orca_launch, repo_notes
 from .db import DB_NAME, connect
@@ -27,6 +27,7 @@ class LaunchSource(BaseModel):
     source: str | None = None
     ref: str | None = None
     revision: str | None = None
+    remote: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$")  # a task's or ticket's id in CRMDev
 
 
 class LaunchRequest(BaseModel):
@@ -72,7 +73,7 @@ def origin_problem(connection, body: RepoNote) -> str | None:
     return None
 
 
-def orca_router(settings: Settings) -> APIRouter:
+def orca_router(settings: Settings, secrets_store=None) -> APIRouter:
     router = APIRouter()
     plans: dict[str, dict] = {}
 
@@ -157,7 +158,7 @@ def orca_router(settings: Settings) -> APIRouter:
             try:
                 if not modules.state(connection)["orca"]:
                     raise orca_launch.OrcaError("El módulo Orca está apagado en Ajustes.")
-                return orca_launch.preview(connection, body.model_dump())
+                return orca_launch.preview(connection, body.model_dump(), secrets_store=secrets_store)
             finally:
                 connection.close()
 
@@ -188,7 +189,7 @@ def orca_router(settings: Settings) -> APIRouter:
         def still_allowed():
             connection = connect(settings.data_dir / DB_NAME)
             try:
-                orca_launch.recheck(connection, plan)
+                orca_launch.recheck(connection, plan, secrets_store)
             finally:
                 connection.close()
 
