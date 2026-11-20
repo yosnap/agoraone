@@ -48,17 +48,35 @@ def check_folder(value: str, home: Path | None = None) -> Path:
     if os.name == "nt":
         protected.append(home / "AppData")
     refuse = FiscalError("Elige la subcarpeta de tu actividad, no la carpeta personal, la raíz de iCloud Drive ni una carpeta que las contenga.")
+    if os.name == "nt" and folder.drive.startswith(("\\\\?\\", "\\\\.\\")):
+        # A device path (\\?\C:\…, \\.\…) would look like another drive and skip the checks of the home folder.
+        raise FiscalError("Escribe la ruta normal de la carpeta (C:\\…, D:\\… o \\\\servidor\\recurso\\…).")
     if os.name == "nt" and folder.drive and home.drive and folder.drive.lower() != home.drive.lower():
-        blocked_roots = {"windows", "program files", "program files (x86)", "programdata", "$recycle.bin", "system volume information"}
-        if len(folder.parts) < 3 or folder.parts[1].lower() in blocked_roots or any(part.startswith(".") for part in folder.parts[1:]):
-            raise refuse
-        return folder
+        return _check_other_volume(folder, refuse)
     if home not in folder.parents or any(folder == p or folder in p.parents for p in protected):
         raise refuse
     relative = folder.relative_to(home)
     if any(part.startswith(".") for part in relative.parts):
         raise refuse
     if relative.parts[0] in system_data and icloud not in folder.parents:
+        raise refuse
+    return folder
+
+
+# Top folders of a Windows drive that are never a fiscal folder: the system, programs, and the profiles of the
+# people who use the computer (another drive can hold them too).
+_SYSTEM_TOPS = {"windows", "program files", "program files (x86)", "programdata", "$recycle.bin", "system volume information", "users", "recovery", "perflogs"}
+
+
+def _check_other_volume(folder: Path, refuse: FiscalError) -> Path:
+    """Windows: a folder on another drive or on a network share (\\\\servidor\\recurso). macOS only takes folders
+    inside the home folder; on Windows the activity's data often lives on a second drive or a share, so it is
+    allowed, but never the drive or share itself or its first level, a system or profiles folder, a hidden one, or
+    an administrative share (C$, D$…), which exposes a whole drive."""
+    unc = folder.drive.startswith("\\\\")
+    if unc and folder.drive.rstrip("\\").endswith("$"):
+        raise FiscalError("Los recursos administrativos (C$, D$…) muestran un disco entero: comparte solo la carpeta fiscal.")
+    if len(folder.parts) < 3 or folder.parts[1].lower() in _SYSTEM_TOPS or any(part.startswith(".") for part in folder.parts[1:]):
         raise refuse
     return folder
 

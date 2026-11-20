@@ -523,3 +523,26 @@ def test_el_selector_de_windows_recibe_el_titulo_como_dato(monkeypatch):
     assert fiscal.choose_system_folder(title, runner=runner) == "C:\\Datos\\Fiscal"
     assert title not in seen["script"] and "Remove-Item" not in seen["script"]
     assert seen["env"]["AGORA_PICKER_PROMPT"] == title
+
+
+@pytest.mark.skipif(__import__("os").name != "nt", reason="unidades y recursos de red de Windows")
+def test_en_otra_unidad_o_en_red_nunca_el_sistema_los_perfiles_ni_un_disco_entero(tmp_path):
+    """Another drive or a share is allowed on Windows, but not what would skip the protections of the home folder."""
+    other_home = Path("C:/Users/otro" if tmp_path.drive.upper() != "C:" else "D:/Users/otro")
+    work = tmp_path / "Actividad" / "Fiscal"
+    work.mkdir(parents=True)
+    assert fiscal.check_folder(str(work), home=other_home) == work.resolve()
+    root_level = Path(tmp_path.anchor) / tmp_path.parts[1]
+    for bad in (root_level, Path(tmp_path.anchor)):
+        with pytest.raises(fiscal.FiscalError):
+            fiscal.check_folder(str(bad), home=other_home)
+    refuse = fiscal.FiscalError("x")
+    with pytest.raises(fiscal.FiscalError):
+        fiscal._check_other_volume(Path("D:/Users/alguien/Fiscal"), refuse)
+    with pytest.raises(fiscal.FiscalError, match="administrativos"):
+        fiscal._check_other_volume(Path("//servidor/C$/Datos/Fiscal"), refuse)
+    with pytest.raises(fiscal.FiscalError):
+        fiscal._check_other_volume(Path("//servidor/recurso"), refuse)
+    assert fiscal._check_other_volume(Path("//servidor/recurso/Empresa/Fiscal"), refuse) == Path("//servidor/recurso/Empresa/Fiscal")
+    with pytest.raises(fiscal.FiscalError, match="ruta normal"):
+        fiscal.check_folder("//?/" + str(work.resolve()), home=other_home)  # \\?\E:\…
