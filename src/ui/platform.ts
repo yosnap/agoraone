@@ -10,7 +10,13 @@ export const keystoreName = isMac ? 'Llavero' : isWindows ? 'Administrador de cr
 export const machineName = isMac ? 'Mac' : 'ordenador';
 // The top bar's «LOCAL · MAC» names the system AgoraOne runs on.
 export const systemTag = isMac ? 'MAC' : isWindows ? 'WINDOWS' : 'LINUX';
-export const listenShortcut =isMac ? '⌃⌥W' : 'Ctrl+Alt+W';
+export const listenShortcut = isMac ? '⌃⌥W' : 'Ctrl+Alt+W';
+// Where a saved file is shown: the Finder, the Explorer, or the system's file manager.
+export const revealLabel = isMac ? 'Mostrar en Finder' : isWindows ? 'Mostrar en el Explorador' : 'Mostrar en la carpeta';
+// Who asks before letting the phone in: macOS, or the system or its firewall elsewhere.
+export const incomingAsker = isMac ? 'macOS' : 'el sistema o su cortafuegos';
+// Watson's voice when VoiceStudio does not speak is the system's own («la voz de macOS» on a Mac).
+export const systemVoiceOf = isMac ? 'de macOS' : 'del sistema';
 // Meetings record the system's sound too on macOS and Linux; on Windows, only the microphone.
 export const recordsSystemAudio = !isWindows;
 export const meetingSourcesLabel = isMac

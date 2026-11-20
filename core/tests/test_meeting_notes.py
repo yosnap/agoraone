@@ -16,6 +16,7 @@ from agora_core.settings import load_settings
 from tests.test_fiscal_excel import MemorySecrets
 from tests.test_meetings import HELPER
 from tests.test_voice import FFMPEG, _program, _whisper
+from agora_core import system_words
 
 SECRET, OWNER = "a" * 64, "b" * 64
 H = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
@@ -139,7 +140,7 @@ def test_quien_resume_cada_reunion():
     local = {"local_url": "http://127.0.0.1:11434/v1", "local_model": "qwen3:14b"}
     who = meeting_notes.summarizers([Engine("claude-code")], local, reachable=lambda: True)
     assert who["normal"] == {"by": "claude", "label": "Claude, con tu sesión de Claude Code"}
-    assert who["private"] == who["local_only"] == {"by": "local", "label": "qwen3:14b en Ollama, en este Mac"}
+    assert who["private"] == who["local_only"] == {"by": "local", "label": f"qwen3:14b en Ollama, en {system_words.HERE}"}
     assert meeting_notes.summarizers([], local, reachable=lambda: False)["private"]["by"] == "local-off"
     assert meeting_notes.summarizers([], meeting_notes.DEFAULTS)["normal"]["by"] == "none"
     assert meeting_notes.summarizers([], meeting_notes.DEFAULTS)["private"]["by"] == "none"

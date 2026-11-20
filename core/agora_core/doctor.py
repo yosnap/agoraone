@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from . import local_model, music_library, system_audio, transcribe
+from . import system_words
 
 HOME = Path.home()
 MAC, LINUX, WINDOWS = sys.platform == "darwin", sys.platform.startswith("linux"), sys.platform == "win32"
@@ -81,7 +82,7 @@ def check(connection: sqlite3.Connection, has_anthropic_key: bool, has_zernio_ke
         "Tu sesión de Claude Code: Watson, resúmenes y lectura de facturas sin clave de API." if claude else "No está: Watson necesitará una clave de API.",
         _how(brew="--cask claude-code", linux="curl -fsSL https://claude.ai/install.sh | bash", url="https://docs.anthropic.com/claude-code"))
     add("anthropic-key", "Clave de API de Anthropic", has_anthropic_key, ["Watson"],
-        "Guardada en el Llavero (reserva si no hay Claude Code)." if has_anthropic_key else "Opcional si tienes Claude Code. Se guarda en Ajustes › Asistente.",
+        f"Guardada en el {system_words.KEYSTORE} (reserva si no hay Claude Code)." if has_anthropic_key else "Opcional si tienes Claude Code. Se guarda en Ajustes › Asistente.",
         optional=True)
     add("whisper", "whisper.cpp (whisper-cli)", bool(voice["binary"]), ["Voz", "Reuniones"],
         voice["binary"] or "Sin él no se puede dictar ni transcribir reuniones.", _how(brew="whisper-cpp", linux="sudo apt install whisper-cpp", windows="winget install ggerganov.whisper.cpp"))
@@ -106,17 +107,17 @@ def check(connection: sqlite3.Connection, has_anthropic_key: bool, has_zernio_ke
     add("orca", "Orca", bool(orca), ["Orca"], "Lanza Claude Code o Codex en el repositorio de un proyecto." if orca else "Para llevar encargos a un agente en tus repositorios.",
         optional=True)
     add("zernio", "WhatsApp (Zernio)", has_zernio_key, ["WhatsApp"],
-        "Clave de API de Zernio guardada en el Llavero." if has_zernio_key else "Para leer tu WhatsApp: guarda la clave de Zernio en Ajustes › WhatsApp.",
+        f"Clave de API de Zernio guardada en el {system_words.KEYSTORE}." if has_zernio_key else "Para leer tu WhatsApp: guarda la clave de Zernio en Ajustes › WhatsApp.",
         _how(url="https://zernio.com"), optional=True)
     add("typesafe", "Jev (TypeSafe)", has_typesafe_key, ["Jev"],
-        "Clave de API de TypeSafe guardada en el Llavero." if has_typesafe_key else "Para que Jev ayude a decidir: guarda la clave de TypeSafe en Ajustes › Jev.",
+        f"Clave de API de TypeSafe guardada en el {system_words.KEYSTORE}." if has_typesafe_key else "Para que Jev ayude a decidir: guarda la clave de TypeSafe en Ajustes › Jev.",
         _how(url="https://console.typesafe.ai/keys"), optional=True)
     library = music_library.folders(connection)
     add("music-folder", "Carpeta de música", bool(library), ["Música"], ", ".join(library) if library else "Elígela en Ajustes › Voz › Tu música.", optional=True)
     if LINUX:
         add("playerctl", "playerctl (MPRIS)", bool(_program("playerctl")), ["Música"], "Controla los reproductores en Linux.", _how(linux="sudo apt install playerctl"))
     wake = (Path(__file__).resolve().parents[1] / "helpers/bin/agora-wake").is_file()
-    add("wake", "«Oye Watson»", wake and MAC, ["Voz"], "Reconocimiento de voz de Apple en el equipo." if wake and MAC else "Solo en la app de escritorio del Mac.", optional=True)
+    add("wake", "«Oye Watson»", wake and MAC, ["Voz"], "Reconocimiento de voz de Apple en el equipo." if wake and MAC else ("Solo en la app de escritorio del Mac." if MAC else "Todavía no está disponible en este sistema: llama a Watson con Ctrl+Alt+W."), optional=True)
     add("brew", "Homebrew", bool(_program("brew")), ["Instalador"], "Con él AgoraOne puede instalar las piezas por ti." if _program("brew") else "Sin él, cada pieza se instala a mano.",
         {"kind": "page", "url": "https://brew.sh"} if MAC else {"kind": "none"}, optional=not MAC)
     for ident, name, programs, apps in (("codex", "Codex (OpenAI)", ("codex",), ()), ("gemini", "Gemini CLI", ("gemini",), ()),

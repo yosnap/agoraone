@@ -12,6 +12,7 @@ import unicodedata
 
 from . import orca_launch
 from .github_issues import project_repo
+from . import system_words
 
 SUGGESTED = "docs/notas"
 SKIP = {"node_modules", "venv", "dist", "build", "target", "__pycache__", "vendor", "coverage", "out"}
@@ -41,7 +42,7 @@ def local_root(connection: sqlite3.Connection, client: str, project: str, runner
         path = paths.get(ident)
         if path and os.path.isdir(path) and os.path.exists(os.path.join(path, ".git")):
             return repo, os.path.realpath(path)
-    raise RepoNoteError(f"No encuentro en este Mac la copia local de {repo} que usa Orca.")
+    raise RepoNoteError(f"No encuentro en {system_words.HERE} la copia local de {repo} que usa Orca.")
 
 
 def folders(root: str) -> list[str]:

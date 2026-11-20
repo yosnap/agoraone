@@ -20,6 +20,7 @@ import { InstallSettingsCard } from './settings-install';
 import { ModulesSettingsCard } from './settings-modules';
 import { openConnector } from '../connectors/open-connector';
 import type { Section } from '../shell/shell-state';
+import { isMac, isWindows } from '../ui/platform';
 import './settings.css';
 
 type Tab = { id: string; label: string; cards: (onOpen: (section: Section) => void) => ReactNode };
@@ -93,7 +94,7 @@ export function SettingsView({ onOpen }: { onOpen: (section: Section) => void })
   return <section className="page settings" aria-labelledby="settings-title">
     <div className="eyebrow">AJUSTES</div>
     <h1 id="settings-title">Ajustes</h1>
-    <p className="page-lead">Todo se guarda en este equipo: los ajustes en la base del cerebro y las claves en el almacén de secretos del sistema (el Llavero en macOS).</p>
+    <p className="page-lead">Todo se guarda en este equipo: los ajustes en la base del cerebro y las claves en el almacén de secretos del sistema{isMac ? ' (el Llavero en macOS)' : isWindows ? ' (el Administrador de credenciales en Windows)' : ''}.</p>
     <div className="settings-tabs" role="tablist" aria-label="Apartados de Ajustes" onKeyDown={keys}>
       {tabs.map(t => <button key={t.id} id={`settings-tab-${t.id}`} ref={node => { buttons.current[t.id] = node; }} role="tab" type="button"
         aria-selected={t.id === current.id} aria-controls="settings-panel" tabIndex={t.id === current.id ? 0 : -1} onClick={() => choose(t.id)}>{t.label}</button>)}

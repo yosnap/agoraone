@@ -13,6 +13,7 @@ from agora_core.app import SECRET_HEADER, create_app
 from agora_core.db import DB_NAME, connect, migrate
 from agora_core.keystore import MemoryStore
 from agora_core.settings import load_settings
+from agora_core import system_words
 
 SECRET = "a" * 64
 OWNER, OTHER = "b" * 64, "c" * 64
@@ -95,7 +96,7 @@ def test_el_correo_va_como_datos_y_no_puede_cerrar_su_bloque(database):
 @pytest.mark.parametrize("level", ["local_only", "private"])
 def test_un_correo_que_no_sale_de_este_mac_no_se_lanza(database, level):
     message = add_mail(database, level=level, body=CANARY)
-    with pytest.raises(orca_launch.OrcaError, match="solo en este Mac"):
+    with pytest.raises(orca_launch.OrcaError, match=f"solo en {system_words.HERE}"):
         orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "x", "source": {"kind": "mail", "id": message}}, runner=FakeOrca())
 
 
@@ -287,7 +288,7 @@ def test_la_nota_va_como_datos_sin_lineas_de_claves(database):
 @pytest.mark.parametrize("level", ["local_only", "private"])
 def test_una_nota_que_no_sale_de_este_mac_no_se_lanza(database, level):
     add_note(database, level)
-    with pytest.raises(orca_launch.OrcaError, match="solo en este Mac"):
+    with pytest.raises(orca_launch.OrcaError, match=f"solo en {system_words.HERE}"):
         orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "x", "source": {"kind": "note", "source": "vault1", "ref": "n1", "revision": "r1"}}, runner=FakeOrca())
     with pytest.raises(orca_launch.OrcaError, match="índice"):
         orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "x", "source": {"kind": "note", "source": "vault1", "ref": "otra", "revision": "r1"}}, runner=FakeOrca())
@@ -297,7 +298,7 @@ def test_una_nota_que_pasa_a_privada_tras_la_vista_previa_no_se_lanza(database):
     add_note(database)
     plan = orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "x", "source": {"kind": "note", "source": "vault1", "ref": "n1", "revision": "r1"}}, runner=FakeOrca())
     database.execute("UPDATE item SET confidentiality = 'private' WHERE ref = 'n1'")
-    with pytest.raises(orca_launch.OrcaError, match="solo en este Mac"):
+    with pytest.raises(orca_launch.OrcaError, match=f"solo en {system_words.HERE}"):
         orca_launch.recheck(database, plan)
 
 

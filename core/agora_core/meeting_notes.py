@@ -22,6 +22,7 @@ from . import local_model, transcribe
 from .db import now, transaction
 from .engines import Engine, Turn, usable
 from .meetings import KINDS, names_of, people_of
+from . import system_words
 
 SETTING = "meetings"
 DEFAULTS = {"local_url": None, "local_model": None, "auto": True}
@@ -169,7 +170,7 @@ def summarizers(engines: list[Engine], chosen: dict, reachable=None) -> dict:
             ready = check()
         except local_model.LocalModelError:
             ready = False
-        private = {"by": "local", "label": f"{chosen['local_model']} en {server}, en este Mac"} if ready \
+        private = {"by": "local", "label": f"{chosen['local_model']} en {server}, en {system_words.HERE}"} if ready \
             else {"by": "local-off", "label": f"{chosen['local_model']} en {server}, pero ahora no responde: ábrelo antes de resumir"}
     else:
         private = {"by": "none", "label": "nadie: no hay un modelo local elegido en Ajustes › Voz, así que queda solo la transcripción"}

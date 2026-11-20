@@ -19,6 +19,7 @@ from pathlib import Path
 import httpx
 
 from .db import transaction
+from . import system_words
 
 VOICESTUDIO = "http://127.0.0.1:3900"
 WATSON_PROFILE = "Watson (AgoraOne)"
@@ -92,14 +93,14 @@ def resolve(chosen: dict, voices: list[dict] | None) -> dict:
         engine, voice = ("voicestudio", watson["id"]) if watson else ("macos", None)
     elif engine == "voicestudio":
         if voices is None:
-            engine, problem = "macos", "VoiceStudio no está abierto: Watson habla con la voz de macOS."
+            engine, problem = "macos", f"VoiceStudio no está abierto: Watson habla con {system_words.SYSTEM_VOICE}."
         elif not voice:
-            engine, problem = "macos", "Elige una voz de VoiceStudio: mientras, Watson habla con la voz de macOS."
+            engine, problem = "macos", f"Elige una voz de VoiceStudio: mientras, Watson habla con {system_words.SYSTEM_VOICE}."
         elif not any(v["id"] == voice for v in voices):
-            engine, problem = "macos", "Esa voz ya no está en VoiceStudio: Watson habla con la voz de macOS."
+            engine, problem = "macos", f"Esa voz ya no está en VoiceStudio: Watson habla con {system_words.SYSTEM_VOICE}."
     if engine == "macos" and chosen["engine"] != "macos" and voices is None and _launch["state"]:
-        problem = {"opening": "Abriendo VoiceStudio: mientras arranca, Watson habla con la voz de macOS.",
-                   "failed": "AgoraOne intentó abrir VoiceStudio y no respondió en 2 minutos: Watson habla con la voz de macOS."}[_launch["state"]]
+        problem = {"opening": f"Abriendo VoiceStudio: mientras arranca, Watson habla con {system_words.SYSTEM_VOICE}.",
+                   "failed": f"AgoraOne intentó abrir VoiceStudio y no respondió en 2 minutos: Watson habla con {system_words.SYSTEM_VOICE}."}[_launch["state"]]
     return {"engine": engine, "voice": voice if engine == "voicestudio" else None, "speed": chosen["speed"],
             "macVoice": chosen["macVoice"], "problem": problem, "steps": QUALITY.get(chosen["quality"], 16)}
 

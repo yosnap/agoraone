@@ -14,6 +14,7 @@ from . import invoice_extract, mail, modules, note_sources, repo_notes
 from .db import DB_NAME, connect
 from .routes_mail import microsoft_login
 from .settings import Settings
+from . import system_words
 
 
 class SourceFile(BaseModel):
@@ -101,7 +102,7 @@ def note_sources_router(settings: Settings, secrets) -> APIRouter:
                 if not modules.state(connection)["orca"]:
                     raise repo_notes.RepoNoteError("El módulo Orca está apagado en Ajustes.")
                 if repo_notes.mail_level(connection, body.inboxId) != "normal":
-                    raise repo_notes.RepoNoteError("Ese correo es privado o «solo en este Mac»: sus archivos no van a un repositorio.")
+                    raise repo_notes.RepoNoteError(f"Ese correo es privado o «solo en {system_words.HERE}»: sus archivos no van a un repositorio.")
                 _, root = repo_notes.local_root(connection, body.client, body.project)
                 name, data = fetch(connection, body.inboxId, body)
             finally:

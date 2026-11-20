@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from . import music_cover
+from . import system_words
 
 PLAYERS = {"music": {"name": "Apple Music", "process": "Music", "app": "Music", "bundle": "com.apple.Music"},
            "spotify": {"name": "Spotify", "process": "Spotify", "app": "Spotify", "bundle": "com.spotify.client"}}
@@ -351,7 +352,7 @@ def play(player: str, query: str) -> str:
     if available()["adapter"] != "macos" or player not in PLAYERS:
         raise MusicError("Pedir una canción por su nombre solo funciona de momento con Música y Spotify en macOS.")
     if not _installed(player):
-        raise MusicError(f"{PLAYERS[player]['name']} no está instalado en este Mac. Prueba con YouTube.", "missing")
+        raise MusicError(f"{PLAYERS[player]['name']} no está instalado en {system_words.HERE}. Prueba con YouTube.", "missing")
     if player == "music":
         return _play_music(query)
     _osascript(SEARCH_SPOTIFY, query)

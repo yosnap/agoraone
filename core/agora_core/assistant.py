@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 
 from .engines import DEFAULT_MODEL, HIDDEN_TOOLS, MODELS, public_https
+from . import system_words
 
 
 @dataclass(frozen=True)
@@ -87,7 +88,7 @@ def save_settings(connection: sqlite3.Connection, changes: dict) -> tuple[dict, 
             value = {**current["compatible"], **(value or {})}
             base, model = value.get("baseUrl"), value.get("model")
             if base is not None and (not isinstance(base, str) or len(base) > 300 or not public_https(base)):
-                raise SettingsError("La dirección del proveedor debe ser https y pública (ni este Mac ni tu red local).")
+                raise SettingsError(f"La dirección del proveedor debe ser https y pública (ni {system_words.HERE} ni tu red local).")
             if model is not None and (not isinstance(model, str) or not 0 < len(model) <= 100):
                 raise SettingsError("Modelo del proveedor no válido.")
             value = {"baseUrl": base, "model": model}

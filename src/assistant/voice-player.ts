@@ -1,5 +1,6 @@
 import { getTts, speakPiece, warmVoice, type TtsNow, type TtsView } from '../api/core';
 import { advance, fresh, type Progress } from './voice-pieces';
+import { systemVoiceOf } from '../ui/platform';
 
 /** Plays Watson's answers aloud (1.7). With VoiceStudio, piece by piece: the next one is prepared while one plays,
  * and the first starts as soon as the first sentence is written. If VoiceStudio fails, the rest is said with the
@@ -48,7 +49,7 @@ async function settle(t: Turn): Promise<TtsNow | null> {
   }
   if (t.stopped) return voice;
   const instead = studioWanted(view) && voice?.engine !== 'voicestudio';
-  setNotice(instead ? (view?.voicestudio === null ? 'VoiceStudio no está abierto: Watson habla con la voz de macOS hasta que arranque.' : voice?.problem ?? null) : null);
+  setNotice(instead ? (view?.voicestudio === null ? `VoiceStudio no está abierto: Watson habla con la voz ${systemVoiceOf} hasta que arranque.` : voice?.problem ?? null) : null);
   return voice;
 }
 const current = async () => { if (!asked || Date.now() - readAt > 60_000) { readAt = Date.now(); void refreshVoice(); } await asked; return voice; };

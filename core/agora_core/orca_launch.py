@@ -18,6 +18,7 @@ import time
 import unicodedata
 
 from .github_issues import ISSUE_URL, project_repo, repos
+from . import system_words
 
 AGENTS = {"claude": "Claude Code", "codex": "Codex"}
 TASK_CHARS = 4000
@@ -142,7 +143,7 @@ def _mail(connection: sqlite3.Connection, message_id: int) -> dict:
     if row is None or row["moved"]:
         raise OrcaError("Ese correo ya no está en la Bandeja.")
     if row["level"] != "normal":
-        raise OrcaError("Ese correo es «solo en este Mac» o privado: no se envía a un agente con modelo remoto.")
+        raise OrcaError(f"Ese correo es «solo en {system_words.HERE}» o privado: no se envía a un agente con modelo remoto.")
     sender = f"{row['from_name'] or ''} <{row['from_address'] or ''}>".strip()
     text = _clean(f"De: {sender}\nFecha: {row['sent'] or ''}\nAsunto: {row['subject'] or ''}\n\n{(row['body'] or '').strip()}")
     return {"kind": "mail", "label": f"Correo «{(row['subject'] or '(sin asunto)')[:120]}»", "text": text[:SOURCE_CHARS]}
@@ -159,7 +160,7 @@ def _chat(connection: sqlite3.Connection, conversation_id) -> dict:
     except chat_inbox.ChatGone as error:
         raise OrcaError(str(error)) from error
     if level != "normal":
-        raise OrcaError("Esa conversación es «solo en este Mac» o privada: no se envía a un agente con modelo remoto.")
+        raise OrcaError(f"Esa conversación es «solo en {system_words.HERE}» o privada: no se envía a un agente con modelo remoto.")
     text = _clean(_no_keys(f"Conversación de WhatsApp con {name}\n\n{lines}"))
     return {"kind": "chat", "id": conversation_id, "label": f"Conversación de WhatsApp con {name}"[:200], "text": text[:SOURCE_CHARS]}
 
@@ -172,7 +173,7 @@ def _note(connection: sqlite3.Connection, source: str, ref: str, revision: str) 
     if item is None:
         raise OrcaError("Esa nota aún no está en el índice de AgoraOne: espera a que se lea y vuelve a intentarlo.")
     if item["confidentiality"] != "normal":
-        raise OrcaError("Esa nota es «solo en este Mac» o privada: no se envía a un agente con modelo remoto.")
+        raise OrcaError(f"Esa nota es «solo en {system_words.HERE}» o privada: no se envía a un agente con modelo remoto.")
     if not revision or item["revision"] != revision:
         raise OrcaError("La nota ha cambiado desde que AgoraOne la leyó: espera unos minutos a que se actualice el índice y vuelve a intentarlo.")
     pieces = [row["text"].split("\n\n", 1)[-1] for row in connection.execute("SELECT text FROM chunk WHERE item_id = ? ORDER BY ord", (item["id"],))]

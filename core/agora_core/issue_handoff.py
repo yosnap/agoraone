@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 
 from . import chat_inbox, coding_sessions, github_issues, orca_launch, repo_notes
+from . import system_words
 
 TITLE_CHARS = 200
 BODY_CHARS = 20_000
@@ -35,14 +36,14 @@ def from_source(connection: sqlite3.Connection, args: dict) -> dict:
         except (repo_notes.RepoNoteError, TypeError, ValueError) as error:
             raise HandoffError("Ese correo ya no está en la Bandeja.") from error
         if level != "normal":
-            raise HandoffError("Ese correo es privado o «solo en este Mac»: no va a una issue.")
+            raise HandoffError(f"Ese correo es privado o «solo en {system_words.HERE}»: no va a una issue.")
     elif source.get("kind") == "chat":
         try:
             level = chat_inbox.level_of(connection, source.get("id"))
         except chat_inbox.ChatGone as error:
             raise HandoffError(str(error)) from error
         if level != "normal":
-            raise HandoffError("Esa conversación es privada o «solo en este Mac»: no va a una issue.")
+            raise HandoffError(f"Esa conversación es privada o «solo en {system_words.HERE}»: no va a una issue.")
     elif source.get("kind") == "note":
         try:  # indexed, normal and as the user saw it
             orca_launch._note(connection, str(source.get("source") or ""), str(source.get("ref") or ""), str(source.get("revision") or ""))

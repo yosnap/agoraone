@@ -14,6 +14,7 @@ from . import chat_inbox, chat_send, zernio
 from .db import DB_NAME, connect
 from .drafting import DraftError, claude_drafter
 from .settings import Settings
+from . import system_words
 
 
 class ChatDraftIn(BaseModel):
@@ -82,7 +83,7 @@ def chat_send_router(settings: Settings, secrets, drafter=None) -> APIRouter:
         try:
             key = await run_in_threadpool(secrets.get, zernio.SECRET) if secrets else None
         except Exception:  # noqa: BLE001 - a locked or unavailable Keychain: nothing has been sent
-            return refuse(chat_send.ChatSendError("No se pudo leer la clave de Zernio del Llavero (¿está bloqueado?): no se ha enviado.", 503))
+            return refuse(chat_send.ChatSendError(f"No se pudo leer la clave de Zernio del {system_words.KEYSTORE} (¿está bloqueado?): no se ha enviado.", 503))
 
         def work(connection):
             result = chat_send.send(connection, body.draft.model_dump(), body.digest, key)

@@ -6,6 +6,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { ManualForm } from './manual-form';
 import './fiscal.css';
 import { ActionButton } from '../ui/action-button';
+import { revealLabel } from '../ui/platform';
 
 function money(value: number | string | null | undefined, currency = 'EUR') {
   if (value === null || value === undefined || value === '') return '—';
@@ -154,7 +155,7 @@ export function FiscalView({ discreet }: { discreet: boolean }) {
       {note && <p className="ok-note" role="status">{note}</p>}
       {made && <div className="field-row fiscal-made">
         <button type="button" className="button primary" onClick={() => void reveal(made, false)}>Abrir el Excel</button>
-        <button type="button" className="button" onClick={() => void reveal(made, true)}>Mostrar en Finder</button></div>}
+        <button type="button" className="button" onClick={() => void reveal(made, true)}>{revealLabel}</button></div>}
       {folderId && !view && !error ? <Loading label="Leyendo el trimestre" lines={4}/> : view && <>
         <div className="fiscal-totals">
           <article className="card"><span className="muted">Facturado (base)</span><strong>{discreet ? '•••' : money(totalIn)}</strong><small className="muted">{view.income.length} facturas emitidas · {discreet ? '•••' : money(totalBase)} cobrado con IVA e IRPF</small></article>

@@ -13,6 +13,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
+from . import system_words
 
 if sys.platform == "win32":
     import msvcrt
@@ -92,7 +93,7 @@ def key_lock(folder: Path):
 
 def _checked(key: bytes) -> bytes:
     if len(key) != KEY_BYTES:
-        raise KeyStoreError("La clave de copias del Llavero no es válida.")
+        raise KeyStoreError(f"La clave de copias del {system_words.KEYSTORE} no es válida.")
     return key
 
 
@@ -105,13 +106,13 @@ def ensure_key(store: KeyStore, folder: Path, allow_create: bool = True) -> tupl
             return _checked(key), False
         if not allow_create:
             raise KeyStoreError(
-                "Falta la clave de las copias en el Llavero y ya hay copias hechas con ella. No se crea otra: "
+                f"Falta la clave de las copias en el {system_words.KEYSTORE} y ya hay copias hechas con ella. No se crea otra: "
                 "restaura con «restore --recovery» y tu clave de recuperación para recuperarla."
             )
         store.put(secrets.token_bytes(KEY_BYTES))
         stored = store.get()
         if stored is None:
-            raise KeyStoreError("No se pudo guardar la clave de las copias en el Llavero.")
+            raise KeyStoreError(f"No se pudo guardar la clave de las copias en el {system_words.KEYSTORE}.")
         return _checked(stored), True
 
 

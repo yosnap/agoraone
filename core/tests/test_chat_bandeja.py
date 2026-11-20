@@ -18,6 +18,7 @@ from test_calendar import store
 from test_fiscal_excel import MemorySecrets
 from test_chat_inbox import _stamp, account, asker, conversation, reply_all, run, say
 from test_orca_launch import CANARY, SNAPSHOT, FakeOrca, add_mail, client, database, installed  # noqa: F401 - fixtures
+from agora_core import system_words
 
 SECRET, OWNER = "a" * 64, "b" * 64
 HEADERS = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
@@ -155,7 +156,7 @@ def test_lo_que_no_es_normal_no_va_a_issue_orca_ni_repositorio(database, monkeyp
     with pytest.raises(issue_handoff.HandoffError, match="privada"):
         issue_handoff.from_source(database, {"client": "Acme", "project": "Web", "title": "x", "body": "y", "source": {"kind": "chat", "id": conv}})
     orca = FakeOrca()
-    with pytest.raises(orca_launch.OrcaError, match="solo en este Mac"):
+    with pytest.raises(orca_launch.OrcaError, match=f"solo en {system_words.HERE}"):
         orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "x", "source": {"kind": "chat", "id": conv}}, runner=orca)
     assert not any(CANARY in json.dumps(call[0]) for call in orca.calls)
 
