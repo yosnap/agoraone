@@ -65,15 +65,14 @@ def test_solo_lo_que_falta_se_puede_buscar_en_youtube(mac, monkeypatch):
     with pytest.raises(music.MusicError) as missing:
         music.play("music", "jazz")
     assert missing.value.reason == "missing"
-    monkeypatch.setattr(music.time, "sleep", lambda seconds: None)
+    # In the catalogue: it opens in Music, marked in its album, for the user to play it; YouTube does not take over.
     monkeypatch.setattr(music, "catalog_song", lambda query, **k: {"name": "So What", "artist": "Miles Davis", "url": "music://music.apple.com/es/album/1?i=2"})
-    with pytest.raises(music.MusicError) as unplayed:  # in the catalogue, but Music could not reach the song
-        music.play("music", "jazz")
-    assert unplayed.value.reason == "missing"
     asked = []
-    monkeypatch.setattr(music, "_osascript", lambda script, *a, **k: asked.append(a) or ("none" if script == music.SEARCH_MUSIC else "ok"))
-    assert "So What" in music.play("music", "jazz")
-    assert ("music://music.apple.com/es/album/1?i=2",) in asked and any(a[:1] == ("So What",) for a in asked)
+    monkeypatch.setattr(music, "_osascript", lambda script, *a, **k: asked.append((script, a)) or ("none" if script == music.SEARCH_MUSIC else "opened"))
+    done = music.play("music", "jazz")
+    assert "So What" in done and "doble clic" in done
+    assert asked[-1] == (music.OPEN_IN_MUSIC, ("music://music.apple.com/es/album/1?i=2",))
+    assert "open location (item 1 of argv)" in music.OPEN_IN_MUSIC and "activate" in music.OPEN_IN_MUSIC
     def denied(script, *a, **k):
         raise music.MusicError("macOS no deja a AgoraOne controlar la música")
     monkeypatch.setattr(music, "_osascript", denied)
@@ -125,40 +124,6 @@ def _cuelga(script, args):
     raise subprocess.TimeoutExpired("osascript", 1)
 
 
-def test_el_album_restaura_el_volumen_si_falla_a_medias():
-    # Si Música falla en mitad del salto de pistas, AppleScript devuelve el volumen y pausa antes de relanzar el error.
-    script = music.PLAY_FROM_ALBUM
-    fallo = script[script.index("on error errMsg"):script.index("end try\n  end tell")]
-    assert "set sound volume to v" in fallo and "pause" in fallo and "error errMsg number errNum" in fallo
-    assert script.index("set v to sound volume") < script.index("try") < script.index("set sound volume to 0")
-    assert "ignoring case, diacriticals and punctuation" in script and "starts with wanted" in script
-
-
-def test_si_el_album_se_cuelga_python_pausa_y_devuelve_el_volumen(monkeypatch):
-    def answer(script, args):
-        if script == music.MUSIC_VOLUME:
-            return "65"
-        if script == music.PLAY_FROM_ALBUM:
-            return _cuelga(script, args)
-        return ""
-    calls = _osascript_falso(monkeypatch, answer)
-    with pytest.raises(music.MusicError) as cut:
-        music._play_from_album("So What", 6)
-    assert cut.value.reason == "silent"
-    scripts = [script for script, _, _ in calls]
-    assert scripts == [music.MUSIC_VOLUME, music.PLAY_FROM_ALBUM, 'tell application "Music" to pause',
-                       'tell application "Music" to set sound volume to 65'], "pausa primero, luego el volumen de antes"
-    album = calls[1]
-    assert album[1] == ("So What", "6") and album[2] == 8, "AppleScript para a tiempo y se corta 2 s después"
-
-
-def test_sin_volumen_legible_no_se_inventa_uno(monkeypatch):
-    calls = _osascript_falso(monkeypatch, lambda script, args: "raro" if script == music.MUSIC_VOLUME else _cuelga(script, args))
-    with pytest.raises(music.MusicError):
-        music._play_from_album("So What", 3)
-    assert not any(script.startswith('tell application "Music" to set sound volume') for script, _, _ in calls)
-
-
 def test_musica_que_no_responde_se_pausa_para_no_sonar_con_youtube(monkeypatch):
     monkeypatch.setattr(music.sys, "platform", "darwin")
     monkeypatch.setattr(music, "_installed", lambda player: True)
@@ -174,7 +139,7 @@ def test_el_catalogo_cabe_en_el_tiempo_de_watson(monkeypatch):
     # La biblioteca tarda casi todo lo que hay: no se abre el catálogo y se pasa a YouTube enseguida.
     monkeypatch.setattr(music.sys, "platform", "darwin")
     monkeypatch.setattr(music, "_installed", lambda player: True)
-    clock = iter([0.0, 10.0])
+    clock = iter([0.0, 16.0])
     monkeypatch.setattr(music.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(music, "catalog_song", lambda *a, **k: pytest.fail("no queda tiempo para el catálogo"))
     _osascript_falso(monkeypatch, lambda script, args: "none")
@@ -183,10 +148,9 @@ def test_el_catalogo_cabe_en_el_tiempo_de_watson(monkeypatch):
     assert slow.value.reason == "silent"
 
 
-def test_el_album_recibe_lo_que_queda_del_presupuesto(monkeypatch):
+def test_el_catalogo_y_la_apertura_caben_en_el_tiempo_de_watson(monkeypatch):
     monkeypatch.setattr(music.sys, "platform", "darwin")
     monkeypatch.setattr(music, "_installed", lambda player: True)
-    monkeypatch.setattr(music.time, "sleep", lambda seconds: None)
     now = [0.0]
     monkeypatch.setattr(music.time, "monotonic", lambda: now[0])
     asked = {}
@@ -195,9 +159,8 @@ def test_el_album_recibe_lo_que_queda_del_presupuesto(monkeypatch):
         now[0] = 3.0
         return {"name": "So What", "artist": "Miles Davis", "url": "music://music.apple.com/es/album/1?i=2"}
     monkeypatch.setattr(music, "catalog_song", song)
-    calls = _osascript_falso(monkeypatch, lambda script, args: {music.SEARCH_MUSIC: "none", music.MUSIC_VOLUME: "50"}.get(script, "ok"))
+    calls = _osascript_falso(monkeypatch, lambda script, args: "none" if script == music.SEARCH_MUSIC else "opened")
     assert "So What" in music.play("music", "so what")
     assert asked["catalog"] <= 4
-    album = next(call for call in calls if call[0] == music.PLAY_FROM_ALBUM)
-    assert int(album[1][1]) + 3 <= music.BUDGET, "el salto de pistas acaba dentro del presupuesto"
-    assert sum(timeout for _, _, timeout in calls) <= music.BUDGET + 8
+    assert [script for script, _, _ in calls] == [music.SEARCH_MUSIC, music.OPEN_IN_MUSIC], "ni salta pistas ni pulsa play: abre y ya"
+    assert sum(timeout for _, _, timeout in calls) + asked["catalog"] <= music.BUDGET

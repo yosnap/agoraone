@@ -18,12 +18,12 @@ Su campo «Pon…» sirve para pedir algo; el desplegable se abre hacia arriba c
 - Windows: todavía no.
 - Para ver lo que suena nunca se abre un reproductor: solo se pregunta a los que ya están abiertos.
 - «Pon…» funciona distinto según el reproductor:
-  - en Música, reproduce lo primero que coincida en tu biblioteca y, si no está, la canción del catálogo de Apple
-    Music (la reproduce tu suscripción): Música abre su álbum y salta, en silencio, hasta esa canción (el nombre
-    se compara sin mayúsculas, tildes ni puntuación, y vale «Corazón Partío (Remastered)» para «Corazón Partío»).
-    Todo cabe en unos 20 s: si Música no llega a tiempo, se pausa, se le devuelve el volumen y suena en YouTube;
-    el volumen se devuelve también si Música falla a medias. Si Música no responde a una búsqueda, se pausa para
-    que no empiece a sonar encima de YouTube;
+  - en Música, reproduce lo primero que coincida en tu biblioteca y, si no está, abre la canción del catálogo de
+    Apple Music (la reproduce tu suscripción) marcada en su álbum, con la ventana de Música al frente, y te pide un
+    doble clic: desde macOS 27 Música ya no la pone a la cola por AppleScript («reproducir» reanuda lo último que
+    sonó), así que ya no salta pistas ni pasa a YouTube cuando la canción existe (decisión del usuario, 20/11/2026).
+    Solo suena en YouTube si no está en el catálogo o si Música no responde; en ese caso se pausa para que no
+    empiece a sonar encima de YouTube;
   - en Spotify, abre su búsqueda para que elijas, porque su AppleScript no permite buscar y reproducir.
 - Las órdenes salen de una lista cerrada, y el texto de «pon…» se pasa como argumento de AppleScript, nunca
   escrito dentro del guion.
@@ -44,7 +44,7 @@ Su campo «Pon…» sirve para pedir algo; el desplegable se abre hacia arriba c
 - Solo se sirven archivos que están dentro de esas carpetas.
 - «Pon…» decide dónde buscar así:
   - si no nombras dónde, busca primero en tu biblioteca, después en el reproductor que esté abierto, luego en
-    Música (que solo busca en tu biblioteca de Apple Music) y, si no está en ninguno, en YouTube;
+    Música (tu biblioteca y, si no está, el catálogo de Apple Music, que se abre para un doble clic) y, si no está en ninguno, en YouTube;
   - «en Spotify», «en Música» o «en mi biblioteca» lo fuerzan;
   - «en YouTube» (1.7) suena dentro de AgoraOne, en un reproductor pequeño que sigue en todas las secciones y solo
     se maneja desde la app (tarjeta de música, Watson y su ✕). El núcleo busca en la página pública de YouTube, sin

@@ -85,66 +85,17 @@ SEARCH_MUSIC = '''on run argv
     return "ok"
   end tell
 end run'''
-# A song of the Apple Music catalogue: its album opens in Music and it plays from that song. Music plays the album
-# from its first track, so it skips (muted) to the song asked for and starts it from the beginning. The song is the
-# first track whose name matches without case, accents or punctuation, or starts with the name asked for («Corazón
-# Partío (Remastered)»). The skipping stops after the seconds given (item 2); the volume always comes back, also when
-# Music fails half way (the error is raised again after restoring it).
+# A song of the Apple Music catalogue opens in Music, its window brought to the front. Since macOS 27 Music shows the
+# song marked in its album but no longer queues it for AppleScript («play» resumes whatever played last), so the user
+# double-clicks it there: one gesture, never another song by mistake (user's decision, 20/11/2026).
 OPEN_IN_MUSIC = '''on run argv
-  tell application "Music" to open location (item 1 of argv)
+  tell application "Music"
+    reopen
+    activate
+    open location (item 1 of argv)
+  end tell
   return "opened"
 end run'''
-PLAY_FROM_ALBUM = '''on run argv
-  set wanted to item 1 of argv
-  set limit to (current date) + ((item 2 of argv) as integer)
-  tell application "Music"
-    set v to sound volume
-    try
-      set sound volume to 0
-      play
-      delay 0.6
-      set ok to false
-      repeat 120 times
-        set heard to ""
-        try
-          set heard to name of current track
-        end try
-        if my same_song(heard, wanted) then
-          set ok to true
-          exit repeat
-        end if
-        if my right_now() > limit then exit repeat
-        next track
-        delay 0.25
-      end repeat
-      if ok then set player position to 0
-      if not ok then pause
-      set sound volume to v
-      if ok then return "ok"
-      return "none"
-    on error errMsg number errNum
-      try
-        pause
-      end try
-      set sound volume to v
-      error errMsg number errNum
-    end try
-  end tell
-end run
-
-on right_now()
-  return current date  -- outside the tell block: a scripting addition, not a Music command
-end right_now
-
-on same_song(heard, wanted)
-  if heard is "" then return false
-  ignoring case, diacriticals and punctuation
-    if heard is wanted or heard starts with wanted then return true
-    if (length of heard) >= 4 and wanted starts with heard then return true
-  end ignoring
-  return false
-end same_song'''
-MUSIC_VOLUME = 'tell application "Music" to get sound volume'
 # The whole «pon …» in Music (library, then catalogue) answers within this many seconds: Watson waits for it.
 BUDGET = 20.0
 CATALOG = "https://itunes.apple.com/search"
@@ -378,51 +329,21 @@ def _music_or_pause(script: str, *args: str, timeout: float) -> str:
         raise
 
 
-def _music_volume() -> int | None:
-    try:
-        level = int(float(_osascript(MUSIC_VOLUME, timeout=2).replace(",", ".")))
-    except (MusicError, ValueError):
-        return None
-    return level if 0 <= level <= 100 else None
-
-
-def _play_from_album(name: str, seconds: float) -> str:
-    """Skips to the song in the album Music has open. If AppleScript does not finish in time (it is then killed and
-    cannot restore anything), Music is paused and its volume put back from here."""
-    volume = _music_volume()
-    try:
-        return _osascript(PLAY_FROM_ALBUM, name, str(max(1, int(seconds))), timeout=seconds + 2)
-    except MusicError as error:
-        if error.reason == "silent":
-            _pause_music()
-            if volume is not None:
-                try:
-                    _osascript(f'tell application "Music" to set sound volume to {volume}', timeout=2)
-                except MusicError:
-                    pass
-        raise
-
-
 def _play_music(query: str) -> str:
-    """Apple Music: the user's library first, then the public catalogue (the subscription plays it), all within
-    `BUDGET` seconds. When Music does not answer, it is paused so it does not play on top of YouTube."""
+    """Apple Music: a song of the user's library plays; otherwise the first song of the public catalogue opens in
+    Music for the user to press ▶, all within `BUDGET` seconds. When Music does not answer, it is paused so it does
+    not play on top of YouTube."""
     start = time.monotonic()
     left = lambda: BUDGET - (time.monotonic() - start)  # noqa: E731 - a short clock read in several places
     result = _music_or_pause(SEARCH_MUSIC, query, timeout=min(TIMEOUT, BUDGET))
     if result != "none":
         return f"Reproduciendo «{query}» en Música."
-    slow = MusicError(f"Música tarda demasiado en poner «{query}». Prueba con YouTube.", "silent")
-    if left() < 11:  # the library search alone took most of the time: Music is too slow today
-        raise slow
-    song = catalog_song(query, timeout=min(4.0, left() - 10))
+    if left() < 5:  # the library search alone took most of the time: Music is too slow today
+        raise MusicError(f"Música tarda demasiado en poner «{query}». Prueba con YouTube.", "silent")
+    song = catalog_song(query, timeout=min(4.0, left() - 4))
     if not song:
         raise MusicError(f"No encuentro «{query}» en Apple Music. Prueba con YouTube.", "missing")
-    if left() < 9:
-        raise slow
-    _music_or_pause(OPEN_IN_MUSIC, song["url"], timeout=3)  # the album could still open and play after YouTube
-    time.sleep(1)  # Music shows the album before it can play it
-    # The rest of the budget: AppleScript stops skipping in time, or it is cut 2 s later and Music is put right.
-    if _play_from_album(song["name"], max(2.0, left() - 4)) == "none":
-        raise MusicError(f"Música no pudo poner «{song['name']}». Prueba con YouTube.", "missing")
+    _music_or_pause(OPEN_IN_MUSIC, song["url"], timeout=3)
     by = f" de {song['artist']}" if song["artist"] else ""
-    return f"Pongo «{song['name']}»{by} en Música, de Apple Music."
+    return (f"Abro «{song['name']}»{by} en Música: está marcada en su álbum, haz doble clic en ella para escucharla "
+            "(Apple Music ya no deja ponerla sola desde fuera).")
