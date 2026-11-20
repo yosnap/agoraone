@@ -19,7 +19,7 @@ def main():
     if target.exists():
         raise ValueError("Ya existe .env; no se sobrescribe.")
     source = Path.home() / ".hermes" / "config.yaml"
-    config = yaml.safe_load(source.read_text())
+    config = yaml.safe_load(source.read_text(encoding="utf-8"))
     provider = next(p for p in config.get("custom_providers", []) if p.get("name") == provider_name)
     if model not in provider.get("models", {}):
         raise ValueError("Modelo no listado por el proveedor.")
@@ -30,7 +30,7 @@ def main():
     if not key or key.startswith(("$", "env:")):
         raise ValueError("La credencial requiere resolución manual; no se ha copiado.")
     settings = {"AGORA_MODEL": model, "AGORA_BASE_URL": url, "AGORA_API_KEY": key}
-    with os.fdopen(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as stream:
+    with os.fdopen(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w", encoding="utf-8", newline="") as stream:
         for name, value in settings.items():
             stream.write(f"{name}={json.dumps(value)}\n")
     print("Configuración de inferencia guardada en .env (0600). No se han modificado perfiles.")

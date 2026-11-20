@@ -196,10 +196,18 @@ pub fn load_dotenv(file: &Path) {
     }
 }
 
+fn port_check_hint(port: u16) -> String {
+    if cfg!(windows) {
+        format!("netstat -ano | findstr :{port}")
+    } else {
+        format!("lsof -iTCP:{port} -sTCP:LISTEN")
+    }
+}
+
 fn exit_message(code: i32) -> String {
     match code {
         2 => "falta el secreto de arranque".into(),
-        3 => "el puerto 4318 está ocupado; comprueba quién lo usa con «lsof -iTCP:4318 -sTCP:LISTEN»".into(),
+        3 => format!("el puerto 4318 está ocupado; comprueba quién lo usa con «{}»", port_check_hint(4318)),
         other => format!("código {other}"),
     }
 }
@@ -211,6 +219,7 @@ pub struct Server {
     listener: TcpListener,
     stop_core: Option<oneshot::Sender<()>>,
     core_done: Option<oneshot::Receiver<()>>,
+    _core_group: Option<crate::platform::ProcessGroup>,
 }
 
 /// Reads or creates the token, binds the port and starts the core.
@@ -218,18 +227,20 @@ pub async fn prepare(paths: &Paths) -> anyhow::Result<Server> {
     let token = access::load_token(&paths.data.join("access-token"))?;
     let listener = TcpListener::bind(("127.0.0.1", PORT)).await.map_err(|error| {
         if error.kind() == std::io::ErrorKind::AddrInUse {
-            anyhow::anyhow!("el puerto {PORT} está ocupado; comprueba quién lo usa con «lsof -iTCP:{PORT} -sTCP:LISTEN»")
+            anyhow::anyhow!("el puerto {PORT} está ocupado; comprueba quién lo usa con «{}»", port_check_hint(PORT))
         } else {
             anyhow::anyhow!("no se pudo escuchar en 127.0.0.1:{PORT} ({error})")
         }
     })?;
     let link = CoreLink { url: crate::core::CORE_URL.into(), secret: access::random_hex() };
-    let (mut stop_core, mut core_done, mut core) = (None, None, None);
+    let (mut stop_core, mut core_done, mut core, mut core_group) = (None, None, None, None);
     match &paths.core {
         None => eprintln!("AgoraOne: no se encuentra el núcleo (carpeta core); se sigue sin él."),
         Some(launch) => match start(launch, &link, &paths.data.join("core")) {
             Err(_) => eprintln!("AgoraOne: no se pudo arrancar el núcleo; instala uv (https://docs.astral.sh/uv/) y reinicia."),
             Ok(mut child) => {
+                let group = crate::platform::ProcessGroup::attach(&child);
+                let waiter_group = group.clone();
                 let (stop, stopped) = oneshot::channel::<()>();
                 let (done, finished) = oneshot::channel::<()>();
                 tokio::spawn(async move {
@@ -240,12 +251,14 @@ pub async fn prepare(paths: &Paths) -> anyhow::Result<Server> {
                             }
                         }
                         _ = stopped => {
+                            waiter_group.terminate();
                             crate::platform::stop_child(&mut child, Duration::from_secs(5)).await;
+                            waiter_group.kill();
                         }
                     }
                     let _ = done.send(());
                 });
-                (stop_core, core_done, core) = (Some(stop), Some(finished), Some(launch.clone()));
+                (stop_core, core_done, core, core_group) = (Some(stop), Some(finished), Some(launch.clone()), Some(group));
             }
         },
     }
@@ -259,7 +272,7 @@ pub async fn prepare(paths: &Paths) -> anyhow::Result<Server> {
         extractor: core.as_ref().map(Extractor::from_launch),
     };
     let state = AppState::new(config, &token, core.is_some().then_some(link));
-    Ok(Server { token, state, listener, stop_core, core_done })
+    Ok(Server { token, state, listener, stop_core, core_done, _core_group: core_group })
 }
 
 impl Server {
