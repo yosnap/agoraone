@@ -112,3 +112,23 @@ def test_module_off_is_404(setup):
     finally:
         connection.close()
     assert preview(client, ["client_missing:k2"]).status_code == 404
+
+
+def test_an_expired_review_sends_nothing(setup, fake, monkeypatch):  # noqa: F811
+    import time
+
+    from agora_core import confirmed_change
+
+    client, _ = setup
+    body = preview(client, ["client_missing:k2"]).json()
+    later = time.time() + 16 * 60
+    monkeypatch.setattr(confirmed_change, "_now", lambda: later)
+    answer = client.post("/crmdev/batch/confirm", headers=HEADERS, json={"token": body["token"]})
+    assert answer.status_code == 410 and fake.writes() == []
+
+
+def test_a_batch_of_changes_alone_reads_crmdev_again(setup, fake):  # noqa: F811
+    client, _ = setup
+    body = preview(client, ["client_changed:k1:c1"]).json()
+    assert client.post("/crmdev/batch/confirm", headers=HEADERS, json={"token": body["token"]}).json()["sent"] == 1
+    assert "client_changed:k1:c1" not in pending(client)  # the warning goes at once, not at the next reading
