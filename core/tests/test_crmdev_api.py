@@ -93,7 +93,7 @@ def test_ninguna_herramienta_permitida_borra():
     assert allowed <= set(ALL_TOOLS), "solo herramientas que CRMDev tiene"
 
 
-@pytest.mark.parametrize("tool", ["create_project", "create_ticket", "otra", "", None, "list_projects ", "LIST_PROJECTS"])
+@pytest.mark.parametrize("tool", ["create_ticket", "delete_project", "otra", "", None, "list_projects ", "LIST_PROJECTS"])
 def test_fuera_de_la_lista_no_sale_nada(fake, tool):
     with pytest.raises(WebApiError, match="no permitida"):
         crmdev_api.call(TARGET, tool)

@@ -125,7 +125,8 @@ CRMDev». **Nunca se borra nada.**
 - Qué se puede hacer: «Nueva tarea» (pestaña Tareas y ficha de proyecto), «Editar» en tareas, tickets, la ficha de
   proyecto y la de cliente, «Nuevo cliente» y «Crear en CRMDev» para un cliente sin ubicar. Son las herramientas
   `create_task`, `update_task`, `update_project`, `create_client`, `update_client` y `update_ticket`. No se crean
-  proyectos ni tickets, y no se tocan las notas del cliente ni la descripción del proyecto.
+  tickets, y no se tocan las notas del cliente ni la descripción del proyecto. Desde el 20/11/2026 la lista incluye
+  también `create_project`, solo para crear un proyecto de Central con «Enviar a CRMDev» (ver «Pendiente en CRMDev»).
 - Cada formulario pide antes «Revisar el cambio», que enseña las filas antes y después. La herramienta la elige el
   núcleo según la clase de cambio, nunca la pantalla. La ficha de confirmación sirve una vez y caduca a los 15
   minutos.
@@ -175,7 +176,20 @@ y Watson.
   proyectos de Central (no archivados) sin CRMDev y clientes de CRMDev que no están en Central. Un correo distinto
   solo dice que difiere: su valor nunca va en el aviso. Se ve en Trabajos › Clientes › «Pendiente en CRMDev» y,
   contado, en una tarjeta del Resumen. «Descartar» guarda solo la clave del aviso y una huella de lo que decía, y el
-  aviso vuelve cuando algo cambia. De momento no se envía nada: el envío por lotes llega con «Enviar a CRMDev».
+  aviso vuelve cuando algo cambia.
+- **Enviar a CRMDev** (1.9): en esa lista se marcan los avisos que se quieren enviar y «Revisar envío» enseña cada
+  operación con sus campos antes y después, leída de CRMDev en ese momento, y lo que no puede ir con su motivo. La
+  herramienta la elige el núcleo (`crmdev_batch.py`): un cliente que falta va con `create_client` (nombre, correo,
+  empresa y teléfono, como «Cliente»); un contacto, con `update_client` del cliente si no tiene correo o con
+  `create_client` de una persona de esa empresa; los datos distintos, con `update_client` o `update_project`; un
+  proyecto que falta, con `create_project`, con el estado equivalente al de Central, GITHUB si tiene repositorio,
+  su cliente de CRMDev (también el creado en el mismo envío) y una descripción con el repositorio y las webs del
+  cliente, que se escribe solo al crearlo. El NIF y la dirección no van nunca. Un cliente de CRMDev sin Central no se
+  envía. Una sola pulsación de «Enviar a CRMDev» manda todo: la revisión sirve una vez y caduca a los 15 minutos.
+  Antes de enviar se vuelve a leer CRMDev: lo que cambió no se envía y lo que ya apareció no se crea otra vez. Los
+  envíos van uno tras otro con una pausa y, si CRMDev pide esperar, el resto se queda sin enviar. Un alta sin
+  respuesta no se vuelve a ofrecer en 24 h salvo con «Revisado en CRMDev: incluirlos». Cada alta queda enlazada con
+  su ficha de Central. El registro de acciones solo guarda la clase de cambio y los nombres de los campos.
 - Watson (`consultar_clientes`) recibe de cada cliente su nombre, su empresa, su origen (Central, AgoraOne o ambos),
   sus dominios, sus webs, sus proyectos activos o en mantenimiento, su estado en CRMDev (si tiene ficha allí) y si
   está sin ubicar. Nunca recibe el correo, el teléfono, el NIF, las notas, las diferencias entre fuentes ni los
