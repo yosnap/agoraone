@@ -144,7 +144,7 @@ def crmdev_batch_router(settings: Settings, secrets) -> APIRouter:
         created = [r for r in results if r.get("outcome") == "sent" and r.get("id")]
         try:
             with database() as connection:
-                if created:
+                if any(r.get("outcome") == "sent" for r in results):  # also a change: «Pendiente en CRMDev» shows what is now
                     try:
                         crmdev_sync.refresh(connection, target)
                     except web_api.WebApiError:

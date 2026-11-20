@@ -153,3 +153,17 @@ def test_without_write_permission_nothing_is_asked(setup, fake):
 def test_keys_are_safe():
     assert client_births.KEY.fullmatch("chat:7") and client_births.KEY.fullmatch("mail:" + "a" * 24)
     assert not central_batch.valid_key("mail:../../x") and not central_batch.valid_key("local:abc")
+
+
+def test_an_expired_review_creates_nothing(setup, fake, monkeypatch):
+    import time
+
+    from agora_core import confirmed_change
+
+    client, _ = setup
+    key = births(client)["items"][0]["key"]
+    body = client.post("/central/batch/preview", json={"items": [{"key": key}]}, headers=HEADERS).json()
+    later = time.time() + 16 * 60
+    monkeypatch.setattr(confirmed_change, "_now", lambda: later)
+    answer = client.post("/central/batch/confirm", json={"token": body["token"]}, headers=HEADERS)
+    assert answer.status_code == 410 and fake.created == []
