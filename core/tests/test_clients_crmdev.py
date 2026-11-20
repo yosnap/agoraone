@@ -347,7 +347,8 @@ def test_instantanea_recortada_y_con_tope(setup, fake):  # noqa: F811
                                   "status": "RARO", "notes": "no se guarda"} for n in range(crmdev_api.SYNC_ROWS)]
     data = read_crmdev(client)
     assert data["truncated"] is True and data["count"] == crmdev_api.SYNC_ROWS
-    assert fake.seen[-1]["arguments"] == {"limit": crmdev_api.SYNC_ROWS}
+    assert [s["tool"] for s in fake.seen[-2:]] == ["list_clients", "list_projects"]
+    assert all(s["arguments"] == {"limit": crmdev_api.SYNC_ROWS} for s in fake.seen[-2:])
     connection = database(settings)
     try:
         kept = crmdev_sync.stored(connection)["clients"][0]
@@ -356,7 +357,7 @@ def test_instantanea_recortada_y_con_tope(setup, fake):  # noqa: F811
     assert set(kept) == {"id", "name", "company", "email", "status", "domains"} and kept["company"] == "Mucho espacio" and kept["status"] is None
     assert directory(client)["crmdev"]["truncated"] is True
     with pytest.raises(crmdev_api.WebApiError):
-        crmdev_api.checked_arguments("list_projects", {"limit": crmdev_api.SYNC_ROWS})
+        crmdev_api.checked_arguments("list_tasks", {"limit": crmdev_api.SYNC_ROWS})
 
 
 def test_ningun_borrado_sale_al_sincronizar(setup, fake):  # noqa: F811

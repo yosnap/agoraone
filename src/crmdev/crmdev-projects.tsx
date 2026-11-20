@@ -11,6 +11,8 @@ import { EditableTasks } from './crmdev-tasks';
 import { changeKey, resetChange, useEditing } from './use-crmdev-change';
 import { readKey, useCrmdevRead, type CrmdevRead } from './use-crmdev-view';
 import { ActionButton } from '../ui/action-button';
+import { ProjectPair } from '../connectors/project-pair';
+import { moduleOn, useModules } from '../shell/modules';
 
 const progressLabel = (progress: number | null) => (progress == null ? '—' : `${progress} %`);
 
@@ -61,6 +63,7 @@ export function ProjectRecord({ project, list = {}, gone = false, readAt, discre
   const [said, setSaid] = useState('');
   const tasks = useCrmdevRead(readKey('tareas', { proyecto: project.id }), fresh => getCrmdevView('tareas', { proyecto: project.id }, fresh));
   const hours = useCrmdevRead(`horas:${project.id}`, fresh => getCrmdevHours(project.id, fresh));
+  const modules = useModules();
   return <RecordLayout titleId="crmdev-project-title" title={project.name ?? 'Proyecto sin nombre'} badges={<span className="chip">De CRMDev</span>}
     actions={<span className="actions"><ReadAgain times={[readAt, tasks.data?.readAt, hours.data?.readAt]}/>
       <OpenInCrmdev page={`proyectos/${project.id}`} discreet={discreet}/>
@@ -73,6 +76,7 @@ export function ProjectRecord({ project, list = {}, gone = false, readAt, discre
         : <Facts items={[['Estado', labelOf(projectStatusLabels, project.status)], ['Progreso', progressLabel(project.progress)],
           ['Tipo', labelOf(projectTypeLabels, project.type)], ['Fecha límite', dayLabel(project.deadline)]]}/>}
     </Block>
+    {moduleOn(modules, 'central') && <Block title="En Central"><ProjectPair side="crmdev" id={project.id}/></Block>}
     <Block title="Horas"><ProjectHours read={hours} discreet={discreet} onOpen={onOpen}/></Block>
     <Block title="Tareas" wide>
       {tasks.failure ? <CrmdevProblem failure={tasks.failure} onRetry={tasks.reload} onOpen={onOpen}/>

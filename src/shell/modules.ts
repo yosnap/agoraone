@@ -21,7 +21,7 @@ export function useModules() {
     // Unreadable: everything stays on and the screens stop waiting (with nothing said about owners).
     void getModules().then(publish).catch(() => { read = true; on = { ...on }; listeners.forEach(listener => listener()); });
   }
-  return useSyncExternalStore(cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, snapshot);
+  return useSyncExternalStore(cb => { listeners.add(cb); return () => { listeners.delete(cb); }; }, snapshot, snapshot);
 }
 /** Reads the modules again: saving a connection may turn on the modules that follow it. */
 export const refreshModules = () => getModules().then(publish);

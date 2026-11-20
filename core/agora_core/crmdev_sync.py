@@ -1,7 +1,9 @@
 """CRMDev's clients as a snapshot for the directory of clients, so the mail, WhatsApp, meetings, Fiscal and Watson know
 them as they know Central's: `crmdev.clients` in `setting`, `{clients: [{id, name, company, email, status, domains}],
-fetchedAt, truncated}`. Read with `list_clients` (a tool of the closed list) and a limit of 1000, since CRMDev has no
-pages: a full answer is `truncated` and the directory says so. Refreshed every half hour while the «CRMDev» module is
+projects: [{id, name, status, type, clientId}], fetchedAt, truncated, projectsTruncated}`. Read with `list_clients`
+and `list_projects` (tools of the closed list) and a limit of 1000, since CRMDev has no pages: a full answer is
+`truncated` and the directory says so. The projects are for linking them with Central's (`project_links`); their
+client comes only when CRMDev gives it. Refreshed every half hour while the «CRMDev» module is
 on (`modules.gated`) and on «Actualizar». Only those fields are kept, trimmed; nothing else of CRMDev is stored.
 
 The snapshot is used only while the module is on and CRMDev's address is saved: turned off, it stays but nothing uses
@@ -23,6 +25,7 @@ WAIT_SECONDS = 30  # «Actualizar» while the worker reads: waits for its result
 TEXT = 200
 EMAIL = 320
 STATUSES = frozenset(crmdev_api.STATUSES["list_clients"])
+PROJECT_STATUSES = frozenset(crmdev_api.STATUSES["list_projects"])
 _REFRESHING = threading.Lock()  # one reading at a time (the half-hourly one or «Actualizar»)
 
 
@@ -58,6 +61,25 @@ def shape(data: object) -> dict:
     return {"clients": found, "fetchedAt": now(), "truncated": len(data) >= crmdev_api.SYNC_ROWS}
 
 
+def shape_projects(data: object) -> list[dict]:
+    """Each project with a valid id and a name, its state and type when known, and its client's id when CRMDev says it."""
+    if not isinstance(data, list):
+        raise WebApiError("error", crmdev_api.ODD)
+    found = []
+    for row in data[: crmdev_api.SYNC_ROWS]:
+        if not isinstance(row, dict):
+            continue
+        project_id, name = row.get("id"), _text(row.get("name"))
+        if not isinstance(project_id, str) or not crmdev_api.ID.fullmatch(project_id) or not name:
+            continue
+        client = row.get("client") if isinstance(row.get("client"), dict) else {}
+        client_id = row.get("clientId") if isinstance(row.get("clientId"), str) else client.get("id")
+        found.append({"id": project_id, "name": name, "status": row.get("status") if row.get("status") in PROJECT_STATUSES else None,
+                      "type": _text(row.get("type"), 40),
+                      "clientId": client_id if isinstance(client_id, str) and crmdev_api.ID.fullmatch(client_id) else None})
+    return found
+
+
 def refresh(connection: sqlite3.Connection, target: Connection) -> dict:
     """Reads CRMDev's clients now and keeps the snapshot; a WebApiError (without the key) when it cannot."""
     if not _REFRESHING.acquire(blocking=False):
@@ -71,6 +93,9 @@ def refresh(connection: sqlite3.Connection, target: Connection) -> dict:
         _REFRESHING.acquire()
     try:
         snapshot = shape(crmdev_api.call(target, "list_clients", {"limit": crmdev_api.SYNC_ROWS}, fresh=True))
+        projects = crmdev_api.call(target, "list_projects", {"limit": crmdev_api.SYNC_ROWS}, fresh=True)
+        snapshot["projects"] = shape_projects(projects)
+        snapshot["projectsTruncated"] = isinstance(projects, list) and len(projects) >= crmdev_api.SYNC_ROWS
     finally:
         _REFRESHING.release()
     with transaction(connection):

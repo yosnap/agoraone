@@ -130,7 +130,7 @@ def test_solo_call_ejecuta_herramientas():
 
 @pytest.mark.parametrize("method, path, body", [
     ("POST", "/api/mcp/rest", {"tool": "delete_project", "arguments": {"projectId": "p1"}}),
-    ("POST", "/api/mcp/rest", {"tool": "list_projects", "arguments": {"limit": 500}}),
+    ("POST", "/api/mcp/rest", {"tool": "list_projects", "arguments": {"limit": 5000}}),
     ("POST", "/api/mcp/rest", {"tool": "list_projects", "arguments": {}, "extra": 1}),
     ("POST", "/api/mcp/rest", {"tool": "list_projects"}),
     ("GET", "/api/mcp/rest", {"tool": "list_projects", "arguments": {}}),
@@ -164,7 +164,7 @@ def test_el_spec_de_crmdev_solo_se_usa_en_su_modulo():
 
 
 @pytest.mark.parametrize("tool, arguments", [
-    ("list_projects", {"limit": 0}), ("list_projects", {"limit": 101}), ("list_projects", {"limit": True}), ("list_projects", {"limit": "5"}),
+    ("list_projects", {"limit": 0}), ("list_projects", {"limit": 1001}), ("list_projects", {"limit": True}), ("list_projects", {"limit": "5"}),
     ("list_projects", {"status": "DELETED"}), ("list_tasks", {"projectId": "../x"}), ("list_tasks", {"projectId": "a" * 65}),
     ("list_tickets", {"clientId": "c 1"}), ("list_tickets", {"category": "OTRA"}), ("list_clients", {"email": "x"}),
     ("get_project_time_report", {}), ("list_members", {"status": "TODO"}), ("list_projects", ["limit"]),
