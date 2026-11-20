@@ -6,6 +6,7 @@
 Reading what plays never opens a player: only those already running are asked. Commands come from a closed
 list, and what to play («pon …») is passed as an argument, never written into a script."""
 
+import re
 import shutil
 import subprocess
 import time
@@ -29,20 +30,21 @@ class MusicError(RuntimeError):
         self.reason = reason
 
 
-def _which(script: str) -> str:
-    """The script's first meaningful line, for the log: never its arguments (what the user asked to play)."""
-    return next((line.strip() for line in script.splitlines() if line.strip() and not line.strip().startswith("on run")), "")[:80]
+_LABELS = {}  # script → what it does, for the log (filled below, once the scripts exist)
 
 
 def _osascript(script: str, *args: str, timeout: float = TIMEOUT) -> str:
     started = time.perf_counter()  # not monotonic(): the «pon …» budget is measured with that one
+    label = _LABELS.get(script, "orden a un reproductor")
     try:
         done = subprocess.run(["/usr/bin/osascript", "-e", script, *args], capture_output=True, text=True, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired) as error:
-        print(f"AgoraOne núcleo: música sin respuesta en {time.perf_counter() - started:.1f} s ({type(error).__name__}): {_which(script)}", file=sys.stderr)
+        print(f"AgoraOne núcleo: música sin respuesta en {time.perf_counter() - started:.1f} s ({type(error).__name__}): {label}", file=sys.stderr)
         raise MusicError("El reproductor no responde.", "silent") from error
     if done.returncode != 0:
-        print(f"AgoraOne núcleo: música falló ({done.stderr.strip()[-160:]}): {_which(script)}", file=sys.stderr)
+        # Only the error number: AppleScript's message may repeat an argument (a song, an address).
+        code = re.findall(r"\((-?\d+)\)", done.stderr)
+        print(f"AgoraOne núcleo: música falló (error {code[-1] if code else '?'}): {label}", file=sys.stderr)
         if "-1743" in done.stderr or "not allowed" in done.stderr.lower():
             raise MusicError("macOS no deja a AgoraOne controlar la música: dale permiso en Ajustes del Sistema › Privacidad y seguridad › Automatización.")
         raise MusicError("El reproductor no pudo hacerlo.")
@@ -93,9 +95,13 @@ SEARCH_MUSIC = '''on run argv
     return "ok"
   end tell
 end run'''
-# A song of the Apple Music catalogue opens in Music, its window brought to the front. Since macOS 27 Music shows the
-# song marked in its album but no longer queues it for AppleScript («play» resumes whatever played last), so the user
-# double-clicks it there: one gesture, never another song by mistake (user's decision, 20/11/2026).
+# A song or album of the Apple Music catalogue. Since macOS 27 Music shows its page for a `music://` address but does
+# not queue it for AppleScript («play» resumes whatever played last), so AgoraOne presses Music's own «Play» menu
+# item, which plays the album on screen from its first track, as its button does (user's decision, 20/11/2026). The
+# item is found by its shortcut (Space, no modifiers), not by its name, which depends on the language. For a song,
+# Music skips (muted) to it and starts it from the beginning, like a double click on it: the album follows. Then
+# Music is hidden and the music card of AgoraOne shows what plays. Pressing a menu item needs the permission
+# «Accesibilidad» for AgoraOne; without it Music is left on the page for the user to play it.
 OPEN_IN_MUSIC = '''on run argv
   tell application "Music"
     reopen
@@ -104,26 +110,159 @@ OPEN_IN_MUSIC = '''on run argv
   end tell
   return "opened"
 end run'''
+PLAY_PAGE = '''on run argv
+  set wanted to item 1 of argv
+  set limit to (current date) + ((item 2 of argv) as integer)
+  tell application "Music" to set v to sound volume
+  try
+    if wanted is not "" then tell application "Music" to set sound volume to 0
+    -- stopped, «Play» plays the page on screen; paused, it would resume the queue that was playing before
+    tell application "Music" to stop
+    tell application "Music" to activate
+    set pressed to false
+    repeat 20 times
+      if my press_play() then
+        set pressed to true
+        exit repeat
+      end if
+      if my right_now() > limit then exit repeat
+      delay 0.25
+    end repeat
+    if not pressed then
+      tell application "Music" to set sound volume to v
+      return "unpressed"
+    end if
+    delay 0.8
+    set ok to (wanted is "")
+    tell application "Music"
+      if not ok then
+        repeat 120 times
+          set heard to ""
+          try
+            set heard to name of current track
+          end try
+          if my same_song(heard, wanted) then
+            set ok to true
+            exit repeat
+          end if
+          if my right_now() > limit then exit repeat
+          next track
+          -- a streamed track ignores «next» while it loads: wait for the title to change before asking again
+          repeat 16 times
+            delay 0.15
+            set now_heard to ""
+            try
+              set now_heard to name of current track
+            end try
+            if now_heard is not heard and now_heard is not "" then exit repeat
+          end repeat
+        end repeat
+        if ok then set player position to 0
+        if not ok then pause
+      end if
+      set sound volume to v
+    end tell
+    if ok then tell application "System Events" to set visible of (first process whose bundle identifier is "com.apple.Music") to false
+    if ok then return "ok"
+    return "none"
+  on error errMsg number errNum
+    try
+      tell application "Music" to set sound volume to v
+    end try
+    error errMsg number errNum
+  end try
+end run
+
+on press_play()
+  tell application "System Events"
+    tell (first process whose bundle identifier is "com.apple.Music")
+      repeat with b in menu bar items of menu bar 1
+        try
+          repeat with i in menu items of menu 1 of b
+            try
+              if (value of attribute "AXMenuItemCmdChar" of i) is " " and (value of attribute "AXMenuItemCmdModifiers" of i) is 8 then
+                if not (enabled of i) then return false
+                click i
+                return true
+              end if
+            end try
+          end repeat
+        end try
+      end repeat
+    end tell
+  end tell
+  return false
+end press_play
+
+on right_now()
+  return current date  -- outside the tell blocks: a scripting addition
+end right_now
+
+on same_song(heard, wanted)
+  if heard is "" then return false
+  ignoring case, diacriticals and punctuation
+    if heard is wanted or heard starts with wanted then return true
+    if (length of heard) >= 4 and wanted starts with heard then return true
+  end ignoring
+  return false
+end same_song'''
 # The whole «pon …» in Music (library, then catalogue) answers within this many seconds: Watson waits for it.
 BUDGET = 20.0
 CATALOG = "https://itunes.apple.com/search"
 
 
+_COVER = re.compile(r"(?i)instrumental|karaoke|tribut|cover|lullaby|made famous|in the style|piano version|8[- ]?bit")
+
+
+def _plain(text: str) -> str:
+    import unicodedata
+
+    return "".join(c for c in unicodedata.normalize("NFKD", text.casefold()) if c.isalnum() or c == " ")
+
+
+def _best(results: list, query: str, name_key: str) -> dict | None:
+    """The result to play: by the artist the user named when there is one, never a cover or karaoke version unless
+    asked for, otherwise the catalogue's own order."""
+    asked = f" {_plain(query)} "
+    usable = [r for r in results if isinstance(r, dict) and r.get(name_key) and isinstance(r.get("collectionId"), int)
+              and (name_key == "collectionName" or isinstance(r.get("trackId"), int))]
+    if not _COVER.search(query):
+        usable = [r for r in usable if not _COVER.search(f"{r.get(name_key)} {r.get('collectionName')} {r.get('artistName')}")] or usable
+    named = [r for r in usable if _plain(str(r.get("artistName") or "")) and f" {_plain(str(r['artistName']))} " in asked]
+    return (named or usable or [None])[0]
+
+
 def catalog_song(query: str, fetch=None, timeout: float = 5) -> dict | None:
-    """The first song of the public Apple Music catalogue for these words (only the words go to Apple): its name,
-    artist and the album address that opens it in Music. None when there is nothing or no answer."""
+    """The song of the public Apple Music catalogue for these words (only the words go to Apple): its name, artist,
+    place in its album and the album address that opens it in Music. None when there is nothing or no answer."""
     import httpx
 
     try:
-        answer = (fetch or httpx.get)(CATALOG, params={"term": query, "entity": "song", "country": "es", "limit": 5}, timeout=timeout)
+        answer = (fetch or httpx.get)(CATALOG, params={"term": query, "entity": "song", "country": "es", "limit": 15}, timeout=timeout)
         results = answer.json().get("results", []) if answer.status_code == 200 else []
     except Exception:  # noqa: BLE001 - an outside service: no answer is «not found»
         return None
-    for item in results:
-        if isinstance(item, dict) and item.get("trackName") and isinstance(item.get("collectionId"), int) and isinstance(item.get("trackId"), int):
-            return {"name": str(item["trackName"])[:200], "artist": str(item.get("artistName") or "")[:120],
-                    "url": f"music://music.apple.com/es/album/{item['collectionId']}?i={item['trackId']}"}
-    return None
+    item = _best(results, query, "trackName")
+    if not item:
+        return None
+    return {"name": str(item["trackName"])[:200], "artist": str(item.get("artistName") or "")[:120],
+            "url": f"music://music.apple.com/es/album/{item['collectionId']}?i={item['trackId']}"}
+
+
+def catalog_album(query: str, fetch=None, timeout: float = 5) -> dict | None:
+    """The first album of the public Apple Music catalogue for these words: its name, artist and address in Music."""
+    import httpx
+
+    try:
+        answer = (fetch or httpx.get)(CATALOG, params={"term": query, "entity": "album", "country": "es", "limit": 15}, timeout=timeout)
+        results = answer.json().get("results", []) if answer.status_code == 200 else []
+    except Exception:  # noqa: BLE001 - an outside service: no answer is «not found»
+        return None
+    item = _best(results, query, "collectionName")
+    if not item:
+        return None
+    return {"name": str(item["collectionName"])[:200], "artist": str(item.get("artistName") or "")[:120],
+            "url": f"music://music.apple.com/es/album/{item['collectionId']}"}
 
 
 SEARCH_SPOTIFY = '''on run argv
@@ -337,21 +476,60 @@ def _music_or_pause(script: str, *args: str, timeout: float) -> str:
         raise
 
 
+MUSIC_VOLUME = 'tell application "Music" to get sound volume'
+
+
+def _music_volume() -> int | None:
+    try:
+        level = int(float(_osascript(MUSIC_VOLUME, timeout=2).replace(",", ".")))
+    except (MusicError, ValueError):
+        return None
+    return level if 0 <= level <= 100 else None
+
+
+_LABELS.update({SEARCH_MUSIC: "buscar en la biblioteca de Música", OPEN_IN_MUSIC: "abrir en Música", PLAY_PAGE: "reproducir en Música",
+                MUSIC_VOLUME: "leer el volumen de Música"})
+ALBUM = re.compile(r"^(?:el\s+|un\s+)?(?:álbum|album|disco)\s+(.+)$", re.IGNORECASE)
+ACCESS = ("Para ponerla desde AgoraOne, permite AgoraOne en Ajustes del Sistema › Privacidad y seguridad › "
+          "Accesibilidad (pulsa el «Reproducir» de Música por ti).")
+
+
 def _play_music(query: str) -> str:
-    """Apple Music: a song of the user's library plays; otherwise the first song of the public catalogue opens in
-    Music for the user to press ▶, all within `BUDGET` seconds. When Music does not answer, it is paused so it does
-    not play on top of YouTube."""
+    """Apple Music: a song of the user's library plays; otherwise the song (or, for «el álbum …», the album) of the
+    public catalogue opens in Music and plays from there, all within `BUDGET` seconds. When Music does not answer,
+    it is paused so it does not play on top of YouTube."""
     start = time.monotonic()
     left = lambda: BUDGET - (time.monotonic() - start)  # noqa: E731 - a short clock read in several places
-    result = _music_or_pause(SEARCH_MUSIC, query, timeout=min(TIMEOUT, BUDGET))
-    if result != "none":
-        return f"Reproduciendo «{query}» en Música."
-    if left() < 5:  # the library search alone took most of the time: Music is too slow today
-        raise MusicError(f"Música tarda demasiado en poner «{query}». Prueba con YouTube.", "silent")
-    song = catalog_song(query, timeout=min(4.0, left() - 4))
-    if not song:
-        raise MusicError(f"No encuentro «{query}» en Apple Music. Prueba con YouTube.", "missing")
-    _music_or_pause(OPEN_IN_MUSIC, song["url"], timeout=3)
-    by = f" de {song['artist']}" if song["artist"] else ""
-    return (f"Abro «{song['name']}»{by} en Música: está marcada en su álbum, haz doble clic en ella para escucharla "
-            "(Apple Music ya no deja ponerla sola desde fuera).")
+    album = ALBUM.match(query)
+    if not album:
+        result = _music_or_pause(SEARCH_MUSIC, query, timeout=min(TIMEOUT, BUDGET))
+        if result != "none":
+            return f"Reproduciendo «{query}» en Música."
+        if left() < 8:  # the library search alone took most of the time: Music is too slow today
+            raise MusicError(f"Música tarda demasiado en poner «{query}». Prueba con YouTube.", "silent")
+    words = album.group(1) if album else query
+    found = (catalog_album if album else catalog_song)(words, timeout=min(4.0, left() - 7))
+    if not found:
+        raise MusicError(f"No encuentro «{words}» en Apple Music. Prueba con YouTube.", "missing")
+    by = f" de {found['artist']}" if found["artist"] else ""
+    what = f"el álbum «{found['name']}»" if album else f"«{found['name']}»"
+    _music_or_pause(OPEN_IN_MUSIC, found["url"], timeout=3)
+    seconds = max(3, int(left() - 3))
+    volume = _music_volume()
+    try:
+        done = _osascript(PLAY_PAGE, "" if album else found["name"], str(seconds), timeout=seconds + 3)
+    except MusicError as error:
+        if error.reason == "silent":  # cut half way: AppleScript could not put Music right, so it is done from here
+            _pause_music()
+            if volume is not None:
+                try:
+                    _osascript(f'tell application "Music" to set sound volume to {volume}', timeout=2)
+                except MusicError:
+                    pass
+            raise
+        return f"Abro {what}{by} en Música, pero no puedo darle a reproducir. {ACCESS}"
+    if done == "ok":
+        return f"Pongo {what}{by} en Música, de Apple Music."
+    if done == "unpressed":
+        return f"Abro {what}{by} en Música, pero aún no deja reproducirlo: dale a reproducir allí."
+    raise MusicError(f"Música no encontró «{found['name']}» en su álbum. Prueba con YouTube.", "missing")

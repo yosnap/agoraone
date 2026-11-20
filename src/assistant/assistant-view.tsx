@@ -10,7 +10,7 @@ import { OrcaProposals, useOrcaProposals } from './orca-proposals';
 import { HermesProposals, useHermesProposals } from './hermes-proposals';
 import type { Delegated } from '../api/core';
 import { ChatReplyProposals, useChatReplyProposals } from './chat-reply-proposals';
-import { startTurn, stopTurn, forgetTurn, takeEvents, useLiveTurns } from './live-turns';
+import { answeringIn, startTurn, stopTurn, forgetTurn, useLiveTurns } from './live-turns';
 import { CleanupProposals, useCleanupProposals } from './cleanup-proposals';
 import { ReorgProposals, useReorgProposals } from './reorg-proposals';
 import { speak, stopSpeaking, useSpeaking, useVoiceNotice } from './speech';
@@ -70,9 +70,10 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const cleanups = useCleanupProposals();
   const reorgs = useReorgProposals();
   const end = useRef<HTMLDivElement>(null);
-  // The conversation on screen, read by answers that finish after the user moved to another one.
-  const shownId = useRef<number | null>(null);
-  shownId.current = current;
+  // How many events of each conversation's answer this chat has taken (each chat counts for itself, so coming back
+  // or opening the conversation again shows the proposals' cards again), and when it took a finished answer.
+  const taken = useRef(new Map<number, number>());
+  const finishedAt = useRef(new Map<number, number>());
   const refreshList = useCallback(() => listAssistantConversations().then(data => { setConversations(data.conversations); setListError(''); })
     .catch(failure => setListError(failure instanceof Error ? failure.message : 'No se pudieron leer las conversaciones.')), []);
   useEffect(() => {
@@ -81,9 +82,17 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
     getEngines().then(setEngine).catch(() => setEngine({ active: null, model: '' }));
   }, [refreshList]);
   const open = useCallback(async (id: number) => {
-    setCurrent(id); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); hermes.clear(); chatReplies.clear(); writeLast(id); shownId.current = id;
+    stopSpeaking();
+    setCurrent(id); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); hermes.clear(); chatReplies.clear(); writeLast(id);
+    taken.current.delete(id);
     if (embedded) setListOpen(false);
-    try { const found = (await getAssistantConversation(id)).messages; setMessages(found); onSources?.(lastSources(found)); }
+    const asked = performance.now();
+    try {
+      const found = (await getAssistantConversation(id)).messages;
+      // An answer that finished while this was on its way already brought the newer messages.
+      if ((finishedAt.current.get(id) ?? 0) > asked) return;
+      setMessages(found); onSources?.(lastSources(found));
+    }
     catch (failure) { setMessages([]); setCurrent(null); writeLast(null); setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.'); }
     finally { setLoading(false); }
   }, []);
@@ -100,9 +109,16 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const turns = useLiveTurns();
   const turn = current !== null ? turns.get(current) : undefined;
   const live = turn && !turn.done ? turn.live : null;
+  // The graph beside the chat follows only the conversation on screen.
+  useEffect(() => { onThinking?.(null); }, [current]);  // only when the conversation changes
+  // An answer that finished out of sight renames and reorders its conversation in the list.
+  const finishedCount = [...turns.values()].filter(item => item.done).length;
+  useEffect(() => { if (finishedCount) void refreshList(); }, [finishedCount, refreshList]);
   useEffect(() => {
     if (!turn) return;
-    for (const event of takeEvents(turn.conversation)) {
+    const from = taken.current.get(turn.conversation) ?? 0;
+    taken.current.set(turn.conversation, turn.events.length);
+    for (const event of turn.events.slice(from)) {
       const reading = turn.reading;
       if (event.kind === 'stage') onThinking?.({ stage: event.stage, label: stageLabels[event.stage], reading });
       else if (event.kind === 'sources') onSources?.(event.sources.map(sourceId));
@@ -130,6 +146,8 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       onThinking?.(null);
       if (turn.messages) setMessages(turn.messages);
       if (turn.error) setError(turn.error);
+      finishedAt.current.set(turn.conversation, performance.now());
+      taken.current.delete(turn.conversation);
       forgetTurn(turn.conversation);
       void refreshList();
     }
@@ -137,14 +155,16 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const send = useCallback(async (text: string, into: number | null, delegated?: Delegated): Promise<boolean> => {
     let id = into;
     setError('');
+    // One answer at a time, so two voices never mix: Watson finishes the other conversation first.
+    if (answeringIn() !== null) { setError(`${persona?.name ?? 'Watson'} aún está respondiendo en otra conversación: espera a que termine o detenla allí.`); return false; }
     try {
-      if (id === null) { id = (await createAssistantConversation()).id; shownId.current = id; setCurrent(id); writeLast(id); setMessages([]); }
+      if (id === null) { id = (await createAssistantConversation()).id; setCurrent(id); writeLast(id); setMessages([]); }
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'No se pudo responder.');
       return false;
     }
     return startTurn(id, text, delegated, spokenTurn.current);
-  }, []);
+  }, [persona]);
   // A question asked from the brain's page starts a new conversation, once.
   useEffect(() => { if (question) { onQuestionTaken?.(); void send(question, null); } }, [question, onQuestionTaken, send]);
   // Only the message list scrolls (scrollIntoView would also move the page around it).

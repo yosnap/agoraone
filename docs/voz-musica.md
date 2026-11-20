@@ -18,12 +18,17 @@ Su campo «Pon…» sirve para pedir algo; el desplegable se abre hacia arriba c
 - Windows: todavía no.
 - Para ver lo que suena nunca se abre un reproductor: solo se pregunta a los que ya están abiertos.
 - «Pon…» funciona distinto según el reproductor:
-  - en Música, reproduce lo primero que coincida en tu biblioteca y, si no está, abre la canción del catálogo de
-    Apple Music (la reproduce tu suscripción) marcada en su álbum, con la ventana de Música al frente, y te pide un
-    doble clic: desde macOS 27 Música ya no la pone a la cola por AppleScript («reproducir» reanuda lo último que
-    sonó), así que ya no salta pistas ni pasa a YouTube cuando la canción existe (decisión del usuario, 20/11/2026).
-    Solo suena en YouTube si no está en el catálogo o si Música no responde; en ese caso se pausa para que no
-    empiece a sonar encima de YouTube;
+  - en Música, reproduce lo primero que coincida en tu biblioteca y, si no está, la canción del catálogo de Apple
+    Music (la reproduce tu suscripción; se prefiere la del artista que nombras y nunca una versión instrumental,
+    karaoke o tributo salvo que la pidas). Desde macOS 27 Música no pone a la cola por AppleScript lo que abre una
+    dirección `music://`, así que AgoraOne abre el álbum, pulsa el «Reproducir» de Música (lo encuentra por su atajo,
+    la barra espaciadora, no por su nombre, que cambia con el idioma) tras detener lo que hubiera, salta en silencio
+    hasta la canción esperando a que cargue cada pista, la empieza desde el principio y oculta Música: es lo mismo que
+    hacer doble clic en ella (sigue el resto del álbum) y la tarjeta de música de AgoraOne la muestra. «Pon el álbum …»
+    (o «el disco …») pone el álbum entero desde la primera canción, como su botón de arriba (decisión del usuario,
+    20/11/2026). Pulsar ese menú necesita el permiso «Accesibilidad» para AgoraOne; sin él, Música se queda en la página
+    y AgoraOne lo dice. Todo cabe en unos 20 s: si Música no llega a tiempo, se pausa, se le devuelve el volumen y
+    suena en YouTube; si no responde a una búsqueda, también se pausa para que no empiece a sonar encima de YouTube;
   - en Spotify, abre su búsqueda para que elijas, porque su AppleScript no permite buscar y reproducir.
 - Las órdenes salen de una lista cerrada, y el texto de «pon…» se pasa como argumento de AppleScript, nunca
   escrito dentro del guion.
@@ -44,7 +49,7 @@ Su campo «Pon…» sirve para pedir algo; el desplegable se abre hacia arriba c
 - Solo se sirven archivos que están dentro de esas carpetas.
 - «Pon…» decide dónde buscar así:
   - si no nombras dónde, busca primero en tu biblioteca, después en el reproductor que esté abierto, luego en
-    Música (tu biblioteca y, si no está, el catálogo de Apple Music, que se abre para un doble clic) y, si no está en ninguno, en YouTube;
+    Música (tu biblioteca y, si no está, el catálogo de Apple Music) y, si no está en ninguno, en YouTube;
   - «en Spotify», «en Música» o «en mi biblioteca» lo fuerzan;
   - «en YouTube» (1.7) suena dentro de AgoraOne, en un reproductor pequeño que sigue en todas las secciones y solo
     se maneja desde la app (tarjeta de música, Watson y su ✕). El núcleo busca en la página pública de YouTube, sin
