@@ -24,7 +24,7 @@ import {
 import { Markdown } from '../ui/markdown';
 import { Loading, LoadError } from '../ui/load-state';
 import type { NoteRef } from '../brain/note-reader';
-import { engineName, modelName, stageLabels } from './assistant-labels';
+import { engineName, modelName, stageLabels, webLabel } from './assistant-labels';
 import { play } from '../sound/sound';
 import { Announcements, useAnnouncements } from './assistant-announce';
 import './assistant.css';
@@ -121,6 +121,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
         else if (event.kind === 'tool' && event.tool === 'inbox') onThinking?.({ stage: 'busca', label: 'Consultando la Bandeja', reading });
         else if (event.kind === 'tool' && event.tool === 'meetings') onThinking?.({ stage: 'busca', label: 'Buscando en las reuniones', reading });
         else if (event.kind === 'tool' && event.tool === 'meeting') onThinking?.({ stage: 'lee', label: `Leyendo la reunión «${event.title}»`, reading });
+        else if (event.kind === 'tool' && event.tool === 'web') onThinking?.({ stage: 'lee', label: webLabel(event.pages), reading });
         else if (event.kind === 'tool' && event.tool === 'rule_proposal') proposals.add(event.id, event.rule);
         else if (event.kind === 'tool' && event.tool === 'note_proposal') notes.add(event.id, event.note);
         else if (event.kind === 'tool' && event.tool === 'event_proposal') events.add(event.id, event.event);

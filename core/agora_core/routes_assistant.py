@@ -14,7 +14,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import assistant
+from . import assistant, web_page
 from .brain_tools import Toolbox
 from .db import DB_NAME, connect, now, transaction
 from .embed import Embedder, VectorCache
@@ -102,6 +102,8 @@ def _logged(event: dict) -> tuple[str, str]:
         return event["tool"], json.dumps({k: v for k, v in event.items() if k != "tool"}, ensure_ascii=False, default=str)
     if event["tool"] == "read":
         return "leer", json.dumps({"n": event.get("n")}, ensure_ascii=False)
+    if event["tool"] == "web":  # which sites and whether they were read, never the full address or the text
+        return "leer_web", json.dumps({"sitios": [p["host"] for p in event["pages"]], "leidas": sum(1 for p in event["pages"] if p["ok"])}, ensure_ascii=False)
     return str(event.get("tool") or "herramienta"), "{}"
 
 
@@ -409,6 +411,16 @@ def assistant_router(
                 toolbox.proposals, toolbox.owner = proposals, owner
                 toolbox.register(found[:included])
                 yield _event("sources", {"sources": toolbox.sources})
+                # Only the addresses the user wrote in this message; the core reads them, Watson has no network.
+                pages_block = ""
+                urls = web_page.urls_in(body.message)
+                if urls:
+                    yield _event("stage", {"stage": "web"})
+                    pages = await web_page.fetch_all(urls)
+                    pages_block = web_page.block(pages)
+                    read_event = {"tool": "web", "pages": [{"host": p.host, "ok": not p.error} for p in pages]}
+                    toolbox.history.append(read_event)
+                    yield _event("tool", read_event)
                 yield _event("stage", {"stage": "piensa"})
                 candidates = await run_in_threadpool(lambda: usable(build_engines(current), current["engine"]))
                 if not candidates:
@@ -417,7 +429,7 @@ def assistant_router(
                         "Anthropic o configura un proveedor compatible en Ajustes."
                     )
                 system = assistant.system_prompt(current)
-                question = f"{context}\n\nPregunta: {body.message}"
+                question = f"{context}\n\n{pages_block + chr(10) + chr(10) if pages_block else ''}Pregunta: {body.message}"
                 last_error = None
                 for engine in candidates:
                     model = current["compatible"]["model"] if engine.name == "compatible" else current["model"]
