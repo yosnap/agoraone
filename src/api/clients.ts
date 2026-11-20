@@ -107,7 +107,7 @@ export const dismissPending = (key: string, signature: string | null) => core<{ 
 
 /** «Enviar a CRMDev»: the exact operations for the ticked warnings (the core chooses each tool), and what cannot go. */
 export type BatchRow = { field: string; label: string; before: string | null; after: string | null };
-export type BatchOperation = { key: string; kind: string; title: string; rows: BatchRow[]; notes: string[] };
+export type BatchOperation = { key: string; kind?: string; origin?: string; title: string; rows: BatchRow[]; notes?: string[] };
 export type BatchSkipped = { key: string; name: string; reason: string };
 export type BatchPreview = { token: string; operations: BatchOperation[]; skipped: BatchSkipped[]; warnings: string[] };
 export type BatchOutcome = 'sent' | 'already' | 'conflict' | 'skipped' | 'unknown' | 'error' | 'waiting';
@@ -115,3 +115,13 @@ export type BatchResult = { done: true; sent: number; results: { key: string; ti
 
 export const previewBatch = (keys: string[], anyway: string[] = []) => core<BatchPreview>('/crmdev/batch/preview', { keys, anyway });
 export const confirmBatch = (token: string) => core<BatchResult>('/crmdev/batch/confirm', { token });
+
+/** Who writes or meets the user and is no client yet (only what is «normal»): never an address nor a number. */
+export type BirthOrigin = 'mail' | 'whatsapp' | 'meeting';
+export type ClientBirth = { key: string; origin: BirthOrigin; name: string; hint: string | null; count: number; last: string | null; dismissed: boolean };
+export const getClientBirths = (withDismissed = false) => core<{ items: ClientBirth[]; dismissed: number }>(`/client-births${withDismissed ? '?all=true' : ''}`);
+export const dismissBirth = (key: string, dismissed: boolean) => core<{ done: true }>('/client-births/dismiss', { key, dismissed });
+/** «Crear en Central» for several: `local:<id>`, `crmdev:<id>` or a proposal's key, with the name the user may have changed. */
+export const previewCentralBatch = (items: { key: string; name?: string }[], anyway: string[] = []) =>
+  core<BatchPreview>('/central/batch/preview', { items, anyway });
+export const confirmCentralBatch = (token: string) => core<BatchResult>('/central/batch/confirm', { token });
