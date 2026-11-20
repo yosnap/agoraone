@@ -190,6 +190,18 @@ y Watson.
   envíos van uno tras otro con una pausa y, si CRMDev pide esperar, el resto se queda sin enviar. Un alta sin
   respuesta no se vuelve a ofrecer en 24 h salvo con «Revisado en CRMDev: incluirlos». Cada alta queda enlazada con
   su ficha de Central. El registro de acciones solo guarda la clase de cambio y los nombres de los campos.
+- **Los clientes nacen en Central** (1.9): Trabajos › Clientes › «Crear en Central» reúne los clientes que solo
+  están en AgoraOne, los de CRMDev que no están en Central y propuestas de quien escribe o se reúne con el usuario
+  sin ser cliente (`client_births.py`). Las propuestas salen de correos y conversaciones de WhatsApp clasificados
+  como de cliente o de trabajo (los correos, agrupados por dominio cuando representa a un cliente, nunca el de un
+  proveedor de correo) y del cliente y las personas con correo de las reuniones; solo de lo «normal», nunca de lo
+  «solo en este Mac» ni de lo privado, y nunca de lo que el directorio ya conoce. La lista no lleva correos ni
+  números (solo el dominio como pista); «Descartar» guarda solo la clave. El usuario marca, puede cambiar el nombre
+  de una propuesta, revisa cada cliente tal cual irá (correo y teléfono incluidos) y los crea todos con «Crear en
+  Central» (`central_batch.py`, rutas `/central/batch/preview` y `/central/batch/confirm`, clave con «escritura»).
+  Se vuelve a leer Central: lo que ya tiene (nombre, NIF o correo) no se crea. Cada cliente propio queda enlazado y
+  cada cliente de CRMDev, enlazado con el nuevo de Central. Nada se crea solo: un correo, un mensaje o una reunión
+  nunca disparan la creación.
 - Watson (`consultar_clientes`) recibe de cada cliente su nombre, su empresa, su origen (Central, AgoraOne o ambos),
   sus dominios, sus webs, sus proyectos activos o en mantenimiento, su estado en CRMDev (si tiene ficha allí) y si
   está sin ubicar. Nunca recibe el correo, el teléfono, el NIF, las notas, las diferencias entre fuentes ni los

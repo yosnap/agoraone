@@ -1,9 +1,9 @@
-import type { ClientsDirectory, CrmdevPending, DirectoryClient, LinkSuggestion, PendingChange, PendingItem } from '../api/clients';
+import type { ClientBirth, ClientsDirectory, CrmdevPending, DirectoryClient, LinkSuggestion, PendingChange, PendingItem } from '../api/clients';
 
 // What the directory of clients shows, without React: the filter, the counts of the header and the sentence of each
 // suggestion of links between the three sources (Central, CRMDev and the clients kept in AgoraOne).
 
-export type ClientsFilter = 'all' | 'unplaced' | 'cards' | 'pending';
+export type ClientsFilter = 'all' | 'unplaced' | 'cards' | 'pending' | 'births';
 
 export function filterClients(clients: DirectoryClient[], filter: ClientsFilter): DirectoryClient[] {
   return filter === 'unplaced' ? clients.filter(client => client.unplaced) : clients;
@@ -58,7 +58,7 @@ export function pendingText(item: PendingItem): string {
       ? 'Su correo de contacto de Central no está en ninguna de sus personas de CRMDev.'
       : 'Está en CRMDev sin correo de contacto: falta el de Central.';
     case 'client_changed': return 'Cliente con datos distintos en CRMDev.';
-    case 'crmdev_only': return `Cliente creado en CRMDev que no está en Central${item.localId ? ' (lo guardas en AgoraOne)' : ''}.`;
+    case 'crmdev_only': return `Cliente creado en CRMDev que no está en Central${item.localId ? ' (lo guardas en AgoraOne)' : ''}: créalo desde «Crear en Central».`;
     case 'project_missing': return `Proyecto de Central que no está en CRMDev${item.client ? ` · ${item.client}` : ''}.${item.maybe ? ` Quizá es «${item.maybe}»: enlázalo en su ficha.` : ''}`;
     case 'project_changed': return 'Proyecto con datos distintos en CRMDev.';
   }
@@ -71,3 +71,20 @@ export function pendingChangeText(change: PendingChange): string {
 }
 
 export const pendingTotal = (counts: CrmdevPending['counts']) => Object.values(counts).reduce((sum, n) => sum + n, 0);
+
+/** Who may still be created in Central: clients kept only in AgoraOne and clients of CRMDev not in Central (neither
+ * joined with one of Central nor kept here: those go as the client kept here). */
+export function centralCandidates(clients: DirectoryClient[]): { local: DirectoryClient[]; crmdev: DirectoryClient[] } {
+  return {
+    local: clients.filter(c => c.localId !== null && !c.sources.includes('central')),
+    crmdev: clients.filter(c => c.crmdevId !== null && c.localId === null && !c.sources.includes('central')),
+  };
+}
+
+const BIRTH_ORIGINS: Record<ClientBirth['origin'], string> = { mail: 'correo', whatsapp: 'WhatsApp', meeting: 'reunión' };
+
+/** «correo de acme.es · 3 veces»: where a proposal comes from, without an address nor a number. */
+export function birthText(birth: ClientBirth): string {
+  const where = birth.hint ? `${BIRTH_ORIGINS[birth.origin]} de ${birth.hint}` : BIRTH_ORIGINS[birth.origin];
+  return birth.count > 1 ? `${where} · ${birth.count} veces` : where;
+}

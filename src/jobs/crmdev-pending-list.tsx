@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react';
-import { dismissPending, getCrmdevPending, type CrmdevPending, type PendingItem, type PendingKind } from '../api/clients';
+import { confirmBatch, dismissPending, getCrmdevPending, previewBatch, type CrmdevPending, type PendingItem, type PendingKind } from '../api/clients';
 import { ActionButton } from '../ui/action-button';
 import { LoadError, Loading } from '../ui/load-state';
-import { CrmdevBatchReview } from './crmdev-batch-review';
+import { BatchReview } from './batch-review';
 import { pendingChangeText, pendingText, pendingTotal } from './clients-view';
 
 const SENDABLE = new Set<PendingKind>(['client_missing', 'contact_missing', 'client_changed', 'project_missing', 'project_changed']);
@@ -53,7 +53,8 @@ export function CrmdevPendingList({ discreet }: { discreet: boolean }) {
       </span>
     </div>
     {error && <LoadError message={error}/>}
-    {reviewing && <CrmdevBatchReview key={reviewing.join('|')} keys={reviewing} onClose={() => setReviewing(null)}
+    {reviewing && <BatchReview key={reviewing.join('|')} onClose={() => setReviewing(null)}
+      dest={{ name: 'CRMDev', action: 'Enviar a CRMDev', preview: anyway => previewBatch(reviewing, anyway), confirm: confirmBatch }}
       onDone={() => { setTicked(new Set()); load(); }}/>}
     {!discreet && sendable.length > 0 && <label className="field-row"><input type="checkbox" checked={sendable.every(i => ticked.has(i.key))}
       onChange={event => setTicked(event.target.checked ? new Set(sendable.map(i => i.key)) : new Set())}/> Marcar todo lo que se puede enviar</label>}
