@@ -277,7 +277,7 @@ class CompatibleEngine:
 
 PRIVATE_TOOLS = {"consultar_bandeja", "consultar_clientes", "consultar_agenda", "resumen_del_dia", "consultar_trabajos", "proponer_regla", "proponer_evento", "proponer_presupuesto", "proponer_limpieza",
                  "consultar_reuniones", "leer_reunion", "proponer_issue", "proponer_encargo_orca",
-                 "proponer_respuesta_whatsapp"}  # mail, WhatsApp, clients, calendar, meetings and Orca: Claude only
+                 "proponer_respuesta_whatsapp", "consultar_crmdev", "proponer_cambio_crmdev"}  # mail, WhatsApp, clients, calendar, meetings, Orca and CRMDev: Claude only
 
 
 HIDDEN_TOOLS: set[str] = set()  # tools of the modules turned off in Settings (modules.apply keeps it)

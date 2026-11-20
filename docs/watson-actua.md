@@ -165,6 +165,24 @@ existen, sin leerlos. Ver [conversaciones-perfiles.md](conversaciones-perfiles.m
 usuario cambia de sección o de conversación, la respuesta sigue y al volver se ve dónde va o cómo terminó, con sus
 tarjetas. Responde a una pregunta cada vez (`src/assistant/live-turns.ts`).
 
+## Watson y CRMDev (1.9)
+
+Decisión del usuario del 20/11/2026. Solo con Claude y con el módulo CRMDev encendido y conectado
+(`core/agora_core/crmdev_tools.py`):
+
+- `consultar_crmdev` lee las tareas o los tickets más recientes por la lista cerrada (caché de 60 s): id, título,
+  estado, prioridad, categoría, fecha, proyecto, empresa del cliente y un trozo de la descripción sin líneas con
+  pinta de clave. Nunca correos, teléfonos ni nombres de personas (quién abrió un ticket o a quién está asignada una
+  tarea). Llega con un aviso de que es dato, no instrucciones.
+- `proponer_cambio_crmdev` propone una tarea nueva (en un proyecto que haya visto), un cambio de tarea (título,
+  descripción, estado, prioridad) o de ticket (estado, prioridad, categoría), solo de lo que haya visto en esa
+  respuesta. Se comprueba con las mismas reglas que los formularios de la sección CRMDev y abre una tarjeta en el
+  chat (`src/assistant/crmdev-proposals.tsx`) con lo propuesto. «Revisar el cambio» lee CRMDev y enseña el antes y
+  después exactos, y solo «Guardar en CRMDev» lo guarda, por `/crmdev/write/*` como un formulario. Un «sí» en el chat
+  no guarda nada y Watson no tiene herramienta para guardar.
+- El registro de acciones guarda qué lista leyó y cuántos, y la clase y los nombres de los campos propuestos; nunca
+  sus valores. Responder a un ticket espera a que CRMDev ofrezca `reply_ticket` en su API de organización.
+
 ## Rutas del núcleo
 
 | Ruta | Para qué |

@@ -15,7 +15,7 @@ from contextlib import AbstractContextManager
 
 from fastapi.concurrency import run_in_threadpool
 
-from . import brain_chat, hermes_tasks, meeting_tools, orca_launch, research
+from . import brain_chat, crmdev_tools, hermes_tasks, meeting_tools, orca_launch, research
 from .embed import Embedder, VectorCache
 from .search import search
 
@@ -208,6 +208,7 @@ SPECS.append({
 })
 SPECS.extend(meeting_tools.SPECS)
 SPECS.append(orca_launch.SPEC)
+SPECS.extend(crmdev_tools.SPECS)
 SPECS.append(brain_chat.SPEC)
 SPECS.append(hermes_tasks.SPEC)
 SPECS.extend([research.PROPOSE_SPEC, research.READ_SPEC])
@@ -262,6 +263,8 @@ class Toolbox:
         self.owner: str | None = None
         self.meetings_seen: set[int] = set()  # a meeting can only be read once it was found
         self.chats_seen: set[int] = set()  # a reply is only proposed to a conversation consultar_bandeja showed
+        self.crmdev_seen: set[tuple[str, str]] = set()  # a change is only proposed for a task or ticket consultar_crmdev showed
+        self.secrets = None  # the secret store, for reading CRMDev
         self.only: tuple[str, ...] | None = None  # a research turn: the only tools that answer, whatever is asked
         self.pages_left = 0  # pages a research turn may still read
         self.known_urls: set[str] = set()  # the only addresses it may open (search results, the user's question)
@@ -350,6 +353,8 @@ class Toolbox:
                 return await research.read_page(self, args)
             if name in meeting_tools.NAMES:
                 return await self._meetings(name, args)
+            if name in crmdev_tools.NAMES:
+                return await crmdev_tools.call(self, name, args)
         except (TypeError, ValueError):
             pass
         return json.dumps({"error": "Herramienta o argumentos no válidos."}, ensure_ascii=False)

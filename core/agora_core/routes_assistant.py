@@ -106,6 +106,12 @@ def _logged(event: dict) -> tuple[str, str]:
         return "proponer_regla", json.dumps({"action": event["rule"].get("action")}, ensure_ascii=False)
     if event["tool"] == "orca_proposal":  # which repository and agent, not the task
         return "proponer_encargo_orca", json.dumps({"repositorio": event["proposal"].get("repo"), "agente": event["proposal"].get("agent")}, ensure_ascii=False)
+    if event["tool"] == "crmdev_read":  # which list and how many, never what it says
+        return "consultar_crmdev", json.dumps({"que": event["what"], "cuantos": event["count"]}, ensure_ascii=False)
+    if event["tool"] == "crmdev_proposal":  # which kind and which fields, never their values
+        request = event["proposal"]["request"]
+        return "proponer_cambio_crmdev", json.dumps({"tipo": event["proposal"]["kind"], "campos": sorted(request.get("values") or request.get("changes") or {})},
+                                                    ensure_ascii=False)
     if event["tool"] == "research_proposal":  # that one was proposed, never the question
         return "proponer_investigacion", "{}"
     if event["tool"] == "research":  # the caps it ran with, never the question
@@ -443,7 +449,7 @@ def assistant_router(
                 context, included = assistant.context_block(found)
                 # The first notes come with the question; the tools number the next ones after them.
                 toolbox = Toolbox(database, embedder, cache)
-                toolbox.proposals, toolbox.owner = proposals, owner
+                toolbox.proposals, toolbox.owner, toolbox.secrets = proposals, owner, secrets
                 caps = research.limits(current) if body.research else None
                 if caps:  # only the web, normal notes and proponer_nota: never mail, chats, clients or the history
                     toolbox.only, toolbox.pages_left, toolbox.max_calls = research.TOOLS, caps["pages"], caps["pages"] + 6

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import type { PendingItem } from '../api/clients';
 import { birthText, centralCandidates, pendingChangeText, pendingText, pendingTotal } from './clients-view';
 import { openClientsFilter, takeClientsFilter, takeJobsTab } from './jobs-tab';
+import { proposedFields } from '../assistant/crmdev-proposals';
 
 const item = (fields: Partial<PendingItem>): PendingItem => ({ key: 'k', kind: 'client_missing', name: 'Uno', signature: 'a'.repeat(64), dismissed: false, ...fields });
 
@@ -72,4 +73,12 @@ test('«Lanzar en Orca» en tareas y tickets solo con proyecto enlazado y nunca 
   const row = readFileSync(new URL('../orca/crmdev-to-orca.tsx', import.meta.url), 'utf8');
   assert.match(row, /choices=\{\[choice\]\}/);  // only its linked project
   assert.match(row, /source=\{\{ kind, remote: id \}\}/);  // the core reads the record, the screen never sends its text
+});
+
+test('la propuesta de Watson para CRMDev enseña lo propuesto y solo guarda con la revisión de los formularios', () => {
+  assert.deepEqual(proposedFields({ kind: 'tarea', id: 't1', list: {}, changes: { status: 'DONE', title: 'Nueva' } }), [['Estado', 'DONE'], ['Título', 'Nueva']]);
+  assert.deepEqual(proposedFields({ kind: 'tarea-nueva', values: { title: 'Revisar', projectId: 'p1' } }), [['Título', 'Revisar'], ['Proyecto', 'p1']]);
+  const card = readFileSync(new URL('../assistant/crmdev-proposals.tsx', import.meta.url), 'utf8');
+  assert.match(card, /<CrmdevReview change=\{change\}/);  // the same review and «Guardar en CRMDev» as the section's forms
+  assert.ok(!/confirmCrmdevChange|<select|border-l/.test(card));
 });
