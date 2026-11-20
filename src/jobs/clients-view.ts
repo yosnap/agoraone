@@ -1,9 +1,9 @@
-import type { ClientsDirectory, DirectoryClient, LinkSuggestion } from '../api/clients';
+import type { ClientsDirectory, CrmdevPending, DirectoryClient, LinkSuggestion, PendingChange, PendingItem } from '../api/clients';
 
 // What the directory of clients shows, without React: the filter, the counts of the header and the sentence of each
 // suggestion of links between the three sources (Central, CRMDev and the clients kept in AgoraOne).
 
-export type ClientsFilter = 'all' | 'unplaced' | 'cards';
+export type ClientsFilter = 'all' | 'unplaced' | 'cards' | 'pending';
 
 export function filterClients(clients: DirectoryClient[], filter: ClientsFilter): DirectoryClient[] {
   return filter === 'unplaced' ? clients.filter(client => client.unplaced) : clients;
@@ -49,3 +49,25 @@ export function forDiscreet(cards: ClientsDirectory['vaultCards'], discreet: boo
 /** Why a client kept here is «sin ubicar» again: the CRM it was linked with no longer returns that client. */
 export const staleText = (stale: DirectoryClient['staleLink']) =>
   stale ? `Estaba enlazado con un cliente de ${stale === 'central' ? 'Central' : 'CRMDev'} que ya no aparece al leerlo (borrado o fuera de lo leído): vuelve a ubicarlo.` : '';
+
+/** The sentence of a warning of «Pendiente en CRMDev». */
+export function pendingText(item: PendingItem): string {
+  switch (item.kind) {
+    case 'client_missing': return `Cliente de Central que no está en CRMDev${item.projects ? ` (${item.projects === 1 ? 'un proyecto' : `${item.projects} proyectos`})` : ''}.`;
+    case 'contact_missing': return item.contacts
+      ? 'Su correo de contacto de Central no está en ninguna de sus personas de CRMDev.'
+      : 'Está en CRMDev sin correo de contacto: falta el de Central.';
+    case 'client_changed': return 'Cliente con datos distintos en CRMDev.';
+    case 'crmdev_only': return `Cliente creado en CRMDev que no está en Central${item.localId ? ' (lo guardas en AgoraOne)' : ''}.`;
+    case 'project_missing': return `Proyecto de Central que no está en CRMDev${item.client ? ` · ${item.client}` : ''}.${item.maybe ? ` Quizá es «${item.maybe}»: enlázalo en su ficha.` : ''}`;
+    case 'project_changed': return 'Proyecto con datos distintos en CRMDev.';
+  }
+}
+
+/** «Empresa: Uno SL en Central, Uno Grupo en CRMDev»; an address only says that it differs. */
+export function pendingChangeText(change: PendingChange): string {
+  if (change.central === undefined && change.crmdev === undefined) return `${change.label}: distinto en CRMDev`;
+  return `${change.label}: ${change.central ?? '—'} en Central, ${change.crmdev ?? 'otro'} en CRMDev`;
+}
+
+export const pendingTotal = (counts: CrmdevPending['counts']) => Object.values(counts).reduce((sum, n) => sum + n, 0);

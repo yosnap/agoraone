@@ -169,6 +169,13 @@ y Watson.
   se llaman igual, cada nombre es único en su lado y sus clientes no se contradicen. Lo que solo se parece es una
   sugerencia («Enlazar» / «Son distintos», reversible). La ficha de proyecto de cada lado enseña su par (bloques «En
   CRMDev» y «En Central»). Enlazar no copia nada entre ellos.
+- **Pendiente en CRMDev** (1.9): con Central y CRMDev encendidos y leídos, el núcleo compara en solo lectura
+  (`crmdev_pending.py`) y avisa de clientes de Central sin CRMDev, contactos de Central que no están en ninguna de
+  sus personas de CRMDev, clientes y proyectos enlazados con nombre, empresa, correo, estado o cliente distintos,
+  proyectos de Central (no archivados) sin CRMDev y clientes de CRMDev que no están en Central. Un correo distinto
+  solo dice que difiere: su valor nunca va en el aviso. Se ve en Trabajos › Clientes › «Pendiente en CRMDev» y,
+  contado, en una tarjeta del Resumen. «Descartar» guarda solo la clave del aviso y una huella de lo que decía, y el
+  aviso vuelve cuando algo cambia. De momento no se envía nada: el envío por lotes llega con «Enviar a CRMDev».
 - Watson (`consultar_clientes`) recibe de cada cliente su nombre, su empresa, su origen (Central, AgoraOne o ambos),
   sus dominios, sus webs, sus proyectos activos o en mantenimiento, su estado en CRMDev (si tiene ficha allí) y si
   está sin ubicar. Nunca recibe el correo, el teléfono, el NIF, las notas, las diferencias entre fuentes ni los

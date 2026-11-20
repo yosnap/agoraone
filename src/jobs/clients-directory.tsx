@@ -7,6 +7,7 @@ import { LoadError, Loading } from '../ui/load-state';
 import { ClientDetail, ClientOrigins } from './client-detail';
 import { ClientSuggestions, DistinctPairs, VaultCards } from './client-follow-up';
 import { ClientForm } from './client-form';
+import { CrmdevPendingList } from './crmdev-pending-list';
 import { filterClients, followUp, forDiscreet, type ClientsFilter } from './clients-view';
 import { takeClientsFilter } from './jobs-tab';
 import { ActionButton } from '../ui/action-button';
@@ -84,6 +85,7 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
       <ActionButton icon="trash" label="Eliminar…" tone="danger" disabled={busy} onClick={() => askDelete(id)}/>
     </span>;
   };
+  const bothRead = data.central.on && data.central.read && data.crmdev.on && data.crmdev.read;
   const sources = [data.central.on && data.central.read ? 'Central' : null, data.crmdev.on && data.crmdev.read ? 'CRMDev' : null].filter(Boolean);
   return <div className="clients-directory">
     <div className="jobs-heading"><h2>Clientes{pending && <small className="muted"> · {pending}</small>}</h2>
@@ -97,7 +99,7 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
       {data.crmdev.truncated ? ' De CRMDev se leen los 1000 más recientes: el resto no se ve aquí.' : ''}</p>
     {data.crmdev.problem && <LoadError message={data.crmdev.problem}/>}
     <div className="segmented" role="group" aria-label="Qué clientes ver">{([['all', 'Todos'], ['unplaced', `Sin ubicar (${data.unplacedCount})`],
-      ['cards', `Fichas sin cliente (${cards.count})`]] as const).map(([key, label]) =>
+      ['cards', `Fichas sin cliente (${cards.count})`], ...(bothRead ? [['pending', 'Pendiente en CRMDev'] as const] : [])] as const).map(([key, label]) =>
       <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>)}</div>
     {editing !== null && !discreet && <ClientForm key={editing} clientId={editing === 'new' ? null : editing} onCancel={() => setEditing(null)}
       onDone={saved => { setEditing(null); setNote(`«${saved.name}» guardado.`); load(); invalidateClients(); }}/>}
@@ -107,7 +109,8 @@ export function ClientsDirectoryView({ discreet }: { discreet: boolean }) {
       act={(work, said) => void act(work, said)} onDone={said => { setNote(said); load(); invalidateClients(); }}/>}
     {note && <p role="status" className="task-done">{note}</p>}
     {error && <LoadError message={error}/>}
-    {filter === 'cards' ? <VaultCards cards={cards} discreet={discreet} busy={busy} act={(work, said) => void act(work, said)}/>
+    {filter === 'pending' ? <CrmdevPendingList discreet={discreet}/>
+      : filter === 'cards' ? <VaultCards cards={cards} discreet={discreet} busy={busy} act={(work, said) => void act(work, said)}/>
       : shown.length === 0 ? <p className="muted">{filter === 'unplaced' ? 'Ningún cliente sin ubicar: todos están en Central o en CRMDev.'
         : 'Todavía no tienes clientes. Crea uno con «Nuevo cliente» para que la Bandeja, WhatsApp, las reuniones, Fiscal y Watson lo reconozcan.'}</p>
       : <table className="work-table clients-table"><thead><tr><th>Cliente</th><th>Origen</th><th className="num">Proyectos</th><th><span className="visually-hidden">Acciones</span></th></tr></thead>
