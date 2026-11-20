@@ -140,6 +140,19 @@ def test_la_marca_real_dentro_del_texto_no_cierra_el_bloque():
 
 
 def test_un_binario_que_no_es_orca_no_vale(tmp_path, monkeypatch):
+    if os.name == "nt":
+        # Windows: the native launcher, recognised by its version info, never another orca.exe.
+        other = tmp_path / "orca.exe"
+        other.write_bytes(b"MZ" + "Otra cosa".encode("utf-16-le"))
+        assert not orca_launch._is_orca(str(other))
+        launcher = tmp_path / "bin" / "orca.exe"
+        launcher.parent.mkdir()
+        launcher.write_bytes(b"MZ" + b"\0" * 64 + "Orca CLI Launcher".encode("utf-16-le"))
+        assert orca_launch._is_orca(str(launcher))
+        script = tmp_path / "orca.cmd"
+        script.write_bytes(b"@echo off\r\n" + "Orca CLI Launcher".encode("utf-16-le"))
+        assert not orca_launch._is_orca(str(script)), "solo el lanzador nativo, no un script"
+        return
     reader = tmp_path / "orca"
     reader.write_text("#!/usr/bin/python3\n# GNOME screen reader\n")
     reader.chmod(0o755)

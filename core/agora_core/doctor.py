@@ -19,6 +19,25 @@ def _app(*names: str) -> bool:
     return MAC and any((root / f"{name}.app").exists() for name in names for root in (Path("/Applications"), HOME / "Applications"))
 
 
+def _hermes_root() -> Path:
+    """Where Hermes keeps its data, by the server's rule: AGORA_HERMES_HOME, else HERMES_HOME (taken back to the
+    data root when it points at one profile), else ~/.hermes."""
+    agora, hermes = os.environ.get("AGORA_HERMES_HOME"), os.environ.get("HERMES_HOME")
+    root = Path(os.path.expanduser(agora or hermes or str(HOME / ".hermes")))
+    if not agora and root.parent.name == "profiles":
+        root = root.parent.parent
+    return root
+
+
+def _obsidian_registry() -> Path:
+    """Obsidian's list of vaults, where Obsidian keeps it on each system."""
+    if MAC:
+        return HOME / "Library/Application Support/obsidian/obsidian.json"
+    if WINDOWS:
+        return Path(os.environ.get("APPDATA") or HOME / "AppData/Roaming") / "obsidian/obsidian.json"
+    return Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config") / "obsidian/obsidian.json"
+
+
 def _program(*names: str) -> str | None:
     for name in names:
         found = shutil.which(name)
@@ -47,11 +66,13 @@ def check(connection: sqlite3.Connection, has_anthropic_key: bool, has_zernio_ke
         pieces.append({"id": ident, "name": name, "state": "ok" if ok else "optional" if optional else "missing",
                        "modules": modules, "detail": detail, "how": how or {"kind": "none"}})
 
-    hermes = (HOME / ".hermes").is_dir()
+    hermes_root = _hermes_root()
+    hermes = hermes_root.is_dir()
+    shown = "~/.hermes" if hermes_root == HOME / ".hermes" else str(hermes_root)
     add("hermes", "Hermes", hermes, ["Oficina 3D", "Trabajos", "Conectores"],
-        "Perfiles, bots y kanban detectados en ~/.hermes." if hermes else "No se encuentra ~/.hermes: sin perfiles ni bots.",
+        f"Perfiles, bots y kanban detectados en {shown}." if hermes else f"No se encuentra {shown}: sin perfiles ni bots.",
         _how(url="https://github.com/NousResearch/hermes-agent"), optional=True)
-    obsidian = (HOME / "Library/Application Support/obsidian/obsidian.json").is_file() if MAC else (HOME / ".config/obsidian/obsidian.json").is_file()
+    obsidian = _obsidian_registry().is_file()
     add("obsidian", "Obsidian y sus vaults", obsidian, ["Cerebro", "Reuniones"],
         "Registro de vaults encontrado." if obsidian else "Sin registro de Obsidian: el Cerebro no tiene notas que indexar.",
         _how(brew="--cask obsidian", url="https://obsidian.md/download"))

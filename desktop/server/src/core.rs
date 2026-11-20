@@ -24,8 +24,11 @@ const FORWARDED_REQUEST: [&str; 3] = ["content-type", "accept", "last-event-id"]
 const FORWARDED_RESPONSE: [&str; 2] = ["content-type", "content-disposition"];
 // What the core may inherit: programs, locale, temp folder, what uv needs behind a proxy, and what the
 // local Claude Code needs to find the user's own session. Never keys, tokens or the server's settings.
-const INHERITED: [&str; 12] = [
+// AGORA_HERMES_HOME and HERMES_HOME only say where Hermes keeps its data, so the diagnosis finds it where the
+// server does.
+const INHERITED: [&str; 14] = [
     "PATH", "HOME", "LANG", "TMPDIR", "USER", "LOGNAME", "UV_CACHE_DIR", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE", "CLAUDE_CONFIG_DIR",
+    "AGORA_HERMES_HOME", "HERMES_HOME",
 ];
 // On Windows, Python finds the home folder by USERPROFILE (not HOME), the temporary folder by TEMP/TMP, and
 // native programs (ffmpeg, whisper.cpp) need SystemRoot to start; still no keys or tokens.

@@ -24,7 +24,12 @@ TASK_CHARS = 4000
 SOURCE_CHARS = 12000
 LIST_FOR = 60.0
 PLACES = ("/Applications/Orca.app/Contents/Resources/bin/orca", os.path.expanduser("~/Applications/Orca.app/Contents/Resources/bin/orca"),
-          "/opt/homebrew/bin/orca", "/usr/local/bin/orca")
+          "/opt/homebrew/bin/orca", "/usr/local/bin/orca",
+          # Windows: installed for the user (LOCALAPPDATA) or for everybody (ProgramFiles).
+          *(os.path.join(os.environ[k], *sub, "resources", "bin", "orca.exe")
+            for k, sub in (("LOCALAPPDATA", ("Programs", "orca")), ("ProgramFiles", ("Orca",))) if os.environ.get(k)))
+# The Windows launcher's version info names it (UTF-16, as Windows stores it).
+_WINDOWS_MARK = "Orca CLI Launcher".encode("utf-16-le")
 ENVIRONMENT = ("PATH", "HOME", "LANG", "USER", "TMPDIR", "XDG_CONFIG_HOME", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
                "SystemRoot", "APPDATA", "LOCALAPPDATA", "USERPROFILE", "TEMP", "TMP", "PATHEXT")
 
@@ -36,9 +41,12 @@ class OrcaError(ValueError):
 
 
 def _is_orca(path: str | None) -> bool:
-    """Only the Orca app's own CLI wrapper: on Linux `orca` is usually GNOME's screen reader."""
+    """Only the Orca app's own CLI wrapper: on Linux `orca` is usually GNOME's screen reader. On Windows it is a
+    native launcher (orca.exe) whose version info says «Orca CLI Launcher»."""
     try:
         with open(path or "", "rb") as file:
+            if os.name == "nt":
+                return path.lower().endswith(".exe") and _WINDOWS_MARK in file.read(4 * 1024 * 1024)
             return os.access(path, os.X_OK) and b"Orca.app" in file.read(4096)
     except OSError:
         return False
