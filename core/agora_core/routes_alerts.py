@@ -76,11 +76,13 @@ def alerts_router(settings: Settings, call_reader=calls.read_calls) -> APIRouter
         """Opens System Settings at «Full Disk Access» (it cannot be asked for: the user adds AgoraOne there).
         A fixed address; nothing from the request reaches the command."""
         import subprocess
+        import sys
 
         def run():
-            subprocess.run(["/usr/bin/open", "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"], timeout=10, check=False)
+            if sys.platform == "darwin":
+                subprocess.run(["/usr/bin/open", "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"], timeout=10, check=False)
         await run_in_threadpool(run)
-        return {"ok": True}
+        return {"ok": sys.platform == "darwin"}
 
     @router.get("/alerts/due")
     async def due():

@@ -85,7 +85,10 @@ def collect(connection: sqlite3.Connection, now: datetime | None = None, store=N
                 problems.append("No se pudieron leer los Contactos.")
             missed = _call_alerts(call_reader(), names, now, private=chosen["callsLevel"] == "private")
         except calls.CallsUnavailable as error:
-            problems.append(str(error))
+            # Something to fix (a permission, an unreadable history) is a notice; a system without call history
+            # is not: Ajustes says so from `callsProblem`.
+            if error.code != "unavailable":
+                problems.append(str(error))
             calls_problem = error.code
         except Exception:  # noqa: BLE001
             problems.append("No se pudo leer el historial de llamadas.")

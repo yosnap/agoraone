@@ -21,6 +21,7 @@ from .keystore import (
     recovery_code, recovery_pending,
 )
 from .settings import HOST, PORT, data_dir
+from . import system_words
 
 
 def show_recovery_key(folder: Path, store: KeyStore, again: bool) -> int:
@@ -29,11 +30,11 @@ def show_recovery_key(folder: Path, store: KeyStore, again: bool) -> int:
         print("Ya guardaste la clave de recuperación de la clave actual. Si la perdiste, usa --again.")
         return 1
     key, _ = ensure_key(store, folder, allow_create=not list_backups(folder))
-    print("Clave de recuperación de las copias de AgoraOne. Guárdala fuera de este Mac:")
+    print(f"Clave de recuperación de las copias de AgoraOne. Guárdala fuera de {system_words.HERE}:")
     print()
     print(f"    {recovery_code(key)}")
     print()
-    print("Sin ella, si pierdes este Mac o su Llavero, las copias no se podrán abrir.")
+    print(f"Sin ella, si pierdes {system_words.HERE} o su {system_words.KEYSTORE}, las copias no se podrán abrir.")
     print("No la pegues en chats ni en asistentes: quien la tenga puede abrir tus copias.")
     mark_shown(folder, key)
     return 0
@@ -48,7 +49,7 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None, folder: P
     commands.add_parser("list", help="lista las copias")
     restoring = commands.add_parser("restore", help="restaura una copia (con AgoraOne parado)")
     restoring.add_argument("file", type=Path)
-    restoring.add_argument("--recovery", action="store_true", help="pedir la clave de recuperación en vez de usar el Llavero")
+    restoring.add_argument("--recovery", action="store_true", help=f"pedir la clave de recuperación en vez de usar el {system_words.KEYSTORE}")
     args = parser.parse_args(argv)
     folder = folder or data_dir()
     store = store or KeychainStore()
@@ -78,9 +79,9 @@ def main(argv: list[str] | None = None, store: KeyStore | None = None, folder: P
         if args.recovery:
             if adopt_key(store, folder, key):
                 mark_shown(folder, key)
-                print("La clave de esa copia queda guardada en el Llavero para las copias siguientes.")
+                print(f"La clave de esa copia queda guardada en el {system_words.KEYSTORE} para las copias siguientes.")
             elif store.get() != key:
-                print("Aviso: el Llavero ya tenía otra clave; las copias siguientes usarán esa, no la de recuperación.")
+                print(f"Aviso: el {system_words.KEYSTORE} ya tenía otra clave; las copias siguientes usarán esa, no la de recuperación.")
         return 0
     except (BackupError, KeyStoreError, OSError) as error:
         print(error, file=sys.stderr)

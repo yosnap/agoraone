@@ -3,6 +3,7 @@ import { getFirstRun, putFirstRun } from '../api/core';
 import { InstallSettingsCard } from '../settings/settings-install';
 import { ModulesSettingsCard } from '../settings/settings-modules';
 import type { Section } from './shell-state';
+import { isMac, listenShortcut } from '../ui/platform';
 
 // Whether the guide was seen is kept by the core, so it counts in every browser.
 // «Ir a Conectores» from the guide only hides it: it is not marked as seen, so it comes back on the next start.
@@ -25,7 +26,7 @@ export function FirstRun({ onOpen }: { onOpen: (section: Section) => void }) {
     { title: 'Qué tengo instalado', body: <InstallSettingsCard/> },
     { title: 'Elige tus módulos', body: <ModulesSettingsCard onOpen={section => { setOpen(false); onOpen(section); }}/> },
     { title: 'Listo', body: <>
-      <p>Llama a Watson con <strong>⌃⌥W</strong> desde cualquier app, o activa «Oye Watson» en Ajustes › Voz. En el Cerebro tienes Hoy, tus áreas, la grabación de reuniones y la música.</p>
+      <p>Llama a Watson con <strong>{listenShortcut}</strong> desde cualquier app{isMac && ', o activa «Oye Watson» en Ajustes › Voz'}. En el Cerebro tienes Hoy, tus áreas, la grabación de reuniones y la música.</p>
       <p className="muted">Puedes volver a esta guía en Ajustes › Instalación.</p></> },
   ];
   return <div className="first-run" role="dialog" aria-modal="true" aria-labelledby="first-run-title">

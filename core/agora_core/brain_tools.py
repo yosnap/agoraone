@@ -18,6 +18,7 @@ from fastapi.concurrency import run_in_threadpool
 from . import brain_chat, crmdev_tools, hermes_tasks, meeting_tools, orca_launch, research
 from .embed import Embedder, VectorCache
 from .search import search
+from . import system_words
 
 AUDIENCE = "external"
 PART_CHARS = 8000
@@ -711,7 +712,7 @@ class Toolbox:
         if len(text) > NOTE_TEXT:
             return json.dumps({"error": f"La nota es demasiado larga (más de {NOTE_TEXT} caracteres): resúmela."}, ensure_ascii=False)
         if SECRET_LINE.search(text):
-            return json.dumps({"error": "La nota lleva lo que parece una contraseña o una clave: quítala; esas cosas van al Llavero, no a notas."}, ensure_ascii=False)
+            return json.dumps({"error": f"La nota lleva lo que parece una contraseña o una clave: quítala; esas cosas van al {system_words.KEYSTORE}, no a notas."}, ensure_ascii=False)
         now = time.time()
         for key in [k for k, v in self.proposals.items() if v["expires"] < now]:
             del self.proposals[key]

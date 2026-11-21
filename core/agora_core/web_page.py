@@ -17,6 +17,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
+from . import system_words
 from .mail_parse import html_to_text, tidy
 
 MAX_URLS = 3
@@ -130,7 +131,7 @@ def _resolve(url: str) -> str:
             raise Refused("La dirección no existe o no se puede resolver.") from error
         addresses = list(dict.fromkeys(info[4][0] for info in infos))
     if not addresses or not all(_public_ip(a) for a in addresses):
-        raise Refused("La dirección apunta a este Mac o a una red privada.")
+        raise Refused(f"La dirección apunta a {system_words.HERE} o a una red privada.")
     return addresses[0]
 
 
@@ -180,7 +181,7 @@ async def _download(url: str, client: httpx.AsyncClient) -> Page:
     current = url
     for _ in range(MAX_REDIRECTS + 1):
         if not allowed(current):
-            raise Refused("Solo se abren direcciones web públicas (http o https), nunca de este Mac ni de una red privada.")
+            raise Refused(f"Solo se abren direcciones web públicas (http o https), nunca de {system_words.HERE} ni de una red privada.")
         address = await asyncio.to_thread(_resolve, current)
         target, headers, extensions = _pinned(current, address)
         client.cookies.clear()  # nothing a page sets travels to the next request

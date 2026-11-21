@@ -93,3 +93,18 @@ def test_avisos_una_vez_resumen_y_lo_que_ve_watson(db):
     assert alerts.collect(db, now, audience="external", **sources)["missed"], "salvo que el usuario las marque normales"
     early = now.replace(hour=7)
     assert alerts.collect(db, early, **sources)["morning"] is None, "el resumen llega a su hora"
+
+
+def test_lo_que_no_existe_en_este_sistema_no_es_un_aviso(db):
+    """No call history on this system is said in Ajustes (callsProblem), not as a notice; a missing permission is one."""
+    now = datetime.now().astimezone().replace(hour=10, minute=0, second=0, microsecond=0)
+
+    def reader(code):
+        def read():
+            raise calls.CallsUnavailable("El historial de llamadas no se puede leer.", code)
+        return read
+
+    absent = alerts.collect(db, now, store=calendar_store.FakeStore(events=[]), call_reader=reader("unavailable"), contacts=None)
+    assert absent["problems"] == [] and absent["callsProblem"] == "unavailable"
+    blocked = alerts.collect(db, now, store=calendar_store.FakeStore(events=[]), call_reader=reader("permission"), contacts=None)
+    assert blocked["problems"] == ["El historial de llamadas no se puede leer."] and blocked["callsProblem"] == "permission"

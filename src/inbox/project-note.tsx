@@ -13,6 +13,7 @@ import { attachmentName, type CardOrigin } from './inbox-cards';
 import { filesSection, NoteFiles, saveFiles, type Chosen } from './note-files';
 import { RepoFolderPicker } from './repo-note';
 import { ActionButton } from '../ui/action-button';
+import { hereLabel } from '../ui/platform';
 
 type Vault = { id: string; name: string; folders: string[] };
 const NO_PROJECT = '';
@@ -170,7 +171,7 @@ export function ProjectNote({ origin: item, onDone, onCancel }: { origin: CardOr
     <label className="field">Texto de la nota<textarea value={content} rows={12} onChange={event => { setContent(event.target.value); setTouched({ ...touched, content: true }); }}/></label>
     {mail && <NoteFiles itemId={item.id} chosen={chosen} locked={Boolean(made || saved)} onChange={setChosen} onSources={setSources}/>}
     {extra && <details><summary>Se añade al final de la nota</summary><pre className="note-extra">{extra.trim()}</pre></details>}
-    {item.confidentiality !== 'normal' && <p className="muted">{mail ? 'El correo es' : 'La conversación es'} {item.confidentiality === 'private' ? (mail ? 'privado' : 'privada') : 'solo de este Mac'}: la nota se guarda marcada igual
+    {item.confidentiality !== 'normal' && <p className="muted">{mail ? 'El correo es' : 'La conversación es'} {item.confidentiality === 'private' ? (mail ? 'privado' : 'privada') : `solo de ${hereLabel}`}: la nota se guarda marcada igual
       («confidencialidad: {item.confidentiality === 'private' ? 'privado' : 'solo-local'}»), y ni {assistant} ni ningún modelo remoto la leerán.</p>}
     {made && <p className="muted">La nota ya está creada; falta marcar la tarjeta como hecha.</p>}
     {where === 'repo' ? <p className="muted">Se crea un archivo nuevo, «{title.trim() || '…'}.md», en {[`${client} · ${project}`, ...(repoFolder ? repoFolder.split('/') : ['(raíz)'])].join(' › ')}, sin commit ni push. No se cambia ni se borra ningún archivo del repositorio.</p>

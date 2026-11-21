@@ -43,13 +43,40 @@ def check_folder(value: str, home: Path | None = None) -> Path:
         raise FiscalError("Eso no es una carpeta.")
     icloud = home / ICLOUD
     protected = [home, icloud, home / "Documents", home / "Desktop", home / "Downloads"]
+    # Windows' AppData plays the role of macOS' Library: program data, never the user's activity.
+    system_data = ("Library", "AppData") if os.name == "nt" else ("Library",)
+    if os.name == "nt":
+        protected.append(home / "AppData")
     refuse = FiscalError("Elige la subcarpeta de tu actividad, no la carpeta personal, la raíz de iCloud Drive ni una carpeta que las contenga.")
+    if os.name == "nt" and folder.drive.startswith(("\\\\?\\", "\\\\.\\")):
+        # A device path (\\?\C:\…, \\.\…) would look like another drive and skip the checks of the home folder.
+        raise FiscalError("Escribe la ruta normal de la carpeta (C:\\…, D:\\… o \\\\servidor\\recurso\\…).")
+    if os.name == "nt" and folder.drive and home.drive and folder.drive.lower() != home.drive.lower():
+        return _check_other_volume(folder, refuse)
     if home not in folder.parents or any(folder == p or folder in p.parents for p in protected):
         raise refuse
     relative = folder.relative_to(home)
     if any(part.startswith(".") for part in relative.parts):
         raise refuse
-    if relative.parts[0] == "Library" and icloud not in folder.parents:
+    if relative.parts[0] in system_data and icloud not in folder.parents:
+        raise refuse
+    return folder
+
+
+# Top folders of a Windows drive that are never a fiscal folder: the system, programs, and the profiles of the
+# people who use the computer (another drive can hold them too).
+_SYSTEM_TOPS = {"windows", "program files", "program files (x86)", "programdata", "$recycle.bin", "system volume information", "users", "recovery", "perflogs"}
+
+
+def _check_other_volume(folder: Path, refuse: FiscalError) -> Path:
+    """Windows: a folder on another drive or on a network share (\\\\servidor\\recurso). macOS only takes folders
+    inside the home folder; on Windows the activity's data often lives on a second drive or a share, so it is
+    allowed, but never the drive or share itself or its first level, a system or profiles folder, a hidden one, or
+    an administrative share (C$, D$…), which exposes a whole drive."""
+    unc = folder.drive.startswith("\\\\")
+    if unc and folder.drive.rstrip("\\").endswith("$"):
+        raise FiscalError("Los recursos administrativos (C$, D$…) muestran un disco entero: comparte solo la carpeta fiscal.")
+    if len(folder.parts) < 3 or folder.parts[1].lower() in _SYSTEM_TOPS or any(part.startswith(".") for part in folder.parts[1:]):
         raise refuse
     return folder
 
@@ -58,8 +85,17 @@ KINDS = ("autonomo", "empresa", "personal")
 CATEGORIES = ("gastos", "compras")
 
 
+def outside_home(path: str, home: Path | None = None) -> bool:
+    """Windows: a folder on another drive or a network share, where other people may be able to write too."""
+    if os.name != "nt":
+        return False
+    drive, home_drive = Path(path).drive, (home or Path.home()).drive
+    return bool(drive) and drive.lower() != home_drive.lower()
+
+
 def _folder_row(row: sqlite3.Row) -> dict:
-    return {"id": row["id"], "name": row["name"], "kind": row["kind"], "path": row["path"], "scopeId": row["scope_id"], "holder": row["holder"]}
+    return {"id": row["id"], "name": row["name"], "kind": row["kind"], "path": row["path"], "scopeId": row["scope_id"], "holder": row["holder"],
+            "outsideHome": outside_home(row["path"])}
 
 
 def folders(connection: sqlite3.Connection) -> list[dict]:
@@ -147,28 +183,61 @@ def suggested_folder(connection: sqlite3.Connection, message_id: int | None) -> 
 _CHOOSING = threading.Lock()
 
 
-def choose_with_finder(runner=None) -> str | None:
-    """Opens the macOS folder chooser and returns the chosen path (None if cancelled)."""
+def choose_system_folder(prompt: str, runner=None) -> str | None:
+    """Opens the OS native folder chooser (`prompt` must be a fixed literal) and returns the chosen path."""
     import subprocess
+    import sys
 
     run = runner or subprocess.run
-    script = 'POSIX path of (choose folder with prompt "Elige la carpeta fiscal")'
+    if sys.platform == "darwin":
+        script = f'POSIX path of (choose folder with prompt "{prompt}")'
+        done = run(["/usr/bin/osascript", "-e", script], capture_output=True, text=True, timeout=110)
+        return (done.stdout or "").strip().rstrip("/") or None if done.returncode == 0 else None
+    if sys.platform == "win32":
+        import os
+
+        # The title goes in an environment variable, so no text can ever become part of the script.
+        ps = (
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; "
+            "Add-Type -AssemblyName System.Windows.Forms; "
+            "$d = New-Object System.Windows.Forms.FolderBrowserDialog; "
+            "$d.Description = $env:AGORA_PICKER_PROMPT; $d.UseDescriptionForTitle = $true; "
+            "if ($d.ShowDialog() -eq 'OK') { [Console]::Out.WriteLine($d.SelectedPath) }"
+        )
+        flags = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if runner is None else {}
+        env = {**os.environ, "AGORA_PICKER_PROMPT": prompt}
+        done = run(["powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-Command", ps],
+                   capture_output=True, text=True, encoding="utf-8", timeout=110, env=env, **flags)
+        chosen = (done.stdout or "").strip()
+        if done.returncode != 0 or not chosen:
+            return None
+        root = Path(chosen).anchor
+        return chosen if chosen == root else chosen.rstrip("/\\")
+    return None
+
+
+def choose_with_finder(runner=None) -> str | None:
+    """Opens the system folder chooser and returns the chosen path (None if cancelled)."""
+    import subprocess
+
     if not _CHOOSING.acquire(blocking=False):
         raise FiscalError("Ya hay un selector de carpetas abierto.")
     try:
         # Below the server's wait for the core, so a slow choice never comes back as «core unavailable».
-        done = run(["/usr/bin/osascript", "-e", script], capture_output=True, text=True, timeout=110)
+        return choose_system_folder("Elige la carpeta fiscal", runner=runner)
     except (OSError, subprocess.TimeoutExpired):
         return None
     finally:
         _CHOOSING.release()
-    path = (done.stdout or "").strip()
-    return path.rstrip("/") or None if done.returncode == 0 else None
+
+
+def is_link(path: Path) -> bool:
+    return path.is_symlink() or path.is_junction()
 
 
 def inside(root: Path, relative: str) -> Path:
     """The absolute path of `relative` within the root, refusing anything that would leave it (.., links)."""
-    if not relative or relative.startswith(("/", "~")) or "\x00" in relative:
+    if not relative or relative.startswith(("/", "\\", "~")) or "\x00" in relative or Path(relative).is_absolute():
         raise FiscalError("Ruta no válida.")
     target = (root / relative).resolve()
     if root != target and root not in target.parents:
@@ -217,7 +286,7 @@ def destination(supplier: str, issued_on: str, total: str, kind: str = "autonomo
 def _free(path: Path, taken: set[str] | None = None, root: Path | None = None) -> Path:
     """The first name not used on disk (nor by an invoice already filed, when `taken` is given)."""
     def used(candidate: Path) -> bool:
-        return candidate.exists() or (taken is not None and root is not None and str(candidate.relative_to(root)) in taken)
+        return candidate.exists() or (taken is not None and root is not None and candidate.relative_to(root).as_posix() in taken)
     if not used(path):
         return path
     for n in range(2, 100):
@@ -281,7 +350,7 @@ def file_invoice(connection: sqlite3.Connection, folder: dict, root: Path, data:
         raise Duplicate(f"Esta factura ya está archivada en {clash['path']}.")
     taken = {row["path"] for row in connection.execute("SELECT path FROM invoice WHERE folder_id = ?", (folder["id"],))}
     target = _free(inside(root, destination(supplier, issued_on, total, folder["kind"], category, SUFFIXES[kind])), taken, root)
-    relative = str(target.relative_to(root))
+    relative = target.relative_to(root).as_posix()
     created = False
     try:
         target.parent.mkdir(parents=True, exist_ok=True)

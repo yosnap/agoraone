@@ -1,4 +1,6 @@
+import shutil
 import stat
+import sys
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -31,7 +33,8 @@ def scopes(folder):
 def test_copia_cifrada_privada_y_restauracion_identica(data):
     store = MemoryStore()
     made = create_backup(data, store, "manual", NOW)
-    assert stat.S_IMODE(made.path.stat().st_mode) == 0o600
+    if sys.platform != "win32":
+        assert stat.S_IMODE(made.path.stat().st_mode) == 0o600
     assert b"prueba" not in made.path.read_bytes(), "el contenido no queda en claro"
     database = connect(data / DB_NAME)
     database.execute("DELETE FROM scope WHERE slug = 'prueba'")
@@ -166,6 +169,7 @@ def test_la_clave_es_la_misma_aunque_dos_hilos_la_pidan_a_la_vez(data):
     assert len(set(keys)) == 1 and keys[0] == store.key
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows no deja renombrar una base con una conexión abierta")
 def test_restaurar_con_wal_pendiente_conserva_la_base_anterior_completa(data):
     store = MemoryStore()
     made = create_backup(data, store, at=NOW)
@@ -173,6 +177,29 @@ def test_restaurar_con_wal_pendiente_conserva_la_base_anterior_completa(data):
     live.execute("INSERT INTO scope (slug, name, created_at) VALUES ('wal', 'En el WAL', '2026-01-01T00:00:00Z')")
     aside = restore(data, made.path, store.key)
     live.close()
+    import sqlite3
+
+    old = sqlite3.connect(aside)
+    assert "wal" in [r[0] for r in old.execute("SELECT slug FROM scope")], "lo que estaba en el WAL viaja con la base apartada"
+    old.close()
+    assert scopes(data) == ["personal", "prueba"]
+
+
+def test_restaurar_con_wal_pendiente_sin_conexiones_abiertas(data, tmp_path):
+    """As the CLI restores (the core stopped): a WAL left behind is folded into the database set aside."""
+    store = MemoryStore()
+    made = create_backup(data, store, at=NOW)
+    live_dir = tmp_path / "live"
+    live_dir.mkdir()
+    shutil.copy2(data / DB_NAME, live_dir / DB_NAME)
+    live = connect(live_dir / DB_NAME)
+    live.execute("PRAGMA wal_autocheckpoint = 0")
+    live.execute("INSERT INTO scope (slug, name, created_at) VALUES ('wal', 'En el WAL', '2026-01-01T00:00:00Z')")
+    for name in (DB_NAME, f"{DB_NAME}-wal", f"{DB_NAME}-shm"):
+        if (live_dir / name).exists():
+            shutil.copy2(live_dir / name, data / name)
+    live.close()
+    aside = restore(data, made.path, store.key)
     import sqlite3
 
     old = sqlite3.connect(aside)
@@ -216,3 +243,24 @@ def test_codigo_de_recuperacion_tolera_confusiones_tipicas(data):
     key, _ = ensure_key(MemoryStore(), data)
     code = recovery_code(key)
     assert key_from_recovery(code.replace("O", "0").replace("I", "1").replace("B", "8")) == key
+
+
+def test_el_bloqueo_de_clave_espera_entre_procesos(tmp_path):
+    import subprocess
+    import time
+
+    from agora_core.keystore import key_lock
+
+    code = (
+        "import sys, time; from pathlib import Path; from agora_core.keystore import key_lock\n"
+        "with key_lock(Path(sys.argv[1])):\n"
+        "    print('locked', flush=True)\n"
+        "    time.sleep(0.4)\n"
+    )
+    child = subprocess.Popen([sys.executable, "-c", code, str(tmp_path)], stdout=subprocess.PIPE, text=True)
+    assert child.stdout.readline().strip() == "locked"
+    started = time.monotonic()
+    with key_lock(tmp_path):
+        elapsed = time.monotonic() - started
+    child.wait(timeout=5)
+    assert elapsed >= 0.25, "el segundo proceso espera hasta que el primero suelta el bloqueo"

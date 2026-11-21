@@ -3,9 +3,10 @@ import { useAssistantName } from '../assistant/assistant-name';
 import { askCalendarAccess, changeCalendar, getCalendars, getCalendarStatus, getScopes, type CalendarInfo, type CalendarStatus, type Level, type Scope } from '../api/core';
 import { LoadError } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { onlyHereLabel } from '../ui/platform';
 
 const levelsFor = (assistant: string): { value: Level; label: string }[] => [
-  { value: 'normal', label: `Normal: ${assistant} lo ve` }, { value: 'local_only', label: 'Solo en este Mac' }, { value: 'private', label: 'Privado' }];
+  { value: 'normal', label: `Normal: ${assistant} lo ve` }, { value: 'local_only', label: onlyHereLabel }, { value: 'private', label: 'Privado' }];
 
 /** The macOS calendars and reminders lists: permission, and each one's scope and confidentiality (only the
  * normal ones reach the assistant and its model); a hidden one leaves the agenda. */

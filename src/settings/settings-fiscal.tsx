@@ -5,6 +5,7 @@ import {
 } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
+import { hereLabel } from '../ui/platform';
 import { FolderLogo } from './provider-logos';
 import { ActionButton } from '../ui/action-button';
 
@@ -13,6 +14,10 @@ const kinds = (Object.keys(kindLabels) as FolderKind[]).map(value => ({ value, l
 const structure: Record<FolderKind, string> = {
   autonomo: 'Facturas Entrantes|Salientes/año/trimestre', empresa: 'Facturas Entrantes|Salientes/año/trimestre', personal: 'Gastos|Compras/año',
 };
+
+/** A folder on another drive or a network share: AgoraOne checks every move, but if someone else can write there
+ * at the same time, a file could be swapped while it is being filed. */
+const SHARED_NOTICE = 'Está fuera de tu carpeta personal. Úsala solo si únicamente tú puedes escribir en ella: si otras personas o equipos también pueden, alguien podría cambiar un archivo justo mientras AgoraOne lo archiva.';
 
 /** The fiscal folders: where invoices and receipts are filed, each with a name, a kind and the scope whose
  * mail it receives. Chosen with the macOS folder picker; AgoraOne never touches anything outside them. */
@@ -46,7 +51,7 @@ export function FiscalSettingsCard() {
     try {
       const { path } = await chooseFiscalFolder();
       if (path) {
-        const name = path.split('/').filter(Boolean).pop() ?? '';
+        const name = path.split(/[\\/]/).filter(Boolean).pop() ?? '';
         const scope = scopes.find(s => s.name.toLowerCase() === name.toLowerCase());
         setDraft({ path, name, kind: 'autonomo', scopeId: scope ? String(scope.id) : '' });
       }
@@ -90,13 +95,15 @@ export function FiscalSettingsCard() {
           <button type="button" className="compact-toggle" aria-expanded={open.has(folder.id)} onClick={() => toggle(folder.id)} title={open.has(folder.id) ? 'Cerrar' : 'Ver y editar'}>
             <FolderLogo kind={folder.kind}/>
             <span className="compact-name"><strong>{folder.name}</strong>
-              <small className="muted">{scopes.find(s => s.id === folder.scopeId)?.name ?? 'Sin ámbito'} · {folder.path.split('/').slice(-2).join('/')}</small></span>
+              <small className="muted">{scopes.find(s => s.id === folder.scopeId)?.name ?? 'Sin ámbito'} · {folder.path.split(/[\\/]/).filter(Boolean).slice(-2).join('/')}</small></span>
+            {folder.outsideHome && <span className="status-badge waiting" title={SHARED_NOTICE}>Fuera de tu carpeta</span>}
             <span className="status-badge neutral">{kindLabels[folder.kind]}</span>
             <span className="compact-chevron" aria-hidden="true">▾</span>
           </button>
         </div>
         {open.has(folder.id) && <>
         <span className="muted"><code>{folder.path}</code></span>
+        {folder.outsideHome && <p className="notice" role="note">{SHARED_NOTICE}</p>}
         <div className="mail-account-fields">
           <label className="field">Ámbito<ModernSelect value={folder.scopeId ? String(folder.scopeId) : ''} options={scopeOptions}
             onChange={value => void act(() => changeFiscalFolder(folder.id, { scopeId: value ? Number(value) : null }), 'Ámbito guardado.')}/></label>
@@ -128,7 +135,7 @@ export function FiscalSettingsCard() {
     </ul>}
     {withClaude !== null && <label className="fiscal-reading">
       <input type="checkbox" checked={withClaude} onChange={event => { const on = event.target.checked; void putFiscalReading(on).then(found => { setWithClaude(found.withClaude); setNote(on ? 'Las facturas se leerán con Claude Haiku (se vuelven a leer todas).' : 'Las facturas se leerán solo con reglas locales (se vuelven a leer todas).'); }).catch(failure => fail(failure, 'No se pudo guardar el ajuste.')); }}/>
-      <span>Leer las facturas con Claude Haiku: mucho más preciso que las reglas locales. El texto de cada factura (o su imagen) va a Claude por tu sesión de Claude Code o, si no la hay, con tu clave de API de Anthropic. Sin marcar, ninguna factura sale del Mac; Fiscal sigue consultando Qonto y el cambio del BCE (solo fecha y moneda).</span>
+      <span>Leer las facturas con Claude Haiku: mucho más preciso que las reglas locales. El texto de cada factura (o su imagen) va a Claude por tu sesión de Claude Code o, si no la hay, con tu clave de API de Anthropic. Sin marcar, ninguna factura sale de {hereLabel}; Fiscal sigue consultando Qonto y el cambio del BCE (solo fecha y moneda).</span>
     </label>}
     {note && <span className="ok-note" role="status">{note}</span>}{error && <LoadError message={error}/>}
   </article>;

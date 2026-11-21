@@ -6,13 +6,20 @@ terminal cannot each make a different one.
 """
 
 import base64
-import fcntl
 import hashlib
 import secrets
+import sys
 import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
+
+from . import system_words
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import fcntl
 
 SERVICE = "AgoraOne"
 ACCOUNT = "backup-key"
@@ -62,17 +69,32 @@ class MemoryStore:
 def key_lock(folder: Path):
     """One key operation at a time, in this process (thread lock) and across processes (file lock)."""
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with _LOCK, open(folder / ".key.lock", "a") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+    with _LOCK, open(folder / ".key.lock", "a+b") as handle:
+        if sys.platform == "win32":
+            handle.seek(0)
+            for attempt in range(6):
+                try:
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError as error:
+                    if attempt == 5:
+                        raise KeyStoreError("No se pudo bloquear el almacén de claves.") from error
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def _checked(key: bytes) -> bytes:
     if len(key) != KEY_BYTES:
-        raise KeyStoreError("La clave de copias del Llavero no es válida.")
+        raise KeyStoreError(f"La clave de copias del {system_words.KEYSTORE} no es válida.")
     return key
 
 
@@ -85,13 +107,13 @@ def ensure_key(store: KeyStore, folder: Path, allow_create: bool = True) -> tupl
             return _checked(key), False
         if not allow_create:
             raise KeyStoreError(
-                "Falta la clave de las copias en el Llavero y ya hay copias hechas con ella. No se crea otra: "
+                f"Falta la clave de las copias en el {system_words.KEYSTORE} y ya hay copias hechas con ella. No se crea otra: "
                 "restaura con «restore --recovery» y tu clave de recuperación para recuperarla."
             )
         store.put(secrets.token_bytes(KEY_BYTES))
         stored = store.get()
         if stored is None:
-            raise KeyStoreError("No se pudo guardar la clave de las copias en el Llavero.")
+            raise KeyStoreError(f"No se pudo guardar la clave de las copias en el {system_words.KEYSTORE}.")
         return _checked(stored), True
 
 

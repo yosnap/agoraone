@@ -4,7 +4,6 @@
 //! Python writer as the identity files.
 
 use std::fs;
-use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -48,7 +47,7 @@ struct Found {
 }
 
 fn real_dir(path: &Path) -> bool {
-    fs::canonicalize(path).is_ok_and(|real| real == path) && fs::symlink_metadata(path).is_ok_and(|m| m.is_dir())
+    crate::platform::is_real_dir(path)
 }
 
 /// Visible, not excluded, real subfolders, in Spanish order.
@@ -56,7 +55,7 @@ fn folders(directory: &Path) -> Vec<String> {
     let Ok(entries) = fs::read_dir(directory) else { return vec![] };
     let mut names: Vec<String> = entries
         .flatten()
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+        .filter(|e| !crate::platform::dir_entry_is_link(e) && e.file_type().is_ok_and(|t| t.is_dir()))
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .filter(|n| !n.starts_with('.') && !EXCLUDED.contains(&n.as_str()))
         .collect();
@@ -73,11 +72,11 @@ fn scan_skills(home: &Path) -> Vec<Found> {
     let mut found = Vec::new();
     let mut take = |directory: &Path, category: &str, name: &str| {
         let file = directory.join("SKILL.md");
-        if let Ok(info) = fs::symlink_metadata(&file)
-            && info.is_file()
-            && info.nlink() <= 1
+        if let Ok(info) = crate::platform::inspect_path_nofollow(&file)
+            && info.is_file
+            && info.nlink <= 1
         {
-            found.push(Found { path: file, category: category.into(), name: name.into(), bytes: info.len() });
+            found.push(Found { path: file, category: category.into(), name: name.into(), bytes: info.len });
         }
     };
     for entry in folders(&root) {
@@ -238,7 +237,7 @@ pub async fn create_profile_skill(discovery: &HermesDiscovery, backups: &Path, p
                 return Err(Failure::new(400, "No se puede crear: el camino lleva una carpeta no normal (enlace simbólico o enlace duro)."));
             }
         } else {
-            fs::DirBuilder::new().mode(0o700).create(&directory).map_err(|e| generic(e.into()))?;
+            crate::platform::create_dir_mode(&directory, false, 0o700).map_err(|e| generic(e.into()))?;
         }
     }
     let path = skills_root.join(&skill.category).join(&skill.name).join("SKILL.md");

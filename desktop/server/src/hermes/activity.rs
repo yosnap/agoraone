@@ -37,10 +37,7 @@ fn json_file(root: &Path, file: &Path, limit: u64) -> Option<Value> {
 }
 
 fn alive(pid: Option<&Value>) -> bool {
-    let Some(pid) = integer(pid).filter(|p| *p > 1 && *p <= i32::MAX as i64) else { return false };
-    // SAFETY: kill with signal 0 only checks whether the process exists.
-    let result = unsafe { libc::kill(pid as libc::pid_t, 0) };
-    result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    integer(pid).is_some_and(crate::platform::process_alive)
 }
 
 fn same(a: Option<&Value>, b: Option<&Value>) -> bool {

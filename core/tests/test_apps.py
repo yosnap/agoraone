@@ -48,3 +48,36 @@ def test_oye_watson_apagado_por_defecto(tmp_path):
         assert client.get("/wake/settings", headers=h).json()["state"] == "no_offline", "la app de escritorio cuenta por qué no escucha"
         assert client.put("/wake/settings", json={"enabled": True}, headers=h).json()["state"] == "starting", "reintentar borra el fallo anterior"
         assert client.post("/internal/wake/status", json={"state": "rm -rf"}, headers=h).status_code == 400
+
+
+def test_menu_inicio_en_windows_ignora_desinstaladores_y_enlaces(tmp_path, monkeypatch):
+    menu = tmp_path / "Microsoft/Windows/Start Menu/Programs"
+    (menu / "Utilidades").mkdir(parents=True)
+    (menu / "Obsidian.lnk").write_bytes(b"lnk")
+    (menu / "Utilidades/Calculadora.lnk").write_bytes(b"lnk")
+    (menu / "Uninstall Obsidian.lnk").write_bytes(b"lnk")
+    outside = tmp_path / "fuera"
+    outside.mkdir()
+    (outside / "Trampa.lnk").write_bytes(b"lnk")
+    try:
+        (menu / "Enlace").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        import _winapi
+
+        _winapi.CreateJunction(str(outside.resolve()), str(menu / "Enlace"))
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    monkeypatch.delenv("PROGRAMDATA", raising=False)
+    monkeypatch.setattr(apps.sys, "platform", "win32")
+    apps._cache.clear()
+    found = apps.installed()
+    assert [a["name"] for a in found] == ["Calculadora", "Obsidian"]
+    opened = []
+    monkeypatch.setattr(apps, "_open_windows_shortcut", lambda ident: opened.append(ident))
+    c = connect(tmp_path / DB_NAME)
+    migrate(c)
+    obs_id = next(a["id"] for a in found if a["name"] == "Obsidian")
+    apps.save_allowed(c, [obs_id])
+    assert apps.open_app(c, obs_id, confirmed=False) == "Abierta Obsidian."
+    assert opened == [obs_id]
+    c.close()
+    apps._cache.clear()

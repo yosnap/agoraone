@@ -4,6 +4,7 @@ import { localActive, localControl, playLocal } from '../brain/local-player';
 import { askTicket, playYouTube, stopYouTube, youtubeActive, youtubeControl, youtubeProblem } from '../brain/youtube-player';
 import { lastChoice, meetingRecorder, startRecording, stopRecording } from '../meetings/meeting-recorder';
 import { meetingOrder } from './meeting-commands';
+import { hereLabel, machineName } from '../ui/platform';
 
 /** Quick commands (1.5): what Watson does at once, without a model, when the whole message is one of these.
  * Anything else goes to the model as usual. Words are matched in Spanish, with or without accents. */
@@ -157,14 +158,14 @@ async function recordByVoice(order: 'start' | 'stop'): Promise<QuickResult> {
   if (order === 'stop') {
     if (now.phase !== 'recording') return { reply: 'No hay ninguna reunión grabándose.', failed: true };
     stopRecording();
-    return { reply: 'Paro la grabación: la reunión se transcribe en este Mac y la tendrás en Reuniones.', failed: false };
+    return { reply: `Paro la grabación: la reunión se transcribe en ${hereLabel} y la tendrás en Reuniones.`, failed: false };
   }
   if (now.phase !== 'idle') return { reply: 'Ya estoy grabando la reunión.', failed: false };
   const choice = lastChoice();
   await startRecording('', choice.confidentiality, choice.system);
   const after = meetingRecorder();
   if (after.phase !== 'recording') return { reply: after.error || 'No se pudo empezar a grabar.', failed: true };
-  return { reply: `Grabando la reunión${choice.system ? ' (tu micrófono y el audio del Mac)' : ' (tu micrófono)'}. Di «para la grabación» cuando terminéis.`, failed: false };
+  return { reply: `Grabando la reunión${choice.system ? ` (tu micrófono y el audio del ${machineName})` : ' (tu micrófono)'}. Di «para la grabación» cuando terminéis.`, failed: false };
 }
 
 /** «Abre Notas»: the installed app whose name matches; the allowed ones open at once, the rest after a «sí». */

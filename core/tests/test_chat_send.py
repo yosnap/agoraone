@@ -20,6 +20,7 @@ from agora_core.settings import load_settings
 from test_calendar import store
 from test_chat_inbox import _stamp, account, conversation, say
 from test_fiscal_excel import MemorySecrets
+from agora_core import system_words
 
 SECRET, OWNER = "a" * 64, "b" * 64
 HEADERS = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
@@ -472,7 +473,7 @@ def test_el_llavero_que_falla_explica_que_no_se_ha_enviado(app):
         raise RuntimeError("Llavero bloqueado")
     secrets.get = locked
     answer = test_client.post("/chat/send", json={"draft": shown["draft"], "digest": shown["digest"]}, headers=HEADERS)
-    assert answer.status_code == 503 and answer.json()["notSent"] is True and "Llavero" in answer.json()["error"]
+    assert answer.status_code == 503 and answer.json()["notSent"] is True and system_words.KEYSTORE in answer.json()["error"]
     assert fake.requests == []
 
 

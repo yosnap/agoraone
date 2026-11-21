@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { applyAppearance, palettes, readAppearance, sizes, typefaces, type Appearance, type Palette, type Size, type Typeface } from '../shell/appearance';
 import { applyTheme, readTheme, type ThemeChoice } from '../shell/theme';
 import { ModernSelect } from '../ui/modern-select';
+import { hereLabel } from '../ui/platform';
 
 const themes: { value: ThemeChoice; label: string }[] = [{ value: 'system', label: 'Del sistema' }, { value: 'light', label: 'Claro' }, { value: 'dark', label: 'Oscuro' }];
 
@@ -27,6 +28,6 @@ export function AppearanceCard() {
     <label className="field appearance-font">Tipo de letra<ModernSelect value={appearance.typeface} onChange={value => change({ typeface: value as Typeface })}
       options={(Object.keys(typefaces) as Typeface[]).map(id => ({ value: id, label: typefaces[id].label,
         render: <span style={{ fontFamily: typefaces[id].stack ?? "'DM Sans', sans-serif" }}>{typefaces[id].label}</span> }))}/></label>
-    <p className="muted">Se guarda en este Mac. Los avisos, errores y estados conservan sus colores en todas las paletas.</p>
+    <p className="muted">Se guarda en {hereLabel}. Los avisos, errores y estados conservan sus colores en todas las paletas.</p>
   </article>;
 }

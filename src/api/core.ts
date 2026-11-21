@@ -1,10 +1,11 @@
 import { ApiError, csrfToken, request } from './client';
+import { onlyHereLabel } from '../ui/platform';
 
 // The Python core, reached through the backend at /api/core/* (cookie, CSRF and origin checked there).
 const core = <T>(path: string, body?: unknown, method?: string) => request<T>(`/core${path}`, body, method);
 
 export type Level = 'normal' | 'local_only' | 'private';
-export const levelLabels: Record<Level, string> = { normal: 'Normal', local_only: 'Solo en este Mac', private: 'Privada' };
+export const levelLabels: Record<Level, string> = { normal: 'Normal', local_only: onlyHereLabel, private: 'Privada' };
 
 export type NodeType = 'note' | 'person' | 'org' | 'project' | 'amount' | 'date' | 'tag' | 'folder';
 /** Notes carry where they live; entity, tag and folder nodes only a type, a title and a degree. */
@@ -329,10 +330,10 @@ export type InvoicePrepared = {
 export type Invoice = InvoiceFields & { id: number; direction: 'received' | 'issued'; messageId: number | null; doubts: string[]; quarter: string; path: string;
   client?: string | null };
 export type FolderKind = 'autonomo' | 'empresa' | 'personal';
-export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null; holder: string | null };
+export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null; holder: string | null; outsideHome?: boolean };
 export const getFiscalFolders = () => core<{ folders: FiscalFolder[] }>('/fiscal/folders');
 export const chooseFiscalFolder = () => core<{ path: string | null }>('/fiscal/folders/choose', {});
-export const addFiscalFolder = (folder: Omit<FiscalFolder, 'id' | 'holder'>) => core<{ folders: FiscalFolder[] }>('/fiscal/folders', folder);
+export const addFiscalFolder = (folder: Omit<FiscalFolder, 'id' | 'holder' | 'outsideHome'>) => core<{ folders: FiscalFolder[] }>('/fiscal/folders', folder);
 export const changeFiscalFolder = (id: number, changes: Partial<Omit<FiscalFolder, 'id' | 'path'>>) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, changes, 'PUT');
 export const removeFiscalFolder = (id: number) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, undefined, 'DELETE');
 export const prepareInvoice = (messageId: number) => core<InvoicePrepared>('/fiscal/invoices/prepare', { messageId });
@@ -404,7 +405,8 @@ export type CalendarInfo = { id: string; title: string; kind: 'event' | 'reminde
 export type CalendarOrigin = { calendar?: string | null; account?: string | null; scope?: { name: string; color: string | null } | null };
 export type CalendarEvent = { id: string; calendarId: string; title: string; start: string; end: string; allDay: boolean; location: string | null } & CalendarOrigin;
 export type CalendarReminder = { id: string; calendarId: string; title: string; due: string | null } & CalendarOrigin;
-export type Agenda = { events: CalendarEvent[]; reminders: CalendarReminder[]; overlaps: [string, string][]; problem: string | null };
+// `unavailable`: this system has no calendar AgoraOne can read yet (not something to fix, so not a notice).
+export type Agenda = { events: CalendarEvent[]; reminders: CalendarReminder[]; overlaps: [string, string][]; problem: string | null; unavailable?: boolean };
 export type NewEvent = { calendarId?: string | null; title: string; start: string; end: string; allDay?: boolean; location?: string | null;
   notes?: string | null; overlapOk?: boolean; inboxId?: number | null; chatId?: number | null };
 export const getCalendarStatus = () => core<CalendarStatus>('/calendar/status');

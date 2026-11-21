@@ -9,7 +9,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
-from . import transcribe, tts
+from . import system_words, transcribe, tts
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -82,7 +82,7 @@ def voice_router(settings: Settings) -> APIRouter:
             with database() as connection:
                 now = tts.resolve(tts.settings(connection), tts.voicestudio_voices())
             if now["engine"] != "voicestudio":
-                raise tts.TtsError(now["problem"] or "La voz elegida es la de macOS.")
+                raise tts.TtsError(now["problem"] or f"La voz elegida es {system_words.SYSTEM_VOICE}.")
             return tts.synthesize(now["voice"], body.text, steps=now["steps"])
         try:
             return Response(await run_in_threadpool(job), media_type="audio/wav")

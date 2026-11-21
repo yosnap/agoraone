@@ -68,7 +68,10 @@ def test_lo_viejo_los_enlaces_y_lo_a_medias_no_cuentan(tmp_path, monkeypatch):
     write(folder / "viejo.jsonl", [claude_answer(3 * 86400, "a", "end_turn")], mtime=NOW - 3 * 86400)
     outside = tmp_path / "fuera.jsonl"
     write(outside, [claude_answer(5, "b", "end_turn")])
-    (folder / "enlace.jsonl").symlink_to(outside)
+    try:
+        (folder / "enlace.jsonl").symlink_to(outside)
+    except OSError:  # Windows without the right to create symbolic links: the other cases still count
+        pass
     half = folder / "medias.jsonl"
     half.write_text(json.dumps(claude_answer(5, "c", "end_turn"))[:-5])  # a line still being written
     assert c.sessions(NOW, tmp_path, orca=[]) == []

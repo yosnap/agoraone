@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createConversation, getHermesCatalog, sendMessage, cancelTurn, type ToolApproval } from '../api/client';
+import { hereLabel } from '../ui/platform';
 import type { HermesProposal } from '../api/core';
 import type { HermesProfile } from '../../shared/hermes-catalog';
 import { ApprovalCard } from '../ui/approval-card';
@@ -113,7 +114,7 @@ function HermesTask({ id, proposal, profile, loading, problem, name, busy, onRun
     {phase === 'done' && <>
       <small>Respuesta de {label}. También la tienes en el chat del perfil.</small>
       <p className="pre-wrap">{reply || 'El perfil no devolvió texto.'}</p>
-      {reply && <small>Si se la pasas a {name}, sale de este Mac hacia su modelo, sin las líneas que parezcan claves.</small>}
+      {reply && <small>Si se la pasas a {name}, sale de {hereLabel} hacia su modelo, sin las líneas que parezcan claves.</small>}
       <div className="actions"><button type="button" onClick={onClose}>Cerrar</button>
         {reply && <button type="button" className="primary" disabled={busy || passing} title={busy ? `${name} está respondiendo` : undefined}
           onClick={passBack}>Pasar la respuesta a {name}</button>}</div>

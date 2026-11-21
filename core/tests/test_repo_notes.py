@@ -51,7 +51,12 @@ def test_no_sale_del_repositorio_ni_entra_en_carpetas_ocultas(repo, folder):
 def test_no_sigue_enlaces(repo, tmp_path):
     outside = tmp_path / "fuera"
     outside.mkdir()
-    os.symlink(outside, repo / "atajo")
+    try:
+        os.symlink(outside, repo / "atajo", target_is_directory=True)
+    except OSError:  # Windows without the right to create symbolic links: a junction leads out the same way
+        import _winapi
+
+        _winapi.CreateJunction(str(outside), str(repo / "atajo"))
     with pytest.raises(repo_notes.RepoNoteError, match="enlace"):
         repo_notes.save(str(repo), "atajo", "nota", "x")
     assert list(outside.iterdir()) == []
@@ -108,7 +113,7 @@ def test_rutas_carpetas_y_nota(client, repo):
     connection.execute("UPDATE mail_summary SET confidentiality = 'normal' WHERE message_id = ?", (normal,))
     connection.commit()
     again = test_client.post("/orca/repo-note", json={**body, "inboxId": normal}, headers=headers)
-    assert again.status_code == 422 and (repo / "docs" / "notas" / "Menú.md").read_text() == "Arreglar el menú\n"
+    assert again.status_code == 422 and (repo / "docs" / "notas" / "Menú.md").read_text(encoding="utf-8") == "Arreglar el menú\n"
 
 
 def test_caracteres_invisibles_no_abren_carpetas_ocultas(repo):

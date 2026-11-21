@@ -6,9 +6,8 @@
 pub mod extract;
 pub mod routes;
 
-use std::fs::{self, DirBuilder, OpenOptions};
+use std::fs;
 use std::io::Write;
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -117,15 +116,15 @@ impl PrivateLibrary {
         if !OWNER.is_match(owner) {
             return Err(LibraryError);
         }
-        DirBuilder::new().recursive(true).mode(0o700).create(&self.root).map_err(|_| LibraryError)?;
-        if fs::canonicalize(&self.root).map_err(|_| LibraryError)? != self.root {
+        crate::platform::create_dir_mode(&self.root, true, 0o700).map_err(|_| LibraryError)?;
+        if !crate::platform::is_same_real_path(&self.root).map_err(|_| LibraryError)? {
             return Err(LibraryError);
         }
         let directory = self.root.join(owner);
         if create {
-            DirBuilder::new().recursive(true).mode(0o700).create(&directory).map_err(|_| LibraryError)?;
+            crate::platform::create_dir_mode(&directory, true, 0o700).map_err(|_| LibraryError)?;
         }
-        if directory.exists() && fs::canonicalize(&directory).map_err(|_| LibraryError)? != directory {
+        if directory.exists() && !crate::platform::is_same_real_path(&directory).map_err(|_| LibraryError)? {
             return Err(LibraryError);
         }
         Ok(directory)
@@ -218,8 +217,9 @@ impl PrivateLibrary {
 
 /// Creates a new 0600 file (never an existing one, never through a link) with this JSON.
 fn write_new(file: &Path, value: &Value) -> Result<(), LibraryError> {
-    let mut handle = OpenOptions::new().write(true).create_new(true).custom_flags(libc::O_NOFOLLOW).mode(0o600).open(file).map_err(|_| LibraryError)?;
+    let mut handle = crate::platform::create_new_nofollow(file, 0o600).map_err(|_| LibraryError)?;
     if handle.write_all(value.to_string().as_bytes()).and_then(|_| handle.sync_all()).is_err() {
+        drop(handle);
         let _ = fs::remove_file(file);
         return Err(LibraryError);
     }

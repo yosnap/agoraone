@@ -22,6 +22,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from . import system_words
+
 MODELS = {"sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5", "fable": "claude-fable-5-2", "haiku": "claude-haiku-5-5"}
 DEFAULT_MODEL = "sonnet"
 SECRET_ACCOUNTS = {"anthropic": "anthropic-api-key", "compatible": "openai-compatible-key"}
@@ -228,7 +230,7 @@ class CompatibleEngine:
         if not self.available() or not key:
             raise EngineError("El proveedor compatible no está configurado.")
         if not resolves_public(self.base_url):
-            raise EngineError("La dirección del proveedor apunta a este Mac o a una red privada.")
+            raise EngineError(f"La dirección del proveedor apunta a {system_words.HERE} o a una red privada.")
         toolbox = turn.toolbox
         if toolbox is not None:
             toolbox.mail = False

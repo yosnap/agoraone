@@ -16,6 +16,7 @@ from . import fiscal, local_model, meeting_notes, system_audio
 from .db import DB_NAME, connect, transaction
 from .meetings import MeetingError, Recorder
 from .settings import Settings
+from . import system_words
 
 _OWNER = re.compile(r"[0-9a-f]{64}")
 
@@ -147,7 +148,7 @@ def meetings_router(settings: Settings, recorder: Recorder, worker: meeting_note
             if not row["transcript"]:
                 raise MeetingError("Todavía no hay transcripción que exportar.")
             if row["confidentiality"] != "normal":
-                raise MeetingError("Las reuniones privadas o solo en este Mac no salen de AgoraOne: no se exportan.", 403)
+                raise MeetingError(f"Las reuniones privadas o solo en {system_words.HERE} no salen de AgoraOne: no se exportan.", 403)
             try:
                 path = meeting_notes.export(row, downloads())
             except OSError as error:
