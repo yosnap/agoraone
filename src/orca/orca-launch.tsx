@@ -15,16 +15,17 @@ const message = (failure: unknown, fallback: string) => failure instanceof Error
  * chat of the bot only with «Enviar a <bot>». Changing anything means a new preview. */
 const keyOf = (c: OrcaProject) => JSON.stringify([c.client, c.project]);
 
-export function OrcaLaunch({ choices, client, project: first, source, task: initialTask, agent: firstAgent = 'claude', onClose }: {
-  choices: OrcaProject[]; client?: string; project?: string; source: OrcaSource; task: string; agent?: OrcaAgent; onClose: () => void;
+export function OrcaLaunch({ choices, client, project: first, source, task: initialTask, agent: firstAgent = 'claude', bot: firstBot, kind: firstKind, onClose }: {
+  choices: OrcaProject[]; client?: string; project?: string; source: OrcaSource; task: string; agent?: OrcaAgent;
+  /** A bot already chosen (Watson's proposal): the card opens with the destination «Bot». */ bot?: string; kind?: BotErrandKind; onClose: () => void;
 }) {
   const [project, setProject] = useState(keyOf(choices.find(c => c.project === first && (!client || c.client === client)) ?? choices[0] ?? { client: '', project: '', repo: '' }));
   const [agent, setAgent] = useState<OrcaAgent>(firstAgent);
   const [task, setTask] = useState(initialTask);
   const [preview, setPreview] = useState<OrcaPreview | null>(null);
-  const [to, setTo] = useState<'agent' | 'bot'>('agent');
-  const [bot, setBot] = useState('');
-  const [kind, setKind] = useState<BotErrandKind>('handoff');
+  const [to, setTo] = useState<'agent' | 'bot'>(firstBot ? 'bot' : 'agent');
+  const [bot, setBot] = useState(firstBot ?? '');
+  const [kind, setKind] = useState<BotErrandKind>(firstKind ?? 'handoff');
   const [botReady, setBotReady] = useState(false);
   const [botPreview, setBotPreview] = useState<BotErrandPreview | null>(null);
   const [done, setDone] = useState('');
