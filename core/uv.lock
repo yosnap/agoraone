@@ -9,7 +9,7 @@ tzdata = "2026-11-01T23:00:00Z"
 
 [[package]]
 name = "agora-core"
-version = "1.9.0b14"
+version = "1.9.0b15"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
