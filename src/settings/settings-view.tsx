@@ -21,6 +21,9 @@ import { ModulesSettingsCard } from './settings-modules';
 import { openConnector } from '../connectors/open-connector';
 import type { Section } from '../shell/shell-state';
 import { isMac, isWindows } from '../ui/platform';
+import { ChangelogCard } from '../about/changelog-view';
+import { RoadmapCard } from '../about/roadmap-view';
+import { LogCard } from './settings-log';
 import './settings.css';
 
 type Tab = { id: string; label: string; cards: (onOpen: (section: Section) => void) => ReactNode };
@@ -37,6 +40,9 @@ const tabs: Tab[] = [
   { id: 'trabajos', label: 'Trabajos', cards: () => <JobsSettingsCard/> },
   { id: 'voz', label: 'Voz', cards: () => <><VoiceSettingsCard/><MeetingSettingsCard/><MusicSettingsCard/><AppsSettingsCard/></> },
   { id: 'privacidad', label: 'Privacidad y copias', cards: () => <><PrivacySettingsCard/><BackupsCard/></> },
+  { id: 'novedades', label: 'Novedades', cards: () => <ChangelogCard/> },
+  { id: 'hoja-de-ruta', label: 'Hoja de ruta', cards: () => <RoadmapCard/> },
+  { id: 'registro', label: 'Registro', cards: () => <LogCard/> },
 ];
 const STORED = 'agora.settings.tab';
 
@@ -82,6 +88,7 @@ export function SettingsView({ onOpen }: { onOpen: (section: Section) => void })
     url.searchParams.set('pestana', id);
     window.history.replaceState(window.history.state, '', url);
     if (focus) buttons.current[id]?.focus();
+    buttons.current[id]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });  // the tab row scrolls sideways
   };
   // Arrow keys, Home and End move between tabs (WAI-ARIA tabs pattern).
   const keys = (event: KeyboardEvent) => {

@@ -17,6 +17,7 @@ export async function request<T>(path: string, body?: unknown, method = body ? '
     headers: { ...(method !== 'GET' ? { 'Content-Type': 'application/json' } : {}), ...(csrf ? { 'X-Agora-CSRF': csrf } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (response.status === 204) return undefined as T;  // no body (e.g. the log accepting an entry)
   const data = await response.json();
   if (!response.ok) throw new ApiError(data.error || 'El backend no está disponible.', response.status, data);
   return data;

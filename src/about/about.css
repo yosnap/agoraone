@@ -1,0 +1,54 @@
+/* Ajustes › Novedades, Hoja de ruta and Registro: accordions and kind badges. No side accent stripes: kinds use the
+   background, the text colour and an icon. */
+.about-card { grid-column:1 / -1 }
+.about-filter { display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 12px }
+.about-filter button { border:1px solid var(--c-e3e7dc); background:var(--c-fffffa); color:var(--c-355a50); border-radius:20px; padding:5px 12px; font-size:11px; cursor:pointer }
+.about-filter button[aria-pressed="true"] { background:var(--c-173d3c); border-color:var(--c-173d3c); color:var(--c-fffffa); font-weight:600 }
+.about-filter button:focus-visible, .about-release > summary:focus-visible, .about-change > summary:focus-visible { outline:2px solid var(--c-355a50); outline-offset:2px }
+.about-list { display:flex; flex-direction:column; gap:8px }
+.about-release { border:1px solid var(--c-e3e7dc); border-radius:12px; background:var(--c-fffffa) }
+.about-release > summary { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:12px 14px; cursor:pointer; list-style:none }
+.about-release > summary::-webkit-details-marker { display:none }
+.about-release > summary::before { content:"▸"; color:var(--c-355a50); transition:transform .15s }
+.about-release[open] > summary::before { transform:rotate(90deg) }
+.about-version { font:700 13px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--c-173d3c) }
+.about-title { font-weight:600; color:var(--c-173d3c); flex:1 1 220px; min-width:0 }
+.about-counts { display:flex; gap:4px; flex-wrap:wrap }
+.about-date { font-size:11px; color:var(--c-6b7f74); white-space:nowrap }
+.about-release > .about-summary { margin:0; padding:0 14px 8px 38px; color:var(--c-355a50) }
+.about-changes { list-style:none; margin:0; padding:0 14px 12px 38px; display:flex; flex-direction:column; gap:6px }
+.about-changes > li { display:flex; align-items:flex-start; gap:10px; min-width:0 }
+.about-changes > li > .about-kind { flex:none; min-width:92px; justify-content:flex-start }
+.about-change { flex:1; min-width:0 }
+.about-change > summary { cursor:pointer; color:var(--c-173d3c) }
+.about-change > p { margin:6px 0 2px; color:var(--c-355a50); max-width:120ch }
+.about-change-title { flex:1; min-width:0; color:var(--c-173d3c) }
+.about-area { margin-left:8px; font-size:10px; color:var(--c-6b7f74); white-space:nowrap }
+.about-kind { display:inline-flex; align-items:center; gap:5px; border-radius:20px; padding:3px 9px; font-size:10px; font-weight:600; white-space:nowrap; background:var(--c-e7ece2); color:var(--c-355a50) }
+.about-kind.feature { background:var(--c-dcebdc); color:var(--c-2d7a4f) }
+.about-kind.fix { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.about-kind.security { background:var(--c-efe9f6); color:var(--c-5c3f9a) }
+.about-kind.change { background:var(--c-e8eef3); color:var(--c-2c5170) }
+@media (max-width:700px) { .about-changes > li { flex-direction:column; gap:4px } .about-changes > li > .about-kind { min-width:0 } .about-changes, .about-release > .about-summary { padding-left:14px } }
+.roadmap-columns { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px }
+.roadmap-column { border:1px solid var(--c-e3e7dc); border-radius:12px; padding:12px 14px; background:var(--c-fffffa); min-width:0 }
+.roadmap-column h3 { margin:0 0 4px; display:flex; align-items:center; gap:8px; font-size:13px }
+.roadmap-items { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:10px }
+.roadmap-items li { padding-top:10px; border-top:1px solid var(--c-e3e7dc) }
+.roadmap-items li:first-child { padding-top:0; border-top:0 }
+.roadmap-items .about-area { margin-left:0; display:block; margin-top:2px }
+.roadmap-items p { margin:4px 0 0; color:var(--c-355a50) }
+.about-kind.roadmap-doing { background:var(--c-dcebdc); color:var(--c-2d7a4f) }
+.about-kind.roadmap-planned { background:var(--c-e8eef3); color:var(--c-2c5170) }
+.log-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; margin:4px 0 12px }
+.log-filters .field { min-width:180px }
+.log-filters .log-search { flex:1 1 220px }
+.log-filters > .button { margin-left:4px }
+.log-table-wrap { overflow-x:auto; max-height:60vh; overflow-y:auto }
+.log-table td { vertical-align:top }
+.log-time { white-space:nowrap; font:12px ui-monospace,SFMono-Regular,Menlo,monospace }
+.log-area { white-space:nowrap; color:var(--c-6b7f74) }
+.log-message { word-break:break-word; font:12px ui-monospace,SFMono-Regular,Menlo,monospace }
+.about-kind.log-info { background:var(--c-e8eef3); color:var(--c-2c5170) }
+.about-kind.log-warning { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.about-kind.log-error { background:var(--c-f6ddd4); color:var(--c-8e3d2a) }
