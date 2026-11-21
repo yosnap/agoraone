@@ -546,3 +546,13 @@ def test_en_otra_unidad_o_en_red_nunca_el_sistema_los_perfiles_ni_un_disco_enter
     assert fiscal._check_other_volume(Path("//servidor/recurso/Empresa/Fiscal"), refuse) == Path("//servidor/recurso/Empresa/Fiscal")
     with pytest.raises(fiscal.FiscalError, match="ruta normal"):
         fiscal.check_folder("//?/" + str(work.resolve()), home=other_home)  # \\?\E:\…
+
+
+def test_solo_avisa_de_las_carpetas_fuera_de_la_personal_en_windows():
+    """Another drive or a share is flagged on Windows (others may write there); inside the home folder, or on
+    macOS and Linux, where only the home folder is allowed, never."""
+    home = Path("C:/Users/yo")
+    windows = __import__("os").name == "nt"
+    assert fiscal.outside_home("D:/Actividad/Fiscal", home) is windows
+    assert fiscal.outside_home("//servidor/recurso/Empresa/Fiscal", home) is windows
+    assert fiscal.outside_home("C:/Users/yo/Actividad/Fiscal", home) is False

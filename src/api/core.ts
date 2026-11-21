@@ -314,10 +314,10 @@ export type InvoicePrepared = {
 export type Invoice = InvoiceFields & { id: number; direction: 'received' | 'issued'; messageId: number | null; doubts: string[]; quarter: string; path: string;
   client?: string | null };
 export type FolderKind = 'autonomo' | 'empresa' | 'personal';
-export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null; holder: string | null };
+export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null; holder: string | null; outsideHome?: boolean };
 export const getFiscalFolders = () => core<{ folders: FiscalFolder[] }>('/fiscal/folders');
 export const chooseFiscalFolder = () => core<{ path: string | null }>('/fiscal/folders/choose', {});
-export const addFiscalFolder = (folder: Omit<FiscalFolder, 'id' | 'holder'>) => core<{ folders: FiscalFolder[] }>('/fiscal/folders', folder);
+export const addFiscalFolder = (folder: Omit<FiscalFolder, 'id' | 'holder' | 'outsideHome'>) => core<{ folders: FiscalFolder[] }>('/fiscal/folders', folder);
 export const changeFiscalFolder = (id: number, changes: Partial<Omit<FiscalFolder, 'id' | 'path'>>) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, changes, 'PUT');
 export const removeFiscalFolder = (id: number) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, undefined, 'DELETE');
 export const prepareInvoice = (messageId: number) => core<InvoicePrepared>('/fiscal/invoices/prepare', { messageId });

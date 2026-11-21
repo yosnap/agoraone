@@ -85,8 +85,17 @@ KINDS = ("autonomo", "empresa", "personal")
 CATEGORIES = ("gastos", "compras")
 
 
+def outside_home(path: str, home: Path | None = None) -> bool:
+    """Windows: a folder on another drive or a network share, where other people may be able to write too."""
+    if os.name != "nt":
+        return False
+    drive, home_drive = Path(path).drive, (home or Path.home()).drive
+    return bool(drive) and drive.lower() != home_drive.lower()
+
+
 def _folder_row(row: sqlite3.Row) -> dict:
-    return {"id": row["id"], "name": row["name"], "kind": row["kind"], "path": row["path"], "scopeId": row["scope_id"], "holder": row["holder"]}
+    return {"id": row["id"], "name": row["name"], "kind": row["kind"], "path": row["path"], "scopeId": row["scope_id"], "holder": row["holder"],
+            "outsideHome": outside_home(row["path"])}
 
 
 def folders(connection: sqlite3.Connection) -> list[dict]:

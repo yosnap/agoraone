@@ -15,6 +15,10 @@ const structure: Record<FolderKind, string> = {
   autonomo: 'Facturas Entrantes|Salientes/año/trimestre', empresa: 'Facturas Entrantes|Salientes/año/trimestre', personal: 'Gastos|Compras/año',
 };
 
+/** A folder on another drive or a network share: AgoraOne checks every move, but if someone else can write there
+ * at the same time, a file could be swapped while it is being filed. */
+const SHARED_NOTICE = 'Está fuera de tu carpeta personal. Úsala solo si únicamente tú puedes escribir en ella: si otras personas o equipos también pueden, alguien podría cambiar un archivo justo mientras AgoraOne lo archiva.';
+
 /** The fiscal folders: where invoices and receipts are filed, each with a name, a kind and the scope whose
  * mail it receives. Chosen with the macOS folder picker; AgoraOne never touches anything outside them. */
 export function FiscalSettingsCard() {
@@ -92,12 +96,14 @@ export function FiscalSettingsCard() {
             <FolderLogo kind={folder.kind}/>
             <span className="compact-name"><strong>{folder.name}</strong>
               <small className="muted">{scopes.find(s => s.id === folder.scopeId)?.name ?? 'Sin ámbito'} · {folder.path.split(/[\\/]/).filter(Boolean).slice(-2).join('/')}</small></span>
+            {folder.outsideHome && <span className="status-badge waiting" title={SHARED_NOTICE}>Fuera de tu carpeta</span>}
             <span className="status-badge neutral">{kindLabels[folder.kind]}</span>
             <span className="compact-chevron" aria-hidden="true">▾</span>
           </button>
         </div>
         {open.has(folder.id) && <>
         <span className="muted"><code>{folder.path}</code></span>
+        {folder.outsideHome && <p className="notice" role="note">{SHARED_NOTICE}</p>}
         <div className="mail-account-fields">
           <label className="field">Ámbito<ModernSelect value={folder.scopeId ? String(folder.scopeId) : ''} options={scopeOptions}
             onChange={value => void act(() => changeFiscalFolder(folder.id, { scopeId: value ? Number(value) : null }), 'Ámbito guardado.')}/></label>
