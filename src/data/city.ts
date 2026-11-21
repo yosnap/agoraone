@@ -1,6 +1,7 @@
 import type { HermesCatalog } from '../../shared/hermes-catalog';
 import { profileStyle, type BuildingStyle } from './building-style';
 import { serviceGroups } from './service-groups';
+import { hereLabel } from '../ui/platform';
 export type Place = {
   id: string; resourceId: string; name: string; character: string; color: string;
   position: [number, number, number]; description: string;
@@ -27,7 +28,7 @@ export function catalogPlaces(catalog: HermesCatalog | null): Place[] {
       color: '#79b9c8', description: 'Entra para explorar los MCP y sus herramientas por perfil.',
       relatedIds: (catalog?.profiles || []).filter(profile => profile.mcp?.length).map(profile => profile.id), buildingStyle: 'service' as const, kind: 'service' as const }] : []),
     { id: 'code-workshop', resourceId: 'code-workshop', name: 'Taller de código', character: '', color: '#d9a35f', buildingStyle: 'workshop' as const, kind: 'workshop' as const,
-      description: 'Los agentes de código de este Mac (Claude Code y Codex, en Orca, VS Code, la app de Codex o una terminal), leídos de sus propios registros: en su mesa tecleando mientras trabajan, de pie si ejecutan una herramienta o esperan tu respuesta. Solo metadatos, nunca lo que se dice.' },
+      description: `Los agentes de código de ${hereLabel} (Claude Code y Codex, en Orca, VS Code, la app de Codex o una terminal), leídos de sus propios registros: en su mesa tecleando mientras trabajan, de pie si ejecutan una herramienta o esperan tu respuesta. Solo metadatos, nunca lo que se dice.` },
   ];
   const columns = Math.max(2, Math.ceil(Math.sqrt(entities.length)));
   const rows = Math.ceil(entities.length / columns);

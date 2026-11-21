@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 
 from . import mail, mail_rules
 from .db import now
+from . import system_words
 
 TIMEOUT = 30
 MAX_RECIPIENTS = 20
@@ -345,7 +346,7 @@ def compose(connection: sqlite3.Connection, message_id: int, instructions: str, 
     """A reply body drafted by the model, for the user to read, change and confirm. Only for a mail the
     model may read (normal): a private or «solo este Mac» one is answered by hand."""
     if level_of(connection, message_id) != "normal":
-        raise SendError("Este correo es privado o solo de este Mac: el asistente no lo lee. Escribe la respuesta tú.")
+        raise SendError(f"Este correo es privado o solo de {system_words.HERE}: el asistente no lo lee. Escribe la respuesta tú.")
     row = connection.execute("SELECT * FROM mail_message WHERE id = ?", (message_id,)).fetchone()
     text = (ask(COMPOSE_SYSTEM, compose_prompt(row, instructions)) or "").strip()
     if not text:

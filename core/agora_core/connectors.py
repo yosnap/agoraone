@@ -56,9 +56,13 @@ class WebApiAdapter:
     def __init__(self, spec: web_api.WebApiSpec, probe: Callable[[web_api.Connection], dict],
                  legacy: Callable[[sqlite3.Connection], bool] | None = None, notice: str | None = None,
                  after_save: Callable[[sqlite3.Connection, bool], None] | None = None,
-                 after_forget: Callable[[], None] | None = None, reset: Callable[[], None] | None = None):
+                 after_forget: Callable[[], None] | None = None, reset: Callable[[], None] | None = None,
+                 other_keys: Callable[[sqlite3.Connection, object], None] | None = None):
         self.spec, self.probe, self.legacy, self.notice, self.after_save = spec, probe, legacy, notice, after_save
         self.after_forget, self.reset = after_forget, reset
+        # Forgets the service's other keys (CRMDev's other organizations): on «Olvidar», and when the address moves
+        # to another origin, so no saved key ever travels to a server it was not saved for.
+        self.other_keys = other_keys
         self.hint = spec.example_url
         self._lock = threading.Lock()  # the origin check, the key and the URL change together
 
@@ -96,9 +100,15 @@ class WebApiAdapter:
                 raise ConnectorError(problem)
         elif "key" not in body and url is not None and not web_api.same_origin(self.spec, web_api.saved_url(self.spec, connection), url):
             raise ConnectorError(NEW_ORIGIN)
+        moved = not web_api.same_origin(self.spec, web_api.saved_url(self.spec, connection), url)
         if "key" in body:
             try:
                 web_api.write_key(self.spec, secrets, key.strip() if isinstance(key, str) else None)
+            except web_api.WebApiError as error:
+                raise ConnectorError(str(error), 503) from None
+        if moved and self.other_keys is not None:
+            try:
+                self.other_keys(connection, secrets)
             except web_api.WebApiError as error:
                 raise ConnectorError(str(error), 503) from None
         web_api.save_url(self.spec, connection, url)
@@ -130,6 +140,8 @@ class WebApiAdapter:
         try:
             with self._lock:
                 web_api.write_key(self.spec, secrets, None)
+                if self.other_keys is not None:
+                    self.other_keys(connection, secrets)
         except web_api.WebApiError as error:
             raise ConnectorError(str(error), 503) from None
         finally:
@@ -212,13 +224,19 @@ def _central_saved(connection: sqlite3.Connection, connected: bool) -> None:
         central.forget_legacy(connection)  # the old folder setting is no longer needed; the snapshot stays
 
 
+
+def _crmdev_other_keys(connection: sqlite3.Connection, secrets) -> None:
+    from . import crmdev_orgs
+
+    crmdev_orgs.forget_others(connection, secrets)
+
 REGISTRY: dict[str, Connector] = {c.id: c for c in (
     Connector("central", "Central", "Clientes, proyectos, webs, servidores, agenda y presupuestos de Central, leídos de su API.",
               "web_api", ("central", "presupuestos"), ("central", "quotes"), "central", central_api.SCOPES,
               WebApiAdapter(central_api.SPEC, lambda target: central_api.status(target), central.legacy, central.MOVED, _central_saved)),
     Connector("crmdev", "CRMDev", "CRM de proyectos, tareas, tickets y clientes de tu organización.",
               "web_api", ("crmdev",), ("crmdev",), "crmdev", crmdev_api.SCOPES,
-              WebApiAdapter(crmdev_api.SPEC, crmdev_api.probe, reset=crmdev_api.clear_cache)),
+              WebApiAdapter(crmdev_api.SPEC, crmdev_api.probe, reset=crmdev_api.clear_cache, other_keys=_crmdev_other_keys)),
     Connector("fabrica", "Mi fábrica", "Fábrica de contenido: investiga, produce, espera aprobación, publica y mide.",
               "local_port", ("fabrica",), ("fabrica",), "fabrica", (), LocalAdapter("fabrica")),
     Connector("costguard", "CostGuard", "Mide el gasto de tokens de los agentes (Claude Code, Codex, OpenCode, pi), en solo lectura.",

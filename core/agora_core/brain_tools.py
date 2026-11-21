@@ -15,9 +15,10 @@ from contextlib import AbstractContextManager
 
 from fastapi.concurrency import run_in_threadpool
 
-from . import brain_chat, meeting_tools, orca_launch
+from . import brain_chat, crmdev_tools, hermes_tasks, meeting_tools, orca_launch, research
 from .embed import Embedder, VectorCache
 from .search import search
+from . import system_words
 
 AUDIENCE = "external"
 PART_CHARS = 8000
@@ -208,7 +209,10 @@ SPECS.append({
 })
 SPECS.extend(meeting_tools.SPECS)
 SPECS.append(orca_launch.SPEC)
+SPECS.extend(crmdev_tools.SPECS)
 SPECS.append(brain_chat.SPEC)
+SPECS.append(hermes_tasks.SPEC)
+SPECS.extend([research.PROPOSE_SPEC, research.READ_SPEC])
 NOTE_TEXT = 20000
 SECRET_LINE = re.compile(r"(?i)(contrase(n|ñ)a|password|passwd|api[_ -]?key|token|secret|clave)\s*[:=]\s*\S{6,}")
 _ACTION_OF_ACCION = {"factura": "invoice", "cliente": "client", "personal": "personal", "importante": "important", "ignorar": "ignore"}
@@ -260,6 +264,11 @@ class Toolbox:
         self.owner: str | None = None
         self.meetings_seen: set[int] = set()  # a meeting can only be read once it was found
         self.chats_seen: set[int] = set()  # a reply is only proposed to a conversation consultar_bandeja showed
+        self.crmdev_seen: set[tuple[str, str, str]] = set()  # (kind, id, organization) consultar_crmdev showed: only those get proposals
+        self.secrets = None  # the secret store, for reading CRMDev
+        self.only: tuple[str, ...] | None = None  # a research turn: the only tools that answer, whatever is asked
+        self.pages_left = 0  # pages a research turn may still read
+        self.known_urls: set[str] = set()  # the only addresses it may open (search results, the user's question)
 
     def register(self, results: list[dict], listed: bool = False) -> list[dict]:
         """Numbers the notes found (a note found again keeps its number). `listed` notes were only seen by title in
@@ -294,6 +303,8 @@ class Toolbox:
             return json.dumps({"error": "Has llegado al límite de consultas de esta respuesta: responde con lo que ya tienes."}, ensure_ascii=False)
         self.calls += 1
         from .engines import HIDDEN_TOOLS
+        if (self.only is not None and name not in self.only) or (self.only is None and name in research.ONLY_HERE):
+            return json.dumps({"error": "Esa herramienta no está disponible aquí."}, ensure_ascii=False)
         if name in HIDDEN_TOOLS:  # a tool of a module turned off, even if the model names it
             return json.dumps({"error": "Esa herramienta está apagada: su módulo se enciende en Ajustes › Módulos o en Conectores."}, ensure_ascii=False)
         try:
@@ -330,8 +341,21 @@ class Toolbox:
                 return await self._propose_chat_reply(args)
             if name == orca_launch.SPEC["name"]:
                 return await self._propose_orca(args)
+            if name == hermes_tasks.NAME:
+                return await self._propose_hermes(args)
+            if name == research.PROPOSE:
+                try:
+                    proposal = research.propose(args)
+                except research.ResearchError as error:
+                    return json.dumps({"error": str(error)}, ensure_ascii=False)
+                self._record({"tool": "research_proposal", "proposal": proposal})
+                return research.proposed(proposal)
+            if name == research.READ:
+                return await research.read_page(self, args)
             if name in meeting_tools.NAMES:
                 return await self._meetings(name, args)
+            if name in crmdev_tools.NAMES:
+                return await crmdev_tools.call(self, name, args)
         except (TypeError, ValueError):
             pass
         return json.dumps({"error": "Herramienta o argumentos no válidos."}, ensure_ascii=False)
@@ -446,6 +470,15 @@ class Toolbox:
         return json.dumps({"propuesta": {"repositorio": proposal["repo"], "agente": orca_launch.AGENTS[proposal["agent"]]},
                            "estado": "Tarjeta abierta en la pantalla del usuario: tiene que ver la vista previa y pulsar «Lanzar en Orca». No se ha lanzado nada."},
                           ensure_ascii=False)
+
+    async def _propose_hermes(self, args: dict) -> str:
+        """Opens the card to send a task to a Hermes profile; only the user's «Enviar» sends it."""
+        try:
+            proposal = await run_in_threadpool(lambda: hermes_tasks.propose(args))
+        except hermes_tasks.HermesTaskError as error:
+            return json.dumps({"error": str(error)}, ensure_ascii=False)
+        self._record({"tool": "hermes_proposal", "proposal": proposal})
+        return hermes_tasks.result(proposal)
 
     async def _propose_chat_reply(self, args: dict) -> str:
         """Keeps a WhatsApp reply Watson wrote as a proposal; the screen opens the reply composer with it and only the
@@ -679,7 +712,7 @@ class Toolbox:
         if len(text) > NOTE_TEXT:
             return json.dumps({"error": f"La nota es demasiado larga (más de {NOTE_TEXT} caracteres): resúmela."}, ensure_ascii=False)
         if SECRET_LINE.search(text):
-            return json.dumps({"error": "La nota lleva lo que parece una contraseña o una clave: quítala; esas cosas van al Llavero, no a notas."}, ensure_ascii=False)
+            return json.dumps({"error": f"La nota lleva lo que parece una contraseña o una clave: quítala; esas cosas van al {system_words.KEYSTORE}, no a notas."}, ensure_ascii=False)
         now = time.time()
         for key in [k for k, v in self.proposals.items() if v["expires"] < now]:
             del self.proposals[key]

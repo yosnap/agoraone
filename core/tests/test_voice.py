@@ -16,7 +16,6 @@ from agora_core.settings import load_settings
 from tests.test_fiscal_excel import MemorySecrets
 
 SECRET, OWNER = "a" * 64, "b" * 64
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="los programas de prueba son guiones de shell")
 
 
 def _program(path, body):
@@ -41,6 +40,8 @@ def _whisper(path, json_text):
 
 @pytest.fixture
 def tools(tmp_path):
+    if sys.platform == "win32":
+        pytest.skip("los programas de prueba son guiones de shell")
     # ffmpeg: copies its input (after -i) to its output (the last argument); whisper-cli: writes the JSON whisper.cpp writes.
     ffmpeg = _program(tmp_path / "ffmpeg", FFMPEG)
     result = {"result": {"language": "es"}, "transcription": [
@@ -166,18 +167,38 @@ def test_solo_programas_con_su_nombre_y_que_responden(tmp_path, tools, monkeypat
     connection.close()
 
 
+def test_en_windows_solo_acepta_exe(tmp_path, monkeypatch):
+    monkeypatch.setattr(transcribe.sys, "platform", "win32")
+    bat = tmp_path / "ffmpeg.bat"
+    bat.write_text("@echo off")
+    assert not transcribe._runnable(bat, transcribe.FFMPEG_NAMES), "en Windows un .bat pasaría por cmd.exe"
+    exe = tmp_path / "FFmpeg.EXE"
+    exe.write_bytes(b"MZ")
+    assert transcribe._runnable(exe, transcribe.FFMPEG_NAMES)
+
+
 def test_prefiere_turbo_y_acepta_la_cache_de_hugging_face(tmp_path, monkeypatch):
     monkeypatch.setattr(transcribe.Path, "home", lambda: tmp_path)
     hub = tmp_path / ".cache/huggingface/hub/models--ggerganov--whisper.cpp"
     (hub / "blobs").mkdir(parents=True)
     (hub / "blobs/abc").write_bytes(b"x" * 5)
     (hub / "snapshots/123").mkdir(parents=True)
-    (hub / "snapshots/123/ggml-large-v3-turbo.bin").symlink_to(hub / "blobs/abc")
-    (tmp_path / ".cache/whisper").mkdir(parents=True)
+    try:
+        (hub / "snapshots/123/ggml-large-v3-turbo.bin").symlink_to(hub / "blobs/abc")
+        (tmp_path / ".cache/whisper").mkdir(parents=True)
+        outside = tmp_path / "fuera.bin"
+        outside.write_bytes(b"x" * 99)
+        (tmp_path / ".cache/whisper/ggml-enlace.bin").symlink_to(outside)
+    except OSError:
+        import _winapi
+
+        (hub / "snapshots/123/ggml-large-v3-turbo.bin").write_bytes(b"x" * 5)
+        (tmp_path / ".cache/whisper").mkdir(parents=True)
+        outside_dir = tmp_path / "fuera_dir"
+        (outside_dir / "whisper").mkdir(parents=True)
+        (outside_dir / "whisper/ggml-enlace.bin").write_bytes(b"x" * 99)
+        _winapi.CreateJunction(str(outside_dir.resolve()), str(tmp_path / ".cache/atajo"))
     (tmp_path / ".cache/whisper/ggml-large-v3.bin").write_bytes(b"x" * 30)
-    outside = tmp_path / "fuera.bin"
-    outside.write_bytes(b"x" * 99)
-    (tmp_path / ".cache/whisper/ggml-enlace.bin").symlink_to(outside)
     models = transcribe.find_models()
     assert [m["name"] for m in models] == ["large-v3", "large-v3-turbo"], "los enlaces fuera de su árbol no cuentan"
     assert transcribe.preferred_model(models).endswith("ggml-large-v3-turbo.bin")

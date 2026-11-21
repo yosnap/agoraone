@@ -16,7 +16,6 @@ chrono = "0.4.45"
 fancy-regex = "0.20.2"
 futures-util = "0.3"
 hex = "0.4"
-libc = "0.2.191"
 rand = "0.9"
 regex = "1.13.1"
 reqwest = { version = "0.12", default-features = false, features = ["stream"] }
@@ -30,8 +29,26 @@ tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["fs"] }
 unicode-normalization = "0.1.26"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.191"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 http-body-util = "0.1"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 zip = { version = "9.5.1", default-features = false, features = ["deflate"] }
+
+# The tests' NTFS junctions (tests/support/test_links.rs): DeviceIoControl, only for the tests.
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_IO"] }

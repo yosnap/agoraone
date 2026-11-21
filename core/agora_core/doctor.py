@@ -8,7 +8,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from . import local_model, music_library, system_audio, transcribe
+from . import local_model, music_library, system_audio, system_words, transcribe
 
 HOME = Path.home()
 MAC, LINUX, WINDOWS = sys.platform == "darwin", sys.platform.startswith("linux"), sys.platform == "win32"
@@ -17,6 +17,25 @@ MAC, LINUX, WINDOWS = sys.platform == "darwin", sys.platform.startswith("linux")
 def _app(*names: str) -> bool:
     """A macOS app in the Applications folders (never opened)."""
     return MAC and any((root / f"{name}.app").exists() for name in names for root in (Path("/Applications"), HOME / "Applications"))
+
+
+def _hermes_root() -> Path:
+    """Where Hermes keeps its data, by the server's rule: AGORA_HERMES_HOME, else HERMES_HOME (taken back to the
+    data root when it points at one profile), else ~/.hermes."""
+    agora, hermes = os.environ.get("AGORA_HERMES_HOME"), os.environ.get("HERMES_HOME")
+    root = Path(os.path.expanduser(agora or hermes or str(HOME / ".hermes")))
+    if not agora and root.parent.name == "profiles":
+        root = root.parent.parent
+    return root
+
+
+def _obsidian_registry() -> Path:
+    """Obsidian's list of vaults, where Obsidian keeps it on each system."""
+    if MAC:
+        return HOME / "Library/Application Support/obsidian/obsidian.json"
+    if WINDOWS:
+        return Path(os.environ.get("APPDATA") or HOME / "AppData/Roaming") / "obsidian/obsidian.json"
+    return Path(os.environ.get("XDG_CONFIG_HOME") or HOME / ".config") / "obsidian/obsidian.json"
 
 
 def _program(*names: str) -> str | None:
@@ -47,11 +66,13 @@ def check(connection: sqlite3.Connection, has_anthropic_key: bool, has_zernio_ke
         pieces.append({"id": ident, "name": name, "state": "ok" if ok else "optional" if optional else "missing",
                        "modules": modules, "detail": detail, "how": how or {"kind": "none"}})
 
-    hermes = (HOME / ".hermes").is_dir()
+    hermes_root = _hermes_root()
+    hermes = hermes_root.is_dir()
+    shown = "~/.hermes" if hermes_root == HOME / ".hermes" else str(hermes_root)
     add("hermes", "Hermes", hermes, ["Oficina 3D", "Trabajos", "Conectores"],
-        "Perfiles, bots y kanban detectados en ~/.hermes." if hermes else "No se encuentra ~/.hermes: sin perfiles ni bots.",
+        f"Perfiles, bots y kanban detectados en {shown}." if hermes else f"No se encuentra {shown}: sin perfiles ni bots.",
         _how(url="https://github.com/NousResearch/hermes-agent"), optional=True)
-    obsidian = (HOME / "Library/Application Support/obsidian/obsidian.json").is_file() if MAC else (HOME / ".config/obsidian/obsidian.json").is_file()
+    obsidian = _obsidian_registry().is_file()
     add("obsidian", "Obsidian y sus vaults", obsidian, ["Cerebro", "Reuniones"],
         "Registro de vaults encontrado." if obsidian else "Sin registro de Obsidian: el Cerebro no tiene notas que indexar.",
         _how(brew="--cask obsidian", url="https://obsidian.md/download"))
@@ -60,7 +81,7 @@ def check(connection: sqlite3.Connection, has_anthropic_key: bool, has_zernio_ke
         "Tu sesión de Claude Code: Watson, resúmenes y lectura de facturas sin clave de API." if claude else "No está: Watson necesitará una clave de API.",
         _how(brew="--cask claude-code", linux="curl -fsSL https://claude.ai/install.sh | bash", url="https://docs.anthropic.com/claude-code"))
     add("anthropic-key", "Clave de API de Anthropic", has_anthropic_key, ["Watson"],
-        "Guardada en el Llavero (reserva si no hay Claude Code)." if has_anthropic_key else "Opcional si tienes Claude Code. Se guarda en Ajustes › Asistente.",
+        f"Guardada en el {system_words.KEYSTORE} (reserva si no hay Claude Code)." if has_anthropic_key else "Opcional si tienes Claude Code. Se guarda en Ajustes › Asistente.",
         optional=True)
     add("whisper", "whisper.cpp (whisper-cli)", bool(voice["binary"]), ["Voz", "Reuniones"],
         voice["binary"] or "Sin él no se puede dictar ni transcribir reuniones.", _how(brew="whisper-cpp", linux="sudo apt install whisper-cpp", windows="winget install ggerganov.whisper.cpp"))
@@ -85,17 +106,17 @@ def check(connection: sqlite3.Connection, has_anthropic_key: bool, has_zernio_ke
     add("orca", "Orca", bool(orca), ["Orca"], "Lanza Claude Code o Codex en el repositorio de un proyecto." if orca else "Para llevar encargos a un agente en tus repositorios.",
         optional=True)
     add("zernio", "WhatsApp (Zernio)", has_zernio_key, ["WhatsApp"],
-        "Clave de API de Zernio guardada en el Llavero." if has_zernio_key else "Para leer tu WhatsApp: guarda la clave de Zernio en Ajustes › WhatsApp.",
+        f"Clave de API de Zernio guardada en el {system_words.KEYSTORE}." if has_zernio_key else "Para leer tu WhatsApp: guarda la clave de Zernio en Ajustes › WhatsApp.",
         _how(url="https://zernio.com"), optional=True)
     add("typesafe", "Jev (TypeSafe)", has_typesafe_key, ["Jev"],
-        "Clave de API de TypeSafe guardada en el Llavero." if has_typesafe_key else "Para que Jev ayude a decidir: guarda la clave de TypeSafe en Ajustes › Jev.",
+        f"Clave de API de TypeSafe guardada en el {system_words.KEYSTORE}." if has_typesafe_key else "Para que Jev ayude a decidir: guarda la clave de TypeSafe en Ajustes › Jev.",
         _how(url="https://console.typesafe.ai/keys"), optional=True)
     library = music_library.folders(connection)
     add("music-folder", "Carpeta de música", bool(library), ["Música"], ", ".join(library) if library else "Elígela en Ajustes › Voz › Tu música.", optional=True)
     if LINUX:
         add("playerctl", "playerctl (MPRIS)", bool(_program("playerctl")), ["Música"], "Controla los reproductores en Linux.", _how(linux="sudo apt install playerctl"))
     wake = (Path(__file__).resolve().parents[1] / "helpers/bin/agora-wake").is_file()
-    add("wake", "«Oye Watson»", wake and MAC, ["Voz"], "Reconocimiento de voz de Apple en el equipo." if wake and MAC else "Solo en la app de escritorio del Mac.", optional=True)
+    add("wake", "«Oye Watson»", wake and MAC, ["Voz"], "Reconocimiento de voz de Apple en el equipo." if wake and MAC else ("Solo en la app de escritorio del Mac." if MAC else "Todavía no está disponible en este sistema: llama a Watson con Ctrl+Alt+W."), optional=True)
     add("brew", "Homebrew", bool(_program("brew")), ["Instalador"], "Con él AgoraOne puede instalar las piezas por ti." if _program("brew") else "Sin él, cada pieza se instala a mano.",
         {"kind": "page", "url": "https://brew.sh"} if MAC else {"kind": "none"}, optional=not MAC)
     for ident, name, programs, apps in (("codex", "Codex (OpenAI)", ("codex",), ()), ("gemini", "Gemini CLI", ("gemini",), ()),

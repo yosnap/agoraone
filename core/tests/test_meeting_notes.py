@@ -9,7 +9,13 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from agora_core import local_model, meeting_notes, system_audio, transcribe
+from agora_core import (
+    local_model,
+    meeting_notes,
+    system_audio,
+    system_words,
+    transcribe,
+)
 from agora_core.app import SECRET_HEADER, create_app
 from agora_core.keystore import MemoryStore
 from agora_core.settings import load_settings
@@ -18,7 +24,6 @@ from tests.test_meetings import HELPER
 from tests.test_voice import FFMPEG, _program, _whisper
 
 SECRET, OWNER = "a" * 64, "b" * 64
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="los programas de prueba son guiones de shell")
 H = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
 
 
@@ -75,6 +80,8 @@ def test_el_modelo_local_solo_en_este_equipo():
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    if sys.platform == "win32":
+        pytest.skip("los programas de prueba son guiones de shell")
     helper = tmp_path / "agora-system-audio"
     helper.write_text(HELPER.replace('printf "audio del sistema"', 'head -c 3000 /dev/zero'))
     helper.chmod(0o755)
@@ -138,7 +145,7 @@ def test_quien_resume_cada_reunion():
     local = {"local_url": "http://127.0.0.1:11434/v1", "local_model": "qwen3:14b"}
     who = meeting_notes.summarizers([Engine("claude-code")], local, reachable=lambda: True)
     assert who["normal"] == {"by": "claude", "label": "Claude, con tu sesión de Claude Code"}
-    assert who["private"] == who["local_only"] == {"by": "local", "label": "qwen3:14b en Ollama, en este Mac"}
+    assert who["private"] == who["local_only"] == {"by": "local", "label": f"qwen3:14b en Ollama, en {system_words.HERE}"}
     assert meeting_notes.summarizers([], local, reachable=lambda: False)["private"]["by"] == "local-off"
     assert meeting_notes.summarizers([], meeting_notes.DEFAULTS)["normal"]["by"] == "none"
     assert meeting_notes.summarizers([], meeting_notes.DEFAULTS)["private"]["by"] == "none"

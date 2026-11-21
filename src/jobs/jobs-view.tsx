@@ -13,6 +13,7 @@ import { ClientProjectsSection } from './client-projects';
 import { ClientsDirectoryView } from './clients-directory';
 import { CommissionForm, type ProfileChoice } from './commission-form';
 import './jobs.css';
+import { useTabCounts, withCount } from '../shell/tab-counts';
 import { ActionButton } from '../ui/action-button';
 
 type Period = '24h' | '7d' | '30d';
@@ -97,6 +98,7 @@ export function JobsView({ discreet }: { discreet: boolean }) {
     };
     timer.current = window.setTimeout(tick, REFRESH);
   }
+  const { counts: tabCounts } = useTabCounts();
   const labelOf = (id: string | null, fallback: string | null = null) => (id && labels[id]) || fallback || id || 'sin perfil';
   const profiles = work ? Object.entries(work.profiles).filter(([id]) => profile === ALL || id === profile) : [];
   const cards = (work?.board?.cards ?? []).filter(card => profile === ALL || card.profileId === profile);
@@ -119,8 +121,9 @@ export function JobsView({ discreet }: { discreet: boolean }) {
     <h1 id="jobs-title">Trabajos</h1>
     <p className="page-lead">Las tareas programadas y el kanban de todos tus perfiles de Hermes, con el tiempo y los tokens que Hermes ha registrado en cada ejecución. Los cambios usan las funciones de Hermes y solo ocurren al pulsar cada botón.</p>
     <div className="segmented jobs-tabs" role="group" aria-label="Pestañas de Trabajos">
-      <button aria-pressed={tab === 'work'} onClick={() => setTab('work')}>Trabajos</button>
-      <button aria-pressed={tab === 'clients'} onClick={() => setTab('clients')}>Clientes</button>
+      <button aria-pressed={tab === 'work'} onClick={() => setTab('work')}>
+        {withCount('Trabajos', work ? Object.values(work.profiles).reduce((n, entry) => n + (entry.tasks?.length ?? 0), 0) + (work.board?.cards?.length ?? 0) : undefined)}</button>
+      <button aria-pressed={tab === 'clients'} onClick={() => setTab('clients')}>{withCount('Clientes', tabCounts?.clientes)}</button>
     </div>
     {tab === 'clients' ? <ClientsDirectoryView discreet={discreet}/> : <>
     <div className="fiscal-bar">

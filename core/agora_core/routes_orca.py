@@ -9,9 +9,9 @@ from typing import Literal
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, StrictInt
+from pydantic import BaseModel, Field, StrictInt
 
-from . import chat_inbox, github_issues, modules, orca_launch, repo_notes
+from . import chat_inbox, github_issues, modules, orca_launch, repo_notes, system_words
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -27,6 +27,8 @@ class LaunchSource(BaseModel):
     source: str | None = None
     ref: str | None = None
     revision: str | None = None
+    remote: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$")  # a task's or ticket's id in CRMDev
+    org: str | None = Field(default=None, pattern=r"^o[1-9][0-9]{0,3}$")  # its organization of CRMDev (the first one if None)
 
 
 class LaunchRequest(BaseModel):
@@ -66,13 +68,13 @@ def origin_problem(connection, body: RepoNote) -> str | None:
             level = chat_inbox.level_of(connection, ident)
         except chat_inbox.ChatGone as error:
             return str(error)
-        return None if level == "normal" else "Esa conversación es privada o «solo en este Mac»: su nota no va a un repositorio."
+        return None if level == "normal" else f"Esa conversación es privada o «solo en {system_words.HERE}»: su nota no va a un repositorio."
     if repo_notes.mail_level(connection, ident) != "normal":
-        return "Ese correo es privado o «solo en este Mac»: su nota no va a un repositorio."
+        return f"Ese correo es privado o «solo en {system_words.HERE}»: su nota no va a un repositorio."
     return None
 
 
-def orca_router(settings: Settings) -> APIRouter:
+def orca_router(settings: Settings, secrets_store=None) -> APIRouter:
     router = APIRouter()
     plans: dict[str, dict] = {}
 
@@ -157,7 +159,7 @@ def orca_router(settings: Settings) -> APIRouter:
             try:
                 if not modules.state(connection)["orca"]:
                     raise orca_launch.OrcaError("El módulo Orca está apagado en Ajustes.")
-                return orca_launch.preview(connection, body.model_dump())
+                return orca_launch.preview(connection, body.model_dump(), secrets_store=secrets_store)
             finally:
                 connection.close()
 
@@ -188,7 +190,7 @@ def orca_router(settings: Settings) -> APIRouter:
         def still_allowed():
             connection = connect(settings.data_dir / DB_NAME)
             try:
-                orca_launch.recheck(connection, plan)
+                orca_launch.recheck(connection, plan, secrets_store)
             finally:
                 connection.close()
 

@@ -76,7 +76,9 @@ class StatefulCrmdev:
             row = next(r for r in self.rows[table] if r["id"] == args[key])
             row.update(applied(tool, args))
             return self._answer({"id": row["id"]})
-        table = {"create_task": "list_tasks", "create_client": "list_clients"}[tool]
+        if tool == "reply_ticket":
+            return self._answer({"id": f"m{len(self.seen)}", "createdAt": "2026-11-21T15:00:00Z"})
+        table = {"create_task": "list_tasks", "create_client": "list_clients", "create_project": "list_projects"}[tool]
         made = {"id": f"n{len(self.rows[table]) + 1}", **args}
         self.rows[table].insert(0, made)
         return self._answer({"id": made["id"]})
@@ -127,7 +129,10 @@ def confirm(client, token):
 def test_ninguna_herramienta_de_escritura_borra():
     assert not any(name.startswith("delete_") for name in crmdev_api.WRITE_TOOLS)
     assert set(crmdev_write.KIND_TOOL.values()) <= crmdev_api.WRITE_TOOLS
-    assert set(crmdev_write.KIND_TOOL.values()) == crmdev_api.WRITE_TOOLS, "cada herramienta de escritura tiene su clase de cambio"
+    from agora_core import crmdev_batch
+
+    assert set(crmdev_write.KIND_TOOL.values()) | set(crmdev_batch.TOOL.values()) == crmdev_api.WRITE_TOOLS, "cada herramienta de escritura tiene su clase de cambio"
+    assert "create_project" not in crmdev_write.KIND_TOOL.values()  # a project is created only from «Enviar a CRMDev»
 
 
 @pytest.mark.parametrize("kind", ["borrar", "delete_task", "delete_client", "tarea ", "", "TAREA"])
@@ -349,10 +354,14 @@ def test_ni_la_clave_ni_la_direccion_en_las_respuestas(setup, fake):
     assert answer.status_code == 422 and KEY not in answer.text and URL not in answer.text
 
 
-def test_watson_no_tiene_herramientas_de_crmdev():
-    source = Path(brain_tools.__file__).read_text(encoding="utf-8")
-    assert "crmdev" not in source.lower()
-    assert not {spec["name"] for spec in brain_tools.SPECS if "crmdev" in spec["name"]}
+def test_watson_solo_lee_y_propone_en_crmdev():
+    """Since 20/11/2026 Watson reads tasks and tickets and proposes changes; it has no way to save them."""
+    from agora_core import crmdev_tools
+
+    assert {spec["name"] for spec in brain_tools.SPECS if "crmdev" in spec["name"]} == {"consultar_crmdev", "proponer_cambio_crmdev"}
+    source = Path(crmdev_tools.__file__).read_text(encoding="utf-8")
+    assert "crmdev_write._values" in source and "crmdev_api.call(target, LISTS[what]" in source
+    assert "/crmdev/write/confirm\"" not in source and not any(f"\"{tool}\"" in source for tool in crmdev_api.WRITE_TOOLS)
 
 
 def test_el_simulado_ignora_los_campos_vacios_como_crmdev():
@@ -397,6 +406,7 @@ def test_un_alta_sin_respuesta_no_se_repite_sin_crear_de_todos_modos(setup, fake
     again = preview(client, body)
     assert again.status_code == 409 and again.json()["status"] == "doubtful" and "CRMDev" in again.json()["error"]
     assert preview(client, {**body, "values": {"title": "  una "}}).json()["status"] == "doubtful", "mismo título"
+    assert preview(client, {**body, "org": "o1"}).json()["status"] == "doubtful", "sin organización es la primera: la misma"
     assert [b["tool"] for b in fake.writes()].count("create_task") == 1, "sin confirmarlo, no sale otra"
     anyway = preview(client, {**body, "anyway": True})
     assert anyway.status_code == 200 and any("repetido" in w for w in anyway.json()["warnings"])
@@ -422,3 +432,27 @@ def test_cuerpos_raros_dan_error_propio_sin_peticiones(setup, fake, raw):
     client, _ = setup
     answer = client.post("/crmdev/write/preview", content=raw, headers={**HEADERS, "content-type": "application/json"})
     assert answer.status_code in (413, 422) and set(answer.json()) == {"error", "status"} and fake.seen == []
+
+
+def test_responder_un_ticket_dice_quien_la_ve_y_se_envia_una_vez(setup, fake):
+    client, _ = setup
+    assert preview(client, {"kind": "respuesta-ticket", "id": "k1", "content": "Ya está arreglado."}).status_code == 422  # internal or not: always said
+    assert preview(client, {"kind": "respuesta-ticket", "id": "k1", "content": "", "internal": True}).status_code == 422
+    assert preview(client, {"kind": "respuesta-ticket", "id": "k1", "content": "x" * 2001, "internal": True}).status_code == 422
+    shown = preview(client, {"kind": "respuesta-ticket", "id": "k1", "content": "Ya está arreglado.\nGracias.", "internal": False})
+    assert shown.status_code == 200, shown.text
+    body = shown.json()
+    assert body["title"] == "Respuesta al ticket «No carga»" and {r["field"]: r["after"] for r in body["rows"]}["isInternal"] == "El cliente"
+    assert any("cliente verá" in w for w in body["warnings"])
+    assert confirm(client, body["token"]).status_code == 200
+    assert fake.writes() == [{"tool": "reply_ticket", "arguments": {"ticketId": "k1", "content": "Ya está arreglado.\nGracias.", "isInternal": False}}]
+    confirm(client, body["token"])  # pressed again: the same result, never a second reply
+    assert len(fake.writes()) == 1
+
+
+def test_una_respuesta_a_un_ticket_que_ya_no_esta_no_se_envia(setup, fake):
+    client, _ = setup
+    shown = preview(client, {"kind": "respuesta-ticket", "id": "k1", "content": "Nota", "internal": True}).json()
+    fake.rows["list_tickets"].clear()
+    assert confirm(client, shown["token"]).status_code == 409 and fake.writes() == []
+    assert preview(client, {"kind": "respuesta-ticket", "id": "k9", "content": "Nota", "internal": True}).status_code == 404

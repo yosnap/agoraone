@@ -1,5 +1,7 @@
+import os
 import sqlite3
 import stat
+import sys
 
 import pytest
 
@@ -20,8 +22,11 @@ def test_esquema_inicial_y_datos_genericos(tmp_path):
 def test_permisos_privados(tmp_path):
     folder = tmp_path / "data"
     connect(folder / DB_NAME).close()
-    assert stat.S_IMODE(folder.stat().st_mode) == 0o700
-    assert stat.S_IMODE((folder / DB_NAME).stat().st_mode) == 0o600
+    assert folder.is_dir() and (folder / DB_NAME).is_file()
+    assert os.access(folder / DB_NAME, os.R_OK | os.W_OK)
+    if sys.platform != "win32":
+        assert stat.S_IMODE(folder.stat().st_mode) == 0o700
+        assert stat.S_IMODE((folder / DB_NAME).stat().st_mode) == 0o600
 
 
 def test_restricciones(tmp_path):

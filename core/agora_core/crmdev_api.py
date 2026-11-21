@@ -28,7 +28,7 @@ PATH = "/api/mcp/rest"
 SCOPES = ("organizacion",)
 MAX_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 100  # CRMDev has no pages: the most recent ones
-SYNC_ROWS = 1000  # the clients read for the directory of clients (crmdev_sync), the only list asked for more
+SYNC_ROWS = 1000  # the clients and projects read for the snapshot (crmdev_sync), the only lists asked for more
 CACHE_SECONDS = 60
 CACHE_ENTRIES = 64
 # Tests replace it with an httpx.MockTransport; None is the real network.
@@ -37,11 +37,13 @@ TRANSPORT: httpx.BaseTransport | None = None
 
 # The closed list: the only tools AgoraOne ever sends. Nothing that deletes is or will be here.
 READ_TOOLS = frozenset({"list_projects", "list_tasks", "list_clients", "list_tickets", "list_members", "get_project_time_report"})
-# What AgoraOne may create or change, only from a form the user confirms (crmdev_write); never `delete_*`, never
-# `create_project` (CRMDev's own form) nor `create_ticket` (tickets come from clients).
-WRITE_TOOLS = frozenset({"create_task", "update_task", "update_project", "create_client", "update_client", "update_ticket"})
+# What AgoraOne may create or change, only from a form or a list the user confirms (crmdev_write, crmdev_batch); never
+# `delete_*` nor `create_ticket` (tickets come from clients). `create_project` only for a project of Central sent with
+# «Enviar a CRMDev» (user's decision, 20/11/2026: Central is the source and CRMDev follows it).
+WRITE_TOOLS = frozenset({"create_task", "update_task", "create_project", "update_project", "create_client", "update_client", "update_ticket",
+                         "reply_ticket"})
 # Tools that also need a module of the organization's plan, which only a call reveals.
-MODULE_TOOLS = frozenset({"list_tickets", "update_ticket"})
+MODULE_TOOLS = frozenset({"list_tickets", "update_ticket", "reply_ticket"})
 NOT_ALLOWED = "Herramienta de CRMDev no permitida."
 FORBIDDEN = "La clave no vale o tu plan de CRMDev no incluye la API (módulo MCP)."
 BUSY = "CRMDev pide esperar unos segundos (demasiadas peticiones seguidas): vuelve a intentarlo en un momento."
@@ -67,6 +69,7 @@ STATUSES = {
     "list_clients": ("LEAD", "PROSPECT", "CUSTOMER", "INACTIVE", "CHURNED"),
     "list_tickets": ("OPEN", "IN_PROGRESS", "WAITING_CLIENT", "RESOLVED", "CLOSED"),
 }
+PROJECT_TYPES = ("GITHUB", "WORDPRESS", "VERCEL", "OTHER")
 CATEGORIES = ("BUG", "FEATURE_REQUEST", "QUESTION", "SUPPORT", "BILLING", "PERFORMANCE", "SECURITY", "OTHER")
 
 
@@ -76,7 +79,7 @@ def _limit(value: object, top: int = MAX_ROWS) -> int:
     return value
 
 
-def _client_limit(value: object) -> int:
+def _sync_limit(value: object) -> int:
     return _limit(value, SYNC_ROWS)
 
 
@@ -92,6 +95,12 @@ def _one_of(options: tuple[str, ...]) -> Callable[[object], str]:
             raise WebApiError("invalid", "Ese valor no existe en CRMDev.")
         return str(value)
     return check
+
+
+def _flag(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise WebApiError("invalid", "Un valor para CRMDev no es válido.")
+    return value
 
 
 def _words(limit: int, lines: bool = False, empty: bool = False) -> Callable[[object], object]:
@@ -121,9 +130,9 @@ def _progress(value: object) -> int:
 
 
 ARGUMENTS: dict[str, dict[str, Callable[[object], object]]] = {
-    "list_projects": {"limit": _limit, "status": _one_of(STATUSES["list_projects"])},
+    "list_projects": {"limit": _sync_limit, "status": _one_of(STATUSES["list_projects"])},
     "list_tasks": {"limit": _limit, "status": _one_of(STATUSES["list_tasks"]), "projectId": _id, "assigneeId": _id},
-    "list_clients": {"limit": _client_limit, "status": _one_of(STATUSES["list_clients"])},
+    "list_clients": {"limit": _sync_limit, "status": _one_of(STATUSES["list_clients"])},
     "list_tickets": {"limit": _limit, "status": _one_of(STATUSES["list_tickets"]), "priority": _one_of(PRIORITIES),
                      "category": _one_of(CATEGORIES), "clientId": _id},
     "list_members": {"limit": _limit},
@@ -132,6 +141,9 @@ ARGUMENTS: dict[str, dict[str, Callable[[object], object]]] = {
                     "status": _one_of(STATUSES["list_tasks"]), "priority": _one_of(PRIORITIES), "dueDate": _day},
     "update_task": {"taskId": _id, "title": _words(300), "description": _words(4000, lines=True, empty=True),
                     "status": _one_of(STATUSES["list_tasks"]), "priority": _one_of(PRIORITIES)},
+    # Only from «Enviar a CRMDev», for a project of Central: its description is written once, when it is created.
+    "create_project": {"name": _words(300), "description": _words(4000, lines=True), "type": _one_of(PROJECT_TYPES),
+                       "status": _one_of(STATUSES["list_projects"]), "clientId": _id},
     # Never `description`: the list does not give it, so its current value could not be shown.
     "update_project": {"projectId": _id, "name": _words(300), "status": _one_of(STATUSES["list_projects"]), "progress": _progress},
     "create_client": {"name": _words(300), "email": _words(200), "company": _words(300), "phone": _words(40),
@@ -141,9 +153,12 @@ ARGUMENTS: dict[str, dict[str, Callable[[object], object]]] = {
                       "status": _one_of(STATUSES["list_clients"])},
     "update_ticket": {"ticketId": _id, "status": _one_of(STATUSES["list_tickets"]), "priority": _one_of(PRIORITIES),
                       "category": _one_of(CATEGORIES)},
+    # A reply to a ticket (a comment): a note only the team sees (`isInternal`) or an answer the client reads.
+    "reply_ticket": {"ticketId": _id, "content": _words(2000, lines=True), "isInternal": _flag},
 }
-REQUIRED = {"get_project_time_report": ("projectId",), "create_task": ("title",), "update_task": ("taskId",),
-            "update_project": ("projectId",), "create_client": ("name",), "update_client": ("clientId",), "update_ticket": ("ticketId",)}
+REQUIRED = {"get_project_time_report": ("projectId",), "create_task": ("title",), "create_project": ("name",), "update_task": ("taskId",),
+            "update_project": ("projectId",), "create_client": ("name",), "update_client": ("clientId",), "update_ticket": ("ticketId",),
+            "reply_ticket": ("ticketId", "content", "isInternal")}
 
 
 def checked_arguments(tool: str, arguments: object) -> dict:
@@ -286,6 +301,13 @@ def _wait_first(who: tuple) -> None:
         raise WebApiError("busy", BUSY)
 
 
+def wait_seconds(target: Connection) -> float:
+    """How long CRMDev asked this connection to wait (0 when it did not): a batch waits it out instead of stopping."""
+    with _cache_lock:
+        until = _busy_until.get(_who(target), 0.0)
+    return max(0.0, until - _clock())
+
+
 def _forbidden(text: str, key: str) -> WebApiError:
     """CRMDev answers 403 for several reasons, told apart by its own `error`."""
     reason = web_api.said(text, key)
@@ -382,8 +404,11 @@ def probe(target: Connection) -> dict:
     return {"version": None, "scopes": list(SCOPES), "tools": sorted(offered - MODULE_TOOLS), "unverified": sorted(offered & MODULE_TOOLS)}
 
 
-def connection_of(connection, secrets) -> Connection | None:
-    return web_api.connection_of(SPEC, connection, secrets)
+def connection_of(connection, secrets, org: str | None = None) -> Connection | None:
+    """The address and the key of one organization (`crmdev_orgs`; the first one when none is said)."""
+    from . import crmdev_orgs
+
+    return crmdev_orgs.connection_of(connection, secrets, org)
 
 
 def has_key(secrets) -> bool:

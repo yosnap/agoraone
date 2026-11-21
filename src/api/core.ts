@@ -1,10 +1,11 @@
 import { ApiError, csrfToken, request } from './client';
+import { onlyHereLabel } from '../ui/platform';
 
 // The Python core, reached through the backend at /api/core/* (cookie, CSRF and origin checked there).
 const core = <T>(path: string, body?: unknown, method?: string) => request<T>(`/core${path}`, body, method);
 
 export type Level = 'normal' | 'local_only' | 'private';
-export const levelLabels: Record<Level, string> = { normal: 'Normal', local_only: 'Solo en este Mac', private: 'Privada' };
+export const levelLabels: Record<Level, string> = { normal: 'Normal', local_only: onlyHereLabel, private: 'Privada' };
 
 export type NodeType = 'note' | 'person' | 'org' | 'project' | 'amount' | 'date' | 'tag' | 'folder';
 /** Notes carry where they live; entity, tag and folder nodes only a type, a title and a degree. */
@@ -58,7 +59,9 @@ export const getBrainMcpSetup = () => core<BrainMcpSetup>('/brain-mcp');
 
 export type Persona = { id: string; name: string; origin: string; conveys: string; language: string; voice: string };
 export type ToneKey = 'register' | 'humor' | 'length' | 'address' | 'language';
-export type AssistantSettings = { persona: string; model: string; engine: string | null; tone: Record<ToneKey, string>; compatible: { baseUrl: string | null; model: string | null } };
+export type AssistantSettings = { persona: string; model: string; engine: string | null; tone: Record<ToneKey, string>; compatible: { baseUrl: string | null; model: string | null }; research: ResearchLimits };
+/** Caps of a web research (Ajustes › Asistente). */
+export type ResearchLimits = { searches: number; pages: number; minutes: number };
 export const getPersonas = () => core<{ personas: Persona[]; tone: Record<ToneKey, string[]> }>('/assistant/personas');
 export const getAssistantSettings = () => core<AssistantSettings>('/assistant/settings');
 export const putAssistantSettings = (changes: Partial<AssistantSettings>) => core<AssistantSettings>('/assistant/settings', changes, 'PUT');
@@ -86,7 +89,7 @@ export const createAssistantConversation = () => core<{ id: number; persona: str
 export const getAssistantConversation = (id: number) =>
   core<ConversationSummary & { messages: AssistantMessage[] }>(`/assistant/conversations/${id}`);
 
-export type Stage = 'recuerda' | 'piensa' | 'responde';
+export type Stage = 'recuerda' | 'web' | 'piensa' | 'responde';
 /** A mail rule Watson proposed: created only with the user's «Crear regla» (or a plain «sí»), exactly as shown. */
 export type ProposedRule = { name: string; action: MailRuleAction; sender?: string; subject?: string; words?: string; confidentiality?: Level };
 export const acceptProposal = (id: string) => core<{ id: number; name: string }>(`/assistant/proposals/${encodeURIComponent(id)}/accept`, {});
@@ -109,17 +112,31 @@ export type AssistantEvent =
   | { kind: 'tool'; tool: 'meetings'; query: string; count: number }
   | { kind: 'tool'; tool: 'issue_proposal'; id: string; issue: ProposedIssue }
   | { kind: 'tool'; tool: 'orca_proposal'; proposal: OrcaProposal }
+  | { kind: 'tool'; tool: 'crmdev_proposal'; proposal: import('../assistant/crmdev-proposals').CrmdevProposal }
+  | { kind: 'tool'; tool: 'crmdev_read'; what: 'tareas' | 'tickets'; count: number }
+  | { kind: 'tool'; tool: 'hermes_proposal'; proposal: HermesProposal }
+  | { kind: 'tool'; tool: 'research_proposal'; proposal: ResearchProposal }
   | { kind: 'tool'; tool: 'chat_reply_proposal'; id: string; reply: ProposedChatReply }
   | { kind: 'tool'; tool: 'meeting'; title: string; part: number }
+  | { kind: 'tool'; tool: 'web'; pages: { host: string; ok: boolean }[] }
   | { kind: 'tool'; tool: 'agenda' | 'day' | 'projects'; [key: string]: unknown }
   | { kind: 'done'; engine: string; model: string };
 
+/** A task Watson proposed for a Hermes profile: only sent when the user presses «Enviar». */
+export type HermesProposal = { profile: string; task: string };
+/** A Hermes profile's answer the user passes on to Watson, which receives it delimited as data. */
+/** An answer the user passes on to Watson: a Hermes profile's (its text) or a bot's of Orca (only its id: the core
+ * reads the answer it kept). Data, never instructions. */
+export type Delegated = { profile: string; reply: string } | { botReply: string };
+/** A web research Watson proposed: nothing is searched until the user presses «Investigar». */
+export type ResearchProposal = { question: string; scope: string };
+
 /** Sends a question and follows the answer's Server-Sent Events until it ends; an `error` event throws. */
-export async function askAssistant(id: number, message: string, onEvent: (event: AssistantEvent) => void, signal?: AbortSignal) {
+export async function askAssistant(id: number, message: string, onEvent: (event: AssistantEvent) => void, signal?: AbortSignal, delegated?: Delegated, research?: ResearchProposal) {
   const response = await fetch(`/api/core/assistant/conversations/${id}/messages`, {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Agora-CSRF': csrfToken() },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, ...(delegated ? ('botReply' in delegated ? { botReply: delegated.botReply } : { delegated }) : {}), ...(research ? { research } : {}) }),
   });
   if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'No se pudo enviar la pregunta.'); }
   const reader = response.body?.getReader();
@@ -313,10 +330,10 @@ export type InvoicePrepared = {
 export type Invoice = InvoiceFields & { id: number; direction: 'received' | 'issued'; messageId: number | null; doubts: string[]; quarter: string; path: string;
   client?: string | null };
 export type FolderKind = 'autonomo' | 'empresa' | 'personal';
-export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null; holder: string | null };
+export type FiscalFolder = { id: number; name: string; kind: FolderKind; path: string; scopeId: number | null; holder: string | null; outsideHome?: boolean };
 export const getFiscalFolders = () => core<{ folders: FiscalFolder[] }>('/fiscal/folders');
 export const chooseFiscalFolder = () => core<{ path: string | null }>('/fiscal/folders/choose', {});
-export const addFiscalFolder = (folder: Omit<FiscalFolder, 'id' | 'holder'>) => core<{ folders: FiscalFolder[] }>('/fiscal/folders', folder);
+export const addFiscalFolder = (folder: Omit<FiscalFolder, 'id' | 'holder' | 'outsideHome'>) => core<{ folders: FiscalFolder[] }>('/fiscal/folders', folder);
 export const changeFiscalFolder = (id: number, changes: Partial<Omit<FiscalFolder, 'id' | 'path'>>) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, changes, 'PUT');
 export const removeFiscalFolder = (id: number) => core<{ folders: FiscalFolder[] }>(`/fiscal/folders/${id}`, undefined, 'DELETE');
 export const prepareInvoice = (messageId: number) => core<InvoicePrepared>('/fiscal/invoices/prepare', { messageId });
@@ -388,7 +405,8 @@ export type CalendarInfo = { id: string; title: string; kind: 'event' | 'reminde
 export type CalendarOrigin = { calendar?: string | null; account?: string | null; scope?: { name: string; color: string | null } | null };
 export type CalendarEvent = { id: string; calendarId: string; title: string; start: string; end: string; allDay: boolean; location: string | null } & CalendarOrigin;
 export type CalendarReminder = { id: string; calendarId: string; title: string; due: string | null } & CalendarOrigin;
-export type Agenda = { events: CalendarEvent[]; reminders: CalendarReminder[]; overlaps: [string, string][]; problem: string | null };
+// `unavailable`: this system has no calendar AgoraOne can read yet (not something to fix, so not a notice).
+export type Agenda = { events: CalendarEvent[]; reminders: CalendarReminder[]; overlaps: [string, string][]; problem: string | null; unavailable?: boolean };
 export type NewEvent = { calendarId?: string | null; title: string; start: string; end: string; allDay?: boolean; location?: string | null;
   notes?: string | null; overlapOk?: boolean; inboxId?: number | null; chatId?: number | null };
 export const getCalendarStatus = () => core<CalendarStatus>('/calendar/status');
@@ -616,9 +634,11 @@ export type ReorgMove = { n: number; source: string; ref: string; title: string;
 /** Orca module (1.7): Central projects already in Orca, the exact preview of a launch and the launch itself. */
 export type OrcaAgent = 'claude' | 'codex';
 export type OrcaProject = { client: string; project: string; repo: string };
-export type OrcaSource = { kind: 'mail'; id: number } | { kind: 'chat'; id: number } | { kind: 'issue'; url: string } | { kind: 'note'; source: string; ref: string; revision: string } | { kind: 'project' };
+export type OrcaSource = { kind: 'mail'; id: number } | { kind: 'chat'; id: number } | { kind: 'issue'; url: string } | { kind: 'note'; source: string; ref: string; revision: string } | { kind: 'project' }
+  | { kind: 'crmdev_task' | 'crmdev_ticket'; remote: string; org?: string };
 /** What Watson proposes to take to Orca: it only opens the card, which still needs the preview and «Lanzar en Orca». */
-export type OrcaProposal = OrcaProject & { task: string; agent: OrcaAgent; issue: string | null };
+export type OrcaProposal = OrcaProject & { task: string; agent: OrcaAgent; issue: string | null;
+  /** To one of the user's bots instead of a new agent: still only after «Enviar a <bot>». */ bot?: string; botName?: string; kind?: 'handoff' | 'question' };
 export type OrcaPreview = { id: string; client: string; project: string; repo: string; orcaName: string; agent: OrcaAgent; agentName: string; name: string;
   source: { kind: string; label: string; number?: number; url?: string } | null; sourceText: string | null; prompt: string };
 export const getOrcaProjects = () => core<{ projects: OrcaProject[]; problem: string | null }>('/orca/projects');

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { getCentralConnection, type CentralViewName } from '../api/central';
+import { getCentralConnection, getCentralView, type CentralSummary as SummaryData, type CentralViewName } from '../api/central';
+import { useTabCounts, withCount } from '../shell/tab-counts';
 import type { Section } from '../shell/shell-state';
 import { Loading } from '../ui/load-state';
 import { CentralAgenda } from './central-agenda';
@@ -11,7 +12,8 @@ import { CentralServers } from './central-servers';
 import { CentralSummary } from './central-summary';
 import { CentralWebsites } from './central-websites';
 import { CentralPages, OpenInCentral } from './open-in-central';
-import { CONNECTION, centralTabs, forgetCentral, startCentral, useCentralRead, useCentralRereading } from './use-central-view';
+import { CONNECTION, centralTabs, forgetCentral, startCentral, takeCentralTab, useCentralRead, useCentralRereading, viewKey, type CentralTabName } from './use-central-view';
+import { CentralToCreate } from '../sync/central-to-create';
 import './central.css';
 import { ActionButton } from '../ui/action-button';
 
@@ -22,10 +24,16 @@ import { ActionButton } from '../ui/action-button';
  * says how to connect, and where the user's own clients are meanwhile. */
 export function CentralView({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   useState(startCentral);  // once per visit: nothing read before (or before connecting) is shown as current
-  const [tab, setTab] = useState<CentralViewName>('resumen');
+  const [tab, setTab] = useState<CentralTabName>(takeCentralTab);
   const connection = useCentralRead(CONNECTION, getCentralConnection);
   const connected = connection.data?.transport === 'http';
   const rereading = useCentralRereading();
+  // The counters: alerts, pending and clients from the summary (read anyway by its tab), the rest from the snapshot.
+  const summary = useCentralRead(connected ? viewKey('resumen') : null, () => getCentralView('resumen')).data as SummaryData | undefined;
+  const { counts, reload } = useTabCounts();
+  const countOf = (id: CentralTabName): number | undefined => id === 'por-crear' ? counts?.central?.['por-crear'] : id === 'alertas' ? (summary ? summary.alerts.critical + summary.alerts.warning : undefined)
+    : id === 'pendientes' ? summary?.pending : id === 'clientes' ? summary?.clients ?? counts?.central?.clientes
+    : id === 'proyectos' || id === 'webs' || id === 'servidores' ? counts?.central?.[id] : undefined;
   return <section className="page central" aria-labelledby="central-title">
     <div className="eyebrow">CENTRAL{discreet ? ' · MODO DISCRETO' : ''}</div>
     <div className="central-head">
@@ -38,7 +46,7 @@ export function CentralView({ discreet, onOpen }: { discreet: boolean; onOpen: (
       : !connected ? <CentralConnect onOpen={onOpen}/>
       : <>
         <div className="segmented central-tabs" role="group" aria-label="Pestañas de Central">
-          {centralTabs.map(t => <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}>{t.label}</button>)}
+          {centralTabs.map(t => <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}>{withCount(t.label, countOf(t.id))}</button>)}
         </div>
         <div className="central-panel">
           {tab === 'resumen' ? <CentralSummary onTab={setTab} onOpen={onOpen}/>
@@ -48,6 +56,7 @@ export function CentralView({ discreet, onOpen }: { discreet: boolean; onOpen: (
             : tab === 'proyectos' ? <CentralProjects discreet={discreet} onOpen={onOpen}/>
             : tab === 'webs' ? <CentralWebsites discreet={discreet} onOpen={onOpen}/>
             : tab === 'servidores' ? <CentralServers discreet={discreet} onOpen={onOpen}/>
+            : tab === 'por-crear' ? <CentralToCreate discreet={discreet} onChanged={reload}/>
             : <CentralAgenda discreet={discreet} onOpen={onOpen}/>}
           {(tab === 'webs' || tab === 'servidores' || tab === 'alertas') && <OpenInCentral page={tab} discreet={discreet}/>}
         </div>

@@ -28,7 +28,7 @@ export function refreshOrcaProjects(on: boolean) {
 }
 
 export function useOrcaState(): State {
-  return useSyncExternalStore(listener => { listeners.add(listener); read(); return () => { listeners.delete(listener); }; }, () => state);
+  return useSyncExternalStore(listener => { listeners.add(listener); read(); return () => { listeners.delete(listener); }; }, () => state, () => state);
 }
 export const useOrcaProjects = () => useOrcaState().projects;
 

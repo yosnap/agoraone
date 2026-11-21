@@ -53,10 +53,11 @@ def test_solo_lectura_y_sin_crear_nada(tmp_path):
 def test_solo_lectura_con_rutas_con_almohadilla_o_interrogacion(tmp_path):
     """SQLite cut the URI at '#' and dropped mode=ro: the folder must be percent-encoded."""
     import sqlite3
+    import sys
 
     from agora_core.db import connect_readonly
 
-    folder = tmp_path / "a#b?c%20d"
+    folder = tmp_path / ("a#b%20d" if sys.platform == "win32" else "a#b?c%20d")
     connection = connect(folder / DB_NAME)
     migrate(connection)
     connection.close()
@@ -126,7 +127,7 @@ def test_por_stdio_como_lo_usaria_hermes(folder):
     async def run():
         params = StdioServerParameters(
             command=sys.executable, args=["-m", "agora_core.brain_mcp"],
-            env={"PATH": os.environ["PATH"], "HOME": os.environ["HOME"], "AGORA_CORE_DATA": str(folder),
+            env={"PATH": os.environ["PATH"], "HOME": str(Path.home()),"AGORA_CORE_DATA": str(folder),
                  "PYTHONPATH": str(Path(__file__).resolve().parents[1])},
         )
         async with stdio_client(params) as (read, write), ClientSession(read, write) as session:

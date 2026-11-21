@@ -5,6 +5,8 @@ import { isCrmdevProbe } from '../api/crmdev';
 import type { Section } from '../shell/shell-state';
 import { Loading, LoadError } from '../ui/load-state';
 import { ActionButton } from '../ui/action-button';
+import { CrmdevOrgs } from './crmdev-orgs';
+import { hereLabel } from '../ui/platform';
 
 // What a connector adds to its card beyond the common skeleton, by id. A new connector without extras adds nothing.
 
@@ -44,7 +46,7 @@ const crmdevTools: Record<string, string> = {
 };
 
 /** CRMDev: where the organization key is created and, after «Probar», what AgoraOne reads with it. */
-export function CrmdevTools({ tested }: ExtraProps) {
+export function CrmdevTools({ tested, connector }: ExtraProps) {
   return <>
     <p>La clave de organización se crea en <strong>Ajustes › API Keys</strong> de CRMDev (solo propietarios y administradores). AgoraOne lee
       proyectos, tareas, tickets, clientes y miembros; crea o cambia tareas, clientes, proyectos y tickets solo después de enseñarte el cambio
@@ -63,6 +65,7 @@ export function CrmdevTools({ tested }: ExtraProps) {
         </li>)}
       </ul> : <p className="muted">CRMDev no ofrece ninguna de las consultas que usa AgoraOne.</p>}
     </div>}
+    {connector.state.status === 'saved' && <CrmdevOrgs/>}
   </>;
 }
 
@@ -110,7 +113,7 @@ export function BrainMcp() {
   ].join('\n');
   const copy = () => { if (command) navigator.clipboard?.writeText(command).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); }).catch(() => undefined); };
   return <>
-    <p>Ofrece tres herramientas a cualquier perfil de Hermes (por ejemplo, el bot central de Telegram): buscar en el cerebro, leer una nota y ver su estado. Nunca entrega notas privadas ni de solo este Mac, y funciona con AgoraOne cerrado.</p>
+    <p>Ofrece tres herramientas a cualquier perfil de Hermes (por ejemplo, el bot central de Telegram): buscar en el cerebro, leer una nota y ver su estado. Nunca entrega notas privadas ni de solo {hereLabel}, y funciona con AgoraOne cerrado.</p>
     <p>AgoraOne no escribe en la configuración de Hermes: ejecuta tú estas órdenes en tu terminal, cambiando <code>&lt;perfil&gt;</code> por el perfil que quieras.</p>
     {error ? <LoadError message={error}/> : !command ? <Loading label="Preparando la orden" lines={2}/> : <>
       <pre className="code-block">{command}</pre>

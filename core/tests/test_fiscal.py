@@ -22,7 +22,7 @@ def db(tmp_path):
     connection.close()
 
 
-def test_la_carpeta_fiscal_nunca_es_la_personal_ni_icloud(tmp_path):
+def test_la_carpeta_fiscal_nunca_es_la_personal_ni_icloud(tmp_path, monkeypatch):
     home = tmp_path / "home"
     work = home / "Trabajo" / "Actividad"
     work.mkdir(parents=True)
@@ -30,15 +30,29 @@ def test_la_carpeta_fiscal_nunca_es_la_personal_ni_icloud(tmp_path):
     for bad in (home, tmp_path, home / "no-existe"):
         with pytest.raises(fiscal.FiscalError):
             fiscal.check_folder(str(bad), home=home)
+    if __import__("os").name == "nt" and tmp_path.drive:
+        other_home = Path("C:\\Users\\otro" if tmp_path.drive.upper() != "C:" else "D:\\Users\\otro")
+        assert fiscal.check_folder(str(work), home=other_home) == work.resolve()
+        with pytest.raises(fiscal.FiscalError):
+            fiscal.check_folder(tmp_path.anchor, home=other_home)
+
+
+def _link_dir(link, target):
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError:
+        import _winapi
+
+        _winapi.CreateJunction(str(target.resolve()), str(link))
 
 
 def test_rutas_dentro_de_la_carpeta(tmp_path):
     root = tmp_path / "fiscal"
     root.mkdir()
     (tmp_path / "fuera").mkdir()
-    (root / "atajo").symlink_to(tmp_path / "fuera")
+    _link_dir(root / "atajo", tmp_path / "fuera")
     assert fiscal.inside(root.resolve(), "Facturas Entrantes/2026/4T/a.pdf").name == "a.pdf"
-    for bad in ("../fuera/a.pdf", "/etc/passwd", "atajo/a.pdf", "~/a.pdf"):
+    for bad in ("../fuera/a.pdf", "/etc/passwd", "\\fuera\\a.pdf", str(tmp_path / "fuera/a.pdf"), "atajo/a.pdf", "~/a.pdf"):
         with pytest.raises(fiscal.FiscalError):
             fiscal.inside(root.resolve(), bad)
 
@@ -491,3 +505,54 @@ def test_desactivar_claude_para_la_lectura_en_curso(db, tmp_path):
         fiscal_scan._remember(connection, 1, root, paths[0], {**fiscal_scan._cached(connection, 1, root, paths[0]), "ai": {"total": "99.00"}})
     off = fiscal_scan.scan(db, 1, root, 2026, 3, "2026-07-01", "2026-09-30", set(), use_model=False)[1]
     assert all(e["total"] != "99.00" for e in off), "con Claude desactivado solo cuentan las reglas locales"
+
+
+def test_el_selector_de_windows_recibe_el_titulo_como_dato(monkeypatch):
+    """The chooser's title reaches PowerShell in an environment variable, never inside the script it runs."""
+    import subprocess
+    import sys
+
+    seen = {}
+
+    def runner(args, **kwargs):
+        seen.update(script=args[-1], env=kwargs["env"])
+        return subprocess.CompletedProcess(args, 0, stdout="C:\\Datos\\Fiscal\r\n")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    title = "Elige'; Remove-Item C:/ -Recurse; '"
+    assert fiscal.choose_system_folder(title, runner=runner) == "C:\\Datos\\Fiscal"
+    assert title not in seen["script"] and "Remove-Item" not in seen["script"]
+    assert seen["env"]["AGORA_PICKER_PROMPT"] == title
+
+
+@pytest.mark.skipif(__import__("os").name != "nt", reason="unidades y recursos de red de Windows")
+def test_en_otra_unidad_o_en_red_nunca_el_sistema_los_perfiles_ni_un_disco_entero(tmp_path):
+    """Another drive or a share is allowed on Windows, but not what would skip the protections of the home folder."""
+    other_home = Path("C:/Users/otro" if tmp_path.drive.upper() != "C:" else "D:/Users/otro")
+    work = tmp_path / "Actividad" / "Fiscal"
+    work.mkdir(parents=True)
+    assert fiscal.check_folder(str(work), home=other_home) == work.resolve()
+    root_level = Path(tmp_path.anchor) / tmp_path.parts[1]
+    for bad in (root_level, Path(tmp_path.anchor)):
+        with pytest.raises(fiscal.FiscalError):
+            fiscal.check_folder(str(bad), home=other_home)
+    refuse = fiscal.FiscalError("x")
+    with pytest.raises(fiscal.FiscalError):
+        fiscal._check_other_volume(Path("D:/Users/alguien/Fiscal"), refuse)
+    with pytest.raises(fiscal.FiscalError, match="administrativos"):
+        fiscal._check_other_volume(Path("//servidor/C$/Datos/Fiscal"), refuse)
+    with pytest.raises(fiscal.FiscalError):
+        fiscal._check_other_volume(Path("//servidor/recurso"), refuse)
+    assert fiscal._check_other_volume(Path("//servidor/recurso/Empresa/Fiscal"), refuse) == Path("//servidor/recurso/Empresa/Fiscal")
+    with pytest.raises(fiscal.FiscalError, match="ruta normal"):
+        fiscal.check_folder("//?/" + str(work.resolve()), home=other_home)  # \\?\E:\…
+
+
+def test_solo_avisa_de_las_carpetas_fuera_de_la_personal_en_windows():
+    """Another drive or a share is flagged on Windows (others may write there); inside the home folder, or on
+    macOS and Linux, where only the home folder is allowed, never."""
+    home = Path("C:/Users/yo")
+    windows = __import__("os").name == "nt"
+    assert fiscal.outside_home("D:/Actividad/Fiscal", home) is windows
+    assert fiscal.outside_home("//servidor/recurso/Empresa/Fiscal", home) is windows
+    assert fiscal.outside_home("C:/Users/yo/Actividad/Fiscal", home) is False

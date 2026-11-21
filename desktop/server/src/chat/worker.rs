@@ -50,7 +50,7 @@ struct State {
 }
 
 struct Worker {
-    pid: Option<u32>,
+    group: crate::platform::ProcessGroup,
     stdin: tokio::sync::Mutex<Option<ChildStdin>>,
     state: Mutex<State>,
     exited: AtomicBool,
@@ -62,32 +62,14 @@ fn is_agent(key: &str) -> bool {
     key.starts_with("agent:")
 }
 
-fn signal(worker: &Worker, signal: libc::c_int) {
-    if let Some(pid) = worker.pid
-        && !worker.exited.load(Ordering::SeqCst)
-    {
-        // SAFETY: signals only the process group this bridge leads.
-        unsafe { libc::kill(-(pid as libc::pid_t), signal) };
-    }
-}
-
-/// Stops what a bridge left running in its group after it ended by itself (a crash would leave, say, a
-/// command the agent started behind): SIGTERM now, SIGKILL three seconds later if any are still there. The group's id cannot be
-/// given to a new process while one of its members lives, and the check right before each signal keeps a
-/// recycled id from being hit once it is empty.
-fn reap_group(pid: u32) {
-    let group = -(pid as libc::pid_t);
-    // SAFETY: signal 0 only asks whether the group still has members; the others go to that group alone.
-    if unsafe { libc::kill(group, 0) } != 0 {
-        return;
-    }
-    unsafe { libc::kill(group, libc::SIGTERM) };
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        if unsafe { libc::kill(group, 0) } == 0 {
-            unsafe { libc::kill(group, libc::SIGKILL) };
+fn terminate_worker(worker: &Worker, hard: bool) {
+    if !worker.exited.load(Ordering::SeqCst) {
+        if hard {
+            worker.group.kill();
+        } else {
+            worker.group.terminate();
         }
-    });
+    }
 }
 
 /// Forgets a bridge: its turn fails, stdin closes (so it can shut its MCP servers down), and signals follow
@@ -115,9 +97,9 @@ fn discard(key: &str, worker: &Arc<Worker>) {
     tokio::spawn(async move {
         worker.stdin.lock().await.take();
         tokio::time::sleep(Duration::from_secs(3)).await;
-        signal(&worker, libc::SIGTERM);
+        terminate_worker(&worker, false);
         tokio::time::sleep(Duration::from_secs(5)).await;
-        signal(&worker, libc::SIGKILL);
+        terminate_worker(&worker, true);
     });
 }
 
@@ -125,7 +107,7 @@ fn discard(key: &str, worker: &Arc<Worker>) {
 pub fn stop(key: &str) {
     let worker = WORKERS.lock().unwrap().get(key).cloned();
     if let Some(worker) = worker {
-        signal(&worker, libc::SIGKILL);
+        terminate_worker(&worker, true);
         discard(key, &worker);
     }
 }
@@ -134,7 +116,7 @@ pub fn stop(key: &str) {
 pub fn close_all() {
     let all: Vec<_> = WORKERS.lock().unwrap().drain().collect();
     for (key, worker) in all {
-        signal(&worker, libc::SIGKILL);
+        terminate_worker(&worker, true);
         discard(&key, &worker);
     }
 }
@@ -175,9 +157,9 @@ fn checked(event: &Value) -> Option<Value> {
 }
 
 fn start(key: &str, spawn: &Spawn) -> Result<Arc<Worker>, String> {
-    let mut child = Command::new(&spawn.python)
-        .arg("-I")
-        .arg("-c")
+    let mut command = Command::new(&spawn.python);
+    command
+        .args(["-X", "utf8", "-I", "-c"])
         .arg(&spawn.source)
         .current_dir(&spawn.home)
         .env_clear()
@@ -185,11 +167,10 @@ fn start(key: &str, spawn: &Spawn) -> Result<Arc<Worker>, String> {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         // Never forward provider logs or raw exceptions.
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .map_err(|_| FAILURE.to_string())?;
-    let worker = Arc::new(Worker { pid: child.id(), stdin: tokio::sync::Mutex::new(child.stdin.take()), state: Mutex::default(), exited: AtomicBool::new(false) });
+        .stderr(Stdio::null());
+    crate::platform::apply_minimal_os_env(&mut command);
+    let (mut child, group) = crate::platform::spawn_in_group(&mut command).map_err(|_| FAILURE.to_string())?;
+    let worker = Arc::new(Worker { group, stdin: tokio::sync::Mutex::new(child.stdin.take()), state: Mutex::default(), exited: AtomicBool::new(false) });
     let stdout = child.stdout.take();
     let (reader_key, reader) = (key.to_string(), worker.clone());
     tokio::spawn(async move {
@@ -245,9 +226,7 @@ fn start(key: &str, spawn: &Spawn) -> Result<Arc<Worker>, String> {
     tokio::spawn(async move {
         let _ = child.wait().await;
         waiter.exited.store(true, Ordering::SeqCst);
-        if let Some(pid) = waiter.pid {
-            reap_group(pid);
-        }
+        waiter.group.reap();
         discard(&waiter_key, &waiter);
     });
     Ok(worker)

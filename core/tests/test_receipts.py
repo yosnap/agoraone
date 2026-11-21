@@ -137,9 +137,15 @@ def test_carpeta_de_entrada_del_bot(db, tmp_path):
     (inbox / ".oculto.jpg").write_bytes(JPEG + b"1")
     (inbox / "notas.txt").write_text("no es un recibo")
     (tmp_path / "fuera.jpg").write_bytes(JPEG + b"2")
-    (inbox / "enlace.jpg").symlink_to(tmp_path / "fuera.jpg")
+    try:
+        (inbox / "enlace.jpg").symlink_to(tmp_path / "fuera.jpg")
+    except OSError:
+        import _winapi
+
+        (tmp_path / "fuera_dir").mkdir()
+        _winapi.CreateJunction(str((tmp_path / "fuera_dir").resolve()), str(inbox / "enlace.jpg"))
     for path in inbox.iterdir():
-        if not path.is_symlink():
+        if not (path.is_symlink() or path.is_junction()):
             _old(path)
     (inbox / "escribiendo.jpg").write_bytes(JPEG + b"3")  # just written: not yet
     db.execute("INSERT INTO fiscal_folder (name, kind, path, created_at) VALUES ('Autónomo', 'autonomo', ?, '2026-11-15')", (str(root),))
@@ -196,5 +202,10 @@ def test_carpeta_de_entrada_con_muchos_archivos_o_como_enlace(db, tmp_path):
     (tmp_path / "real").mkdir()
     (tmp_path / "real" / "x.jpg").write_bytes(JPEG + b"x")
     _old(tmp_path / "real" / "x.jpg")
-    (other / receipts.INBOX).symlink_to(tmp_path / "real")
+    try:
+        (other / receipts.INBOX).symlink_to(tmp_path / "real", target_is_directory=True)
+    except OSError:
+        import _winapi
+
+        _winapi.CreateJunction(str((tmp_path / "real").resolve()), str(other / receipts.INBOX))
     assert receipts.import_inbox(opener, tmp_path / "r", [(folder_id, other)]) == 0, "una carpeta de entrada que es un enlace no se lee"

@@ -47,6 +47,13 @@ Claude Code o Codex con un encargo. Plan: `plans/261117-0940-modulo-orca`.
   va debajo del encargo como datos; se vuelve a comprobar al lanzar. Solo vale si el índice tiene la misma versión
   que la nota abierta (fecha y tamaño): una nota recién cambiada espera a la siguiente lectura del índice (5 min).
 - **Issue de Watson:** una vez creada, «Resolver en Orca…» lanza con `--issue <n>` y el agente la lee con `gh`.
+- **Tareas y tickets de CRMDev** (1.9): «Lanzar en Orca» en cada tarea o ticket cuyo proyecto de CRMDev está
+  enlazado con un proyecto de Central que ya está en Orca (`src/orca/crmdev-to-orca.tsx`), nunca en modo discreto.
+  La tarjeta solo ofrece ese proyecto. La pantalla manda solo el id (`source: {kind: "crmdev_task" | "crmdev_ticket",
+  remote}`): el núcleo lee la tarea o el ticket de CRMDev con la lista cerrada, comprueba que su proyecto sigue
+  enlazado con el proyecto de Central elegido (`core/agora_core/orca_crmdev.py`) y lo pone debajo del encargo como
+  datos: título, estado, prioridad, categoría, fecha y descripción, sin líneas con pinta de clave ni enlaces y nunca
+  el nombre ni el correo de quien abrió el ticket. Se vuelve a leer al lanzar.
 - **Watson:** la herramienta `proponer_encargo_orca` (solo con Claude, módulo Orca) comprueba que el proyecto está
   en Orca y abre la tarjeta rellenada en el chat; no lanza nada. El registro guarda repositorio y agente, nunca el
   encargo.
@@ -67,3 +74,63 @@ Decisión del usuario (17/11/2026), en AGENTS.md.
   con un agente (Orca no enlaza una terminal con su sesión: una shell se reconoce porque su pestaña muestra la carpeta).
   Si no, no se escribe nada y se ofrece «Copiar la línea» para pegarla a mano. El núcleo rechaza también un cuerpo de issue
   con líneas con pinta de clave y quita los caracteres de control, y solo acepta repositorios de proyectos de Central.
+
+## Bots de Orca (1.9)
+
+Decisión del usuario del 21/11/2026 (plan `plans/261121-1526-orca-bots`). Orca 1.4.265 trae bots (beta): agentes que
+no se cierran, con identidad, memoria y chats propios. AgoraOne los usa **por oficio, no por proyecto**: unos pocos
+bots reutilizables, y cada encargo dice en qué proyecto se trabaja. Hace falta Orca 1.4.267 o posterior.
+
+### Cómo funciona
+- **Buzón de AgoraOne**: una pestaña propia en Orca que solo corre `cat > /dev/null`. Orca exige un terminal
+  remitente y deja allí las respuestas; lo que escribe en ella cae en `cat` y nunca en un shell.
+  - Se crea solo con el botón «Crear el buzón de AgoraOne» (Agentes › Bots de Orca). AgoraOne espera a que arranque
+    `cat`.
+  - Se usa solo mientras `cat` corre en él. Si alguien lo interrumpe, sale como «No se puede usar» y hay que cerrarlo
+    en Orca y crearlo otra vez: nunca hay dos.
+  - Tras un reinicio de Orca se encuentra por su pestaña. AgoraOne nunca usa el handle de otro terminal.
+- **Enviar a un bot**: la tarjeta «Llevar a Orca» (correo, nota, proyecto de Central, issue, tarea o ticket de CRMDev)
+  tiene el destino «Bot». Se elige un bot activo y «Encargar» (se queda con el trabajo) o «Preguntar» (responde).
+  - La vista previa reutiliza las comprobaciones y los datos delimitados de «Lanzar en Orca» y añade el repositorio
+    en el que debe trabajar.
+  - Solo «Enviar a <bot>» lo envía, una vez, a un chat nuevo del bot (`orchestration send --from <buzón> --chat new`),
+    nunca a su chat principal.
+- **Respuestas**: AgoraOne lee el buzón sin marcar nada como leído y casa cada respuesta con su encargo por el hilo.
+  Un encargo responde en su chat del bot, y AgoraOne guarda su último mensaje cuando el bot termina. En Agentes ›
+  Bots de Orca › «Encargos enviados»:
+  - cada encargo con su estado y la respuesta como texto;
+  - «Seguir el hilo»: un mensaje nuevo en el mismo chat, con vista previa;
+  - «Pasar a Watson»: el núcleo le da a Watson la respuesta guardada, sin líneas que parezcan claves y marcada como
+    dato.
+- **Watson** puede proponer el encargo a un bot por su nombre (`proponer_encargo_orca` con `bot` y `tipo`). Abre la
+  misma tarjeta, y nada se envía hasta pulsar «Enviar a <bot>».
+
+### Garantías
+- AgoraOne no crea, configura, pausa ni borra bots. Tampoco les conecta servicios (Slack, Google, GitHub, Composio) ni
+  herramientas, ni crea automatizaciones o webhooks: todo eso lo hace el usuario en Orca.
+- No da a un bot ninguna clave (CRMDev, Central ni otras): lo de esas apps pasa por AgoraOne como dato.
+- Nunca envía lo «solo en este Mac» ni lo privado.
+- Un envío por vista previa. Si Orca no lo confirma, se dice que pudo llegar y se pide mirarlo en Orca antes de
+  repetirlo.
+- El texto del encargo no se guarda: solo el bot, el tipo, el asunto, el proyecto y el origen. La respuesta sí, porque
+  es lo que el usuario consulta después.
+- Lo que responde un bot es dato: nunca dispara nada, ni en AgoraOne ni en otro bot.
+
+### Guía: bots por oficio
+Se crean en Orca, en la barra lateral «Bots». Ideas de partida:
+
+| Bot | Para qué | Agente y permisos |
+|---|---|---|
+| Seguridad | Revisar cambios y dependencias de un proyecto y avisar de riesgos | Un modelo fuerte; en su `SOUL.md`, «solo leer e informar» |
+| Desarrollo junior | Cambios pequeños y acotados (textos, estilos, arreglos sencillos) | Un modelo pequeño o un agente ligero (por ejemplo Pi); abre PR, nunca hace merge |
+| Revisión | Revisar PR y dejar comentarios | Plantilla `pr-review` de Orca |
+| Soporte | Investigar tickets de CRMDev y proponer la respuesta | Solo leer; la respuesta al cliente la decide el usuario |
+
+Cada encargo de AgoraOne lleva el proyecto de Central y su repositorio, así que el mismo bot sirve para todos los
+proyectos y sigue los flujos y normas de cada repositorio.
+
+### Rutas
+- `GET /orca/bots`: bots y estado del buzón. `POST /orca/mailbox`: crea el buzón (botón).
+- `POST /orca/bots/preview` y `POST /orca/bots/follow`: vista previa (token de un solo uso, 15 min).
+  `POST /orca/bots/send`: el envío.
+- `GET /orca/bots/requests`: encargos y respuestas (lee el buzón como mucho cada 10 s si algo espera).

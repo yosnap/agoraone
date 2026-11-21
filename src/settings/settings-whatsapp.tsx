@@ -8,6 +8,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { Loading, LoadError } from '../ui/load-state';
 import { WhatsAppRulesCard } from './settings-whatsapp-rules';
 import { ActionButton } from '../ui/action-button';
+import { keystoreName } from '../ui/platform';
 
 const statusLabels: Record<ChatAccount['status'], string> = {
   pending: 'Pendiente de leer', ok: 'Conectada', auth: 'Revisa la clave', unreachable: 'Sin conexión', error: 'Error',
@@ -64,7 +65,7 @@ function WhatsAppConnectionCard() {
   };
   const save = (event: FormEvent) => {
     event.preventDefault();
-    void run('key', async () => [await putChatKey(key.trim()), 'Clave guardada en el Llavero. Pulsa «Probar» para comprobarla.']).then(ok => { if (ok) setKey(''); });
+    void run('key', async () => [await putChatKey(key.trim()), `Clave guardada en el ${keystoreName}. Pulsa «Probar» para comprobarla.`]).then(ok => { if (ok) setKey(''); });
   };
   const change = (account: ChatAccount, changes: Parameters<typeof changeChatAccount>[1], said: string) =>
     void run(`account-${account.id}`, async () => [await changeChatAccount(account.id, changes), said]);
@@ -74,12 +75,12 @@ function WhatsAppConnectionCard() {
   return <article className="card settings-mail" aria-labelledby="whatsapp-title">
     <div className="card-head"><h2 id="whatsapp-title">WhatsApp (Zernio)</h2>
       <span className={`status-badge ${state.hasKey ? 'good' : 'paused'}`}>{state.hasKey ? 'Clave guardada' : 'Sin clave'}</span></div>
-    <p>AgoraOne lee tu WhatsApp Business a través de Zernio sin marcar nada como leído, cada cinco minutos o al pulsar «Leer ahora». Solo envía un mensaje cuando respondes desde una tarjeta de la Bandeja, ves la vista previa exacta y pulsas «Enviar». El número se conecta en el panel de Zernio; aquí solo va su clave de API, que se guarda en el Llavero y no se vuelve a mostrar.</p>
+    <p>AgoraOne lee tu WhatsApp Business a través de Zernio sin marcar nada como leído, cada cinco minutos o al pulsar «Leer ahora». Solo envía un mensaje cuando respondes desde una tarjeta de la Bandeja, ves la vista previa exacta y pulsas «Enviar». El número se conecta en el panel de Zernio; aquí solo va su clave de API, que se guarda en el {keystoreName} y no se vuelve a mostrar.</p>
     <p className="muted">Los grupos no llegan: con el número en modo «coexistence», WhatsApp solo entrega los chats individuales.</p>
     <p className="muted">{META_COST_NOTICE}</p>
     <form className="field-row" onSubmit={save}>
       <label className="field">{state.hasKey ? 'Cambiar la clave de API de Zernio' : 'Clave de API de Zernio'}
-        <input type="password" autoComplete="off" spellCheck={false} value={key} onChange={event => setKey(event.target.value)} placeholder="Va directa al Llavero"/></label>
+        <input type="password" autoComplete="off" spellCheck={false} value={key} onChange={event => setKey(event.target.value)} placeholder={`Va directa al ${keystoreName}`}/></label>
       <ActionButton icon="save" label="Guardar" tone="primary" type="submit" disabled={key.trim().length < 8 || busy !== null}/>
     </form>
     <div className="actions">
@@ -94,7 +95,7 @@ function WhatsAppConnectionCard() {
       })}>{busy === 'sync' ? 'Leyendo…' : 'Leer ahora'}</button>
       {state.hasKey && (forgetting ? <span className="field-row" role="group" aria-label="Confirmar borrar la clave">
         <small>Se deja de leer WhatsApp; los mensajes ya guardados se conservan.</small>
-        <ActionButton icon="trash" label="Borrar de verdad" tone="danger" disabled={busy !== null} onClick={() => void run('key', async () => { setForgetting(false); return [await putChatKey(null), 'Clave borrada del Llavero.']; })}/>
+        <ActionButton icon="trash" label="Borrar de verdad" tone="danger" disabled={busy !== null} onClick={() => void run('key', async () => { setForgetting(false); return [await putChatKey(null), `Clave borrada del ${keystoreName}.`]; })}/>
         <ActionButton icon="close" label="Cancelar" onClick={() => setForgetting(false)}/></span>
         : <ActionButton icon="trash" label="Borrar la clave…" tone="danger" disabled={busy !== null} onClick={() => setForgetting(true)}/>)}
     </div>

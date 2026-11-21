@@ -5,7 +5,9 @@ that list (a bundle id, a desktop id), never by a name or command typed by anyon
 opened, never closed or changed."""
 
 import configparser
+import hashlib
 import json
+import os
 import plistlib
 import re
 import sqlite3
@@ -19,6 +21,7 @@ from .db import transaction
 SETTING = "apps"
 CACHE_SECONDS = 300
 _cache: dict = {}
+_win_paths: dict[str, Path] = {}
 
 
 class AppsError(RuntimeError):
@@ -76,11 +79,73 @@ def _linux_apps() -> list[dict]:
     return sorted(found.values(), key=lambda a: a["name"].lower())
 
 
+def _windows_roots() -> list[Path]:
+    roots = []
+    for var in ("APPDATA", "PROGRAMDATA"):
+        val = os.environ.get(var)
+        if val:
+            roots.append(Path(val) / "Microsoft/Windows/Start Menu/Programs")
+    return roots
+
+
+def _windows_apps() -> list[dict]:
+    skip = re.compile(r"\b(uninstall|desinstalar|quitar|readme|leeme|help|ayuda|manual|website)\b", re.IGNORECASE)
+    found: dict[str, dict] = {}
+    paths: dict[str, Path] = {}
+    seen_names: set[str] = set()
+    for root in _windows_roots():
+        if not root.is_dir() or root.is_symlink() or root.is_junction():
+            continue
+        real_root = root.resolve()
+        for current, dirs, files in os.walk(root):
+            current_path = Path(current)
+            depth = len(current_path.relative_to(root).parts)
+            dirs[:] = [
+                d for d in dirs
+                if depth < 3 and not d.startswith(".") and not (current_path / d).is_symlink() and not (current_path / d).is_junction()
+            ]
+            for fname in files:
+                if not fname.lower().endswith(".lnk") or fname.startswith("."):
+                    continue
+                lnk = current_path / fname
+                try:
+                    if lnk.is_symlink() or lnk.is_junction() or not lnk.is_file() or real_root not in lnk.resolve().parents:
+                        continue
+                except OSError:
+                    continue
+                name = lnk.stem.strip()[:80]
+                if not name or skip.search(name) or name.lower() in seen_names:
+                    continue
+                slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40] or "app"
+                digest = hashlib.sha1(str(lnk).lower().encode("utf-8")).hexdigest()[:10]
+                ident = f"win.{slug}.{digest}"
+                seen_names.add(name.lower())
+                found[ident] = {"id": ident, "name": name}
+                paths[ident] = lnk
+                if len(found) >= 600:
+                    break
+            if len(found) >= 600:
+                break
+    _win_paths.clear()
+    _win_paths.update(paths)
+    return sorted(found.values(), key=lambda a: a["name"].lower())
+
+
+def _open_windows_shortcut(ident: str) -> None:
+    lnk = _win_paths.get(ident)
+    if not lnk or lnk.suffix.lower() != ".lnk" or lnk.is_symlink() or lnk.is_junction() or not lnk.is_file():
+        raise AppsError("No se pudo abrir la aplicación.")
+    roots = [r.resolve() for r in _windows_roots() if r.is_dir()]
+    if not any(r in lnk.resolve().parents for r in roots):
+        raise AppsError("No se pudo abrir la aplicación.")
+    os.startfile(str(lnk))  # a verified Start Menu .lnk from the closed catalog
+
+
 def installed() -> list[dict]:
     hit = _cache.get("apps")
     if hit and time.monotonic() - hit[0] < CACHE_SECONDS:
         return hit[1]
-    apps = _mac_apps() if sys.platform == "darwin" else _linux_apps() if sys.platform.startswith("linux") else []
+    apps = _mac_apps() if sys.platform == "darwin" else _windows_apps() if sys.platform == "win32" else _linux_apps() if sys.platform.startswith("linux") else []
     _cache["apps"] = (time.monotonic(), apps)
     return apps
 
@@ -106,6 +171,12 @@ def open_app(connection: sqlite3.Connection, ident: str, confirmed: bool) -> str
         raise AppsError("Esa aplicación no está instalada en este equipo.", 404)
     if ident not in allowed(connection) and not confirmed:
         raise AppsError(f"«{app['name']}» no está en tu lista de apps permitidas: confirma antes de abrirla.", 409)
+    if sys.platform == "win32":
+        try:
+            _open_windows_shortcut(ident)
+        except OSError as error:
+            raise AppsError("No se pudo abrir la aplicación.") from error
+        return f"Abierta {app['name']}."
     command = ["/usr/bin/open", "-b", ident] if sys.platform == "darwin" else ["gtk-launch", ident]
     try:
         done = subprocess.run(command, capture_output=True, timeout=10, check=False)
