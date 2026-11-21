@@ -17,7 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
-from . import __version__
+from . import __version__, app_log
 from .backup import clean_leftovers, create_backup, ensure_daily, list_backups, prune
 from .db import DB_NAME, connect, migrate
 from .embed import DEFAULT_MODEL, DEFAULT_URL, Embedder, OllamaEmbedder, VectorCache
@@ -46,6 +46,7 @@ from .routes_orca import orca_router
 from .routes_orca_bots import orca_bots_router
 from .routes_note_sources import note_sources_router
 from .routes_issues import issues_router
+from .routes_logs import logs_router
 from .routes_voice import voice_router
 from .routes_agents import agents_router
 from .routes_meetings import meetings_router
@@ -123,6 +124,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         # Each use opens its own connection (sqlite3 connections are not shared between threads here).
+        log.info("Núcleo arrancado (versión %s)", __version__)
         clean_leftovers(settings.data_dir)
         clean_documents(settings.data_dir)  # quotes' PDF and Word opened more than a day ago
         database = connect(settings.data_dir / DB_NAME)
@@ -163,6 +165,7 @@ def create_app(
             stop.set()
             recorder.stop_all()
 
+    log = app_log.setup(settings.data_dir)  # AgoraOne's own log, Ajustes › Registro
     app = FastAPI(title="AgoraOne núcleo", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
     @app.middleware("http")
@@ -172,7 +175,13 @@ def create_app(
         given = request.headers.get(SECRET_HEADER, "").encode()
         if not hmac.compare_digest(given, expected):
             return JSONResponse({"error": "Petición no autorizada."}, status_code=401)
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:  # noqa: BLE001 - logged without the request body, and the caller gets a plain 500
+            log.exception("Error sin controlar en %s %s", request.method, request.url.path)
+            return JSONResponse({"error": "Error interno del núcleo. Está en Ajustes › Registro."}, status_code=500)
+        if response.status_code >= 500:
+            log.warning("%s %s respondió %s", request.method, request.url.path, response.status_code)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response
@@ -226,6 +235,7 @@ def create_app(
 
     app.include_router(index_router(settings, embedder, cache, embed_health, extract_health))
     app.include_router(addons_router(settings))
+    app.include_router(logs_router(settings))
     app.include_router(connectors_router(settings, secrets))
     app.include_router(summary_router(settings, time.time()))
     app.include_router(assistant_router(settings, embedder, cache, secrets, engines))

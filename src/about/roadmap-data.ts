@@ -5,7 +5,6 @@ export type RoadmapItem = { title: string; detail: string; area: string; status:
 
 // Generic texts only: this file is in the public repository. Move an item to Novedades when it ships.
 export const roadmap: RoadmapItem[] = [
-  { status: 'doing', version: '1.10', area: 'Ajustes', title: 'Registro de la app', detail: 'Ver en Ajustes lo que pasa en AgoraOne: arranque, avisos y errores del núcleo y de la interfaz, en un archivo local que no crece sin límite.' },
   { status: 'planned', area: 'Ajustes', title: 'Registro del servidor y de la app de escritorio', detail: 'Sumar al registro lo que ocurre en el servidor local y en la ventana de escritorio.' },
   { status: 'planned', area: 'Watson', title: 'Guardar una respuesta de Watson como nota', detail: 'Un botón para llevar una buena respuesta al vault, con título, carpeta y texto editables, sin pisar ninguna nota.' },
   { status: 'planned', area: 'Watson', title: 'Respuestas que dicen lo que no saben', detail: 'Cuando falte información, Watson lo dice y enseña de cuándo es la nota más reciente que ha usado.' },
