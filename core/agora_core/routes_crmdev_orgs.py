@@ -5,6 +5,9 @@
 - `PATCH /crmdev/orgs/{id}` `{name?, key?}`: rename it or change its key.
 - `POST /crmdev/orgs/{id}/test`: «Probar» with that organization's key (asks the tool list: no tool runs).
 - `DELETE /crmdev/orgs/{id}`: forgets one (its key leaves the store; nothing is deleted in CRMDev).
+- `POST /crmdev/orgs/assign` `{keys, org}`: remembers the organization of the clients and projects of Central still
+  missing in CRMDev (warnings `client_missing`/`project_missing` of «Desde Central»), or forgets it with `org` null.
+  Only AgoraOne keeps it: nothing goes to CRMDev.
 
 Never a key in an answer, an error or the log. The «CRMDev» module off → 404."""
 
@@ -14,7 +17,7 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
-from . import crmdev_api, crmdev_orgs, crmdev_sync, modules, web_api
+from . import crmdev_api, crmdev_orgs, crmdev_orgs_assign, crmdev_sync, modules, web_api
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -116,6 +119,18 @@ def crmdev_orgs_router(settings: Settings, secrets) -> APIRouter:
                 return problem(409, "Esa organización no tiene clave guardada.")
             return {"org": org, **crmdev_api.probe(target)}
         return await run(work)
+
+    @router.post("/crmdev/orgs/assign")
+    async def assign(request: Request):
+        body = await body_of(request)
+        keys = body.get("keys") if body is not None else None
+        if body is None or set(body) != {"keys", "org"} or not isinstance(keys, list) or not 1 <= len(keys) <= 500 \
+                or not all(isinstance(k, str) for k in keys) or not (body["org"] is None or isinstance(body["org"], str)):
+            return problem(422, "Indica qué asignar y a qué organización.")
+        targets = [t for k in keys if (t := crmdev_orgs_assign.target_of(k))]
+        if not targets:
+            return problem(422, "Solo se asigna lo que aún falta en CRMDev.")
+        return await run(lambda connection: {"assigned": crmdev_orgs_assign.assign(connection, targets, body["org"])})
 
     @router.delete("/crmdev/orgs/{org}")
     async def forget(org: str):

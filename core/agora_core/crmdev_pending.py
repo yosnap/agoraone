@@ -11,6 +11,8 @@ hidden until its signature changes (something changed on either side). Kinds:
 - `crmdev_only`: a client of CRMDev that is not in Central (made by hand there): to be created in Central.
 - `project_missing`: a project of Central (not archived) paired with none of CRMDev's.
 - `project_changed`: a pair of projects with a different name, a state that does not match or another client.
+Each warning says the organization of CRMDev it is about (`org`, and `orgFrom`: `link`, `chosen` or `client`, see
+`crmdev_orgs_assign`); a client or project still missing with none chosen has `org` None («Sin organización»).
 Only while both are sources: Central's module on and read, CRMDev's on and connected. What either answers is data."""
 
 import hashlib
@@ -18,7 +20,7 @@ import json
 import re
 import sqlite3
 
-from . import central, clients, crmdev_sync, project_links
+from . import central, clients, crmdev_orgs, crmdev_orgs_assign, crmdev_sync, project_links
 from .db import now, transaction
 
 KINDS = ("client_missing", "contact_missing", "client_changed", "crmdev_only", "project_missing", "project_changed")
@@ -38,11 +40,11 @@ class PendingError(ValueError):
 
 
 def active(connection: sqlite3.Connection) -> bool:
-    return central.snapshot(connection) is not None and crmdev_sync.snapshot(connection) is not None
+    return central.snapshot(connection) is not None and bool(crmdev_sync.snapshots(connection))
 
 
 def _signature(item: dict) -> str:
-    shown = {k: v for k, v in item.items() if k not in ("key", "signature", "dismissed")}
+    shown = {k: v for k, v in item.items() if k not in ("key", "signature", "dismissed", "org", "orgFrom")}
     return hashlib.sha256(json.dumps(shown, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -98,19 +100,53 @@ def _project_items(pairs: dict, crmdev_client_of: dict[str, str]) -> list[dict]:
     return items
 
 
+def _place(connection: sqlite3.Connection, entries: list[dict], items: list[dict]) -> None:
+    """Writes on each warning the organization it is about and where that comes from."""
+    client_org = {r["id"]: r["org"] for r in crmdev_sync.rows(connection, "clients") if r.get("id")}
+    project_org = {r["id"]: r["org"] for r in crmdev_sync.rows(connection, "projects") if r.get("id")}
+    chosen = crmdev_orgs_assign.chosen(connection)
+    of_client: dict[str, tuple[str | None, str | None]] = {}
+    by_name: dict[str, tuple[str | None, str | None]] = {}
+    for e in entries:
+        central_id = e.get("centralId")
+        if not central_id:
+            continue
+        linked = client_org.get(e["crmdevId"]) if e.get("crmdevId") else None
+        if linked is None:
+            among = {client_org.get(c["id"]) for c in e["contacts"]} - {None}
+            linked = among.pop() if len(among) == 1 else None
+        place = (linked, "link") if linked else (chosen[("client", central_id)], "chosen") if ("client", central_id) in chosen else (None, None)
+        of_client[central_id] = by_name[clients.same_name(e["name"])] = place
+    for item in items:
+        kind = item["kind"]
+        if kind in ("crmdev_only", "client_changed"):
+            place = (client_org.get(item["crmdevId"]), "link")
+        elif kind == "project_changed":
+            place = (project_org.get(item["crmdevId"]), "link")
+        elif kind in ("client_missing", "contact_missing"):
+            place = of_client.get(item["centralId"], (None, None))
+        elif ("project", item["centralId"]) in chosen:
+            place = (chosen[("project", item["centralId"])], "chosen")
+        else:
+            org = by_name.get(clients.same_name(item.get("client")), (None, None))[0] if item.get("client") else None
+            place = (org, "client" if org else None)
+        item["org"], item["orgFrom"] = place if place[0] else (None, None)
+
+
 def build(connection: sqlite3.Connection, include_dismissed: bool = False) -> dict:
     """The warnings (without the dismissed ones unless asked), their counts by kind and how many are dismissed."""
     if not active(connection):
-        return {"active": False, "items": [], "counts": {k: 0 for k in KINDS}, "dismissed": 0, "truncated": False}
+        return {"active": False, "items": [], "counts": {k: 0 for k in KINDS}, "dismissed": 0, "truncated": False, "orgs": []}
     entries = clients.directory(connection)
     # Each side's own address (the entry's is Central's, else CRMDev's, else the one kept here).
-    crmdev_emails = {c["id"]: c.get("email") for c in (crmdev_sync.snapshot(connection) or {}).get("clients") or []}
+    crmdev_emails = {c["id"]: c.get("email") for c in crmdev_sync.rows(connection, "clients") if c.get("id")}
     central_emails = {c.get("id"): c.get("email") for c in (central.snapshot(connection) or {}).get("clients") or []}
     for e in entries:
         e["_crmdevEmail"] = crmdev_emails.get(e["crmdevId"]) if e.get("crmdevId") else None
         e["_centralEmail"] = central_emails.get(e["centralId"]) if e.get("centralId") else None
     crmdev_client_of = {clients.same_name(e["name"]): e["crmdevId"] for e in entries if e.get("centralId") and e.get("crmdevId")}
     items = _client_items(entries) + _project_items(project_links.build(connection), crmdev_client_of)
+    _place(connection, entries, items)
     stored = {r["key"]: r["signature"] for r in connection.execute("SELECT key, signature FROM crmdev_pending_dismissed")}
     shown, hidden = [], 0
     for item in items:
@@ -120,9 +156,9 @@ def build(connection: sqlite3.Connection, include_dismissed: bool = False) -> di
         if include_dismissed or not item["dismissed"]:
             shown.append(item)
     counts = {k: sum(1 for i in items if i["kind"] == k and not i["dismissed"]) for k in KINDS}
-    snapshot = crmdev_sync.snapshot(connection) or {}
     return {"active": True, "items": shown, "counts": counts, "dismissed": hidden,
-            "truncated": bool(snapshot.get("truncated") or snapshot.get("projectsTruncated"))}
+            "truncated": any(bool(s.get("truncated") or s.get("projectsTruncated")) for s in crmdev_sync.snapshots(connection).values()),
+            "orgs": crmdev_orgs.orgs(connection)}
 
 
 def dismiss(connection: sqlite3.Connection, key: str, signature: str | None) -> None:

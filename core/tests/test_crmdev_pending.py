@@ -94,6 +94,7 @@ def test_odd_keys_are_refused(world):
 def test_nothing_while_either_is_not_a_source(world, monkeypatch):
     connection, _ = world
     monkeypatch.setattr(crmdev_sync, "snapshot", lambda _c, org=None: None)
+    monkeypatch.setattr(crmdev_sync, "snapshots", lambda _c: {})
     result = crmdev_pending.build(connection)
     assert result["active"] is False and result["items"] == []
 

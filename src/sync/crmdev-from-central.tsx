@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
-import { confirmBatch, dismissPending, getCrmdevPending, previewBatch, type CrmdevPending, type PendingItem, type PendingKind } from '../api/clients';
+import { assignCrmdevOrg, confirmBatch, dismissPending, getCrmdevPending, previewBatch, type CrmdevPending, type PendingItem, type PendingKind } from '../api/clients';
 import { pendingChangeText, pendingText } from '../jobs/clients-view';
 import { ActionButton } from '../ui/action-button';
 import { LoadError, Loading } from '../ui/load-state';
+import { ModernSelect } from '../ui/modern-select';
 import { BatchReview } from './batch-review';
-import { SyncTable, type SyncGroup, type SyncItem, type SyncRow } from './sync-table';
+import { SyncTable, type SyncGroup, type SyncItem, type SyncRow, type SyncSecondary } from './sync-table';
 
 export const KIND_LABELS: Record<string, string> = { CLIENT: 'De cliente', OWN: 'Propio', TRAINING: 'Formación', EXPERIMENT: 'Experimento' };
 export const CENTRAL_STATUS: Record<string, string> = { ACTIVE: 'Activo', MAINTENANCE: 'Mantenimiento', DORMANT: 'En pausa', ARCHIVED: 'Archivado' };
@@ -17,6 +18,16 @@ const GROUPS: { kind: PendingKind; label: string; hint: string }[] = [
   { kind: 'project_changed', label: 'Proyectos distintos', hint: 'Proyectos con nombre o estado distintos: CRMDev se pone como Central (el cliente se cambia en CRMDev).' },
   { kind: 'crmdev_only', label: 'Solo en CRMDev', hint: 'Clientes de CRMDev que no están en Central: se crean en Central, en Central › Por crear.' },
 ];
+
+export const UNPLACED = 'unplaced';
+const ASSIGNABLE = new Set<PendingKind>(['client_missing', 'project_missing']);
+
+/** With several organizations: what is about the chosen one, and what is about none yet («Sin organización»). With
+ * one, everything is about it. */
+export function byOrg(items: PendingItem[], org: string | undefined, several: boolean): { mine: PendingItem[]; unplaced: PendingItem[] } {
+  if (!several) return { mine: items, unplaced: [] };
+  return { mine: items.filter(i => i.org === org), unplaced: items.filter(i => !i.org) };
+}
 
 const rowOf = (item: PendingItem): SyncRow => ({
   key: item.key, name: item.name, selectable: SENDABLE.has(item.kind), dismissed: item.dismissed, dismissable: true,
@@ -34,7 +45,8 @@ export function CrmdevFromCentral({ discreet, onChanged }: { discreet: boolean; 
   const [data, setData] = useState<CrmdevPending | null>(null);
   const [error, setError] = useState('');
   const [withDismissed, setWithDismissed] = useState(false);
-  const [reviewing, setReviewing] = useState<SyncItem[] | null>(null);
+  const [reviewing, setReviewing] = useState<{ items: SyncItem[]; org: string | undefined } | null>(null);
+  const [chosenOrg, setChosenOrg] = useState('');
   const [busy, setBusy] = useState(false);
   const asked = useRef(false);
   const load = (all = withDismissed) => {
@@ -52,15 +64,42 @@ export function CrmdevFromCentral({ discreet, onChanged }: { discreet: boolean; 
     catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
     finally { setBusy(false); }
   };
-  const groups: SyncGroup[] = GROUPS.map(g => ({ id: g.kind, label: g.label, hint: g.hint, rows: data.items.filter(i => i.kind === g.kind).map(rowOf) }));
+  const orgs = data.orgs ?? [];
+  const several = orgs.length > 1;
+  const org = orgs.find(o => o.id === chosenOrg) ?? orgs[0];
+  const { mine, unplaced } = byOrg(data.items, org?.id, several);
+  const groups: SyncGroup[] = GROUPS.map(g => ({ id: g.kind, label: g.label, hint: g.hint, rows: mine.filter(i => i.kind === g.kind).map(rowOf) }));
+  if (several) groups.push({ id: UNPLACED, label: 'Sin organización', rows: unplaced.map(rowOf),
+    hint: `Clientes y proyectos de Central que aún no tienen organización de CRMDev. Lo que envíes desde aquí va a «${org?.name ?? ''}» y queda como suyo; también puedes asignarlo sin enviar.` });
+  const pendingCount = (id: string) => data.items.filter(i => i.org === id && !i.dismissed).length;
+  const assign = async (items: SyncItem[], to: string | null) => {
+    const keys = items.map(i => i.key).filter(key => {
+      const item = data.items.find(i => i.key === key);
+      return item && ASSIGNABLE.has(item.kind) && (to !== null || item.orgFrom === 'chosen');
+    });
+    if (!keys.length) { setError(to ? 'Solo se asigna lo que aún falta en CRMDev.' : 'Solo se quita una organización elegida a mano: la de un enlace la decide el enlace.'); return; }
+    setBusy(true); setError('');
+    try { await assignCrmdevOrg(keys, to); load(); onChanged?.(); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : 'No se pudo guardar.'); }
+    finally { setBusy(false); }
+  };
+  const secondary = (groupId: string): SyncSecondary | null => !several || !org ? null
+    : groupId === UNPLACED ? { label: `Asignar a «${org.name}»`, onRun: items => void assign(items, org.id) }
+      : ASSIGNABLE.has(groupId as PendingKind) ? { label: 'Dejar sin organización', onRun: items => void assign(items, null) } : null;
   return <section className="sync-section" aria-label="Desde Central">
     <p className="muted">Central manda: aquí está lo que tiene Central y falta o es distinto en CRMDev. Marca lo que quieras, pulsa «Revisar envío» para ver
-      exactamente qué irá y envíalo. Va a la organización de CRMDev de la clave guardada en Conectores.{data.truncated ? ' De CRMDev se leen los 1000 más recientes: puede faltar algo que sí está.' : ''}</p>
+      exactamente qué irá y envíalo.{several ? ' Cada cliente y proyecto va a una sola organización de CRMDev: elige arriba con cuál comparar.' : ` Va a la organización «${org?.name ?? 'de la clave guardada'}».`}{data.truncated ? ' De CRMDev se leen los 1000 más recientes: puede faltar algo que sí está.' : ''}</p>
     {error && <LoadError message={error}/>}
-    {reviewing && <BatchReview key={reviewing.map(i => i.key).join('|')} onClose={() => setReviewing(null)}
+    {reviewing && <BatchReview key={`${reviewing.org}|${reviewing.items.map(i => i.key).join('|')}`} onClose={() => setReviewing(null)}
       onDone={() => { load(); onChanged?.(); }}
-      dest={{ name: 'CRMDev', action: 'Enviar a CRMDev', preview: anyway => previewBatch(reviewing.map(i => i.key), anyway), confirm: confirmBatch }}/>}
-    <SyncTable groups={groups} discreet={discreet} busy={busy || reviewing !== null} reviewLabel="Revisar envío" onReview={setReviewing}
+      dest={{ name: 'CRMDev', action: 'Enviar a CRMDev', preview: anyway => previewBatch(reviewing.items.map(i => i.key), anyway, reviewing.org), confirm: confirmBatch }}/>}
+    <SyncTable key={org?.id ?? ''} groups={groups} discreet={discreet} busy={busy || reviewing !== null} reviewLabel="Revisar envío"
+      onReview={items => setReviewing({ items, org: org?.id })} secondary={secondary}
+      above={several && <div className="sync-org-picker">
+        <label className="field">Organización de CRMDev<ModernSelect value={org?.id ?? ''} onChange={setChosenOrg}
+          options={orgs.map(o => ({ value: o.id, label: `${o.name} · ${pendingCount(o.id)}` }))}/></label>
+        {unplaced.length > 0 && <small className="muted">{unplaced.length} sin organización</small>}
+      </div>}
       onDismiss={row => void dismiss(row)} empty="Todo al día: CRMDev tiene lo mismo que Central."
       tools={<>
         {data.dismissed > 0 && <button type="button" className="button" aria-pressed={withDismissed}

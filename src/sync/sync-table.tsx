@@ -11,6 +11,8 @@ export type SyncRow = {
 };
 export type SyncGroup = { id: string; label: string; hint: string; rows: SyncRow[] };
 export type SyncItem = { key: string; name?: string };
+/** Another thing to do with what is ticked in a group (e.g. «Asignar a…»), next to the review; never a send. */
+export type SyncSecondary = { label: string; onRun: (items: SyncItem[]) => void };
 
 const ALL = '';
 const optionsOf = (rows: SyncRow[], field: 'kind' | 'status', all: string) =>
@@ -20,9 +22,10 @@ const optionsOf = (rows: SyncRow[], field: 'kind' | 'status', all: string) =>
  * search, filters by kind and state when the group has them, a box per row and one for everything shown, and a bar
  * with how many are ticked and the button that opens the exact review. Nothing is sent from here. In discreet mode
  * it is only seen: no boxes, no buttons. */
-export function SyncTable({ groups, discreet, busy, reviewLabel, onReview, onDismiss, tools, empty }: {
+export function SyncTable({ groups, discreet, busy, reviewLabel, onReview, onDismiss, tools, empty, secondary, above }: {
   groups: SyncGroup[]; discreet: boolean; busy: boolean; reviewLabel: string; onReview: (items: SyncItem[]) => void;
   onDismiss?: (row: SyncRow) => void; tools?: ReactNode; empty: string;
+  secondary?: (groupId: string) => SyncSecondary | null; above?: ReactNode;
 }) {
   const shownGroups = groups.filter(g => g.rows.length > 0);
   const [groupId, setGroupId] = useState('');
@@ -54,8 +57,11 @@ export function SyncTable({ groups, discreet, busy, reviewLabel, onReview, onDis
     return r.editableName && name && name !== r.name ? { key: r.key, name } : { key: r.key };
   }));
   const pick = (id: string) => { setGroupId(id); setKind(ALL); setStatus(ALL); };
+  const other = group ? secondary?.(group.id) ?? null : null;
+  const inGroup = chosen.filter(r => group?.rows.some(g => g.key === r.key));
 
   return <div className="sync">
+    {above}
     <div className="sync-bar">
       {shownGroups.length > 0 && <div className="segmented sync-groups" role="group" aria-label="Qué ver">{shownGroups.map(g =>
         <button key={g.id} type="button" aria-pressed={group?.id === g.id} onClick={() => pick(g.id)}>{g.label} · {g.rows.length}</button>)}</div>}
@@ -71,6 +77,8 @@ export function SyncTable({ groups, discreet, busy, reviewLabel, onReview, onDis
       {can && <div className="sync-selection" role="status">
         <span>{chosen.length ? `${chosen.length} ${chosen.length === 1 ? 'marcado' : 'marcados'}` : 'Marca los que quieras'}</span>
         {chosen.length > 0 && <button type="button" className="button" onClick={() => setTicked(new Set())}>Quitar marcas</button>}
+        {other && <button type="button" className="button" disabled={busy || !inGroup.length}
+          onClick={() => { other.onRun(inGroup.map(r => ({ key: r.key }))); setTicked(new Set()); }}>{other.label}{inGroup.length ? ` (${inGroup.length})` : ''}</button>}
         <ActionButton icon="send" label={`${reviewLabel} (${chosen.length})`} tone="primary" disabled={busy || !chosen.length} onClick={review}/>
       </div>}
       {rows.length === 0 ? <p className="muted">Nada con esos filtros.</p>
