@@ -1,13 +1,15 @@
 import { useRef, useState } from 'react';
 import { createOrcaMailbox, getOrcaBots, type OrcaBots } from '../api/orca-bots';
 import { ActionButton } from '../ui/action-button';
+import type { Section } from '../shell/shell-state';
+import { BotRequests } from './orca-bot-requests';
 
 const mailboxText = { ready: 'Listo', missing: 'Sin crear', broken: 'No se puede usar' } as const;
 
 /** The user's bots in Orca and AgoraOne's mailbox there. The bots are created and set up in Orca (one per kind of job:
  * security, junior development, review, support…); here they are only listed. The mailbox is created only with the
  * button, as a visible tab in Orca that runs `cat`. */
-export function OrcaBotsPanel({ discreet }: { discreet: boolean }) {
+export function OrcaBotsPanel({ discreet, onOpen }: { discreet: boolean; onOpen: (section: Section) => void }) {
   const [data, setData] = useState<OrcaBots | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -39,5 +41,6 @@ export function OrcaBotsPanel({ discreet }: { discreet: boolean }) {
         <span className="coding-name"><strong>{bot.name}</strong><small>{bot.agent ?? 'agente desconocido'}{bot.purpose ? ` · ${bot.purpose}` : ''}</small></span>
       </li>)}</ul>)}
     {error && <p className="error" role="alert">{error}</p>}
+    <BotRequests discreet={discreet} onOpen={onOpen}/>
   </section>;
 }

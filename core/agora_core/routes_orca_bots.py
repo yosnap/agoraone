@@ -39,6 +39,12 @@ class ErrandRequest(BaseModel):
     source: LaunchSource | None = None
 
 
+class FollowRequest(BaseModel):
+    messageId: str = Field(pattern=r"^msg_[A-Za-z0-9_-]{4,72}$")
+    kind: Literal["handoff", "question"]
+    text: str = Field(min_length=1, max_length=8000)
+
+
 class ErrandConfirm(BaseModel):
     id: str = Field(min_length=16, max_length=64)
 
@@ -86,8 +92,22 @@ def orca_bots_router(settings: Settings, secrets_store=None) -> APIRouter:
                     return JSONResponse({"error": str(error)}, status_code=409)
         return await run_in_threadpool(work)
 
-    @router.post("/orca/bots/preview")
-    async def preview(body: ErrandRequest, request: Request):
+    @router.get("/orca/bots/requests")
+    async def errands():
+        """The latest errands and their answers; reads the mailbox first (at most every 10 s) when some still wait."""
+        def work():
+            with database() as connection:
+                if not on(connection):
+                    return {"requests": [], "problem": OFF}
+                problem = None
+                try:
+                    orca_bots.collect(connection)
+                except OrcaError as error:
+                    problem = str(error)
+                return {"requests": orca_bots.requests(connection), "problem": problem}
+        return await run_in_threadpool(work)
+
+    async def prepared(make, request: Request):
         owner = owner_of(request)
         if not owner:
             return JSONResponse({"error": "Sin acceso."}, status_code=403)
@@ -96,7 +116,7 @@ def orca_bots_router(settings: Settings, secrets_store=None) -> APIRouter:
             with database() as connection:
                 if not on(connection):
                     raise OrcaError(OFF)
-                return orca_bots.preview(connection, body.model_dump(), secrets_store=secrets_store)
+                return make(connection)
         try:
             plan = await run_in_threadpool(work)
         except OrcaError as error:
@@ -109,6 +129,15 @@ def orca_bots_router(settings: Settings, secrets_store=None) -> APIRouter:
         ident = secrets.token_urlsafe(16)
         plans[ident] = {"plan": plan, "owner": owner, "expires": now + KEEP}
         return {"id": ident, **plan}
+
+    @router.post("/orca/bots/preview")
+    async def preview(body: ErrandRequest, request: Request):
+        return await prepared(lambda connection: orca_bots.preview(connection, body.model_dump(), secrets_store=secrets_store), request)
+
+    @router.post("/orca/bots/follow")
+    async def follow(body: FollowRequest, request: Request):
+        """«Seguir el hilo»: the preview of a new message in the same chat of the bot; sent with /orca/bots/send."""
+        return await prepared(lambda connection: orca_bots.follow_preview(connection, body.model_dump()), request)
 
     @router.post("/orca/bots/send", status_code=201)
     async def send(body: ErrandConfirm, request: Request):

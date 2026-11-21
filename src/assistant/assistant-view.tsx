@@ -9,6 +9,7 @@ import { IssueProposals, useIssueProposals } from './issue-proposals';
 import { CrmdevProposals, useCrmdevProposals } from './crmdev-proposals';
 import { OrcaProposals, useOrcaProposals } from './orca-proposals';
 import { HermesProposals, useHermesProposals } from './hermes-proposals';
+import { takeWatsonAsk } from './pending-ask';
 import { ResearchProposals, useResearchProposals } from './research-proposals';
 import type { Delegated, ResearchProposal } from '../api/core';
 import { ChatReplyProposals, useChatReplyProposals } from './chat-reply-proposals';
@@ -212,7 +213,13 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
     {onShowOnGraph && <button className="button" onClick={() => onShowOnGraph(sources.map(sourceId))}>Ver en el cerebro</button>}
   </div>;
   const name = persona?.name ?? 'Watson';
-  return <section className={`assistant${embedded ? ' embedded' : ''}`} aria-labelledby="assistant-title">
+  // Asked from another section (a bot's answer passed on): sent once the view is on screen (a ref, not an effect).
+  const startWith = (node: HTMLElement | null) => {
+    if (!node || embedded) return;
+    const ask = takeWatsonAsk();
+    if (ask) void send(ask.text, null, ask.delegated);
+  };
+  return <section ref={startWith} className={`assistant${embedded ? ' embedded' : ''}`} aria-labelledby="assistant-title">
     {listOpen && <aside className="assistant-list" aria-label="Conversaciones">
       <button className="button primary" onClick={fresh}>Conversación nueva</button>
       {listError ? <LoadError message={listError} onRetry={refreshList}/> : !conversations ? <Loading label="Cargando conversaciones" lines={4}/>
