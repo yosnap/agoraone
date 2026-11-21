@@ -54,7 +54,7 @@ class _JsonLines(logging.Formatter):
                 last = frames[-1]
                 message += f" (en {Path(last.filename).name}:{last.lineno}, {last.name})"
         source = getattr(record, "source", "núcleo")
-        area = getattr(record, "area", None) or record.name.removeprefix("agora_core").strip(".") or "núcleo"
+        area = getattr(record, "area", None) or record.name.removeprefix("agora_core").strip(".") or "general"
         entry = {
             "t": datetime.fromtimestamp(record.created, UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "level": record.levelname.lower() if record.levelname.lower() in LEVELS else "info",

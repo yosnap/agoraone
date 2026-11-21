@@ -13,7 +13,7 @@ const levels: Record<LogLevel, { label: string; icon: string }> = {
 const levelOptions = [{ value: 'info', label: 'Información y más' }, { value: 'warning', label: 'Avisos y errores' }, { value: 'error', label: 'Solo errores' }];
 const sourceOptions = [{ value: '', label: 'Todo' }, { value: 'núcleo', label: 'Núcleo' }, { value: 'interfaz', label: 'Interfaz' }];
 const when = (iso: string) => new Date(iso).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-const size = (bytes: number) => bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+const size = (bytes: number) => bytes < 1_000_000 ? `${Math.max(1, Math.round(bytes / 1000))} KB` : `${(bytes / 1_000_000).toLocaleString('es-ES', { maximumFractionDigits: 1 })} MB`;
 
 /** What happens in AgoraOne: start, warnings and errors of the core and of the interface (Ajustes › Registro). */
 export function LogCard() {
@@ -47,7 +47,7 @@ export function LogCard() {
     {error ? <LoadError message={error} onRetry={load}/> : !data ? <Loading label="Leyendo el registro" lines={4}/>
       : !data.entries.length ? <p className="muted">No hay entradas con estos filtros.</p>
       : <>
-        <p className="muted">{data.entries.length} entradas, de la más reciente a la más antigua · {size(data.bytes)} en disco.</p>
+        <p className="muted">{data.entries.length === 1 ? '1 entrada' : `${data.entries.length} entradas`}, de la más reciente a la más antigua · {size(data.bytes)} en disco.</p>
         <div className="log-table-wrap"><table className="data-table log-table">
           <thead><tr><th>Hora</th><th>Nivel</th><th>Origen</th><th>Área</th><th>Mensaje</th></tr></thead>
           <tbody>{data.entries.map((entry, index) => <tr key={`${entry.t}-${index}`}>
