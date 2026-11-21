@@ -6,6 +6,7 @@ export const releases: Release[] = [
     {"kind": "feature", "title": "Versión visible bajo el logo", "detail": "La barra lateral enseña la versión que estás usando."},
     {"kind": "improvement", "title": "Pestañas de Ajustes en una sola fila", "detail": "Se desplazan en horizontal en lugar de saltar de línea, y la elegida queda a la vista."},
     {"kind": "feature", "title": "Novedades", "detail": "Ajustes › Novedades reúne todas las versiones publicadas, cada una con sus cambios por tipo."},
+    {"kind": "feature", "title": "Registro de la app", "detail": "Ajustes › Registro enseña el arranque y los avisos y errores del núcleo y de la interfaz, con filtros. Archivo local rotativo de 5 MB como mucho, sin claves ni textos de correos o mensajes."},
     {"kind": "feature", "title": "Hoja de ruta", "detail": "Ajustes › Hoja de ruta enseña lo que viene: en curso, planificado y pensado."},
   ] },
   {"version": "1.9.0", "date": "2026-11-21", "title": "Watson en la web, Central y CRMDev, bots de Orca y Windows", "summary": "", "changes": [

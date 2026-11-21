@@ -671,3 +671,14 @@ export const createRepoNote = (note: { client: string; project: string; folder: 
   source?: { kind: 'mail' | 'chat'; id: number } }) =>
   core<{ repo: string; root: string; path: string }>('/orca/repo-note', note);
 export const launchOrca = (id: string) => core<{ name: string; surface: 'chat' | 'terminal' | null; repo: string; agentName: string }>('/orca/launch', { id });
+
+export type LogLevel = 'debug' | 'info' | 'warning' | 'error';
+export type LogEntry = { t: string; level: LogLevel; source: 'núcleo' | 'interfaz'; area: string; message: string };
+export const getLogs = (filter: { level?: LogLevel; q?: string; source?: LogEntry['source'] }) => {
+  const query = new URLSearchParams();
+  if (filter.level) query.set('level', filter.level);
+  if (filter.q?.trim()) query.set('q', filter.q.trim());
+  if (filter.source) query.set('source', filter.source);
+  return core<{ entries: LogEntry[]; bytes: number; maxBytes: number }>(`/logs?${query}`);
+};
+export const sendClientLog = (entry: { level: 'info' | 'warning' | 'error'; area: string; message: string }) => core<void>('/logs/client', entry, 'POST');

@@ -40,3 +40,15 @@
 .roadmap-items p { margin:4px 0 0; color:var(--c-355a50) }
 .about-kind.roadmap-doing { background:var(--c-dcebdc); color:var(--c-2d7a4f) }
 .about-kind.roadmap-planned { background:var(--c-e8eef3); color:var(--c-2c5170) }
+.log-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; margin:4px 0 12px }
+.log-filters .field { min-width:180px }
+.log-filters .log-search { flex:1 1 220px }
+.log-filters > .button { margin-left:4px }
+.log-table-wrap { overflow-x:auto; max-height:60vh; overflow-y:auto }
+.log-table td { vertical-align:top }
+.log-time { white-space:nowrap; font:12px ui-monospace,SFMono-Regular,Menlo,monospace }
+.log-area { white-space:nowrap; color:var(--c-6b7f74) }
+.log-message { word-break:break-word; font:12px ui-monospace,SFMono-Regular,Menlo,monospace }
+.about-kind.log-info { background:var(--c-e8eef3); color:var(--c-2c5170) }
+.about-kind.log-warning { background:var(--c-f3e6c4); color:var(--c-7a5717) }
+.about-kind.log-error { background:var(--c-f6ddd4); color:var(--c-8e3d2a) }
