@@ -17,13 +17,17 @@ The tax id and the postal address never go. A client of CRMDev that is not in Ce
 again, and a new client or project that appeared meanwhile is skipped. Writes go one after another with a pause that
 keeps within CRMDev's limit; when it still asks to wait (429, nothing written), the batch waits what it says and goes
 on, and only after minutes of waiting the rest stay unsent. Each creation is linked with its Central record afterwards. What
-CRMDev answers is data, never instructions."""
+CRMDev answers is data, never instructions.
+
+A batch goes to one organization (user's decision, 21/11/2026): the one chosen above «Desde Central», with its key.
+A warning of another organization is not sent; one without organization goes to this one, which is remembered for it
+once sent (`crmdev_orgs_assign`). A project's client in CRMDev is used only when it is in that same organization."""
 
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from . import central, clients, crmdev_api, crmdev_pending
+from . import central, clients, crmdev_api, crmdev_orgs, crmdev_orgs_assign, crmdev_pending
 from .crmdev_values import CLIENT_STATUS, PROJECT_STATUS
 from .web_api import Connection, WebApiError
 
@@ -67,10 +71,14 @@ class Batch:
     operations: list[Operation]
     skipped: list[dict]
     warnings: list[str] = field(default_factory=list)
+    org: str | None = None  # the organization it goes to
+    org_name: str | None = None
+    unplaced: set[str] = field(default_factory=set)  # keys without organization: it is remembered once sent
     target: str = "crmdev-batch"  # one batch at a time
 
     def public(self) -> dict:
-        return {"operations": [o.public() for o in self.operations], "skipped": self.skipped, "warnings": self.warnings}
+        return {"operations": [o.public() for o in self.operations], "skipped": self.skipped, "warnings": self.warnings,
+                "org": {"id": self.org, "name": self.org_name} if self.org else None}
 
 
 def _text(value) -> str | None:
@@ -128,8 +136,12 @@ def _description(project: dict, websites: list[dict]) -> str | None:
     return "\n".join(lines)[:4000]
 
 
-def plan(connection, target: Connection, keys: list[str], doubtful: Callable[[str], bool], anyway: set[str]) -> Batch:
-    """The exact operations for the ticked warnings, checked against CRMDev read now; what cannot go says why."""
+def plan(connection, target: Connection, keys: list[str], doubtful: Callable[[str], bool], anyway: set[str], org: str | None = None) -> Batch:
+    """The exact operations for the ticked warnings, checked against CRMDev read now (the organization `org`, whose
+    connection `target` is; the first one when none is said); what cannot go says why."""
+    org = org or crmdev_orgs.default(connection)
+    org_name = crmdev_orgs.name_of(connection, org)
+    unplaced: set[str] = set()
     found = {i["key"]: i for i in crmdev_pending.build(connection, include_dismissed=True)["items"]}
     snapshot = central.snapshot(connection) or {}
     c_clients = {c.get("id"): c for c in snapshot.get("clients") or []}
@@ -151,6 +163,9 @@ def plan(connection, target: Connection, keys: list[str], doubtful: Callable[[st
             continue
         if item["kind"] not in SENDABLE:
             skip(key, item["name"], "Un cliente de CRMDev se crea en Central, no se envía a CRMDev.")
+            continue
+        if item.get("org") and item["org"] != org:
+            skip(key, item["name"], f"Es de la organización «{crmdev_orgs.name_of(connection, item['org']) or item['org']}»: elígela arriba para enviarlo.")
             continue
         made: Operation | str
         if item["kind"] in ("client_missing", "contact_missing", "client_changed"):
@@ -205,6 +220,7 @@ def plan(connection, target: Connection, keys: list[str], doubtful: Callable[[st
             else:
                 client = project.get("client")
                 client_id = pairs.get(clients.same_name(client)) if client else None
+                client_id = client_id if client_id in r_client_by_id else None  # only a client of this same organization
                 websites = (by_name.get(clients.same_name(client)) or {}).get("websites") or [] if client else []
                 arguments = {k: v for k, v in {"name": project["name"], "description": _description(project, websites),
                                                "type": "GITHUB" if project.get("repo") else "OTHER",
@@ -229,12 +245,22 @@ def plan(connection, target: Connection, keys: list[str], doubtful: Callable[[st
                 continue
             warnings.append(f"«{item['name']}»: un envío anterior pudo crearlo ya; si sigues, puede quedar repetido.")
         operations.append(made)
+        if not item.get("org"):
+            unplaced.add(key)
     for op in operations:  # a project whose client is not created in this batch goes without it
         if op.client_name and clients.same_name(op.client_name) not in creating:
             op.client_name = None
             op.notes[-1] = "Su cliente no está en CRMDev ni en este envío: el proyecto queda sin cliente."
     operations.sort(key=lambda o: ORDER[o.kind])
-    return Batch(operations, skipped, warnings)
+    return Batch(operations, skipped, warnings, org, org_name, unplaced)
+
+
+def remember(connection, batch: Batch, results: list[dict]) -> None:
+    """The organization of what had none and went (or was already there) in this batch."""
+    done = {r["key"] for r in results if r.get("outcome") in ("sent", "already", "skipped")}
+    targets = [t for key in sorted(batch.unplaced & done) if (t := crmdev_orgs_assign.target_of(key))]
+    if targets and batch.org and crmdev_orgs.known(connection, batch.org):
+        crmdev_orgs_assign.assign(connection, targets, batch.org)
 
 
 def _patient(target: Connection, op: Operation, sleep: Callable[[float], None], waited: float) -> object:

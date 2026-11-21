@@ -1,7 +1,8 @@
 """HTTP routes of «Enviar a CRMDev» (`crmdev_batch`), in two steps like every change to CRMDev:
 
-- `POST /crmdev/batch/preview` `{keys, anyway?}`: the exact operations for the ticked warnings of «Pendiente en
-  CRMDev», read from CRMDev now, and what cannot go with its reason; with a single-use token valid 15 minutes.
+- `POST /crmdev/batch/preview` `{keys, anyway?, org?}`: the exact operations for the ticked warnings of «Pendiente en
+  CRMDev», read now from the organization `org` (the first one when none is said) with its own key, and what cannot go
+  with its reason; with a single-use token valid 15 minutes. The review says which organization it goes to.
 - `POST /crmdev/batch/confirm` `{token}`: reads CRMDev again and sends what still applies, one write after another.
   A batch is sent once: afterwards a new review is needed. Each creation is linked with its Central record after
   reading CRMDev again; the action log keeps only kinds and field names.
@@ -23,7 +24,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import clients, crmdev_api, crmdev_batch, crmdev_sync, modules, project_links, web_api
+from . import clients, crmdev_api, crmdev_batch, crmdev_orgs, crmdev_sync, modules, project_links, web_api
 from .confirmed_change import Pending, PendingChanges, Refused, Sentences
 from .db import DB_NAME, connect, now, transaction
 from .routes_crmdev_write import DOUBT_SECONDS, NOT_CONNECTED, OFF, STATUS_CODES, owner_of
@@ -36,6 +37,8 @@ UNKNOWN = "Ese envío ya se hizo: revisa lo pendiente otra vez."
 BUSY = "Hay otro envío a CRMDev en marcha: espera a que termine."
 MOVED = "La conexión con CRMDev ha cambiado desde la revisión: vuelve a revisar el envío."
 NOTHING = "Nada de lo marcado puede enviarse ahora."
+NO_ORG = "Esa organización ya no está: elige otra."
+ORG = r"^o[1-9][0-9]{0,3}$"
 TOKEN_SECONDS = 900
 LOG = logging.getLogger(__name__)
 
@@ -44,6 +47,7 @@ class BatchIn(BaseModel):
     model_config = {"extra": "forbid"}
     keys: list[str] = Field(min_length=1, max_length=500)
     anyway: list[str] = Field(default_factory=list, max_length=500)
+    org: str | None = Field(default=None, pattern=ORG)
 
 
 class ConfirmIn(BaseModel):
@@ -70,11 +74,15 @@ def crmdev_batch_router(settings: Settings, secrets) -> APIRouter:
     def failed(error: web_api.WebApiError) -> JSONResponse:
         return problem(STATUS_CODES.get(error.status, 502), str(error), error.status)
 
-    def prepare() -> tuple[bool, web_api.Connection | None]:
+    def prepare(org: str | None = None) -> tuple[bool, web_api.Connection | None]:
         with database() as connection:
             if not modules.state(connection)["crmdev"]:
                 return False, None
-            return True, crmdev_api.connection_of(connection, secrets)
+            return True, crmdev_orgs.connection_of(connection, secrets, org)
+
+    def known(org: str | None) -> bool:
+        with database() as connection:
+            return org is None or crmdev_orgs.known(connection, org)
 
     def is_doubtful(key: str) -> bool:
         cutoff = time.time() - DOUBT_SECONDS
@@ -91,15 +99,17 @@ def crmdev_batch_router(settings: Settings, secrets) -> APIRouter:
     async def preview(body: BatchIn):
         if any(not re.fullmatch(KEY, key) for key in [*body.keys, *body.anyway]):
             return problem(422, "Un aviso no es válido.", "invalid")
-        on, target = await run_in_threadpool(prepare)
+        on, target = await run_in_threadpool(prepare, body.org)
         if not on:
             return problem(404, OFF, "off")
+        if not await run_in_threadpool(known, body.org):
+            return problem(409, NO_ORG, "no_org")
         if target is None:
             return problem(409, NOT_CONNECTED, "not_connected")
 
         def plan():
             with database() as connection:
-                return crmdev_batch.plan(connection, target, body.keys, is_doubtful, set(body.anyway))
+                return crmdev_batch.plan(connection, target, body.keys, is_doubtful, set(body.anyway), body.org)
         try:
             batch = await run_in_threadpool(plan)
         except web_api.WebApiError as error:
@@ -116,7 +126,7 @@ def crmdev_batch_router(settings: Settings, secrets) -> APIRouter:
             return problem(refused.status, str(refused), refused.kind)
 
     async def send(token: str, entry: Pending[crmdev_batch.Batch]):
-        on, target = await run_in_threadpool(prepare)
+        on, target = await run_in_threadpool(prepare, entry.change.org)
         if not on or target is None:
             pending.drop(token)
             return problem(404, OFF, "off") if not on else problem(409, NOT_CONNECTED, "not_connected")
@@ -147,12 +157,12 @@ def crmdev_batch_router(settings: Settings, secrets) -> APIRouter:
                 if any(r.get("outcome") == "sent" for r in results):  # also a change: «Pendiente en CRMDev» shows what is now
                     try:
                         try:
-                            crmdev_sync.refresh(connection, target)
+                            crmdev_sync.refresh(connection, target, batch.org)
                         except web_api.WebApiError as error:  # right after a batch CRMDev may ask to wait: once
                             if error.status != "busy":
                                 raise
                             time.sleep(min(crmdev_batch.WAIT_CAP, max(1.0, crmdev_api.wait_seconds(target))))
-                            crmdev_sync.refresh(connection, target)
+                            crmdev_sync.refresh(connection, target, batch.org)
                     except web_api.WebApiError:
                         warning = "Enviado, pero no se pudo volver a leer CRMDev: pulsa «Actualizar CRMDev» para ver los enlaces."
                 for r in created:
@@ -163,6 +173,10 @@ def crmdev_batch_router(settings: Settings, secrets) -> APIRouter:
                             clients.set_pair_link(connection, r["centralId"], r["id"], "linked")
                     except (project_links.ProjectLinkError, clients.ClientError):
                         pass  # the same name pairs them on the next reading
+                try:
+                    crmdev_batch.remember(connection, batch, results)
+                except crmdev_orgs.OrgError:
+                    pass  # the organization was forgotten meanwhile: what went is still linked by the reading
                 with transaction(connection):
                     by_key = {o.key: o for o in batch.operations}
                     for r in results:

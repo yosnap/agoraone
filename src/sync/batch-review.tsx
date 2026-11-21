@@ -48,6 +48,7 @@ export function BatchReview({ dest, onClose, onDone }: { dest: BatchDest; onClos
   return <section className="card batch-review" aria-label={`Revisar el envío a ${dest.name}`}>
     <div className="card-head"><h3>{result ? `Envío a ${dest.name}` : `Revisa lo que se enviará a ${dest.name}`}</h3></div>
     {error && <LoadError message={error}/>}
+    {!result && shown?.org && <p className="sync-org">Se enviará a la organización de {dest.name} <strong>«{shown.org.name}»</strong>.</p>}
     {result ? <>
       <p role="status" className="task-done">{result.sent === 1 ? `Un cambio hecho en ${dest.name}.` : `${result.sent} cambios hechos en ${dest.name}.`}{result.warning ? ` ${result.warning}` : ''}</p>
       <table className="data-table"><thead><tr><th>Cambio</th><th>Resultado</th></tr></thead>

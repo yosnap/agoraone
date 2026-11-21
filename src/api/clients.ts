@@ -98,8 +98,13 @@ export type PendingItem = {
   /** project_missing: a CRMDev project whose name looks alike (link it in the project's record). */
   maybe?: string | null;
   changes?: PendingChange[];
+  /** The organization of CRMDev it is about: by its link, chosen by the user or its client's; null: none yet. */
+  org?: string | null; orgFrom?: 'link' | 'chosen' | 'client' | null;
 };
-export type CrmdevPending = { active: boolean; items: PendingItem[]; counts: Record<PendingKind, number>; dismissed: number; truncated: boolean };
+export type CrmdevPending = {
+  active: boolean; items: PendingItem[]; counts: Record<PendingKind, number>; dismissed: number; truncated: boolean;
+  orgs?: { id: string; name: string }[];
+};
 
 export const getCrmdevPending = (withDismissed = false) => core<CrmdevPending>(`/crmdev-pending${withDismissed ? '?all=true' : ''}`);
 /** «Descartar» with the signature it was shown with, or «Volver a mostrar» (null). */
@@ -109,11 +114,15 @@ export const dismissPending = (key: string, signature: string | null) => core<{ 
 export type BatchRow = { field: string; label: string; before: string | null; after: string | null };
 export type BatchOperation = { key: string; kind?: string; origin?: string; title: string; rows: BatchRow[]; notes?: string[] };
 export type BatchSkipped = { key: string; name: string; reason: string };
-export type BatchPreview = { token: string; operations: BatchOperation[]; skipped: BatchSkipped[]; warnings: string[] };
+export type BatchPreview = { token: string; operations: BatchOperation[]; skipped: BatchSkipped[]; warnings: string[]; org?: { id: string; name: string } | null };
 export type BatchOutcome = 'sent' | 'already' | 'conflict' | 'skipped' | 'unknown' | 'error' | 'waiting';
 export type BatchResult = { done: true; sent: number; results: { key: string; title: string; outcome: BatchOutcome; message?: string }[]; warning?: string };
 
-export const previewBatch = (keys: string[], anyway: string[] = []) => core<BatchPreview>('/crmdev/batch/preview', { keys, anyway });
+/** To one organization of CRMDev (`org`): what has none goes there and is remembered for it. */
+export const previewBatch = (keys: string[], anyway: string[] = [], org?: string) =>
+  core<BatchPreview>('/crmdev/batch/preview', { keys, anyway, ...(org ? { org } : {}) });
+/** Remembers the organization of clients and projects still missing in CRMDev (null forgets it); nothing goes to CRMDev. */
+export const assignCrmdevOrg = (keys: string[], org: string | null) => core<{ assigned: number }>('/crmdev/orgs/assign', { keys, org });
 export const confirmBatch = (token: string) => core<BatchResult>('/crmdev/batch/confirm', { token });
 
 /** Who writes or meets the user and is no client yet (only what is «normal»): never an address nor a number. */

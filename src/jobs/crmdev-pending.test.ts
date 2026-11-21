@@ -8,6 +8,7 @@ import { openCrmdevTab, takeCrmdevTab } from '../crmdev/use-crmdev-view';
 import { openCentralTab, takeCentralTab } from '../central/use-central-view';
 import { proposedFields } from '../assistant/crmdev-proposals';
 import { withCount } from '../shell/tab-counts';
+import { byOrg } from '../sync/crmdev-from-central';
 
 const item = (fields: Partial<PendingItem>): PendingItem => ({ key: 'k', kind: 'client_missing', name: 'Uno', signature: 'a'.repeat(64), dismissed: false, ...fields });
 
@@ -98,4 +99,16 @@ test('los contadores de las pestañas: «Nombre · número», «+» si CRMDev pu
   assert.equal(withCount('Tareas', 100, true), 'Tareas · 100+');
   assert.equal(withCount('Tickets', null), 'Tickets');
   assert.equal(withCount('Clientes', 0), 'Clientes · 0');
+});
+
+test('con varias organizaciones, «Desde Central» compara con la elegida y deja aparte lo que no tiene ninguna', () => {
+  const items = [item({ key: 'a', org: 'o1', orgFrom: 'link' }), item({ key: 'b', org: 'o2', orgFrom: 'chosen' }), item({ key: 'c', org: null })];
+  assert.deepEqual(byOrg(items, 'o1', true).mine.map(i => i.key), ['a']);
+  assert.deepEqual(byOrg(items, 'o1', true).unplaced.map(i => i.key), ['c']);
+  assert.deepEqual(byOrg(items, 'o2', true).mine.map(i => i.key), ['b']);
+  assert.deepEqual(byOrg(items, 'o1', false).mine.map(i => i.key), ['a', 'b', 'c'], 'con una sola, todo es de ella');
+  const list = readFileSync(new URL('../sync/crmdev-from-central.tsx', import.meta.url), 'utf8');
+  assert.match(list, /previewBatch\(reviewing\.items\.map\(i => i\.key\), anyway, reviewing\.org\)/);  // the review goes to the organization chosen when it opened
+  const review = readFileSync(new URL('../sync/batch-review.tsx', import.meta.url), 'utf8');
+  assert.match(review, /Se enviará a la organización de \{dest\.name\}/);
 });
