@@ -9,14 +9,19 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from agora_core import local_model, meeting_notes, system_audio, transcribe
+from agora_core import (
+    local_model,
+    meeting_notes,
+    system_audio,
+    system_words,
+    transcribe,
+)
 from agora_core.app import SECRET_HEADER, create_app
 from agora_core.keystore import MemoryStore
 from agora_core.settings import load_settings
 from tests.test_fiscal_excel import MemorySecrets
 from tests.test_meetings import HELPER
 from tests.test_voice import FFMPEG, _program, _whisper
-from agora_core import system_words
 
 SECRET, OWNER = "a" * 64, "b" * 64
 H = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}

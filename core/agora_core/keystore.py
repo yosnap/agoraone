@@ -13,6 +13,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
+
 from . import system_words
 
 if sys.platform == "win32":

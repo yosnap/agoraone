@@ -18,11 +18,10 @@ from contextlib import aclosing
 from datetime import UTC, datetime
 from pathlib import Path
 
-from . import local_model, transcribe
+from . import local_model, system_words, transcribe
 from .db import now, transaction
 from .engines import Engine, Turn, usable
 from .meetings import KINDS, names_of, people_of
-from . import system_words
 
 SETTING = "meetings"
 DEFAULTS = {"local_url": None, "local_model": None, "auto": True}

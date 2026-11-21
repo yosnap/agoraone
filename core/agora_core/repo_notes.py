@@ -10,9 +10,8 @@ import stat
 import subprocess
 import unicodedata
 
-from . import orca_launch
+from . import orca_launch, system_words
 from .github_issues import project_repo
-from . import system_words
 
 SUGGESTED = "docs/notas"
 SKIP = {"node_modules", "venv", "dist", "build", "target", "__pycache__", "vendor", "coverage", "out"}

@@ -9,6 +9,7 @@ from typing import Protocol
 from urllib.parse import urlparse
 
 import numpy as np
+
 from . import system_words
 
 DEFAULT_MODEL = "qwen3-embedding:0.6b"

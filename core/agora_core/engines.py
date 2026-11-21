@@ -21,6 +21,7 @@ from typing import Protocol
 from urllib.parse import urlparse
 
 import httpx
+
 from . import system_words
 
 MODELS = {"sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5", "fable": "claude-fable-5-2", "haiku": "claude-haiku-5-5"}
@@ -94,7 +95,13 @@ class ClaudeCodeEngine:
         )
 
     async def stream(self, turn: Turn) -> AsyncIterator[str | None]:
-        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, ToolUseBlock, query
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ResultMessage,
+            TextBlock,
+            ToolUseBlock,
+            query,
+        )
 
         # The child inherits this process's environment, from which scrub_api_keys() removed the API
         # variables at startup: an empty value would not do (an empty base URL breaks the connection).

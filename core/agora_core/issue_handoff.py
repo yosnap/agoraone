@@ -8,8 +8,14 @@ import re
 import sqlite3
 import subprocess
 
-from . import chat_inbox, coding_sessions, github_issues, orca_launch, repo_notes
-from . import system_words
+from . import (
+    chat_inbox,
+    coding_sessions,
+    github_issues,
+    orca_launch,
+    repo_notes,
+    system_words,
+)
 
 TITLE_CHARS = 200
 BODY_CHARS = 20_000

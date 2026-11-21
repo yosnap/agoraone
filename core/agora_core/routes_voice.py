@@ -9,10 +9,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
-from . import transcribe, tts
+from . import system_words, transcribe, tts
 from .db import DB_NAME, connect
 from .settings import Settings
-from . import system_words
 
 DICTATION_BYTES = 1024 * 1024  # what the server's proxy lets through: about a minute of compressed voice
 

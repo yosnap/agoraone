@@ -11,10 +11,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
-from . import calendar_edit, calendar_store, chat_inbox, mail_inbox
+from . import calendar_edit, calendar_store, chat_inbox, mail_inbox, system_words
 from .db import DB_NAME, connect
 from .settings import Settings
-from . import system_words
 
 Level = Literal["normal", "local_only", "private"]
 

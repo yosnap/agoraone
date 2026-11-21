@@ -8,12 +8,11 @@ import subprocess
 import pytest
 from fastapi.testclient import TestClient
 
-from agora_core import mail, modules, orca_launch
+from agora_core import mail, modules, orca_launch, system_words
 from agora_core.app import SECRET_HEADER, create_app
 from agora_core.db import DB_NAME, connect, migrate
 from agora_core.keystore import MemoryStore
 from agora_core.settings import load_settings
-from agora_core import system_words
 
 SECRET = "a" * 64
 OWNER, OTHER = "b" * 64, "c" * 64

@@ -8,8 +8,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from . import local_model, music_library, system_audio, transcribe
-from . import system_words
+from . import local_model, music_library, system_audio, system_words, transcribe
 
 HOME = Path.home()
 MAC, LINUX, WINDOWS = sys.platform == "darwin", sys.platform.startswith("linux"), sys.platform == "win32"

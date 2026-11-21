@@ -22,10 +22,9 @@ import threading
 import unicodedata
 from datetime import UTC, datetime, timedelta
 
-from . import chat_inbox, zernio
+from . import chat_inbox, system_words, zernio
 from .chat_sync import parse_moment
 from .db import now, transaction
-from . import system_words
 
 MAX_TEXT = 4096  # WhatsApp's limit for a text message
 WINDOW = timedelta(hours=24)

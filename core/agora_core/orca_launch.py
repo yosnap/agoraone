@@ -17,8 +17,8 @@ import subprocess
 import time
 import unicodedata
 
-from .github_issues import ISSUE_URL, project_repo, repos
 from . import system_words
+from .github_issues import ISSUE_URL, project_repo, repos
 
 AGENTS = {"claude": "Claude Code", "codex": "Codex"}
 TASK_CHARS = 4000

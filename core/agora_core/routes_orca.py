@@ -11,10 +11,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, StrictInt
 
-from . import chat_inbox, github_issues, modules, orca_launch, repo_notes
+from . import chat_inbox, github_issues, modules, orca_launch, repo_notes, system_words
 from .db import DB_NAME, connect
 from .settings import Settings
-from . import system_words
 
 _OWNER = re.compile(r"[a-f0-9]{64}")
 KEEP = 15 * 60

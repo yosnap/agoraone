@@ -10,11 +10,10 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictInt
 
-from . import chat_inbox, chat_send, zernio
+from . import chat_inbox, chat_send, system_words, zernio
 from .db import DB_NAME, connect
 from .drafting import DraftError, claude_drafter
 from .settings import Settings
-from . import system_words
 
 
 class ChatDraftIn(BaseModel):

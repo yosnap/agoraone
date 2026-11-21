@@ -10,11 +10,10 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
-from . import invoice_extract, mail, modules, note_sources, repo_notes
+from . import invoice_extract, mail, modules, note_sources, repo_notes, system_words
 from .db import DB_NAME, connect
 from .routes_mail import microsoft_login
 from .settings import Settings
-from . import system_words
 
 
 class SourceFile(BaseModel):

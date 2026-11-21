@@ -18,8 +18,8 @@ from pathlib import Path
 
 import httpx
 
-from .db import transaction
 from . import system_words
+from .db import transaction
 
 VOICESTUDIO = "http://127.0.0.1:3900"
 WATSON_PROFILE = "Watson (AgoraOne)"
