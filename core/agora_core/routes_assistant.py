@@ -106,7 +106,8 @@ def _logged(event: dict) -> tuple[str, str]:
     if event["tool"] == "rule_proposal":  # what kind of rule, not its sender or words
         return "proponer_regla", json.dumps({"action": event["rule"].get("action")}, ensure_ascii=False)
     if event["tool"] == "orca_proposal":  # which repository and agent, not the task
-        return "proponer_encargo_orca", json.dumps({"repositorio": event["proposal"].get("repo"), "agente": event["proposal"].get("agent")}, ensure_ascii=False)
+        return "proponer_encargo_orca", json.dumps({"repositorio": event["proposal"].get("repo"), "agente": event["proposal"].get("agent"),
+                                                    **({"bot": event["proposal"]["botName"]} if event["proposal"].get("botName") else {})}, ensure_ascii=False)
     if event["tool"] == "crmdev_read":  # which list and how many, never what it says
         return "consultar_crmdev", json.dumps({"que": event["what"], "cuantos": event["count"]}, ensure_ascii=False)
     if event["tool"] == "crmdev_proposal":  # which kind and which fields, never their values

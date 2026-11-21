@@ -330,3 +330,18 @@ def test_el_encargo_no_lleva_lineas_de_claves(database):
     assert "abcdef123456" not in plan["prompt"] and "Despliega\ny avisa" in plan["prompt"]
     found = orca_launch.propose(database, {"proyecto": "Web", "encargo": "Usa password: hunter22secreto\npara entrar"}, runner=FakeOrca())
     assert found["task"] == "para entrar"
+
+
+def test_watson_may_propose_a_bot_by_name_never_a_paused_or_unknown_one(database, monkeypatch):
+    from agora_core import orca_bots
+
+    monkeypatch.setattr(orca_bots, "bots", lambda runner=None: [{"id": "b1", "name": "Seguridad", "paused": False},
+                                                                {"id": "b2", "name": "Junior", "paused": True}])
+    found = orca_launch.propose(database, {"proyecto": "Web", "encargo": "Revisa el login", "bot": "seguridad", "tipo": "preguntar"}, runner=FakeOrca())
+    assert (found["bot"], found["botName"], found["kind"]) == ("b1", "Seguridad", "question")
+    assert orca_launch.propose(database, {"proyecto": "Web", "encargo": "x", "bot": "Seguridad"}, runner=FakeOrca())["kind"] == "handoff"
+    for name in ("Junior", "Inventado"):
+        with pytest.raises(orca_launch.OrcaError, match="«Seguridad»"):
+            orca_launch.propose(database, {"proyecto": "Web", "encargo": "x", "bot": name}, runner=FakeOrca())
+    with pytest.raises(orca_launch.OrcaError, match="encargar o preguntar"):
+        orca_launch.propose(database, {"proyecto": "Web", "encargo": "x", "bot": "Seguridad", "tipo": "borrar"}, runner=FakeOrca())

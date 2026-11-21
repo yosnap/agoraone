@@ -270,13 +270,17 @@ SPEC = {
     "description": ("Propone llevar un encargo a Orca: crear un espacio de trabajo nuevo en el repositorio de un proyecto de "
                     "Central y arrancar ahí Claude Code o Codex. Solo abre en la pantalla del usuario la tarjeta para revisarlo; "
                     "no se lanza nada hasta que él vea la vista previa exacta y pulse «Lanzar en Orca». Úsala solo cuando él lo "
-                    "pida. Escribe el encargo en pocas frases claras, sin contraseñas ni datos privados."),
+                    "pida. Escribe el encargo en pocas frases claras, sin contraseñas ni datos privados. En vez de un agente nuevo puede "
+                    "ir a uno de los bots del usuario en Orca (uno por oficio: seguridad, desarrollo, revisión, soporte…): di su nombre "
+                    "en «bot» y si se lo encargas o le preguntas; tampoco se envía nada hasta que él pulse «Enviar a <bot>»."),
     "schema": {"type": "object", "properties": {
         "proyecto": {"type": "string", "description": "Proyecto de Central."},
         "cliente": {"type": "string", "description": "Cliente del proyecto, si hay varios proyectos con ese nombre (opcional)."},
         "encargo": {"type": "string", "description": "Qué debe hacer el agente en el repositorio."},
         "agente": {"type": "string", "enum": list(AGENTS), "description": "claude (Claude Code, por defecto) o codex."},
-        "issue": {"type": "string", "description": "URL de una issue de ese repositorio que deba resolver (opcional)."}},
+        "issue": {"type": "string", "description": "URL de una issue de ese repositorio que deba resolver (opcional)."},
+        "bot": {"type": "string", "description": "Nombre de un bot de Orca al que enviarlo en vez de a un agente nuevo (opcional)."},
+        "tipo": {"type": "string", "enum": ["encargar", "preguntar"], "description": "Con «bot»: encargar (se queda con el trabajo, por defecto) o preguntar."}},
         "required": ["proyecto", "encargo"]},
 }
 
@@ -301,7 +305,21 @@ def propose(connection: sqlite3.Connection, args: dict, runner=subprocess.run) -
         raise OrcaError("Hay varios proyectos con ese nombre: di el cliente." if found
                         else "Ese proyecto no está en Central con un repositorio que ya esté en Orca.")
     issue = _issue(args["issue"], found[0]["repo"])["url"] if args.get("issue") else None
-    return {**found[0], "task": task, "agent": agent, "issue": issue}
+    proposal = {**found[0], "task": task, "agent": agent, "issue": issue}
+    if args.get("bot"):
+        from . import orca_bots
+
+        name = " ".join(str(args["bot"]).split()).casefold()
+        usable = [b for b in orca_bots.bots(runner) if not b["paused"]]
+        bot = next((b for b in usable if b["name"].casefold() == name), None)
+        if bot is None:
+            names = ", ".join(f"«{b['name']}»" for b in usable) or "ninguno activo"
+            raise OrcaError(f"Ese bot no está en Orca o está en pausa. Los bots activos son: {names}.")
+        kind = {"encargar": "handoff", "preguntar": "question"}.get(str(args.get("tipo") or "encargar"))
+        if kind is None:
+            raise OrcaError("Con un bot, «tipo» es encargar o preguntar.")
+        proposal.update(bot=bot["id"], botName=bot["name"], kind=kind)
+    return proposal
 
 
 def launch(plan: dict, runner=subprocess.run) -> dict:

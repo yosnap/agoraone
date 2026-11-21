@@ -20,9 +20,9 @@ export function useOrcaProposals() {
 export function OrcaProposals({ state }: { state: ReturnType<typeof useOrcaProposals> }) {
   if (!state.list.length) return null;
   return <>{state.list.map(({ key, proposal }) => <article key={key} className="card note-proposal" aria-label="Encargo propuesto para Orca">
-    <strong>Encargo propuesto para Orca</strong>
+    <strong>{proposal.botName ? `Encargo propuesto para el bot «${proposal.botName}»` : 'Encargo propuesto para Orca'}</strong>
     <small>En {proposal.repo} · {proposal.client} › {proposal.project}{proposal.issue ? ` · ${proposal.issue}` : ''}</small>
-    <OrcaLaunch choices={[proposal]} project={proposal.project} task={proposal.task} agent={proposal.agent}
+    <OrcaLaunch choices={[proposal]} project={proposal.project} task={proposal.task} agent={proposal.agent} bot={proposal.bot} kind={proposal.kind}
       source={proposal.issue ? { kind: 'issue', url: proposal.issue } : { kind: 'project' }} onClose={() => state.close(key)}/>
   </article>)}</>;
 }
