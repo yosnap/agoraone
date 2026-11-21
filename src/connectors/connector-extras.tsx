@@ -5,6 +5,7 @@ import { isCrmdevProbe } from '../api/crmdev';
 import type { Section } from '../shell/shell-state';
 import { Loading, LoadError } from '../ui/load-state';
 import { ActionButton } from '../ui/action-button';
+import { CrmdevOrgs } from './crmdev-orgs';
 
 // What a connector adds to its card beyond the common skeleton, by id. A new connector without extras adds nothing.
 
@@ -44,7 +45,7 @@ const crmdevTools: Record<string, string> = {
 };
 
 /** CRMDev: where the organization key is created and, after «Probar», what AgoraOne reads with it. */
-export function CrmdevTools({ tested }: ExtraProps) {
+export function CrmdevTools({ tested, connector }: ExtraProps) {
   return <>
     <p>La clave de organización se crea en <strong>Ajustes › API Keys</strong> de CRMDev (solo propietarios y administradores). AgoraOne lee
       proyectos, tareas, tickets, clientes y miembros; crea o cambia tareas, clientes, proyectos y tickets solo después de enseñarte el cambio
@@ -63,6 +64,7 @@ export function CrmdevTools({ tested }: ExtraProps) {
         </li>)}
       </ul> : <p className="muted">CRMDev no ofrece ninguna de las consultas que usa AgoraOne.</p>}
     </div>}
+    {connector.state.status === 'saved' && <CrmdevOrgs/>}
   </>;
 }
 

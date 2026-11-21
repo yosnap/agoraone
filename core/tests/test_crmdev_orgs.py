@@ -90,3 +90,37 @@ def test_forgetting_crmdev_or_moving_its_address_drops_the_other_keys(world):
     assert secrets.values[crmdev_orgs.secret_of("o2")] == OTHER
     adapter.forget(connection, secrets)
     assert crmdev_api.SECRET not in secrets.values and crmdev_orgs.secret_of("o2") not in secrets.values
+
+
+def test_routes_never_answer_a_key(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from test_central_api import HEADERS, app_with
+    from test_crmdev_write import StatefulCrmdev
+    import httpx
+
+    settings, app = app_with(tmp_path, MemorySecrets())
+    fake = StatefulCrmdev()
+    import agora_core.crmdev_api as api
+    old = api.TRANSPORT
+    api.TRANSPORT = httpx.MockTransport(fake)
+    try:
+        with TestClient(app, base_url=f"http://{settings.authority}") as client:
+            assert client.put("/connectors/crmdev", json={"url": URL, "key": KEY}, headers=HEADERS).status_code == 200
+            assert client.put("/modules", json={"modules": {"crmdev": True}}, headers=HEADERS).status_code == 200
+            listed = client.get("/crmdev/orgs", headers=HEADERS).json()
+            assert [(o["id"], o["name"], o["hasKey"]) for o in listed["orgs"]] == [("o1", "Organización 1", True)]
+            added = client.post("/crmdev/orgs", json={"name": "Codeia", "key": OTHER}, headers=HEADERS)
+            assert added.status_code == 200 and added.json()["added"] == "o2"
+            assert "warning" in added.json()  # the stand-in only knows the first key: said, not hidden
+            assert client.patch("/crmdev/orgs/o1", json={"name": "Personal"}, headers=HEADERS).json()["orgs"][0]["name"] == "Personal"
+            assert client.post("/crmdev/orgs/o1/test", headers=HEADERS).status_code == 200
+            assert client.post("/crmdev/orgs/o9/test", headers=HEADERS).status_code == 404
+            assert client.post("/crmdev/orgs", json={"name": "Mala", "key": "x"}, headers=HEADERS).status_code == 422
+            gone = client.delete("/crmdev/orgs/o2", headers=HEADERS).json()
+            assert [o["id"] for o in gone["orgs"]] == ["o1"]
+            for answer in (listed, added.json(), gone):
+                assert "crm_" not in json.dumps(answer)
+    finally:
+        api.TRANSPORT = old
+        crmdev_api.clear_cache()

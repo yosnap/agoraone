@@ -13,3 +13,11 @@
 .connector-extra { display:flex; flex-direction:column; gap:10px; overflow-x:auto }
 .connector-extra h3 { font:600 14px Manrope,sans-serif; margin:0 }
 .connector-modules { border-top:1px solid var(--c-edf0e8); padding-top:4px }
+
+/* CRMDev's organizations: one row each (name, key, last reading, actions) and the form to add one. */
+.crmdev-orgs { display:flex; flex-direction:column; gap:10px; margin-top:6px }
+.crmdev-orgs h3 { margin:0; font-size:14px }
+.crmdev-org { align-items:center; gap:12px }
+.crmdev-org .actions { flex-wrap:wrap; justify-content:flex-end }
+.crmdev-org-edit, .crmdev-org-add { align-items:flex-end; gap:12px; flex-wrap:wrap; width:100% }
+.crmdev-org-edit .field, .crmdev-org-add .field { flex:1 1 220px }
