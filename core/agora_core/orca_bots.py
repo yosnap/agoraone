@@ -167,3 +167,73 @@ def create(connection: sqlite3.Connection, runner=subprocess.run, sleep=time.sle
             return found
         sleep(0.5)
         waited += 0.5
+
+
+# ---- Errands to a bot (two steps: the exact text, then «Enviar a <bot>») ----
+
+KINDS = {"handoff": "Encargar", "question": "Preguntar"}
+UNSURE = "Orca no confirmó el envío: mira en Orca, en los chats del bot, antes de repetirlo."
+
+
+class UnsureSend(OrcaError):
+    """The send may have reached the bot: never «nothing was sent»."""
+SUBJECT_CHARS = 120
+MESSAGE_ID = re.compile(r"^msg_[A-Za-z0-9_-]{4,72}$")
+
+
+def _subject(project: str, task: str) -> str:
+    first = next((line.strip() for line in task.splitlines() if line.strip()), "Encargo")
+    return f"{project}: {first}"[:SUBJECT_CHARS]
+
+
+def preview(connection: sqlite3.Connection, args: dict, runner=subprocess.run, secrets_store=None) -> dict:
+    """The exact errand for a bot: the project's checks, source and fenced text are those of a launch in Orca
+    (`orca_launch.preview`: Central's repository already in Orca, nothing private nor «solo en este Mac»), plus the bot,
+    the kind and the repository it must work in. Nothing is sent here."""
+    kind = args.get("kind")
+    if kind not in KINDS:
+        raise OrcaError("Elige «Encargar» o «Preguntar».")
+    ready(runner)
+    bot = next((b for b in bots(runner) if b["id"] == args.get("bot")), None)
+    if bot is None:
+        raise OrcaError("Ese bot ya no está en Orca.")
+    if bot["paused"]:
+        raise OrcaError(f"«{bot['name']}» está en pausa en Orca.")
+    handle(connection, runner)  # refused without a ready mailbox, before anything else
+    launch = orca_launch.preview(connection, {**args, "agent": "claude"}, runner, secrets_store)
+    body = "\n".join([launch["prompt"], "",
+                      f"Repositorio de GitHub: {launch['repo']} (en Orca, el proyecto «{launch['orcaName']}»). Si hay que tocar código, "
+                      "hazlo en un espacio de trabajo nuevo de ese repositorio y nunca en otro; sigue los flujos y las normas del propio repositorio.",
+                      "Responde en español de España."])
+    return {"bot": {"id": bot["id"], "name": bot["name"], "agent": bot["agent"]}, "kind": kind, "kindLabel": KINDS[kind],
+            "client": launch["client"], "project": launch["project"], "repo": launch["repo"], "orcaName": launch["orcaName"],
+            "source": launch["source"], "subject": _subject(launch["project"], str(args.get("task") or "")), "body": body}
+
+
+def send(connection: sqlite3.Connection, plan: dict, runner=subprocess.run, secrets_store=None) -> dict:
+    """«Enviar a <bot>»: checks again what may have changed since the preview and sends it once, from the mailbox, to a
+    new chat of the bot (never its Home chat). Keeps what identifies it, never its text."""
+    from .db import now, transaction
+
+    source = plan.get("source") or {}
+    orca_launch.recheck(connection, {**plan, "source": source}, secrets_store)
+    mailbox = handle(connection, runner)
+    if not any(b["id"] == plan["bot"]["id"] and not b["paused"] for b in bots(runner)):
+        raise OrcaError("Ese bot ya no está en Orca o está en pausa.")
+    try:
+        sent = orca_launch._run(["orchestration", "send", f"--from={mailbox}", f"--to=bot:{plan['bot']['id']}", "--chat=new",
+                                 f"--type={plan['kind']}", f"--subject={plan['subject']}", f"--body={plan['body']}"], runner, 30)
+    except OrcaError as error:
+        raise UnsureSend(UNSURE) from error
+    message_id = sent.get("messageId")
+    if not isinstance(message_id, str) or not MESSAGE_ID.fullmatch(message_id):
+        raise UnsureSend(UNSURE)
+    with transaction(connection):
+        connection.execute("INSERT INTO orca_bot_request (message_id, bot_id, bot_name, kind, subject, client, project, repo, source_kind, created_at) "
+                           "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                           (message_id, plan["bot"]["id"], plan["bot"]["name"], plan["kind"], plan["subject"], plan["client"], plan["project"],
+                            plan["repo"], source.get("kind") or "project", now()))
+        connection.execute("INSERT INTO action_log (occurred_at, actor, action, outcome, detail) VALUES (?, 'user', 'orca.bot', 'done', ?)",
+                           (now(), json.dumps({"bot": plan["bot"]["name"], "tipo": plan["kind"], "proyecto": plan["project"],
+                                               "origen": source.get("kind") or "project"}, ensure_ascii=False)))
+    return {"messageId": message_id, "bot": plan["bot"]["name"], "kind": plan["kind"]}

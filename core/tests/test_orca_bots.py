@@ -50,6 +50,10 @@ class FakeOrca:
             self.terminals[H1] = {"handle": H1, "tabId": "tab1", "title": "zsh", "connected": True}  # the shell starts first
             self.starting = 2
             result = {"terminal": {"handle": H1, "tabId": "tab1"}}
+        elif args[:2] == ["orchestration", "send"]:
+            if getattr(self, "send_fails", False):
+                return subprocess.CompletedProcess(argv, 1, "", "timeout")
+            result = {"messageId": "msg_abc123def456"}
         else:
             raise AssertionError(f"orden inesperada: {args}")
         return subprocess.CompletedProcess(argv, 0, json.dumps({"ok": True, "result": result}), "")
@@ -137,3 +141,57 @@ def test_with_the_module_off_orca_is_not_asked(tmp_path, monkeypatch):
         assert client.get("/orca/bots", headers=HEADERS).json()["on"] is False
         assert client.post("/orca/mailbox", headers=HEADERS).status_code == 404
     assert orca.calls == []
+
+
+LAUNCH = {"client": "Acme", "project": "Web", "repo": "acme/web", "orcaName": "Web de Acme", "source": {"kind": "mail", "id": 7},
+          "prompt": "Arregla el menú\n\nProyecto «Web» de Central (cliente «Acme»), enviado desde AgoraOne."}
+
+
+@pytest.fixture
+def launch(monkeypatch):
+    checks = []
+    monkeypatch.setattr(orca_launch, "preview", lambda _c, args, runner=None, secrets_store=None: {**LAUNCH, "task": args["task"]})
+    monkeypatch.setattr(orca_launch, "recheck", lambda _c, plan, secrets_store=None: checks.append(plan["source"]))
+    return checks
+
+
+def errand(**extra):
+    return {"client": "Acme", "project": "Web", "task": "Arregla el menú\ncon cuidado", "bot": "b1", "kind": "handoff", **extra}
+
+
+def test_an_errand_is_previewed_exactly_and_sent_once_to_a_new_chat(database, launch):
+    orca = FakeOrca()
+    with pytest.raises(OrcaError, match="buzón"):
+        orca_bots.preview(database, errand(), orca)  # without a mailbox nothing is even previewed
+    orca_bots.create(database, orca, sleep=lambda _s: None)
+    plan = orca_bots.preview(database, errand(), orca)
+    assert plan["bot"]["name"] == "Seguridad" and plan["subject"] == "Web: Arregla el menú"
+    assert plan["body"].startswith(LAUNCH["prompt"]) and "acme/web" in plan["body"]
+    assert not any(c[:2] == ["orchestration", "send"] for c in orca.calls), "la vista previa no envía"
+    done = orca_bots.send(database, plan, orca)
+    sent = [c for c in orca.calls if c[:2] == ["orchestration", "send"]]
+    assert len(sent) == 1 and done["messageId"] == "msg_abc123def456"
+    assert f"--from={H1}" in sent[0] and "--to=bot:b1" in sent[0] and "--chat=new" in sent[0] and "--type=handoff" in sent[0]
+    assert f"--body={plan['body']}" in sent[0] and launch == [{"kind": "mail", "id": 7}]  # the source was checked again
+    row = database.execute("SELECT bot_name, kind, subject, source_kind FROM orca_bot_request").fetchone()
+    assert tuple(row) == ("Seguridad", "handoff", "Web: Arregla el menú", "mail")
+    logged = database.execute("SELECT detail FROM action_log WHERE action = 'orca.bot'").fetchone()[0]
+    assert "menú" not in logged.replace("Web", "")  # the log keeps who and where, never the text
+
+
+def test_a_paused_unknown_bot_or_odd_kind_is_refused(database, launch):
+    orca = FakeOrca()
+    orca_bots.create(database, orca, sleep=lambda _s: None)
+    for args, said in ((errand(bot="b2"), "pausa"), (errand(bot="b9"), "ya no está"), (errand(kind="borrar"), "Encargar")):
+        with pytest.raises(OrcaError, match=said):
+            orca_bots.preview(database, args, orca)
+
+
+def test_a_send_orca_did_not_confirm_is_never_said_unsent(database, launch):
+    orca = FakeOrca()
+    orca_bots.create(database, orca, sleep=lambda _s: None)
+    plan = orca_bots.preview(database, errand(), orca)
+    orca.send_fails = True
+    with pytest.raises(orca_bots.UnsureSend, match="antes de repetirlo"):
+        orca_bots.send(database, plan, orca)
+    assert database.execute("SELECT COUNT(*) FROM orca_bot_request").fetchone()[0] == 0
