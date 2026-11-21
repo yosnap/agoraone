@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { launchOrca, previewOrca, type OrcaAgent, type OrcaPreview, type OrcaProject, type OrcaSource } from '../api/core';
 import { LoadError } from '../ui/load-state';
+import { previewBotErrand, sendBotErrand, type BotErrandKind, type BotErrandPreview } from '../api/orca-bots';
+import { BotErrandFacts, BotErrandFields } from './orca-bot-errand';
 import { ModernSelect } from '../ui/modern-select';
 import './orca.css';
 
@@ -9,7 +11,8 @@ const message = (failure: unknown, fallback: string) => failure instanceof Error
 
 /** Shared launch card of the Orca module: the user picks the project and the agent and writes the task, then sees
  * exactly which repository, agent and instructions will run; only «Lanzar en Orca» creates a new workspace there
- * with the agent started. Changing anything means a new preview. */
+ * with the agent started. Or, instead of a new agent, one of the user's bots of Orca: the exact text goes to a new
+ * chat of the bot only with «Enviar a <bot>». Changing anything means a new preview. */
 const keyOf = (c: OrcaProject) => JSON.stringify([c.client, c.project]);
 
 export function OrcaLaunch({ choices, client, project: first, source, task: initialTask, agent: firstAgent = 'claude', onClose }: {
@@ -19,6 +22,11 @@ export function OrcaLaunch({ choices, client, project: first, source, task: init
   const [agent, setAgent] = useState<OrcaAgent>(firstAgent);
   const [task, setTask] = useState(initialTask);
   const [preview, setPreview] = useState<OrcaPreview | null>(null);
+  const [to, setTo] = useState<'agent' | 'bot'>('agent');
+  const [bot, setBot] = useState('');
+  const [kind, setKind] = useState<BotErrandKind>('handoff');
+  const [botReady, setBotReady] = useState(false);
+  const [botPreview, setBotPreview] = useState<BotErrandPreview | null>(null);
   const [done, setDone] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -29,7 +37,10 @@ export function OrcaLaunch({ choices, client, project: first, source, task: init
   const prepare = async () => {
     if (!chosen) return;
     setBusy(true); setError('');
-    try { setPreview(await previewOrca({ client: chosen.client, project: chosen.project, task, agent, source })); }
+    try {
+      if (to === 'bot') setBotPreview(await previewBotErrand({ client: chosen.client, project: chosen.project, task, bot, kind, source }));
+      else setPreview(await previewOrca({ client: chosen.client, project: chosen.project, task, agent, source }));
+    }
     catch (failure) { setError(message(failure, 'No se pudo preparar la vista previa.')); }
     finally { setBusy(false); }
   };
@@ -46,9 +57,32 @@ export function OrcaLaunch({ choices, client, project: first, source, task: init
     } finally { setBusy(false); }
   };
 
+  const sendToBot = async () => {
+    if (!botPreview) return;
+    setBusy(true); setError('');
+    try {
+      const sent = await sendBotErrand(botPreview.id);
+      setDone(`Enviado a «${sent.bot}» en un chat nuevo. Su respuesta llegará al buzón de AgoraOne; también la ves en Orca, en los chats del bot.`);
+    } catch (failure) {
+      setBotPreview(null);  // used up either way
+      setError(message(failure, 'No se pudo enviar al bot.'));
+    } finally { setBusy(false); }
+  };
+
   if (done) return <div className="orca-launch" role="status">
     <p className="ok-note" tabIndex={-1} ref={focus}>{done}</p>
     <div className="orca-actions"><button type="button" className="button" onClick={onClose}>Cerrar</button></div>
+  </div>;
+
+  if (botPreview) return <div className="orca-launch" role="region" aria-label="Vista previa del envío al bot">
+    <strong tabIndex={-1} ref={focus}>Vista previa: esto es exactamente lo que se enviará</strong>
+    <BotErrandFacts preview={botPreview}/>
+    {error && <LoadError message={error}/>}
+    <div className="orca-actions">
+      <button type="button" className="button primary" disabled={busy} onClick={() => void sendToBot()}>{busy ? 'Enviando…' : `Enviar a ${botPreview.bot.name}`}</button>
+      <button type="button" className="button" disabled={busy} onClick={() => setBotPreview(null)}>Cambiar</button>
+      <button type="button" className="button" disabled={busy} onClick={onClose}>Cancelar</button>
+    </div>
   </div>;
 
   if (preview) return <div className="orca-launch" role="region" aria-label="Vista previa del lanzamiento en Orca">
@@ -76,10 +110,14 @@ export function OrcaLaunch({ choices, client, project: first, source, task: init
       {choices.length > 1 ? <label className="field">Proyecto<ModernSelect value={project} onChange={setProject} disabled={busy}
         options={choices.map(c => ({ value: keyOf(c), label: `${c.client} › ${c.project} · ${c.repo}` }))}/></label>
         : <div className="field">Proyecto<span className="orca-fixed">{chosen ? `${chosen.project} · ${chosen.repo}` : '—'}</span></div>}
-      <div className="field">Agente<div className="segmented" role="group" aria-label="Agente">{agents.map(a =>
-        <button type="button" key={a.value} aria-pressed={agent === a.value} onClick={() => setAgent(a.value)}>{a.label}</button>)}</div></div>
+      <div className="field">Destino<div className="segmented" role="group" aria-label="Destino">
+        <button type="button" aria-pressed={to === 'agent'} onClick={() => setTo('agent')}>Agente nuevo</button>
+        <button type="button" aria-pressed={to === 'bot'} onClick={() => setTo('bot')}>Bot</button></div></div>
+      {to === 'agent' && <div className="field">Agente<div className="segmented" role="group" aria-label="Agente">{agents.map(a =>
+        <button type="button" key={a.value} aria-pressed={agent === a.value} onClick={() => setAgent(a.value)}>{a.label}</button>)}</div></div>}
     </div>
-    <label className="field">Encargo para el agente<textarea value={task} rows={5} maxLength={4000} required placeholder="Qué quieres que haga en el repositorio"
+    {to === 'bot' && <BotErrandFields bot={bot} onBot={setBot} kind={kind} onKind={setKind} onReady={setBotReady}/>}
+    <label className="field">{to === 'bot' ? (kind === 'question' ? 'Pregunta para el bot' : 'Encargo para el bot') : 'Encargo para el agente'}<textarea value={task} rows={5} maxLength={4000} required placeholder="Qué quieres que haga en el repositorio"
       onChange={event => setTask(event.target.value)}/></label>
     </fieldset>
     {(source.kind === 'mail' || source.kind === 'note' || source.kind === 'chat') && <p className="muted">{{ mail: 'El correo', note: 'La nota (sin las líneas que parecen claves)',
@@ -87,7 +125,7 @@ export function OrcaLaunch({ choices, client, project: first, source, task: init
     {source.kind === 'issue' && <p className="muted">El agente leerá la issue con tu GitHub CLI y el espacio quedará enlazado a ella.</p>}
     {error && <LoadError message={error}/>}
     <div className="orca-actions">
-      <button type="submit" className="button primary" disabled={busy || !chosen || !task.trim()}>{busy ? 'Preparando…' : 'Ver la vista previa'}</button>
+      <button type="submit" className="button primary" disabled={busy || !chosen || !task.trim() || (to === 'bot' && (!botReady || !bot))}>{busy ? 'Preparando…' : 'Ver la vista previa'}</button>
       <button type="button" className="button" disabled={busy} onClick={onClose}>Cancelar</button>
     </div>
   </form>;
