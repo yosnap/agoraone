@@ -1,8 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'node:fs';
+
+// The version shown under the logo and in Novedades comes from package.json, the one the version bump updates.
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 
 export default defineConfig({
   plugins: [react()],
+  define: { __APP_VERSION__: JSON.stringify(version) },
   // Scan every source file at start-up, lazy ones included (the brain's 3D graph, the editor), so their
   // dependencies are pre-bundled before the first page asks for them. Otherwise Vite finds three.js late,
   // re-bundles it and the page that was already loading it gets «504 Outdated Optimize Dep» and goes blank.
