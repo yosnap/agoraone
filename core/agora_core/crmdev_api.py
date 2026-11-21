@@ -40,9 +40,10 @@ READ_TOOLS = frozenset({"list_projects", "list_tasks", "list_clients", "list_tic
 # What AgoraOne may create or change, only from a form or a list the user confirms (crmdev_write, crmdev_batch); never
 # `delete_*` nor `create_ticket` (tickets come from clients). `create_project` only for a project of Central sent with
 # «Enviar a CRMDev» (user's decision, 20/11/2026: Central is the source and CRMDev follows it).
-WRITE_TOOLS = frozenset({"create_task", "update_task", "create_project", "update_project", "create_client", "update_client", "update_ticket"})
+WRITE_TOOLS = frozenset({"create_task", "update_task", "create_project", "update_project", "create_client", "update_client", "update_ticket",
+                         "reply_ticket"})
 # Tools that also need a module of the organization's plan, which only a call reveals.
-MODULE_TOOLS = frozenset({"list_tickets", "update_ticket"})
+MODULE_TOOLS = frozenset({"list_tickets", "update_ticket", "reply_ticket"})
 NOT_ALLOWED = "Herramienta de CRMDev no permitida."
 FORBIDDEN = "La clave no vale o tu plan de CRMDev no incluye la API (módulo MCP)."
 BUSY = "CRMDev pide esperar unos segundos (demasiadas peticiones seguidas): vuelve a intentarlo en un momento."
@@ -96,6 +97,12 @@ def _one_of(options: tuple[str, ...]) -> Callable[[object], str]:
     return check
 
 
+def _flag(value: object) -> bool:
+    if not isinstance(value, bool):
+        raise WebApiError("invalid", "Un valor para CRMDev no es válido.")
+    return value
+
+
 def _words(limit: int, lines: bool = False, empty: bool = False) -> Callable[[object], object]:
     """A text as crmdev_write leaves it (trimmed, within its limit, no control characters); None only where CRMDev
     empties the field with it. Answered unchanged, so the transport's last check sees the same body."""
@@ -146,9 +153,12 @@ ARGUMENTS: dict[str, dict[str, Callable[[object], object]]] = {
                       "status": _one_of(STATUSES["list_clients"])},
     "update_ticket": {"ticketId": _id, "status": _one_of(STATUSES["list_tickets"]), "priority": _one_of(PRIORITIES),
                       "category": _one_of(CATEGORIES)},
+    # A reply to a ticket (a comment): a note only the team sees (`isInternal`) or an answer the client reads.
+    "reply_ticket": {"ticketId": _id, "content": _words(2000, lines=True), "isInternal": _flag},
 }
 REQUIRED = {"get_project_time_report": ("projectId",), "create_task": ("title",), "create_project": ("name",), "update_task": ("taskId",),
-            "update_project": ("projectId",), "create_client": ("name",), "update_client": ("clientId",), "update_ticket": ("ticketId",)}
+            "update_project": ("projectId",), "create_client": ("name",), "update_client": ("clientId",), "update_ticket": ("ticketId",),
+            "reply_ticket": ("ticketId", "content", "isInternal")}
 
 
 def checked_arguments(tool: str, arguments: object) -> dict:

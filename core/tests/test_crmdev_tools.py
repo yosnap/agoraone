@@ -128,3 +128,15 @@ def test_off_and_only_with_claude(box, monkeypatch):
     monkeypatch.setattr(crmdev_sync, "active", lambda _c: False)
     assert "no está conectado" in run(box, "consultar_crmdev", {"que": "tareas"})["error"]
     assert crmdev_tools.NAMES == ("consultar_crmdev", "proponer_cambio_crmdev")
+
+
+def test_a_reply_to_a_ticket_seen_says_who_reads_it(box):
+    assert "error" in run(box, "proponer_cambio_crmdev", {"tipo": "respuesta_ticket", "id": "k1", "respuesta": "Hola", "interna": True})
+    run(box, "consultar_crmdev", {"que": "tickets"})
+    box.drain()
+    assert "nota interna" in run(box, "proponer_cambio_crmdev", {"tipo": "respuesta_ticket", "id": "k1", "respuesta": "Hola"})["error"]
+    assert "error" in run(box, "proponer_cambio_crmdev", {"tipo": "respuesta_ticket", "id": "k1", "respuesta": "", "interna": False})
+    run(box, "proponer_cambio_crmdev", {"tipo": "respuesta_ticket", "id": "k1", "respuesta": "Ya está arreglado.", "interna": False})
+    request = box.drain()[0]["proposal"]["request"]
+    assert request == {"kind": "respuesta-ticket", "id": "k1", "list": {}, "content": "Ya está arreglado.", "internal": False, "org": "o1"}
+    assert box.sent == ["list_tickets"]  # nothing written

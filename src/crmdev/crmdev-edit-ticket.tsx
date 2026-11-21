@@ -4,6 +4,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { CrmdevReview, EditActions, Gone, reviewing } from './crmdev-common';
 import { categoryLabels, priorityLabels, ticketStatusLabels } from './crmdev-labels';
 import { changeKey, useCrmdevChange } from './use-crmdev-change';
+import { CrmdevReplyTicket } from './crmdev-reply-ticket';
 
 /** The options of a field: each known value and, if CRMDev has another one now, that one first (shown as it comes). */
 export const optionsOf = (labels: Record<string, string>, current: string | null | undefined) =>
@@ -36,5 +37,6 @@ export function CrmdevEditTicket({ ticket, list, gone = false, onDone, onCancel 
         </div>
         {change.error && <p className="error" role="alert">{change.error}</p>}
       </form>}
+    {!gone && !reviewing(change) && <CrmdevReplyTicket ticket={ticket} list={list} onDone={onDone}/>}
   </>;
 }

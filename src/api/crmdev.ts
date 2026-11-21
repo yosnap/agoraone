@@ -81,7 +81,9 @@ export type CrmdevChangeRequest = { org?: string } & (
   /** «Crear en CRMDev» of a client kept only in AgoraOne: its own data as it is, and the state chosen. */
   | { kind: 'cliente-desde-local'; localId: number; status?: string; anyway?: true }
   | { kind: 'cliente'; id: string; list?: { estado?: string }; changes: { name?: string; email?: string; company?: string | null; status?: string } }
-  | { kind: 'ticket'; id: string; list?: { estado?: string; cliente?: string }; changes: { status?: string; priority?: string; category?: string } });
+  | { kind: 'ticket'; id: string; list?: { estado?: string; cliente?: string }; changes: { status?: string; priority?: string; category?: string } }
+  /** A reply to a ticket: a note only the team sees (`internal`) or an answer the client reads; always said. */
+  | { kind: 'respuesta-ticket'; id: string; list?: { estado?: string; cliente?: string }; content: string; internal: boolean; anyway?: true });
 export type CrmdevChangeRow = { field: string; label: string; before: string | null; after: string | null; emptied: boolean };
 export type CrmdevChangePreview = { token: string; kind: CrmdevChangeRequest['kind']; title: string; rows: CrmdevChangeRow[]; notes: string[]; warnings: string[] };
 export type CrmdevChangeDone = { done: true; kind: CrmdevChangeRequest['kind']; title: string; warning?: string; repeated?: boolean };

@@ -51,7 +51,7 @@ BUSY_TARGET = "Hay otro cambio de esto enviándose a CRMDev: espera a que termin
 DOUBTFUL = ("Un intento anterior de crear esto no recibió respuesta de CRMDev y puede haberse creado: revisa en CRMDev si ya está antes de "
             "crearlo otra vez.")
 ANYWAY = "Un intento anterior pudo crearlo ya: si sigues, puede quedar repetido en CRMDev."
-CREATIONS = frozenset({"tarea-nueva", "cliente-nuevo", "cliente-desde-local"})
+CREATIONS = frozenset({"tarea-nueva", "cliente-nuevo", "cliente-desde-local", "respuesta-ticket"})
 NOT_LINKED = "Creado en CRMDev, pero no se pudo enlazar con tu cliente: enlázalos con «Enlazar» tras actualizar los clientes de CRMDev."
 NO_ORG = "Esa organización de CRMDev ya no está: elige otra."
 REPEATED_LOCAL = "Ese cliente ya no está en AgoraOne o ya está enlazado con uno de CRMDev."

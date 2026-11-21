@@ -181,7 +181,9 @@ Decisión del usuario del 20/11/2026. Solo con Claude y con el módulo CRMDev en
   después exactos, y solo «Guardar en CRMDev» lo guarda, por `/crmdev/write/*` como un formulario. Un «sí» en el chat
   no guarda nada y Watson no tiene herramienta para guardar.
 - El registro de acciones guarda qué lista leyó y cuántos, y la clase y los nombres de los campos propuestos; nunca
-  sus valores. Responder a un ticket espera a que CRMDev ofrezca `reply_ticket` en su API de organización.
+  sus valores.
+- Desde el 21/11/2026 también propone una respuesta a un ticket que haya visto (`respuesta_ticket`), diciendo siempre si es
+  una nota interna o una respuesta que lee el cliente; se envía solo con «Guardar en CRMDev» tras ver el texto exacto.
 - Con varias organizaciones de CRMDev (decisión del usuario del 21/11/2026), `consultar_crmdev` lee todas las que
   tienen clave, una tras otra y cada una con su clave, y dice de cuál es cada registro. Con `organizacion` lee solo
   la que tiene ese nombre. Si una organización falla, se dice cuál y las demás se leen igual.
