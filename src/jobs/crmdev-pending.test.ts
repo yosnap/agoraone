@@ -6,7 +6,9 @@ import { birthText, centralCandidates, pendingChangeText, pendingText, pendingTo
 import { openClientsFilter, takeClientsFilter, takeJobsTab } from './jobs-tab';
 import { openCrmdevTab, takeCrmdevTab } from '../crmdev/use-crmdev-view';
 import { openCentralTab, takeCentralTab } from '../central/use-central-view';
-import { proposedFields } from '../assistant/crmdev-proposals';
+import { CrmdevProposals, proposedFields } from '../assistant/crmdev-proposals';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { withCount } from '../shell/tab-counts';
 import { byOrg } from '../sync/crmdev-from-central';
 
@@ -111,4 +113,12 @@ test('con varias organizaciones, «Desde Central» compara con la elegida y deja
   assert.match(list, /previewBatch\(reviewing\.items\.map\(i => i\.key\), anyway, reviewing\.org\)/);  // the review goes to the organization chosen when it opened
   const review = readFileSync(new URL('../sync/batch-review.tsx', import.meta.url), 'utf8');
   assert.match(review, /Se enviará a la organización de \{dest\.name\}/);
+});
+
+test('la tarjeta de Watson dice a qué organización de CRMDev va el cambio', () => {
+  const proposal = { kind: 'tarea' as const, id: 't1', reason: null, org: 'o2', orgName: 'Segunda',
+    request: { kind: 'tarea' as const, id: 't1', list: {}, changes: { status: 'DONE' }, org: 'o2' } };
+  const state = { list: [{ key: 1, proposal }], add: () => undefined, close: () => undefined, clear: () => undefined };
+  const html = renderToStaticMarkup(createElement(CrmdevProposals, { state }));
+  assert.match(html, /<dt>Organización<\/dt><dd>Segunda<\/dd>/);
 });
