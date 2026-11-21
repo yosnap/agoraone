@@ -394,8 +394,11 @@ def probe(target: Connection) -> dict:
     return {"version": None, "scopes": list(SCOPES), "tools": sorted(offered - MODULE_TOOLS), "unverified": sorted(offered & MODULE_TOOLS)}
 
 
-def connection_of(connection, secrets) -> Connection | None:
-    return web_api.connection_of(SPEC, connection, secrets)
+def connection_of(connection, secrets, org: str | None = None) -> Connection | None:
+    """The address and the key of one organization (`crmdev_orgs`; the first one when none is said)."""
+    from . import crmdev_orgs
+
+    return crmdev_orgs.connection_of(connection, secrets, org)
 
 
 def has_key(secrets) -> bool:

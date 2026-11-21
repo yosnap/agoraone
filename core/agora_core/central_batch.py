@@ -69,7 +69,7 @@ def _source(connection: sqlite3.Connection, key: str) -> tuple[str, dict, int | 
             return "Ya está en Central."
         return "local", {n: own[n] for n in ("name", "company", "email", "phone", "taxId")}, own["localId"], None
     if kind == "crmdev":
-        row = next((c for c in (crmdev_sync.snapshot(connection) or {}).get("clients") or [] if c.get("id") == ident), None)
+        row = next((c for c in crmdev_sync.rows(connection, "clients") if c.get("id") == ident), None)
         if row is None:
             return "Ya no está entre los clientes leídos de CRMDev."
         entry = next((e for e in clients.directory(connection) if e.get("crmdevId") == ident), None)

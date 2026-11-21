@@ -91,14 +91,25 @@ def _count(target: Connection, tool: str) -> dict | None:
     return {"n": len(rows), "more": len(rows) >= crmdev_api.MAX_ROWS} if isinstance(rows, list) else None
 
 
-def refresh(connection: sqlite3.Connection, target: Connection) -> dict:
-    """Reads CRMDev's clients now and keeps the snapshot; a WebApiError (without the key) when it cannot."""
+def setting_of(org: str | None) -> str:
+    """Where an organization's snapshot is kept: the first one where the only one was kept before organizations existed."""
+    from . import crmdev_orgs
+
+    return SETTING if org in (None, crmdev_orgs.FIRST) else f"{SETTING}:{org}"
+
+
+def refresh(connection: sqlite3.Connection, target: Connection, org: str | None = None) -> dict:
+    """Reads CRMDev's clients now and keeps the snapshot of that organization (the first one when none is said); a
+    WebApiError (without the key) when it cannot."""
+    from . import crmdev_orgs
+
+    org = org or crmdev_orgs.default(connection)
     if not _REFRESHING.acquire(blocking=False):
         # Another reading (the half-hourly one) is under way: its result is just as fresh, so wait for it.
         if not _REFRESHING.acquire(timeout=WAIT_SECONDS):
             raise WebApiError("busy", "Ya se están leyendo los clientes de CRMDev; espera un momento.")
         _REFRESHING.release()
-        found = stored(connection)
+        found = stored(connection, org)
         if found is not None:
             return found
         _REFRESHING.acquire()
@@ -112,12 +123,12 @@ def refresh(connection: sqlite3.Connection, target: Connection) -> dict:
         _REFRESHING.release()
     with transaction(connection):
         connection.execute("INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-                           (SETTING, json.dumps(snapshot, ensure_ascii=False)))
+                           (setting_of(org), json.dumps(snapshot, ensure_ascii=False)))
     return snapshot
 
 
-def stored(connection: sqlite3.Connection) -> dict | None:
-    row = connection.execute("SELECT value FROM setting WHERE key = ?", (SETTING,)).fetchone()
+def stored(connection: sqlite3.Connection, org: str | None = None) -> dict | None:
+    row = connection.execute("SELECT value FROM setting WHERE key = ?", (setting_of(org),)).fetchone()
     try:
         found = json.loads(row["value"]) if row else None
     except (TypeError, ValueError):
@@ -131,24 +142,47 @@ def active(connection: sqlite3.Connection) -> bool:
     return modules.state(connection)["crmdev"] and crmdev_api.saved_url(connection) is not None
 
 
-def snapshot(connection: sqlite3.Connection) -> dict | None:
-    """The last snapshot, only while CRMDev is a source of clients."""
-    return stored(connection) if active(connection) else None
+def snapshot(connection: sqlite3.Connection, org: str | None = None) -> dict | None:
+    """The last snapshot of an organization (the first one when none is said), only while CRMDev is a source of clients."""
+    return stored(connection, org) if active(connection) else None
+
+
+def snapshots(connection: sqlite3.Connection) -> dict[str, dict]:
+    """The last snapshot of every organization read at least once, by its id; empty while CRMDev is no source."""
+    from . import crmdev_orgs
+
+    if not active(connection):
+        return {}
+    found = {o["id"]: stored(connection, o["id"]) for o in crmdev_orgs.orgs(connection)}
+    return {org: snap for org, snap in found.items() if snap is not None}
+
+
+def rows(connection: sqlite3.Connection, field: str) -> list[dict]:
+    """The clients or projects (`field`) of every organization, each with its `org`."""
+    return [{**row, "org": org} for org, snap in snapshots(connection).items() for row in snap.get(field) or [] if isinstance(row, dict)]
 
 
 def read_now(connection: sqlite3.Connection, secrets, health: CrmdevHealth) -> dict | None:
-    """Reads CRMDev's clients when connected; None (nothing asked) otherwise."""
-    target = crmdev_api.connection_of(connection, secrets)
-    if target is None:
-        return None
-    try:
-        data = refresh(connection, target)
-    except WebApiError as error:  # fixed sentences: never the key nor the address
-        if error.status != "busy":  # a passing «wait a moment» of CRMDev is no problem of the connection
-            health.problem = str(error)[:200]
-        raise
-    health.problem = None
-    return data
+    """Reads every organization whose key is saved, one after another; the first one's snapshot, or None when no
+    organization could be asked. A failure of one does not stop the others; it is said in `health`."""
+    from . import crmdev_orgs
+
+    first, problem = None, None
+    for org in crmdev_orgs.orgs(connection):
+        target = crmdev_api.connection_of(connection, secrets, org["id"])
+        if target is None:
+            continue
+        try:
+            data = refresh(connection, target, org["id"])
+        except WebApiError as error:  # fixed sentences: never the key nor the address
+            if error.status != "busy":  # a passing «wait a moment» of CRMDev is no problem of the connection
+                problem = f"{org['name']}: {str(error)}"[:200]
+            continue
+        first = first or data
+    health.problem = problem
+    if problem and first is None:
+        raise WebApiError("error", problem)
+    return first
 
 
 def crmdev_worker(settings, stop: threading.Event, health: CrmdevHealth, secrets) -> None:
