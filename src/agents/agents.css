@@ -65,3 +65,8 @@ p.agent-facts { display:block }
 .coding-sessions.compact .coding-open { grid-column:2; align-items:flex-start }
 .coding-sessions.compact .coding-open small { text-align:left }
 @media (max-width:640px) { .coding-row { grid-template-columns:auto minmax(0,1fr) } .coding-open { grid-column:2; align-items:flex-start } }
+/* Orca's bots and AgoraOne's mailbox in Orca. No side accent stripe: the state is a chip. */
+.orca-bots { margin-top:18px }
+.orca-mailbox { grid-template-columns:auto minmax(0,1fr) auto; margin:8px 0 12px }
+.orca-mailbox .coding-name small { white-space:normal }
+.orca-mailbox-state.broken { background:var(--c-fde8e4, #fde8e4); color:var(--c-8a2b1d, #8a2b1d) }

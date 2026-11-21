@@ -43,6 +43,7 @@ from . import calendar_store, calls, tts
 from .routes_alerts import alerts_router
 from .routes_jobs import jobs_router
 from .routes_orca import orca_router
+from .routes_orca_bots import orca_bots_router
 from .routes_note_sources import note_sources_router
 from .routes_issues import issues_router
 from .routes_voice import voice_router
@@ -262,6 +263,7 @@ def create_app(
     app.include_router(doctor_router(settings, secrets))
     app.include_router(agents_router(settings))
     app.include_router(orca_router(settings, secrets))
+    app.include_router(orca_bots_router(settings))
     app.include_router(note_sources_router(settings, secrets))
     app.include_router(issues_router(settings))
     return app
