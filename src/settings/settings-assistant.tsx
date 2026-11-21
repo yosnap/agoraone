@@ -8,7 +8,7 @@ import { ModernSelect } from '../ui/modern-select';
 import { Loading, LoadError } from '../ui/load-state';
 import { engineLabels, modelLabels } from '../assistant/assistant-labels';
 import { ActionButton } from '../ui/action-button';
-import { keystoreName } from '../ui/platform';
+import { hereLabel, keystoreName } from '../ui/platform';
 
 const toneNames: Record<ToneKey, string> = { register: 'Registro', humor: 'Humor', length: 'Extensión', address: 'Tratamiento', language: 'Idioma' };
 const toneValues: Record<string, string> = {
@@ -83,7 +83,7 @@ export function AssistantSettingsCard() {
           <ModernSelect id={`research-${key}`} value={String(settings.research[key])} onChange={value => void change({ research: { ...settings.research, [key]: Number(value) } }, 'Investigación')}
             options={[...new Set([...values, settings.research[key]])].sort((a, b) => a - b).map(value => ({ value: String(value), label: String(value) }))}/></div>)}
     </fieldset>
-    <small className="muted">Con la API de Anthropic cada búsqueda se cobra aparte (unos 0,01 $) y el tope es exacto; con tu sesión de Claude Code va en tu plan y el tope es aproximado. Las páginas las lee AgoraOne, solo de los resultados de búsqueda o de la pregunta, nunca de este Mac ni de tu red local.</small>
+    <small className="muted">Con la API de Anthropic cada búsqueda se cobra aparte (unos 0,01 $) y el tope es exacto; con tu sesión de Claude Code va en tu plan y el tope es aproximado. Las páginas las lee AgoraOne, solo de los resultados de búsqueda o de la pregunta, nunca de {hereLabel} ni de tu red local.</small>
     <KeyField kind="anthropic" label="Clave de API de Anthropic"/>
     <form className="field-row" onSubmit={event => { event.preventDefault(); void change({ compatible: { baseUrl: provider.baseUrl.trim() || null, model: provider.model.trim() || null } }, 'Proveedor'); }}>
       <label className="field">Proveedor compatible (https, público)<input value={provider.baseUrl} onChange={event => setProvider({ ...provider, baseUrl: event.target.value })} placeholder="https://…/v1" spellCheck={false}/></label>

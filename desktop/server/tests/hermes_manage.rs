@@ -120,7 +120,8 @@ if __name__ == "__main__":
 #[tokio::test]
 async fn mcp_by_hand_calls_the_catalogue_tool_with_the_profile_credentials_and_leaves_no_process() {
     let Some(installation) = installation() else { return eprintln!("Hermes no instalado") };
-    let python = agora_server::hermes::location::from_env().python;
+    // The Hermes virtualenv's Python, as before on macOS and Linux; Windows finds it through the location.
+    let python = if cfg!(windows) { agora_server::hermes::location::from_env().python } else { installation.join("venv/bin/python") };
     let dir = tempfile::tempdir().unwrap();
     let root = agora_server::platform::canonicalize(dir.path()).unwrap();
     let home = root.join("profiles/alpha");

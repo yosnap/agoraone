@@ -287,7 +287,8 @@ fn las_credenciales_del_perfil_principal_no_quedan_en_el_entorno_heredado() {
         .env("HERMES_HOME", base.join(".hermes"))
         .env("PATH", agora_server::hermes::python::user_path());
     agora_server::platform::apply_minimal_os_env(&mut command);
-    let output = tokio::runtime::Runtime::new().unwrap().block_on(command.output()).unwrap();
+    // Started inside the runtime: on macOS and Linux tokio needs its reactor when the process is spawned.
+    let output = tokio::runtime::Runtime::new().unwrap().block_on(async move { command.output().await }).unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("importar False"), "tras importar Hermes no queda en el entorno");
     assert!(stderr.contains("turno False"), "la recarga por turno no la vuelve a cargar");
