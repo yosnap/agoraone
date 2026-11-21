@@ -15,6 +15,7 @@ import json
 import re
 import sqlite3
 import subprocess
+import threading
 import time
 
 from . import orca_launch
@@ -145,7 +146,16 @@ def _home(runner) -> dict:
     return next((w for w in places if w["path"].rstrip("/").lower().endswith("/agoraone")), places[0])
 
 
+_CREATING = threading.Lock()
+
+
 def create(connection: sqlite3.Connection, runner=subprocess.run, sleep=time.sleep) -> dict:
+    """See `_create`: one at a time, so two presses (two windows) never open two mailboxes."""
+    with _CREATING:
+        return _create(connection, runner, sleep)
+
+
+def _create(connection: sqlite3.Connection, runner=subprocess.run, sleep=time.sleep) -> dict:
     """«Crear el buzón de AgoraOne» (a button): a new visible tab in Orca running `cat`. Only while there is none: a
     broken one is closed by the user in Orca first, so two mailboxes never exist. Waits for its shell to start `cat`."""
     ready(runner)
@@ -278,29 +288,62 @@ def collect(connection: sqlite3.Connection, runner=subprocess.run, force: bool =
 
 def _handoffs(connection: sqlite3.Connection, runner) -> int:
     """An errand the bot took over answers in its own chat, not by mail: its chat is found by the subject Orca titles
-    it with, and its last message is kept once that chat is done."""
+    it with (only when exactly one free chat matches: never a chat another errand already has), and the chat's last
+    message is kept once it is done, newer than the errand and not an answer already kept for that chat (a follow-up
+    in a chat that was done keeps waiting for the new answer). A failure with one errand never stops the others, and
+    errands older than six hours are no longer asked about."""
+    from datetime import UTC, datetime, timedelta
+
     from .db import now, transaction
 
+    since = (datetime.now(UTC) - timedelta(hours=6)).isoformat(timespec="seconds").replace("+00:00", "Z")
     arrived = 0
-    for row in connection.execute("SELECT * FROM orca_bot_request WHERE answer IS NULL AND kind = 'handoff'").fetchall():
-        chat = row["chat_id"]
-        if not chat:
-            listed = orca_launch._run(["bot", "chats", f"--bot={row['bot_name']}"], runner, 20).get("chats")
-            chat = next((c["id"] for c in listed if isinstance(c, dict) and isinstance(c.get("title"), str) and c["title"].endswith(row["subject"])
-                         and re.fullmatch(r"[0-9a-f-]{36}", str(c.get("id") or ""))), None) if isinstance(listed, list) else None
+    for row in connection.execute("SELECT * FROM orca_bot_request WHERE answer IS NULL AND kind = 'handoff' AND created_at >= ? "
+                                  "ORDER BY created_at DESC", (since,)).fetchall():
+        try:
+            chat = row["chat_id"] or _chat_of(connection, row, runner)
             if not chat:
                 continue
-            with transaction(connection):
-                connection.execute("UPDATE orca_bot_request SET chat_id = ? WHERE message_id = ?", (chat, row["message_id"]))
-        places = orca_launch._run(["agent", "show", f"orca_session_id:{chat}"], runner, 20).get("places")
+            places = orca_launch._run(["agent", "show", f"orca_session_id:{chat}"], runner, 20).get("places")
+        except OrcaError:
+            continue  # this one cannot be asked now (a bot renamed or gone): the others still are
         place = places[0] if isinstance(places, list) and places and isinstance(places[0], dict) else {}
-        said = place.get("lastAssistantMessage")
-        if place.get("state") == "done" and isinstance(said, str) and said.strip():
-            with transaction(connection):
-                connection.execute("UPDATE orca_bot_request SET answer = ?, answered_at = ? WHERE message_id = ? AND answer IS NULL",
-                                   (orca_launch._clean(said).strip()[:ANSWER_CHARS], now(), row["message_id"]))
-            arrived += 1
+        said = orca_launch._clean(place.get("lastAssistantMessage") or "").strip()[:ANSWER_CHARS] if isinstance(place.get("lastAssistantMessage"), str) else ""
+        kept = {r["answer"] for r in connection.execute("SELECT answer FROM orca_bot_request WHERE chat_id = ? AND answer IS NOT NULL", (chat,))}
+        if place.get("state") != "done" or not said or said in kept or not _after(place.get("updatedAt"), row["created_at"]):
+            continue
+        with transaction(connection):
+            connection.execute("UPDATE orca_bot_request SET answer = ?, answered_at = ? WHERE message_id = ? AND answer IS NULL",
+                               (said, now(), row["message_id"]))
+        arrived += 1
     return arrived
+
+
+def _after(updated_ms, created_at: str) -> bool:
+    """Whether Orca's last change of the chat (ms) comes after the errand was sent."""
+    from datetime import datetime
+
+    try:
+        return isinstance(updated_ms, (int, float)) and updated_ms / 1000 > datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return False
+
+
+def _chat_of(connection: sqlite3.Connection, row, runner) -> str | None:
+    """The chat Orca opened for this errand: titled with its subject, not the bot's main chat and not one another
+    errand already has; with none or several such chats, nothing is guessed."""
+    from .db import transaction
+
+    taken = {r["chat_id"] for r in connection.execute("SELECT chat_id FROM orca_bot_request WHERE chat_id IS NOT NULL")}
+    listed = orca_launch._run(["bot", "chats", f"--bot={row['bot_name']}"], runner, 20).get("chats")
+    found = [c["id"] for c in listed if isinstance(c, dict) and not c.get("home") and isinstance(c.get("title"), str)
+             and c["title"].endswith(row["subject"]) and re.fullmatch(r"[0-9a-f-]{36}", str(c.get("id") or "")) and c["id"] not in taken] \
+        if isinstance(listed, list) else []
+    if len(found) != 1:
+        return None
+    with transaction(connection):
+        connection.execute("UPDATE orca_bot_request SET chat_id = ? WHERE message_id = ?", (found[0], row["message_id"]))
+    return found[0]
 
 
 def requests(connection: sqlite3.Connection, limit: int = 30) -> list[dict]:
@@ -338,6 +381,10 @@ def follow_preview(connection: sqlite3.Connection, args: dict, runner=subprocess
     handle(connection, runner)
     if not any(b["id"] == row["bot_id"] and not b["paused"] for b in bots(runner)):
         raise OrcaError("Ese bot ya no está en Orca o está en pausa.")
+    chats = orca_launch._run(["bot", "chats", f"--bot={row['bot_name']}"], runner, 20).get("chats")
+    chat = next((c for c in chats if isinstance(c, dict) and c.get("id") == row["chat_id"]), None) if isinstance(chats, list) else None
+    if chat is None or chat.get("home") or chat.get("closed"):
+        raise OrcaError("Ese chat del bot ya no está abierto (o es su chat principal): envía un encargo nuevo.")
     subject = ("Re: " + row["subject"])[:SUBJECT_CHARS] if not row["subject"].startswith("Re: ") else row["subject"]
     return {"bot": {"id": row["bot_id"], "name": row["bot_name"], "agent": None}, "kind": kind, "kindLabel": KINDS[kind], "client": row["client"],
             "project": row["project"], "repo": row["repo"], "orcaName": None, "source": None, "subject": subject, "body": text, "chat": row["chat_id"]}

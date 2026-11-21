@@ -227,6 +227,10 @@ def test_an_answer_is_kept_by_its_thread_and_lets_follow_the_chat(database, laun
     assert (found["state"], found["answer"], found["canFollow"]) == ("answered", "recibido", True)
     inbox = next(c for c in orca.calls if c[:2] == ["orchestration", "inbox"])
     assert inbox[2] == f"--terminal={H1}" and "check" not in inbox  # read only: nothing marked as read
+    orca.chats = [{"id": CHAT_ID, "title": "x", "home": True}]
+    with pytest.raises(OrcaError, match="principal"):
+        orca_bots.follow_preview(database, {"messageId": "msg_abc123def456", "kind": "question", "text": "¿Y el móvil?"}, orca)
+    orca.chats = [{"id": CHAT_ID, "title": "x", "home": False}]
     plan = orca_bots.follow_preview(database, {"messageId": "msg_abc123def456", "kind": "question", "text": "¿Y el móvil?"}, orca)
     assert plan["chat"] == CHAT_ID and plan["body"] == "¿Y el móvil?" and plan["subject"].startswith("Re: ")
     orca_bots.send(database, plan, orca)
@@ -236,12 +240,42 @@ def test_an_answer_is_kept_by_its_thread_and_lets_follow_the_chat(database, laun
 def test_an_errand_taken_over_is_answered_from_its_chat_once_done(database, launch):
     orca = sent_errand(database, launch, kind="handoff")
     orca.chats = [{"id": CHAT_ID, "title": "your owner's agent: Web: Arregla el menú"}]
-    orca.places = [{"state": "working", "lastAssistantMessage": "voy"}]
+    later = 9_999_999_999_000
+    orca.places = [{"state": "working", "lastAssistantMessage": "voy", "updatedAt": later}]
     orca_bots.collect(database, orca, force=True)
     assert orca_bots.requests(database)[0]["state"] == "waiting"  # still working: nothing kept yet
-    orca.places = [{"state": "done", "lastAssistantMessage": "Hecho: PR #12 abierta."}]
+    orca.places = [{"state": "done", "lastAssistantMessage": "Hecho: PR #12 abierta.", "updatedAt": later}]
     orca_bots.collect(database, orca, force=True)
     assert orca_bots.requests(database)[0]["answer"] == "Hecho: PR #12 abierta."
+    # A follow-up in that chat, which is still «done» with the old message: it waits for the new answer.
+    plan = orca_bots.follow_preview(database, {"messageId": "msg_abc123def456", "kind": "handoff", "text": "Ahora el móvil"}, orca)
+    orca_bots.send(database, plan, orca)
+    orca_bots.collect(database, orca, force=True)
+    assert orca_bots.requests(database)[0]["state"] == "waiting"
+    orca.places = [{"state": "done", "lastAssistantMessage": "Móvil arreglado.", "updatedAt": later + 1}]
+    orca_bots.collect(database, orca, force=True)
+    assert orca_bots.requests(database)[0]["answer"] == "Móvil arreglado."
+
+
+def test_a_broken_errand_never_stops_the_others_nor_two_share_a_chat(database, launch):
+    orca = sent_errand(database, launch, kind="handoff")
+    orca_bots.send(database, orca_bots.preview(database, errand(kind="handoff"), orca), orca)  # the same errand twice
+    orca.chats = [{"id": CHAT_ID, "title": "your owner's agent: Web: Arregla el menú"},
+                  {"id": "a" * 8 + "-aaaa-aaaa-aaaa-" + "a" * 12, "title": "your owner's agent: Web: Arregla el menú"}]
+    orca_bots.collect(database, orca, force=True)
+    assert database.execute("SELECT COUNT(chat_id) FROM orca_bot_request").fetchone()[0] == 0  # two candidates: nothing guessed
+    database.execute("UPDATE orca_bot_request SET bot_name = 'Borrado' WHERE message_id = 'msg_abc123def456'")
+    real = orca.__call__
+
+    def failing(argv, **kwargs):
+        if "--bot=Borrado" in argv:
+            return subprocess.CompletedProcess(argv, 1, json.dumps({"ok": False, "error": {"message": "no bot"}}), "")
+        return real(argv, **kwargs)
+    orca.chats = orca.chats[:1]
+    orca.places = [{"state": "done", "lastAssistantMessage": "Hecho.", "updatedAt": 9_999_999_999_000}]
+    orca_bots.collect(database, failing, force=True)
+    answers = {r["messageId"]: r["answer"] for r in orca_bots.requests(database)}
+    assert answers["msg_abc123def456"] is None and list(answers.values()).count("Hecho.") == 1  # the other one still got it
 
 
 def test_watson_gets_the_answer_as_data_without_key_lines(database, launch):
