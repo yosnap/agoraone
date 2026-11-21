@@ -4,6 +4,7 @@ import { applyTheme, readTheme, themeLabels, type ThemeChoice } from './theme';
 import { setSound, useSoundOn } from '../sound/sound';
 import { useMeetingRecorder } from '../meetings/meeting-recorder';
 import { moduleOn, useModules } from './modules';
+import { appVersion } from '../about/app-version';
 
 
 const themeOrder: ThemeChoice[] = ['system', 'light', 'dark'];
@@ -47,6 +48,7 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
   </button></li>;
   return <nav className="rail" aria-label="Secciones de AgoraOne">
     <a className="rail-brand" href="/" aria-label="AgoraOne">a</a>
+    <span className="rail-version" title={`AgoraOne ${appVersion}`}>v{appVersion}</span>
     <ul className="rail-list">{main.filter(shown).map(button)}</ul>
     {later.length > 0 && <ul className="rail-list rail-later" aria-label="Próximamente">{later.map(button)}</ul>}
     <div className="rail-foot">

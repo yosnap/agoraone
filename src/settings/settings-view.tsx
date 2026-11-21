@@ -82,6 +82,7 @@ export function SettingsView({ onOpen }: { onOpen: (section: Section) => void })
     url.searchParams.set('pestana', id);
     window.history.replaceState(window.history.state, '', url);
     if (focus) buttons.current[id]?.focus();
+    buttons.current[id]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });  // the tab row scrolls sideways
   };
   // Arrow keys, Home and End move between tabs (WAI-ARIA tabs pattern).
   const keys = (event: KeyboardEvent) => {
