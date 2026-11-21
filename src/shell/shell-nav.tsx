@@ -48,7 +48,9 @@ export function ShellNav({ section, onSection, discreet, onDiscreet, waiting }: 
   </button></li>;
   return <nav className="rail" aria-label="Secciones de AgoraOne">
     <a className="rail-brand" href="/" aria-label="AgoraOne">a</a>
-    <span className="rail-version" title={`AgoraOne ${appVersion}`}>v{appVersion}</span>
+    <span className="rail-version" title={`AgoraOne ${appVersion}`}>
+      <span>v{appVersion.split('-')[0]}</span>{appVersion.includes('-') && <span>{appVersion.slice(appVersion.indexOf('-') + 1)}</span>}
+    </span>
     <ul className="rail-list">{main.filter(shown).map(button)}</ul>
     {later.length > 0 && <ul className="rail-list rail-later" aria-label="Próximamente">{later.map(button)}</ul>}
     <div className="rail-foot">
