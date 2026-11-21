@@ -21,6 +21,7 @@ import { ModulesSettingsCard } from './settings-modules';
 import { openConnector } from '../connectors/open-connector';
 import type { Section } from '../shell/shell-state';
 import { isMac, isWindows } from '../ui/platform';
+import { ChangelogCard } from '../about/changelog-view';
 import './settings.css';
 
 type Tab = { id: string; label: string; cards: (onOpen: (section: Section) => void) => ReactNode };
@@ -37,6 +38,7 @@ const tabs: Tab[] = [
   { id: 'trabajos', label: 'Trabajos', cards: () => <JobsSettingsCard/> },
   { id: 'voz', label: 'Voz', cards: () => <><VoiceSettingsCard/><MeetingSettingsCard/><MusicSettingsCard/><AppsSettingsCard/></> },
   { id: 'privacidad', label: 'Privacidad y copias', cards: () => <><PrivacySettingsCard/><BackupsCard/></> },
+  { id: 'novedades', label: 'Novedades', cards: () => <ChangelogCard/> },
 ];
 const STORED = 'agora.settings.tab';
 
