@@ -144,7 +144,7 @@ CRMDev». **Nunca se borra nada.**
 
 - Qué se puede hacer: «Nueva tarea» (pestaña Tareas y ficha de proyecto), «Editar» en tareas, tickets, la ficha de
   proyecto y la de cliente, «Nuevo cliente» y «Crear en CRMDev» para un cliente sin ubicar. Son las herramientas
-  `create_task`, `update_task`, `update_project`, `create_client`, `update_client` y `update_ticket`. No se crean
+  `create_task`, `update_task`, `update_project`, `create_client`, `update_client`, `update_ticket` y `reply_ticket`. No se crean
   tickets, y no se tocan las notas del cliente ni la descripción del proyecto. Desde el 20/11/2026 la lista incluye
   también `create_project`, solo para crear un proyecto de Central con «Enviar a CRMDev» (ver «Pendiente en CRMDev»).
 - Cada formulario pide antes «Revisar el cambio», que enseña las filas antes y después. La herramienta la elige el
@@ -156,8 +156,14 @@ CRMDev». **Nunca se borra nada.**
   existente».
 - Un alta que no recibió respuesta puede haberse creado: durante 24 h, repetirla pide revisarlo en CRMDev y solo
   sale con «Crear de todos modos».
+- **Responder tickets** (21/11/2026, cuando CRMDev ofreció `reply_ticket` con la clave de organización): «Responder»
+  en la ficha de un ticket. Se elige cada vez quién la ve, sin valor por defecto: «Solo el equipo (nota interna)» o
+  «El cliente», que la lee en su portal y se avisa en la revisión. El texto va tal cual (hasta 2000 caracteres) y se
+  publica a nombre de quien creó la clave. Una respuesta no se borra desde AgoraOne. Si la respuesta de CRMDev no
+  llega, se trata como un alta dudosa («Crear de todos modos»).
 - Cada cambio queda en el registro de acciones, solo con los nombres de los campos.
-- Watson lee tareas y tickets y solo propone cambios (desde la 1.9; ver [watson-actua.md](watson-actua.md#watson-y-crmdev-19)).
+- Watson lee tareas y tickets y solo propone cambios, también una respuesta a un ticket (diciendo siempre si es
+  interna) (desde la 1.9; ver [watson-actua.md](watson-actua.md#watson-y-crmdev-19)).
 
 La API de CRMDev está documentada en su propio repositorio (`docs/api/`).
 

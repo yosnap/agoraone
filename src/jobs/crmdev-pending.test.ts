@@ -122,3 +122,11 @@ test('la tarjeta de Watson dice a qué organización de CRMDev va el cambio', ()
   const html = renderToStaticMarkup(createElement(CrmdevProposals, { state }));
   assert.match(html, /<dt>Organización<\/dt><dd>Segunda<\/dd>/);
 });
+
+test('responder un ticket obliga a decir quién la ve y Watson lo enseña igual', () => {
+  assert.deepEqual(proposedFields({ kind: 'respuesta-ticket', id: 'k1', content: 'Ya está', internal: false }),
+    [['Quién la ve', 'El cliente'], ['Respuesta', 'Ya está']]);
+  const form = readFileSync(new URL('../crmdev/crmdev-reply-ticket.tsx', import.meta.url), 'utf8');
+  assert.match(form, /useState<boolean \| null>\(null\)/);  // no default: a note or an answer to the client, picked each time
+  assert.match(form, /disabled=\{!content\.trim\(\) \|\| internal === null\}/);
+});

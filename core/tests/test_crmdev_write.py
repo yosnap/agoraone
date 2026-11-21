@@ -76,6 +76,8 @@ class StatefulCrmdev:
             row = next(r for r in self.rows[table] if r["id"] == args[key])
             row.update(applied(tool, args))
             return self._answer({"id": row["id"]})
+        if tool == "reply_ticket":
+            return self._answer({"id": f"m{len(self.seen)}", "createdAt": "2026-11-21T15:00:00Z"})
         table = {"create_task": "list_tasks", "create_client": "list_clients", "create_project": "list_projects"}[tool]
         made = {"id": f"n{len(self.rows[table]) + 1}", **args}
         self.rows[table].insert(0, made)
@@ -429,3 +431,27 @@ def test_cuerpos_raros_dan_error_propio_sin_peticiones(setup, fake, raw):
     client, _ = setup
     answer = client.post("/crmdev/write/preview", content=raw, headers={**HEADERS, "content-type": "application/json"})
     assert answer.status_code in (413, 422) and set(answer.json()) == {"error", "status"} and fake.seen == []
+
+
+def test_responder_un_ticket_dice_quien_la_ve_y_se_envia_una_vez(setup, fake):
+    client, _ = setup
+    assert preview(client, {"kind": "respuesta-ticket", "id": "k1", "content": "Ya está arreglado."}).status_code == 422  # internal or not: always said
+    assert preview(client, {"kind": "respuesta-ticket", "id": "k1", "content": "", "internal": True}).status_code == 422
+    assert preview(client, {"kind": "respuesta-ticket", "id": "k1", "content": "x" * 2001, "internal": True}).status_code == 422
+    shown = preview(client, {"kind": "respuesta-ticket", "id": "k1", "content": "Ya está arreglado.\nGracias.", "internal": False})
+    assert shown.status_code == 200, shown.text
+    body = shown.json()
+    assert body["title"] == "Respuesta al ticket «No carga»" and {r["field"]: r["after"] for r in body["rows"]}["isInternal"] == "El cliente"
+    assert any("cliente verá" in w for w in body["warnings"])
+    assert confirm(client, body["token"]).status_code == 200
+    assert fake.writes() == [{"tool": "reply_ticket", "arguments": {"ticketId": "k1", "content": "Ya está arreglado.\nGracias.", "isInternal": False}}]
+    confirm(client, body["token"])  # pressed again: the same result, never a second reply
+    assert len(fake.writes()) == 1
+
+
+def test_una_respuesta_a_un_ticket_que_ya_no_esta_no_se_envia(setup, fake):
+    client, _ = setup
+    shown = preview(client, {"kind": "respuesta-ticket", "id": "k1", "content": "Nota", "internal": True}).json()
+    fake.rows["list_tickets"].clear()
+    assert confirm(client, shown["token"]).status_code == 409 and fake.writes() == []
+    assert preview(client, {"kind": "respuesta-ticket", "id": "k9", "content": "Nota", "internal": True}).status_code == 404

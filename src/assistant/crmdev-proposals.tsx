@@ -7,7 +7,7 @@ import { ActionButton } from '../ui/action-button';
 /** A change Watson proposed for CRMDev: the request the core checked, the reason, and the same review and «Guardar en
  * CRMDev» as the forms of the «CRMDev» section. A «sí» in the chat saves nothing: only that button does. */
 /** `orgName`: the organization of CRMDev it goes to (that of the record it changes), said on the card. */
-export type CrmdevProposal = { kind: 'tarea-nueva' | 'tarea' | 'ticket'; id: string | null; request: CrmdevChangeRequest; reason: string | null;
+export type CrmdevProposal = { kind: 'tarea-nueva' | 'tarea' | 'ticket' | 'respuesta-ticket'; id: string | null; request: CrmdevChangeRequest; reason: string | null;
   org?: string; orgName?: string | null };
 type Shown = { key: number; proposal: CrmdevProposal };
 
@@ -22,11 +22,13 @@ export function useCrmdevProposals() {
   };
 }
 
-const TITLES = { 'tarea-nueva': 'Tarea nueva propuesta para CRMDev', tarea: 'Cambio de tarea propuesto para CRMDev', ticket: 'Cambio de ticket propuesto para CRMDev' };
+const TITLES = { 'tarea-nueva': 'Tarea nueva propuesta para CRMDev', tarea: 'Cambio de tarea propuesto para CRMDev', ticket: 'Cambio de ticket propuesto para CRMDev',
+  'respuesta-ticket': 'Respuesta a un ticket propuesta para CRMDev' };
 const FIELD_LABELS: Record<string, string> = { title: 'Título', description: 'Descripción', status: 'Estado', priority: 'Prioridad', category: 'Categoría', projectId: 'Proyecto' };
 
 /** What Watson wrote, before reading CRMDev: the fields and values it proposes. */
 export function proposedFields(request: CrmdevChangeRequest): [string, string][] {
+  if (request.kind === 'respuesta-ticket') return [['Quién la ve', request.internal ? 'Solo el equipo (nota interna)' : 'El cliente'], ['Respuesta', request.content]];
   const values = ('values' in request ? request.values : 'changes' in request ? request.changes : {}) as Record<string, unknown>;
   return Object.entries(values).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [FIELD_LABELS[k] ?? k, String(v)]);
 }
