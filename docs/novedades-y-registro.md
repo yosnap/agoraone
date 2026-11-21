@@ -33,11 +33,15 @@ que responden con error y los errores sin controlar de la interfaz.
   mensaje). Rota al llegar a 1 MB y guarda cuatro archivos anteriores: 5 MB como mucho.
 - **Privacidad**: se queda en este equipo y nunca va a un modelo. Las líneas con pinta de clave se sustituyen por
   «[oculto: parece una clave]», los tokens conocidos (`sk-…`, `ghp_…`, JWT…) se tapan y cada mensaje se recorta a
-  1000 caracteres. No se guardan cuerpos de peticiones, ni la parte de consulta de las direcciones, ni textos de
-  correos o mensajes.
+  1000 caracteres. De las direcciones que aparezcan en un error se quita la parte de consulta (`?…`), y los
+  parámetros como `key=` o `token=` se tapan. Una ruta se apunta por su plantilla (`/quotes/{item:path}`), nunca con
+  sus valores, y un error sin controlar lleva el archivo, la línea y la función donde falló, sin valores. No se
+  guardan cuerpos de peticiones ni textos de correos o mensajes.
 - **Interfaz**: `src/api/client-log.ts` envía los `error` y `unhandledrejection` de la ventana con el nombre del
   archivo y la línea, sin la dirección (su fragmento lleva el token de acceso). Como mucho 20 entradas por minuto y el
-  mismo texto una vez cada 30 s; si el envío falla, no se reintenta.
+  mismo texto una vez cada 30 s; si el envío falla, no se reintenta. De un error de la API solo se apunta su estado
+  HTTP, porque su texto es el del servidor y puede nombrar clientes. Los errores anteriores a abrir la sesión (antes de
+  tener el token CSRF) no llegan al registro.
 - **API del núcleo**: `GET /logs` (`level`, `q`, `source`, `limit` hasta 2000) y `POST /logs/client` (nivel `info`,
   `warning` o `error`, área de hasta 60 caracteres y mensaje de hasta 2000), ambas tras las comprobaciones habituales
   del servidor (`/api/core/*`).

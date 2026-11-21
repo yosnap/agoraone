@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getLogs, type LogEntry, type LogLevel } from '../api/core';
 import { Loading, LoadError } from '../ui/load-state';
 import { ModernSelect } from '../ui/modern-select';
@@ -24,12 +24,14 @@ export function LogCard() {
   const [data, setData] = useState<{ entries: LogEntry[]; bytes: number; maxBytes: number } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const latest = useRef(0);
   const load = () => {
+    const asked = ++latest.current;  // a slow earlier answer never replaces the one for the current filters
     setBusy(true);
     getLogs({ level, q: query, source: (source || undefined) as LogEntry['source'] | undefined })
-      .then(found => { setData(found); setError(''); })
-      .catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo leer el registro.'))
-      .finally(() => setBusy(false));
+      .then(found => { if (asked === latest.current) { setData(found); setError(''); } })
+      .catch(failure => { if (asked === latest.current) setError(failure instanceof Error ? failure.message : 'No se pudo leer el registro.'); })
+      .finally(() => { if (asked === latest.current) setBusy(false); });
   };
   useEffect(load, [level, source, query]);
   return <article className="card about-card" aria-labelledby="settings-log">

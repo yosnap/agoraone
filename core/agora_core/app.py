@@ -168,6 +168,11 @@ def create_app(
     log = app_log.setup(settings.data_dir)  # AgoraOne's own log, Ajustes › Registro
     app = FastAPI(title="AgoraOne núcleo", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
+    def route_of(request: Request) -> str:
+        """The route's template (/quotes/{item:path}), never the real path: it may carry client names or ids."""
+        route = request.scope.get("route")
+        return getattr(route, "path", None) or "(ruta desconocida)"
+
     @app.middleware("http")
     async def only_agoraone(request: Request, call_next):
         if request.headers.get("host") != settings.authority:
@@ -178,10 +183,10 @@ def create_app(
         try:
             response = await call_next(request)
         except Exception:  # noqa: BLE001 - logged without the request body, and the caller gets a plain 500
-            log.exception("Error sin controlar en %s %s", request.method, request.url.path)
+            log.exception("Error sin controlar en %s %s", request.method, route_of(request))
             return JSONResponse({"error": "Error interno del núcleo. Está en Ajustes › Registro."}, status_code=500)
         if response.status_code >= 500:
-            log.warning("%s %s respondió %s", request.method, request.url.path, response.status_code)
+            log.warning("%s %s respondió %s", request.method, route_of(request), response.status_code)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         return response

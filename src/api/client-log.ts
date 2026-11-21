@@ -1,3 +1,4 @@
+import { ApiError } from './client';
 import { sendClientLog } from './core';
 
 type Send = typeof sendClientLog;
@@ -33,6 +34,14 @@ export function makeReporter(send: Send = sendClientLog, now: () => number = Dat
   };
 }
 
+/** A rejection in words. An API error keeps only its HTTP status: its message is the backend's text, which may
+    name clients or quote mail. Other values are cut short. */
+export function describe(reason: unknown): string {
+  if (reason instanceof ApiError) return `ApiError: respuesta ${reason.status} del backend`;
+  if (reason instanceof Error) return `${reason.name}: ${reason.message}`;
+  return String(reason).slice(0, 300);
+}
+
 let installed = false;
 
 /** Sends the window's uncaught errors and rejected promises to AgoraOne's log (Ajustes › Registro). */
@@ -46,6 +55,6 @@ export function installClientLog() {
   });
   window.addEventListener('unhandledrejection', event => {
     const reason = event.reason;
-    report('error', reason instanceof Error ? `Promesa rechazada: ${reason.name}: ${reason.message}` : `Promesa rechazada: ${String(reason).slice(0, 300)}`);
+    report('error', `Promesa rechazada: ${describe(reason)}`);
   });
 }

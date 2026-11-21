@@ -18,8 +18,8 @@ def made(tmp_path):
     settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
     app = create_app(settings, MemoryStore(), scheduler=False)
 
-    @app.get("/boom-for-test")
-    async def boom():
+    @app.get("/boom-for-test/{client:path}")
+    async def boom(client: str):
         raise RuntimeError("fallo de prueba")
 
     with TestClient(app, base_url=f"http://{settings.authority}", raise_server_exceptions=False) as client:
@@ -28,11 +28,13 @@ def made(tmp_path):
 
 def test_el_arranque_y_un_error_sin_controlar_quedan_en_el_registro(made):
     client, settings = made
-    response = client.get("/boom-for-test?correo=privado", headers=H)
+    response = client.get("/boom-for-test/Cliente Secreto SL?correo=privado", headers=H)
     assert response.status_code == 500 and "Registro" in response.json()["error"]
     entries = client.get("/logs", headers=H).json()["entries"]
-    assert entries[0]["level"] == "error" and "GET /boom-for-test" in entries[0]["message"] and "RuntimeError" in entries[0]["message"]
-    assert "privado" not in json.dumps(entries)  # never the query string
+    message = entries[0]["message"]
+    assert entries[0]["level"] == "error" and "GET /boom-for-test/{client:path}" in message and "RuntimeError" in message
+    assert "test_app_log.py:" in message and ", boom)" in message  # last frame, without values
+    assert "privado" not in json.dumps(entries) and "Secreto" not in json.dumps(entries)  # neither the query nor the real path
     assert any("Núcleo arrancado" in e["message"] for e in entries)
 
 
@@ -52,6 +54,10 @@ def test_las_lineas_con_pinta_de_clave_se_ocultan_y_el_texto_se_recorta():
     assert "sk-" not in app_log.clean("fallo con sk-ant-api03-abcdefghijklmnopqrstuv dentro")
     assert len(app_log.clean("y" * 5000)) == app_log.MAX_MESSAGE
     assert app_log.clean("uno\ndos") == "uno ⏎ dos"
+    url = app_log.clean("fallo en https://api.example.com/v1/x?key=abcdef123456&q=cliente")
+    assert "abcdef123456" not in url and "cliente" not in url and "https://api.example.com/v1/x" in url
+    assert "abcdef123456" not in app_log.clean("rechazado: key=abcdef123456")
+    assert app_log.clean("password abcdefgh") == "[oculto: parece una clave]"
 
 
 def test_el_archivo_rota_y_no_crece_sin_limite(tmp_path, monkeypatch):

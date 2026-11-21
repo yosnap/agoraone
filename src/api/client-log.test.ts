@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { makeReporter, place } from './client-log';
+import { ApiError } from './client';
+import { describe, makeReporter, place } from './client-log';
 
 test('the reporter limits repeats and volume, and survives a failed send', async () => {
   let clock = 0;
@@ -19,4 +20,9 @@ test('the reporter limits repeats and volume, and survives a failed send', async
 test('only the file name and line are kept, never the address', () => {
   assert.equal(place('http://127.0.0.1:5173/src/inbox/inbox.tsx?t=123#acceso=secreto', 12), ' (inbox.tsx:12)');
   assert.equal(place(undefined, 3), '');
+});
+
+test('an API error keeps only its status, never the backend text', () => {
+  assert.equal(describe(new ApiError('No existe el cliente Pérez y Asociados', 404)), 'ApiError: respuesta 404 del backend');
+  assert.equal(describe(new TypeError('x is undefined')), 'TypeError: x is undefined');
 });
