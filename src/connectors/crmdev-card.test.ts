@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -58,4 +59,11 @@ test('las vistas de CRMDev piden solo rutas del núcleo con sus filtros', async 
   }
   assert.deepEqual(asked, ['/api/core/crmdev/views/tareas?estado=TODO&proyecto=p1', '/api/core/crmdev/views/proyectos',
     '/api/core/crmdev/views/tickets?cliente=c+1', '/api/core/crmdev/proyectos/a%2Fb/horas']);
+});
+
+test('las organizaciones de CRMDev: claves solo en campos de contraseña, nunca de vuelta en pantalla, y sin selects nativos', () => {
+  const source = readFileSync(new URL('./crmdev-orgs.tsx', import.meta.url), 'utf8');
+  assert.match(source, /type=\{editing\.field === 'key' \? 'password' : 'text'\}/);
+  assert.match(source, /<input type="password" autoComplete="off" value=\{adding\.key\}/);
+  assert.ok(!/<select|border-l|org\.key/.test(source));
 });

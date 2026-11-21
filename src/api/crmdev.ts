@@ -84,3 +84,13 @@ export const confirmCrmdevChange = (token: string) => send<CrmdevChangeDone>('/c
 
 /** «Actualizar» the clients the directory uses: CRMDev is read now (at most 1000; `truncated` when it gave that many). */
 export const refreshCrmdevClients = () => send<{ count: number; fetchedAt: string; truncated: boolean }>('/crmdev/clients/refresh', {});
+
+/** An organization of CRMDev: its key fixes it and CRMDev does not say its name, so the user names it here. */
+export type CrmdevOrg = { id: string; name: string; hasKey: boolean; clients: number | null; projects: number | null; fetchedAt: string | null };
+export type CrmdevOrgs = { orgs: CrmdevOrg[]; added?: string; warning?: string };
+export const getCrmdevOrgs = () => core<CrmdevOrgs>('/crmdev/orgs');
+export const addCrmdevOrg = (name: string, key: string) => send<CrmdevOrgs>('/crmdev/orgs', { name, key });
+export const changeCrmdevOrg = (id: string, change: { name?: string; key?: string }) =>
+  request<CrmdevOrgs>(`/core/crmdev/orgs/${encodeURIComponent(id)}`, change, 'PATCH');
+export const testCrmdevOrg = (id: string) => send<{ org: string; tools: string[] }>(`/crmdev/orgs/${encodeURIComponent(id)}/test`, {});
+export const forgetCrmdevOrg = (id: string) => request<CrmdevOrgs>(`/core/crmdev/orgs/${encodeURIComponent(id)}`, undefined, 'DELETE');
