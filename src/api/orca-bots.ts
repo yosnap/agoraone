@@ -22,3 +22,11 @@ export type BotErrandPreview = { id: string; bot: { id: string; name: string; ag
   client: string; project: string; repo: string; orcaName: string; source: { kind: string; label: string } | null; subject: string; body: string };
 export const previewBotErrand = (errand: BotErrandRequest) => request<BotErrandPreview>('/core/orca/bots/preview', errand);
 export const sendBotErrand = (id: string) => request<{ messageId: string; bot: string; kind: BotErrandKind }>('/core/orca/bots/send', { id });
+
+/** An errand sent to a bot and, once read from the mailbox, its answer (data, shown as text). */
+export type BotRequest = { messageId: string; bot: { id: string; name: string }; kind: BotErrandKind; subject: string; client: string; project: string;
+  repo: string; source: string; state: 'waiting' | 'answered' | 'silent'; answer: string | null; answeredAt: string | null; createdAt: string; canFollow: boolean };
+export const getBotRequests = () => request<{ requests: BotRequest[]; problem: string | null }>('/core/orca/bots/requests');
+/** «Seguir el hilo»: the preview of a new message in the same chat of the bot; sent with `sendBotErrand`. */
+export const followBot = (messageId: string, kind: BotErrandKind, text: string) =>
+  request<BotErrandPreview>('/core/orca/bots/follow', { messageId, kind, text });

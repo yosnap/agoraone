@@ -67,6 +67,7 @@ class MessageIn(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     delegated: DelegatedIn | None = None  # a Hermes profile's answer the user passes on: data, never instructions
     research: ResearchIn | None = None  # the user pressed «Investigar»: a web research turn, apart from this conversation
+    botReply: str | None = Field(default=None, pattern=r"^msg_[A-Za-z0-9_-]{4,72}$")  # a bot's answer the user passes on, read from AgoraOne
 
 
 class KeyIn(BaseModel):
@@ -118,6 +119,8 @@ def _logged(event: dict) -> tuple[str, str]:
         return "investigar", json.dumps({k: event[k] for k in ("busquedas", "paginas", "minutos")}, ensure_ascii=False)
     if event["tool"] == "hermes_reply":  # that a profile's answer reached Watson, and how long; never its text
         return "respuesta_hermes", json.dumps({"perfil": event["profile"], "caracteres": event["chars"]}, ensure_ascii=False)
+    if event["tool"] == "bot_reply":  # that a bot's answer reached Watson, and how long; never its text
+        return "respuesta_bot", json.dumps({"bot": event["bot"], "caracteres": event["chars"]}, ensure_ascii=False)
     if event["tool"] == "hermes_proposal":  # which profile, not the task
         return "proponer_encargo_hermes", json.dumps({"perfil": event["proposal"].get("profile")}, ensure_ascii=False)
     if event["tool"] == "issue_proposal":  # which repository, not what it says
@@ -173,6 +176,13 @@ def assistant_router(
             yield connection
         finally:
             connection.close()
+
+    def bot_reply(message_id: str):
+        """A bot's answer kept by AgoraOne, as a block of data for Watson (None if there is none)."""
+        from . import orca_bots
+
+        with database() as connection:
+            return orca_bots.reply_block(connection, message_id)
 
     def db(work):
         """SQLite work runs in a worker thread, never on the event loop (a busy database waits there)."""
@@ -479,6 +489,11 @@ def assistant_router(
                 if body.delegated:
                     pages_block = "\n\n".join(filter(None, [hermes_tasks.reply_block(body.delegated.profile, body.delegated.reply), pages_block]))
                     toolbox.history.append({"tool": "hermes_reply", "profile": body.delegated.profile, "chars": len(body.delegated.reply)})
+                if body.botReply:
+                    found = await run_in_threadpool(bot_reply, body.botReply)
+                    if found:
+                        pages_block = "\n\n".join(filter(None, [found[1], pages_block]))
+                        toolbox.history.append({"tool": "bot_reply", "bot": found[0], "chars": len(found[1])})
                 question = f"{context}\n\n{pages_block + chr(10) + chr(10) if pages_block else ''}Pregunta: {body.message}"
                 if body.research:
                     question = f"{context}\n\n{body.message}"

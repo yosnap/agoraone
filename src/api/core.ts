@@ -124,7 +124,9 @@ export type AssistantEvent =
 /** A task Watson proposed for a Hermes profile: only sent when the user presses «Enviar». */
 export type HermesProposal = { profile: string; task: string };
 /** A Hermes profile's answer the user passes on to Watson, which receives it delimited as data. */
-export type Delegated = { profile: string; reply: string };
+/** An answer the user passes on to Watson: a Hermes profile's (its text) or a bot's of Orca (only its id: the core
+ * reads the answer it kept). Data, never instructions. */
+export type Delegated = { profile: string; reply: string } | { botReply: string };
 /** A web research Watson proposed: nothing is searched until the user presses «Investigar». */
 export type ResearchProposal = { question: string; scope: string };
 
@@ -133,7 +135,7 @@ export async function askAssistant(id: number, message: string, onEvent: (event:
   const response = await fetch(`/api/core/assistant/conversations/${id}/messages`, {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Agora-CSRF': csrfToken() },
-    body: JSON.stringify({ message, ...(delegated ? { delegated } : {}), ...(research ? { research } : {}) }),
+    body: JSON.stringify({ message, ...(delegated ? ('botReply' in delegated ? { botReply: delegated.botReply } : { delegated }) : {}), ...(research ? { research } : {}) }),
   });
   if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'No se pudo enviar la pregunta.'); }
   const reader = response.body?.getReader();

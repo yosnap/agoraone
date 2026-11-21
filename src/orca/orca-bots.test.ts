@@ -30,3 +30,20 @@ test('la vista previa del envío a un bot enseña el bot, el chat nuevo y el tex
   const card = readFileSync(new URL('./orca-launch.tsx', import.meta.url), 'utf8');
   assert.equal(card.match(/sendBotErrand\(/g)?.length, 1);  // only from «Enviar a <bot>»
 });
+
+test('«Pasar a Watson» de un bot envía solo su identificador y se toma una vez', async () => {
+  const { askWatson, takeWatsonAsk } = await import('../assistant/pending-ask');
+  askWatson('Resúmemelo', { botReply: 'msg_abc123' });
+  assert.deepEqual(takeWatsonAsk(), { text: 'Resúmemelo', delegated: { botReply: 'msg_abc123' } });
+  assert.equal(takeWatsonAsk(), null);
+  const { askAssistant } = await import('../api/core');
+  let body = '';
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => { body = String(init?.body); return new Response('', { status: 500 }); }) as typeof fetch;
+  try { await askAssistant(1, 'Resúmemelo', () => undefined, undefined, { botReply: 'msg_abc123' }).catch(() => undefined); }
+  finally { globalThis.fetch = original; }
+  assert.deepEqual(JSON.parse(body), { message: 'Resúmemelo', botReply: 'msg_abc123' });  // the core reads the answer it kept
+  const list = readFileSync(new URL('./orca-bot-requests.tsx', import.meta.url), 'utf8');
+  assert.match(list, /<pre className="orca-bot-answer">\{request\.answer\}<\/pre>/);  // shown as text
+  assert.doesNotMatch(list, /useEffect/);
+});

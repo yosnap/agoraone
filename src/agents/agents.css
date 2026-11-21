@@ -70,3 +70,10 @@ p.agent-facts { display:block }
 .orca-mailbox { grid-template-columns:auto minmax(0,1fr) auto; margin:8px 0 12px }
 .orca-mailbox .coding-name small { white-space:normal }
 .orca-mailbox-state.broken { background:var(--c-fde8e4, #fde8e4); color:var(--c-8a2b1d, #8a2b1d) }
+.orca-bot-requests h3 { margin:16px 0 8px; font-size:15px }
+.orca-bot-request-list { list-style:none; margin:0; padding:0; display:grid; gap:8px }
+.orca-bot-request-list > li { padding:10px 14px; display:grid; gap:8px }
+.orca-bot-request-head { display:grid; grid-template-columns:auto minmax(0,1fr); gap:12px; align-items:center }
+.orca-bot-answer { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow:auto; font:inherit; font-size:13px;
+  padding:8px 10px; border:1px solid var(--c-dfe3d6); border-radius:10px; background:var(--c-fffffa) }
+.orca-bot-request-state.silent { background:var(--c-fde8e4, #fde8e4); color:var(--c-8a2b1d, #8a2b1d) }
