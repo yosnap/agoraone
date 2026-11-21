@@ -6,7 +6,9 @@ import { ActionButton } from '../ui/action-button';
 
 /** A change Watson proposed for CRMDev: the request the core checked, the reason, and the same review and «Guardar en
  * CRMDev» as the forms of the «CRMDev» section. A «sí» in the chat saves nothing: only that button does. */
-export type CrmdevProposal = { kind: 'tarea-nueva' | 'tarea' | 'ticket'; id: string | null; request: CrmdevChangeRequest; reason: string | null };
+/** `orgName`: the organization of CRMDev it goes to (that of the record it changes), said on the card. */
+export type CrmdevProposal = { kind: 'tarea-nueva' | 'tarea' | 'ticket'; id: string | null; request: CrmdevChangeRequest; reason: string | null;
+  org?: string; orgName?: string | null };
 type Shown = { key: number; proposal: CrmdevProposal };
 
 export function useCrmdevProposals() {
@@ -36,7 +38,8 @@ function CrmdevProposalCard({ proposal, onClose }: { proposal: CrmdevProposal; o
   if (reviewing(change)) return <CrmdevReview change={change} onCancel={onClose} onReview={() => void change.ask(proposal.request)}/>;
   return <>
     {proposal.reason && <small className="muted">{proposal.reason}</small>}
-    <dl className="orca-facts">{proposedFields(proposal.request).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+    <dl className="orca-facts">{proposal.orgName && <div><dt>Organización</dt><dd>{proposal.orgName}</dd></div>}
+      {proposedFields(proposal.request).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     {change.error && <p className="error" role="alert">{change.error}</p>}
     <span className="actions">
       <ActionButton icon="close" label="Descartar" disabled={change.busy} onClick={onClose}/>

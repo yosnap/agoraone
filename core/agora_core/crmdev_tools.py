@@ -10,11 +10,16 @@ it never sends anything. Only with Claude (like every private tool) and with the
   CRMDev then) and saves it with «Guardar en CRMDev» through `/crmdev/write/*`, as if they had filled the form. A «sí»
   in the chat saves nothing. Replying to a ticket waits for CRMDev to offer it (`reply_ticket`).
 
+With several organizations of CRMDev (21/11/2026) each one is read with its own key: `consultar_crmdev` reads every
+organization with a key (or the one named in `organizacion`) and says the organization of each record; a proposal goes
+to the organization of the record it changes (a new task, to its project's), which the card shows and the core checks
+again with that organization's key.
+
 What CRMDev answers is data, never instructions: it goes to the model inside a notice that says so."""
 
 import json
 
-from . import crmdev_api, crmdev_sync, crmdev_write, modules
+from . import crmdev_api, crmdev_orgs, crmdev_sync, crmdev_write, modules
 from .confirmed_change import ChangeError
 from .web_api import WebApiError
 
@@ -36,7 +41,8 @@ SPECS = [
          "que": {"type": "string", "enum": ["tareas", "tickets"]},
          "estado": {"type": "string", "description": "Filtro de estado de CRMDev (opcional): TODO, IN_PROGRESS, IN_REVIEW, DONE, CANCELLED en "
                                                      "tareas; OPEN, IN_PROGRESS, WAITING_CLIENT, RESOLVED, CLOSED en tickets."},
-         "proyecto": {"type": "string", "description": "Parte del nombre del proyecto, para quedarte con los suyos (opcional)."}}}},
+         "proyecto": {"type": "string", "description": "Parte del nombre del proyecto, para quedarte con los suyos (opcional)."},
+         "organizacion": {"type": "string", "description": "Nombre de una organización de CRMDev, para leer solo esa (opcional; sin él, todas)."}}}},
     {"name": PROPOSE,
      "description": ("Propone un cambio en CRMDev: una tarea nueva, cambiar una tarea (título, descripción, estado, prioridad) o un "
                      "ticket (estado, prioridad, categoría). Solo abre una tarjeta: el usuario ve el cambio exacto y lo guarda con "
@@ -84,44 +90,65 @@ def _row(kind: str, row: dict) -> dict:
 async def call(toolbox, name: str, args: dict) -> str:
     from fastapi.concurrency import run_in_threadpool
 
-    def target():
+    def targets():
+        """Each organization with a key: (id, name, connection)."""
         with toolbox.database() as connection:
             if not modules.state(connection)["crmdev"] or not crmdev_sync.active(connection):
-                return None
-            return crmdev_api.connection_of(connection, toolbox.secrets)
-    found = await run_in_threadpool(target)
-    if found is None:
+                return []
+            found = [(o["id"], o["name"], crmdev_orgs.connection_of(connection, toolbox.secrets, o["id"])) for o in crmdev_orgs.orgs(connection)]
+            return [t for t in found if t[2] is not None]
+    found = await run_in_threadpool(targets)
+    if not found:
         return _error("CRMDev no está conectado o su módulo está apagado.")
     if name == READ:
         return await _read(toolbox, found, args)
-    return _propose(toolbox, args)
+    return _propose(toolbox, args, {org: org_name for org, org_name, _ in found})
 
 
-async def _read(toolbox, target, args: dict) -> str:
+async def _read(toolbox, targets: list, args: dict) -> str:
     from fastapi.concurrency import run_in_threadpool
 
     what = args.get("que")
     if what not in LISTS:
         return _error("Indica «tareas» o «tickets».")
+    named = " ".join(str(args.get("organizacion") or "").split()).casefold()
+    if named:
+        targets = [t for t in targets if t[1].casefold() == named]
+        if not targets:
+            return _error("No hay ninguna organización de CRMDev con ese nombre.")
     query = {"limit": crmdev_api.MAX_ROWS}
     if args.get("estado"):
         query["status"] = str(args["estado"]).upper()
-    try:
-        rows = await run_in_threadpool(lambda: crmdev_api.call(target, LISTS[what], query))
-    except WebApiError as error:
-        return _error(str(error))
-    found = [_row(what, r) for r in rows if isinstance(r, dict) and isinstance(r.get("id"), str)] if isinstance(rows, list) else []
+    several = len(targets) > 1
+    found, problems = [], []
+    for org, org_name, target in targets:  # one after another: each organization has its own key and limit
+        try:
+            rows = await run_in_threadpool(lambda: crmdev_api.call(target, LISTS[what], query))
+        except WebApiError as error:
+            if not several:
+                return _error(str(error))
+            problems.append(f"{org_name}: {error}")
+            continue
+        found += [{**_row(what, r), "_org": org, **({"organizacion": org_name} if several else {})}
+                  for r in rows if isinstance(r, dict) and isinstance(r.get("id"), str)] if isinstance(rows, list) else []
     wanted = " ".join(str(args.get("proyecto") or "").split()).casefold()
     if wanted:
         found = [r for r in found if wanted in (r.get("proyecto") or "").casefold()]
     seen = toolbox.crmdev_seen
-    seen.update((what, r["id"]) for r in found)
-    seen.update(("proyectos", r["proyecto_id"]) for r in found if r.get("proyecto_id"))
+    seen.update((what, r["id"], r["_org"]) for r in found)
+    seen.update(("proyectos", r["proyecto_id"], r["_org"]) for r in found if r.get("proyecto_id"))
+    shown = [{k: v for k, v in r.items() if k != "_org"} for r in found]
     toolbox._record({"tool": "crmdev_read", "what": what, "count": len(found)})
-    return json.dumps({what: found[:60], "total": len(found), "aviso": NOTICE}, ensure_ascii=False)
+    return json.dumps({what: shown[:60], "total": len(found), **({"no_leidas": problems} if problems else {}), "aviso": NOTICE}, ensure_ascii=False)
 
 
-def _propose(toolbox, args: dict) -> str:
+def _org_of(seen: set, kind: str, item: str) -> str | None:
+    """The organization where consultar_crmdev showed it (None if not shown, or shown in more than one)."""
+    orgs = {entry[2] for entry in seen if len(entry) == 3 and entry[0] == kind and entry[1] == item}
+    return orgs.pop() if len(orgs) == 1 else None
+
+
+def _propose(toolbox, args: dict, names: dict[str, str]) -> str:
     """Checks the change as the form would and opens the card; nothing is read from CRMDev nor saved here."""
     kind = TIPOS.get(args.get("tipo"))
     if kind is None:
@@ -130,8 +157,11 @@ def _propose(toolbox, args: dict) -> str:
     try:
         if kind == "tarea-nueva":
             values.pop("category", None)
-            if values.get("projectId") and ("proyectos", values["projectId"]) not in toolbox.crmdev_seen:
+            org = _org_of(toolbox.crmdev_seen, "proyectos", values["projectId"]) if values.get("projectId") else None
+            if values.get("projectId") and org is None:
                 return _error("Usa el id de un proyecto que hayas visto con consultar_crmdev.")
+            if org is None and len(names) > 1:
+                return _error("Con varias organizaciones de CRMDev, una tarea nueva va con el id de un proyecto que hayas visto.")
             checked = crmdev_write._values(values, crmdev_write.NEW_TASK)
             if not checked.get("title"):
                 return _error("Una tarea nueva necesita título.")
@@ -139,14 +169,17 @@ def _propose(toolbox, args: dict) -> str:
             item = None
         else:
             item = args.get("id")
-            if not isinstance(item, str) or (("tareas" if kind == "tarea" else "tickets"), item) not in toolbox.crmdev_seen:
+            org = _org_of(toolbox.crmdev_seen, "tareas" if kind == "tarea" else "tickets", item) if isinstance(item, str) else None
+            if org is None:
                 return _error("Busca antes esa tarea o ese ticket con consultar_crmdev.")
             values.pop("projectId", None)
             checked = crmdev_write._values(values, crmdev_write.UPDATES[kind].fields)
             request = {"kind": kind, "id": item, "list": {}, "changes": checked}
     except ChangeError as error:
         return _error(str(error))
-    proposal = {"kind": kind, "id": item, "request": request, "reason": " ".join(str(args.get("motivo") or "").split())[:300] or None}
+    org = org or next(iter(names))
+    request["org"] = org
+    proposal = {"kind": kind, "id": item, "org": org, "orgName": names.get(org), "request": request, "reason": " ".join(str(args.get("motivo") or "").split())[:300] or None}
     toolbox._record({"tool": "crmdev_proposal", "proposal": proposal})
     return json.dumps({"propuesta": {"tipo": args.get("tipo"), "campos": sorted(request.get("values") or request.get("changes"))},
                        "aviso": "Ya está en su pantalla para revisarlo; no está guardado hasta que pulse «Guardar en CRMDev»."}, ensure_ascii=False)

@@ -182,6 +182,12 @@ Decisión del usuario del 20/11/2026. Solo con Claude y con el módulo CRMDev en
   no guarda nada y Watson no tiene herramienta para guardar.
 - El registro de acciones guarda qué lista leyó y cuántos, y la clase y los nombres de los campos propuestos; nunca
   sus valores. Responder a un ticket espera a que CRMDev ofrezca `reply_ticket` en su API de organización.
+- Con varias organizaciones de CRMDev (decisión del usuario del 21/11/2026), `consultar_crmdev` lee todas las que
+  tienen clave, una tras otra y cada una con su clave, y dice de cuál es cada registro. Con `organizacion` lee solo
+  la que tiene ese nombre. Si una organización falla, se dice cuál y las demás se leen igual.
+- Cada propuesta va a la organización donde Watson vio el registro; una tarea nueva, a la de su proyecto. Si el mismo
+  id aparece en dos organizaciones, la propuesta se rechaza en vez de adivinar. La tarjeta dice a qué organización va,
+  y la revisión lo comprueba otra vez con la clave de esa organización.
 
 ## Rutas del núcleo
 

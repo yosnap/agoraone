@@ -83,9 +83,29 @@ CRMDev es el CRM de proyectos, tareas, tickets y clientes de la organización de
 - Módulo «CRMDev»: mientras el usuario no lo toque, está encendido si hay una dirección guardada. Apagado, sale del
   menú, sus rutas responden 404 sin pedir nada, no hay lectura en segundo plano y su ventana se cierra.
 
+### Varias organizaciones
+
+Decisión del usuario del 21/11/2026. Una clave `crm_…` da acceso a una sola organización y la API de CRMDev no dice
+cuál es, así que el usuario pone el nombre a cada una en el bloque «Organizaciones» de la tarjeta de CRMDev:
+
+- Cada organización tiene su clave en su propia cuenta del Llavero. La primera conserva la clave de antes y se llama
+  «Organización 1» hasta que el usuario la renombra. La dirección de CRMDev es la misma para todas.
+- La caché de 60 s y la espera tras un 429 van por clave, y AgoraOne lee todas las organizaciones cada media hora.
+- Cada cliente y cada proyecto de Central pertenece a una sola organización, y AgoraOne la recuerda. Se decide así:
+  la del registro enlazado gana; si no hay enlace, la que eligió el usuario; un proyecto sin ninguna de las dos va
+  con la de su cliente. Lo que no tiene organización sale en «Sin organización», dentro de «Desde Central».
+- Con más de una organización con clave, la sección CRMDev tiene un selector encima de las pestañas. Las lecturas,
+  los cambios, «Lanzar en Orca» y los contadores son los de la organización elegida, con su clave. El navegador
+  recuerda la elección.
+- Cada revisión de un cambio o de un envío dice a qué organización va. Nada pasa de una organización a otra.
+- Watson lee todas las organizaciones con clave y dice de cuál es cada tarea o ticket. Cada propuesta suya va a la
+  organización del registro que cambia; una tarea nueva, a la de su proyecto.
+- La ventana de CRMDev no cambia. Su web tiene su propio inicio de sesión, y la organización se elige allí.
+
 ### Vistas
 
-La sección «CRMDev» del menú tiene cuatro pestañas a todo el ancho, con filtros y fichas:
+La sección «CRMDev» del menú tiene cuatro pestañas a todo el ancho, con filtros y fichas, de la organización elegida
+arriba si hay varias:
 
 - **Proyectos**: nombre, estado, progreso, tipo y fecha límite. La ficha suma las horas (total de CRMDev, por
   persona y por tarea) y lista sus tareas.

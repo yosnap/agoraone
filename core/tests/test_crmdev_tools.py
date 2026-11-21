@@ -8,7 +8,7 @@ from contextlib import contextmanager
 
 import pytest
 
-from agora_core import crmdev_api, crmdev_sync, crmdev_tools, engines, modules
+from agora_core import crmdev_api, crmdev_orgs, crmdev_sync, crmdev_tools, engines, modules
 from agora_core.brain_tools import Toolbox
 from agora_core.db import DB_NAME, connect, migrate
 from agora_core.embed import VectorCache
@@ -37,16 +37,20 @@ def box(tmp_path, monkeypatch):
     sent = []
     monkeypatch.setattr(modules, "state", lambda _c: {"crmdev": True})
     monkeypatch.setattr(crmdev_sync, "active", lambda _c: True)
-    monkeypatch.setattr(crmdev_api, "connection_of", lambda _c, _s: object())
+    orgs = [{"id": "o1", "name": "Primera"}]
+    monkeypatch.setattr(crmdev_orgs, "orgs", lambda _c: orgs)
+    monkeypatch.setattr(crmdev_orgs, "connection_of", lambda _c, _s, org=None: org)  # the «connection» says its organization
+    rows = {"o1": {"list_tasks": TASKS, "list_tickets": TICKETS}, "o2": {"list_tasks": [{**TASKS[0], "title": "De la segunda"}], "list_tickets": []}}
 
-    def call(_t, tool, args=None, fresh=False):
+    def call(target, tool, args=None, fresh=False):
         sent.append(tool)
         if tool not in ("list_tasks", "list_tickets"):
             raise AssertionError("Watson nunca escribe en CRMDev")
-        return {"list_tasks": TASKS, "list_tickets": TICKETS}[tool]
+        return rows[target][tool]
     monkeypatch.setattr(crmdev_api, "call", call)
     toolbox = Toolbox(database, None, VectorCache())
     toolbox.sent = sent
+    toolbox.orgs = orgs
     return toolbox
 
 
@@ -73,7 +77,7 @@ def test_a_change_is_only_proposed_for_what_was_seen(box):
     assert done["propuesta"]["campos"] == ["status"] and "Guardar en CRMDev" in done["aviso"]
     event = box.drain()[0]
     assert event["tool"] == "crmdev_proposal"
-    assert event["proposal"]["request"] == {"kind": "tarea", "id": "t1", "list": {}, "changes": {"status": "DONE"}}
+    assert event["proposal"]["request"] == {"kind": "tarea", "id": "t1", "list": {}, "changes": {"status": "DONE"}, "org": "o1"}
     assert box.sent == ["list_tasks"]  # nothing written
 
 
@@ -91,7 +95,23 @@ def test_a_new_task_only_in_a_project_seen(box):
     box.drain()
     run(box, "proponer_cambio_crmdev", {"tipo": "tarea_nueva", "titulo": "Revisar la portada", "proyecto": "p1", "prioridad": "HIGH"})
     request = box.drain()[0]["proposal"]["request"]
-    assert request == {"kind": "tarea-nueva", "values": {"title": "Revisar la portada", "projectId": "p1", "priority": "HIGH"}}
+    assert request == {"kind": "tarea-nueva", "values": {"title": "Revisar la portada", "projectId": "p1", "priority": "HIGH"}, "org": "o1"}
+
+
+def test_each_organization_is_read_and_a_proposal_goes_to_the_record_s_own(box):
+    box.orgs.append({"id": "o2", "name": "Segunda"})
+    found = run(box, "consultar_crmdev", {"que": "tareas"})["tareas"]
+    assert [(t["titulo"], t["organizacion"]) for t in found] == [("Maquetar", "Primera"), ("De la segunda", "Segunda")]
+    assert [t["titulo"] for t in run(box, "consultar_crmdev", {"que": "tareas", "organizacion": "segunda"})["tareas"]] == ["De la segunda"]
+    assert "error" in run(box, "consultar_crmdev", {"que": "tareas", "organizacion": "Tercera"})
+    box.drain()
+    # The same id in both organizations: ambiguous, so it is refused rather than guessed.
+    assert "error" in run(box, "proponer_cambio_crmdev", {"tipo": "tarea", "id": "t1", "estado": "DONE"})
+    assert "error" in run(box, "proponer_cambio_crmdev", {"tipo": "tarea_nueva", "titulo": "Sin proyecto"})
+    box.crmdev_seen.discard(("tareas", "t1", "o1"))
+    run(box, "proponer_cambio_crmdev", {"tipo": "tarea", "id": "t1", "estado": "DONE"})
+    proposal = box.drain()[0]["proposal"]
+    assert (proposal["org"], proposal["orgName"], proposal["request"]["org"]) == ("o2", "Segunda", "o2")
 
 
 def test_the_log_keeps_no_values(box):

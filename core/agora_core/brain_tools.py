@@ -263,7 +263,7 @@ class Toolbox:
         self.owner: str | None = None
         self.meetings_seen: set[int] = set()  # a meeting can only be read once it was found
         self.chats_seen: set[int] = set()  # a reply is only proposed to a conversation consultar_bandeja showed
-        self.crmdev_seen: set[tuple[str, str]] = set()  # a change is only proposed for a task or ticket consultar_crmdev showed
+        self.crmdev_seen: set[tuple[str, str, str]] = set()  # (kind, id, organization) consultar_crmdev showed: only those get proposals
         self.secrets = None  # the secret store, for reading CRMDev
         self.only: tuple[str, ...] | None = None  # a research turn: the only tools that answer, whatever is asked
         self.pages_left = 0  # pages a research turn may still read
