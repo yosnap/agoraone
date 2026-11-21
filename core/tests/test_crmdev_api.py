@@ -153,9 +153,10 @@ def test_el_transporte_deja_pasar_lo_permitido(fake):
 
 
 def test_el_spec_de_crmdev_solo_se_usa_en_su_modulo():
-    """CRMDev's SPEC, its transport and its exchange stay in crmdev_api (and the connector's registration)."""
+    """CRMDev's SPEC, its transport and its exchange stay in crmdev_api (and the connector's registration, and
+    crmdev_orgs, which keeps each organization's key with that same SPEC under its own account)."""
     root = Path(crmdev_api.__file__).parent
-    allowed = {"crmdev_api.py", "connectors.py"}
+    allowed = {"crmdev_api.py", "connectors.py", "crmdev_orgs.py"}
     pattern = re.compile(r"crmdev_api\s*\.\s*(SPEC|TRANSPORT|_\w+)|from\s+\.?crmdev_api\s+import[^\n]*\b(SPEC|TRANSPORT|_\w+)|getattr\(\s*crmdev_api")
     for path in root.rglob("*.py"):
         if path.name not in allowed:

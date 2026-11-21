@@ -27,7 +27,7 @@ def _central(connection: sqlite3.Connection) -> list[dict]:
 
 
 def _crmdev(connection: sqlite3.Connection) -> list[dict]:
-    return [p for p in ((crmdev_sync.snapshot(connection) or {}).get("projects") or []) if isinstance(p, dict) and p.get("id")]
+    return [p for p in crmdev_sync.rows(connection, "projects") if p.get("id")]  # every organization, each with its `org`
 
 
 def _stored(connection: sqlite3.Connection) -> dict[tuple[str, str], str]:

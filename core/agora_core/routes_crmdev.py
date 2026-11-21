@@ -129,13 +129,15 @@ def crmdev_router(settings: Settings, secrets, health: crmdev_sync.CrmdevHealth 
             with database() as connection:
                 if not modules.state(connection)["crmdev"]:
                     return problem(404, OFF, "off")
-                target = crmdev_api.connection_of(connection, secrets)
-                if target is None:
+                if crmdev_api.connection_of(connection, secrets) is None:
                     return problem(409, NOT_CONNECTED, "not_connected")
-                data = crmdev_sync.refresh(connection, target)
-            if health is not None:
-                health.problem = None
-            return {"count": len(data["clients"]), "fetchedAt": data["fetchedAt"], "truncated": data["truncated"]}
+                # Every organization whose key is saved, one after another (a failing one is said, the others are read).
+                read = crmdev_sync.read_now(connection, secrets, health or crmdev_sync.CrmdevHealth())
+                every = crmdev_sync.snapshots(connection)
+            if read is None:
+                return problem(409, NOT_CONNECTED, "not_connected")
+            return {"count": sum(len(s["clients"]) for s in every.values()), "fetchedAt": read["fetchedAt"],
+                    "truncated": any(s.get("truncated") for s in every.values()), "organizations": len(every)}
         try:
             return await run_in_threadpool(work)
         except web_api.WebApiError as error:

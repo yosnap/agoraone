@@ -36,7 +36,8 @@ def world(tmp_path, monkeypatch):
     migrate(connection)
     state = {"central": central.shape(CENTRAL_RAW), "crmdev": crmdev_snapshot()}
     monkeypatch.setattr(central, "snapshot", lambda _c: state["central"])
-    monkeypatch.setattr(crmdev_sync, "snapshot", lambda _c: state["crmdev"])
+    monkeypatch.setattr(crmdev_sync, "snapshot", lambda _c, org=None: state["crmdev"])
+    monkeypatch.setattr(crmdev_sync, "snapshots", lambda _c: {"o1": state["crmdev"]} if state["crmdev"] else {})
     clients._changed()
     yield connection, state
     connection.close()
@@ -92,7 +93,7 @@ def test_odd_keys_are_refused(world):
 
 def test_nothing_while_either_is_not_a_source(world, monkeypatch):
     connection, _ = world
-    monkeypatch.setattr(crmdev_sync, "snapshot", lambda _c: None)
+    monkeypatch.setattr(crmdev_sync, "snapshot", lambda _c, org=None: None)
     result = crmdev_pending.build(connection)
     assert result["active"] is False and result["items"] == []
 
