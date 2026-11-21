@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { getVaultReview, type ReviewNote, type VaultReview } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
+import { keystoreName } from '../ui/platform';
 
 function Notes({ notes, onRead }: { notes: ReviewNote[]; onRead: (key: string) => void }) {
   return <ul className="review-notes">{notes.map(note => <li key={note.key}><button type="button" onClick={() => onRead(note.key)}>
@@ -33,7 +34,7 @@ export function VaultReviewPanel({ discreet, onRead, onClose, onAsk }: { discree
       {error && <LoadError message={error}/>}
       {!found && !error ? <Loading label="Revisando el vault" lines={4}/> : found && <div className="review-grid">
         <p className="review-total">{found.notes} notas en {found.folders} carpetas.</p>
-        <Section title="Notas con contraseñas o claves" count={found.secretCount} why="Solo el título: lo que parece una clave ya está oculto y nunca va a un modelo. Esas cosas estarían mejor en el Llavero o en un gestor de contraseñas.">
+        <Section title="Notas con contraseñas o claves" count={found.secretCount} why={`Solo el título: lo que parece una clave ya está oculto y nunca va a un modelo. Esas cosas estarían mejor en el ${keystoreName} o en un gestor de contraseñas.`}>
           <Notes notes={found.secrets} onRead={onRead}/></Section>
         <Section title="Títulos repetidos" count={found.duplicateCount} why="Varias notas con el mismo título: difíciles de distinguir y de enlazar.">
           <ul className="review-notes">{found.duplicates.map(group => <li key={group.title}><strong>{group.title}</strong> <small>· {group.notes.map(n => n.folder || '(raíz)').join(' · ')}</small></li>)}</ul></Section>

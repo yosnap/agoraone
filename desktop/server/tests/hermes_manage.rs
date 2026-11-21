@@ -16,7 +16,7 @@ use agora_server::security::Failure;
 use serde_json::{Map, Value, json};
 
 fn installation() -> Option<PathBuf> {
-    let installation = PathBuf::from(std::env::var("HOME").ok()?).join(".hermes/hermes-agent");
+    let installation = agora_server::platform::home_dir()?.join(".hermes/hermes-agent");
     installation.join("run_agent.py").exists().then_some(installation)
 }
 
@@ -36,7 +36,7 @@ fn status<T: std::fmt::Debug>(result: Result<T, Failure>) -> u16 {
 async fn tasks_and_kanban_through_hermes_only_for_their_profile_keeping_hidden_lines() {
     let Some(installation) = installation() else { return eprintln!("Hermes no instalado") };
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = agora_server::platform::canonicalize(dir.path()).unwrap();
     for name in ["alpha", "beta"] {
         fs::create_dir_all(root.join("profiles").join(name)).unwrap();
         fs::write(root.join("profiles").join(name).join("SOUL.md"), format!("Soy {name}.")).unwrap();
@@ -120,17 +120,18 @@ if __name__ == "__main__":
 #[tokio::test]
 async fn mcp_by_hand_calls_the_catalogue_tool_with_the_profile_credentials_and_leaves_no_process() {
     let Some(installation) = installation() else { return eprintln!("Hermes no instalado") };
-    let python = installation.join("venv/bin/python");
+    // The Hermes virtualenv's Python, as before on macOS and Linux; Windows finds it through the location.
+    let python = if cfg!(windows) { agora_server::hermes::location::from_env().python } else { installation.join("venv/bin/python") };
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = agora_server::platform::canonicalize(dir.path()).unwrap();
     let home = root.join("profiles/alpha");
     let server = root.join("eco_server.py");
     fs::create_dir_all(home.join("cache")).unwrap();
     fs::write(home.join("SOUL.md"), "Soy alpha.").unwrap();
     fs::write(&server, ECHO_SERVER).unwrap();
     // «untrusted»: Hermes would ask a human for any non-read tool; the user's confirmation in AgoraOne is that human.
-    let (p, s) = (python.display(), server.display());
-    let config = format!("model:\n  default: x\nmcp_servers:\n  eco:\n    command: {p}\n    args: [\"{s}\"]\n    trust: untrusted\n  apagado:\n    command: {p}\n    args: [\"{s}\"]\n    enabled: false\n");
+    let (p, s) = (serde_json::to_string(&python).unwrap(), serde_json::to_string(&server).unwrap());
+    let config = format!("model:\n  default: x\nmcp_servers:\n  eco:\n    command: {p}\n    args: [{s}]\n    trust: untrusted\n  apagado:\n    command: {p}\n    args: [{s}]\n    enabled: false\n");
     fs::write(home.join("config.yaml"), config).unwrap();
     // A credential only the main profile has: the MCP server of another profile must not see it.
     fs::write(root.join(".env"), "AGORA_CANARY_ROOT=presente\n").unwrap();
@@ -161,7 +162,10 @@ async fn mcp_by_hand_calls_the_catalogue_tool_with_the_profile_credentials_and_l
     assert_eq!(status(call(server_id.clone(), "eco", json!({ "veces": 2 })).await), 400);
     assert_eq!(status(call(server_id.clone(), "eco", json!({ "texto": "x", "ruta": "/etc" })).await), 400);
     assert_eq!(status(call(disabled, "eco", json!({ "texto": "x" })).await), 409);
-    let ps = std::process::Command::new("/bin/ps").args(["-axo", "command"]).output().unwrap();
-    let left = String::from_utf8_lossy(&ps.stdout).lines().filter(|l| l.contains(&server.display().to_string())).count();
-    assert_eq!(left, 0, "el servidor MCP se cierra al terminar");
+    #[cfg(unix)]
+    {
+        let ps = std::process::Command::new("/bin/ps").args(["-axo", "command"]).output().unwrap();
+        let left = String::from_utf8_lossy(&ps.stdout).lines().filter(|l| l.contains(&server.display().to_string())).count();
+        assert_eq!(left, 0, "el servidor MCP se cierra al terminar");
+    }
 }

@@ -61,9 +61,13 @@ pub fn obsidian_registry_path() -> Option<PathBuf> {
     {
         return Some(PathBuf::from(path));
     }
-    let home = PathBuf::from(std::env::var("HOME").ok()?);
+    let home = crate::platform::home_dir()?;
     if cfg!(target_os = "macos") {
         return Some(home.join("Library/Application Support/obsidian/obsidian.json"));
+    }
+    if cfg!(windows) {
+        let appdata = std::env::var_os("APPDATA").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| home.join("AppData/Roaming"));
+        return Some(appdata.join("obsidian/obsidian.json"));
     }
     let config = std::env::var("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|_| home.join(".config"));
     Some(config.join("obsidian/obsidian.json"))
@@ -95,7 +99,7 @@ pub fn obsidian_vaults(registry: Option<&Path>) -> Vaults {
 }
 
 fn read_vaults(registry: &Path) -> anyhow::Result<Vec<Vault>> {
-    let root = fs::canonicalize(registry.parent().unwrap_or(Path::new("/")))?;
+    let root = crate::platform::canonicalize(registry.parent().unwrap_or(Path::new("/")))?;
     let name = registry.file_name().ok_or_else(|| anyhow::anyhow!("Invalid registry"))?;
     let data: Value = serde_json::from_slice(&read_hermes_file(&root, &root.join(name), 128 * 1024)?)?;
     let Some(Value::Object(entries)) = data.get("vaults") else { anyhow::bail!("Invalid registry") };

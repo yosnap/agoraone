@@ -17,7 +17,8 @@ async fn run(discovery: &HermesDiscovery, root: &std::path::Path, request: Value
         return Err(Failure::new(500, "No se encuentra la instalación de Hermes."));
     }
     let env = [
-        ("PATH", "/usr/bin:/bin".to_string()),
+        // macOS and Linux keep the fixed system PATH; Windows has none, so there it is the user's.
+        ("PATH", if cfg!(windows) { super::python::user_path() } else { "/usr/bin:/bin".to_string() }),
         ("HOME", home()),
         ("HERMES_HOME", root.display().to_string()),
         ("AGORA_HERMES_PATH", location.installation.display().to_string()),

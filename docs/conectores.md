@@ -83,9 +83,29 @@ CRMDev es el CRM de proyectos, tareas, tickets y clientes de la organización de
 - Módulo «CRMDev»: mientras el usuario no lo toque, está encendido si hay una dirección guardada. Apagado, sale del
   menú, sus rutas responden 404 sin pedir nada, no hay lectura en segundo plano y su ventana se cierra.
 
+### Varias organizaciones
+
+Decisión del usuario del 21/11/2026. Una clave `crm_…` da acceso a una sola organización y la API de CRMDev no dice
+cuál es, así que el usuario pone el nombre a cada una en el bloque «Organizaciones» de la tarjeta de CRMDev:
+
+- Cada organización tiene su clave en su propia cuenta del Llavero. La primera conserva la clave de antes y se llama
+  «Organización 1» hasta que el usuario la renombra. La dirección de CRMDev es la misma para todas.
+- La caché de 60 s y la espera tras un 429 van por clave, y AgoraOne lee todas las organizaciones cada media hora.
+- Cada cliente y cada proyecto de Central pertenece a una sola organización, y AgoraOne la recuerda. Se decide así:
+  la del registro enlazado gana; si no hay enlace, la que eligió el usuario; un proyecto sin ninguna de las dos va
+  con la de su cliente. Lo que no tiene organización sale en «Sin organización», dentro de «Desde Central».
+- Con más de una organización con clave, la sección CRMDev tiene un selector encima de las pestañas. Las lecturas,
+  los cambios, «Lanzar en Orca» y los contadores son los de la organización elegida, con su clave. El navegador
+  recuerda la elección.
+- Cada revisión de un cambio o de un envío dice a qué organización va. Nada pasa de una organización a otra.
+- Watson lee todas las organizaciones con clave y dice de cuál es cada tarea o ticket. Cada propuesta suya va a la
+  organización del registro que cambia; una tarea nueva, a la de su proyecto.
+- La ventana de CRMDev no cambia. Su web tiene su propio inicio de sesión, y la organización se elige allí.
+
 ### Vistas
 
-La sección «CRMDev» del menú tiene cuatro pestañas a todo el ancho, con filtros y fichas:
+La sección «CRMDev» del menú tiene cuatro pestañas a todo el ancho, con filtros y fichas, de la organización elegida
+arriba si hay varias:
 
 - **Proyectos**: nombre, estado, progreso, tipo y fecha límite. La ficha suma las horas (total de CRMDev, por
   persona y por tarea) y lista sus tareas.
@@ -124,8 +144,9 @@ CRMDev». **Nunca se borra nada.**
 
 - Qué se puede hacer: «Nueva tarea» (pestaña Tareas y ficha de proyecto), «Editar» en tareas, tickets, la ficha de
   proyecto y la de cliente, «Nuevo cliente» y «Crear en CRMDev» para un cliente sin ubicar. Son las herramientas
-  `create_task`, `update_task`, `update_project`, `create_client`, `update_client` y `update_ticket`. No se crean
-  proyectos ni tickets, y no se tocan las notas del cliente ni la descripción del proyecto.
+  `create_task`, `update_task`, `update_project`, `create_client`, `update_client`, `update_ticket` y `reply_ticket`. No se crean
+  tickets, y no se tocan las notas del cliente ni la descripción del proyecto. Desde el 20/11/2026 la lista incluye
+  también `create_project`, solo para crear un proyecto de Central con «Enviar a CRMDev» (ver «Pendiente en CRMDev»).
 - Cada formulario pide antes «Revisar el cambio», que enseña las filas antes y después. La herramienta la elige el
   núcleo según la clase de cambio, nunca la pantalla. La ficha de confirmación sirve una vez y caduca a los 15
   minutos.
@@ -135,8 +156,14 @@ CRMDev». **Nunca se borra nada.**
   existente».
 - Un alta que no recibió respuesta puede haberse creado: durante 24 h, repetirla pide revisarlo en CRMDev y solo
   sale con «Crear de todos modos».
+- **Responder tickets** (21/11/2026, cuando CRMDev ofreció `reply_ticket` con la clave de organización): «Responder»
+  en la ficha de un ticket. Se elige cada vez quién la ve, sin valor por defecto: «Solo el equipo (nota interna)» o
+  «El cliente», que la lee en su portal y se avisa en la revisión. El texto va tal cual (hasta 2000 caracteres) y se
+  publica a nombre de quien creó la clave. Una respuesta no se borra desde AgoraOne. Si la respuesta de CRMDev no
+  llega, se trata como un alta dudosa («Crear de todos modos»).
 - Cada cambio queda en el registro de acciones, solo con los nombres de los campos.
-- Watson no tiene herramientas de CRMDev.
+- Watson lee tareas y tickets y solo propone cambios, también una respuesta a un ticket (diciendo siempre si es
+  interna) (desde la 1.9; ver [watson-actua.md](watson-actua.md#watson-y-crmdev-19)).
 
 La API de CRMDev está documentada en su propio repositorio (`docs/api/`).
 
@@ -163,6 +190,45 @@ y Watson.
   la dirección guardada. Al apagar el módulo o desconectar, la instantánea **se conserva sin usarse** hasta que se
   vuelva a encender, igual que la de Central, y los enlaces del usuario tampoco se borran. Olvidar solo la clave
   sigue usando lo ya leído; «Crear en CRMDev» desaparece porque necesita la clave.
+- **Proyectos enlazados** (1.9, decisión del usuario del 20/11/2026: Central es la fuente y CRMDev la sigue): la
+  instantánea de CRMDev guarda también sus proyectos (id, nombre, estado, tipo y cliente si CRMDev lo da) y la de
+  Central el id de cada proyecto. Un proyecto de Central y uno de CRMDev son el mismo si el usuario los enlaza, o si
+  se llaman igual, cada nombre es único en su lado y sus clientes no se contradicen. Lo que solo se parece es una
+  sugerencia («Enlazar» / «Son distintos», reversible). La ficha de proyecto de cada lado enseña su par (bloques «En
+  CRMDev» y «En Central»). Enlazar no copia nada entre ellos.
+- **Pendiente en CRMDev** (1.9): con Central y CRMDev encendidos y leídos, el núcleo compara en solo lectura
+  (`crmdev_pending.py`) y avisa de clientes de Central sin CRMDev, contactos de Central que no están en ninguna de
+  sus personas de CRMDev, clientes y proyectos enlazados con nombre, empresa, correo, estado o cliente distintos,
+  proyectos de Central (no archivados) sin CRMDev y clientes de CRMDev que no están en Central. Un correo distinto
+  solo dice que difiere: su valor nunca va en el aviso. Se ve en la pestaña CRMDev › «Desde Central» y,
+  contado, en una tarjeta del Resumen. «Descartar» guarda solo la clave del aviso y una huella de lo que decía, y el
+  aviso vuelve cuando algo cambia. Las dos listas (esta y «Por crear») usan la misma tabla (`src/sync/`): grupos con
+  contador, búsqueda, filtros por tipo y estado, una casilla por fila y una barra con lo marcado y «Revisar».
+- **Enviar a CRMDev** (1.9): en esa lista se marcan los avisos que se quieren enviar y «Revisar envío» enseña cada
+  operación con sus campos antes y después, leída de CRMDev en ese momento, y lo que no puede ir con su motivo. La
+  herramienta la elige el núcleo (`crmdev_batch.py`): un cliente que falta va con `create_client` (nombre, correo,
+  empresa y teléfono, como «Cliente»); un contacto, con `update_client` del cliente si no tiene correo o con
+  `create_client` de una persona de esa empresa; los datos distintos, con `update_client` o `update_project`; un
+  proyecto que falta, con `create_project`, con el estado equivalente al de Central, GITHUB si tiene repositorio,
+  su cliente de CRMDev (también el creado en el mismo envío) y una descripción con el repositorio y las webs del
+  cliente, que se escribe solo al crearlo. El NIF y la dirección no van nunca. Un cliente de CRMDev sin Central no se
+  envía. Una sola pulsación de «Enviar a CRMDev» manda todo: la revisión sirve una vez y caduca a los 15 minutos.
+  Antes de enviar se vuelve a leer CRMDev: lo que cambió no se envía y lo que ya apareció no se crea otra vez. Los
+  envíos van uno tras otro con una pausa y, si CRMDev pide esperar, el resto se queda sin enviar. Un alta sin
+  respuesta no se vuelve a ofrecer en 24 h salvo con «Revisado en CRMDev: incluirlos». Cada alta queda enlazada con
+  su ficha de Central. El registro de acciones solo guarda la clase de cambio y los nombres de los campos.
+- **Los clientes nacen en Central** (1.9): la pestaña Central › «Por crear» reúne los clientes que solo
+  están en AgoraOne, los de CRMDev que no están en Central y propuestas de quien escribe o se reúne con el usuario
+  sin ser cliente (`client_births.py`). Las propuestas salen de correos y conversaciones de WhatsApp clasificados
+  como de cliente o de trabajo (los correos, agrupados por dominio cuando representa a un cliente, nunca el de un
+  proveedor de correo) y del cliente y las personas con correo de las reuniones; solo de lo «normal», nunca de lo
+  «solo en este Mac» ni de lo privado, y nunca de lo que el directorio ya conoce. La lista no lleva correos ni
+  números (solo el dominio como pista); «Descartar» guarda solo la clave. El usuario marca, puede cambiar el nombre
+  de una propuesta, revisa cada cliente tal cual irá (correo y teléfono incluidos) y los crea todos con «Crear en
+  Central» (`central_batch.py`, rutas `/central/batch/preview` y `/central/batch/confirm`, clave con «escritura»).
+  Se vuelve a leer Central: lo que ya tiene (nombre, NIF o correo) no se crea. Cada cliente propio queda enlazado y
+  cada cliente de CRMDev, enlazado con el nuevo de Central. Nada se crea solo: un correo, un mensaje o una reunión
+  nunca disparan la creación.
 - Watson (`consultar_clientes`) recibe de cada cliente su nombre, su empresa, su origen (Central, AgoraOne o ambos),
   sus dominios, sus webs, sus proyectos activos o en mantenimiento, su estado en CRMDev (si tiene ficha allí) y si
   está sin ubicar. Nunca recibe el correo, el teléfono, el NIF, las notas, las diferencias entre fuentes ni los

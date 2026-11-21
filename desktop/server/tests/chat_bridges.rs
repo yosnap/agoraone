@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 
 fn temp() -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
-    let base = fs::canonicalize(dir.path()).unwrap();
+    let base = agora_server::platform::canonicalize(dir.path()).unwrap();
     (dir, base)
 }
 
@@ -33,7 +33,8 @@ for line in sys.stdin:
 #[tokio::test]
 async fn un_proceso_por_sesion_reutilizado_un_turno_a_la_vez_y_descartado_tras_fallo() {
     let (_dir, base) = temp();
-    let spawn = Spawn { python: "/usr/bin/python3".into(), source: FIXTURE.into(), home: base, env: vec![("PATH".into(), "/usr/bin:/bin".into())] };
+    let python = agora_server::hermes::python::system_python().expect("python3");
+    let spawn = Spawn { python, source: FIXTURE.into(), home: base, env: vec![("PATH".into(), agora_server::hermes::python::user_path())] };
     let limit = Duration::from_secs(20);
     let call = |key: &'static str, payload: Value| {
         let spawn = &spawn;
@@ -70,12 +71,16 @@ async fn si_el_puente_muere_solo_no_deja_huerfanos_sus_procesos() {
     // A bridge that starts a long-lived child (as the agent's terminal tool would), notes its pid and crashes.
     let (_dir, base) = temp();
     let pid_file = base.join("hijo.pid");
-    let source = format!("import subprocess, os\nchild = subprocess.Popen(['/bin/sleep', '120'])\nopen({:?}, 'w').write(str(child.pid))\nos._exit(1)\n", pid_file.display().to_string());
-    let spawn = Spawn { python: "/usr/bin/python3".into(), source, home: base.clone(), env: vec![("PATH".into(), "/usr/bin:/bin".into())] };
+    let python = agora_server::hermes::python::system_python().expect("python3");
+    let source = format!(
+        "import subprocess, os, sys\nchild = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])\nopen({:?}, 'w').write(str(child.pid))\nos._exit(1)\n",
+        pid_file.display().to_string()
+    );
+    let spawn = Spawn { python, source, home: base.clone(), env: vec![("PATH".into(), agora_server::hermes::python::user_path())] };
     let _ = worker::request("prueba-huerfano", &spawn, &json!({}), None, Duration::from_secs(10)).await;
     let mut child = None;
     for _ in 0..50 {
-        if let Some(pid) = fs::read_to_string(&pid_file).ok().and_then(|text| text.trim().parse::<i32>().ok()) {
+        if let Some(pid) = fs::read_to_string(&pid_file).ok().and_then(|text| text.trim().parse::<i64>().ok()) {
             child = Some(pid);
             break;
         }
@@ -84,8 +89,7 @@ async fn si_el_puente_muere_solo_no_deja_huerfanos_sus_procesos() {
     let child = child.expect("el puente arrancó su proceso hijo");
     let mut alive = true;
     for _ in 0..50 {
-        // SAFETY: signal 0 only checks whether that pid still exists.
-        alive = unsafe { libc::kill(child, 0) } == 0;
+        alive = agora_server::platform::process_alive(child);
         if !alive {
             break;
         }
@@ -113,7 +117,7 @@ fn el_puente_de_luma_solo_acepta_notas_y_copias_emitidas_por_agoraone() {
 
 /// The installed Hermes, if any.
 fn hermes() -> Option<(PathBuf, PathBuf)> {
-    let installation = PathBuf::from(std::env::var("HOME").ok()?).join(".hermes/hermes-agent");
+    let installation = agora_server::platform::home_dir()?.join(".hermes/hermes-agent");
     // The interpreter AgoraOne itself would choose: Hermes' own Python, or its virtual environment before it had one.
     let python = agora_server::hermes::location::from_env().python;
     (installation.join("run_agent.py").exists() && python.exists()).then_some((installation, python))
@@ -182,8 +186,9 @@ async fn perfil_con_herramientas_lee_sin_preguntar_y_solo_escribe_si_se_permite(
         source: AGENT_BRIDGE.into(),
         home: work.clone(),
         env: vec![
-            ("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into()),
+            ("PATH".into(), agora_server::hermes::python::user_path()),
             ("HOME".into(), home.display().to_string()),
+            ("USERPROFILE".into(), home.display().to_string()),
             ("HERMES_HOME".into(), home.join(".hermes").display().to_string()),
             ("AGORA_HERMES_PATH".into(), installation.display().to_string()),
             ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
@@ -272,15 +277,18 @@ fn las_credenciales_del_perfil_principal_no_quedan_en_el_entorno_heredado() {
         "print('turno', 'AGORA_CANARY_ROOT' in os.environ, file=sys.stderr)".into(),
     ]
     .join("\n");
-    let output = std::process::Command::new(python)
-        .args(["-I", "-c", &code])
+    let mut command = tokio::process::Command::new(python);
+    command
+        .args(["-X", "utf8", "-I", "-c", &code])
         .current_dir(&base)
         .env_clear()
         .env("HOME", &base)
+        .env("USERPROFILE", &base)
         .env("HERMES_HOME", base.join(".hermes"))
-        .env("PATH", "/usr/bin:/bin")
-        .output()
-        .unwrap();
+        .env("PATH", agora_server::hermes::python::user_path());
+    agora_server::platform::apply_minimal_os_env(&mut command);
+    // Started inside the runtime: on macOS and Linux tokio needs its reactor when the process is spawned.
+    let output = tokio::runtime::Runtime::new().unwrap().block_on(async move { command.output().await }).unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("importar False"), "tras importar Hermes no queda en el entorno");
     assert!(stderr.contains("turno False"), "la recarga por turno no la vuelve a cargar");

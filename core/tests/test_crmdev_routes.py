@@ -47,7 +47,7 @@ def test_conectar_probar_y_el_modulo_sigue_a_la_conexion(tmp_path, fake):
         tested = client.post("/connectors/crmdev/test", headers=HEADERS)
         allowed = crmdev_api.READ_TOOLS | crmdev_api.WRITE_TOOLS
         assert tested.status_code == 200 and tested.json()["tools"] == sorted(allowed - crmdev_api.MODULE_TOOLS)
-        assert tested.json()["unverified"] == ["list_tickets", "update_ticket"]
+        assert tested.json()["unverified"] == ["list_tickets", "reply_ticket", "update_ticket"]
         for answer in (entry, tested.json(), client.get("/connectors", headers=HEADERS).json()):
             assert KEY not in str(answer)
         refused = client.post("/connectors/crmdev/test", json={"key": "crm_" + "f" * 48}, headers=HEADERS)

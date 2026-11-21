@@ -41,10 +41,18 @@ def main(request):
     started = time.monotonic()
     emit({"type": "status", "stage": "starting"})
     installation = Path(os.environ["AGORA_HERMES_PATH"]).resolve()
+    # macOS and Linux keep the fixed system git, so a git earlier in PATH is never run; Windows has no fixed
+    # path for it, so only there it comes from PATH.
+    if sys.platform == "win32":
+        import shutil
+
+        git = shutil.which("git") or "git"
+    else:
+        git = "/usr/bin/git"
     revision = subprocess.check_output(
-        ["/usr/bin/git", "-C", str(installation), "rev-parse", "HEAD"], text=True
+        [git, "-C", str(installation), "rev-parse", "HEAD"], text=True
     ).strip()
-    if not (revision == EXPECTED_COMMIT and not subprocess.check_output(["/usr/bin/git", "-C", str(installation), "status", "--porcelain", "--untracked-files=no"], text=True).strip()):
+    if not (revision == EXPECTED_COMMIT and not subprocess.check_output([git, "-C", str(installation), "status", "--porcelain", "--untracked-files=no"], text=True).strip()):
         raise RuntimeError("Unverified Hermes revision")
     sys.path.insert(0, str(installation))
     if (installation / "hermes_bootstrap.py").is_file():

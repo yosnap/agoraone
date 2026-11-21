@@ -22,7 +22,7 @@ import threading
 import unicodedata
 from datetime import UTC, datetime, timedelta
 
-from . import chat_inbox, zernio
+from . import chat_inbox, system_words, zernio
 from .chat_sync import parse_moment
 from .db import now, transaction
 
@@ -283,7 +283,7 @@ def compose(connection: sqlite3.Connection, conversation_id: int, instructions: 
     """A reply drafted by the model, for the user to read, change and confirm. Only for a conversation the model may
     read (normal, checked now with today's rules): a private or «solo en este Mac» one is answered by hand."""
     if _level(connection, conversation_id) != "normal":
-        raise ChatSendError("Esta conversación es privada o solo de este Mac: el asistente no la lee. Escribe la respuesta tú.")
+        raise ChatSendError(f"Esta conversación es privada o solo de {system_words.HERE}: el asistente no la lee. Escribe la respuesta tú.")
     row = _target(connection, conversation_id)
     messages = chat_inbox.window(connection, conversation_id)
     if not messages:

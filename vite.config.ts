@@ -15,5 +15,8 @@ export default defineConfig({
     headers: { 'X-Frame-Options': 'DENY', 'Content-Security-Policy': "frame-ancestors 'none'" },
     fs: { deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/.agora/**', '**/resources/**'] },
     proxy: { '/api': 'http://127.0.0.1:4317' },
+    // Rust's build output and the core's virtual environment are not the interface; on Windows the running
+    // .exe/.pdb there are locked and watching them only floods the log with EBUSY.
+    watch: { ignored: ['**/desktop/target/**', '**/core/.venv/**', '**/.agora/**'] },
   },
 });

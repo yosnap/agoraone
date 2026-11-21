@@ -69,7 +69,8 @@ def test_un_archivo_danado_no_cuelga_ni_falla(tmp_path):
         frame = b"APIC" + struct.pack(">I", len(body)) + b"\x00\x00" + body
         total = len(frame)
         return b"ID3\x03\x00\x00" + bytes([(total >> 21) & 127, (total >> 14) & 127, (total >> 7) & 127, total & 127]) + frame
-    signal.alarm(3)  # a loop would fail the test instead of hanging it
+    alarm = getattr(signal, "alarm", lambda seconds: None)  # not on Windows: the checks run without the guard
+    alarm(3)  # a loop would fail the test instead of hanging it
     try:
         (tmp_path / "sin-fin.mp3").write_bytes(utf16_apic(b"\xff\xfeA"))
         (tmp_path / "impar.mp3").write_bytes(utf16_apic(b"\xff\xfeA\x00\x00"))
@@ -79,6 +80,6 @@ def test_un_archivo_danado_no_cuelga_ni_falla(tmp_path):
         (tmp_path / "rota.flac").write_bytes(broken)
         assert music_cover.of_track(tmp_path / "rota.flac") is None
     finally:
-        signal.alarm(0)
+        alarm(0)
     (tmp_path / "cover.jpg").write_bytes(b"<svg>no</svg>")
     assert music_cover.of_track(tmp_path / "rota.flac") is None

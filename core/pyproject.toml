@@ -1,6 +1,6 @@
 [project]
 name = "agora-core"
-version = "1.7.0"
+version = "1.9.0"
 description = "Núcleo local de AgoraOne: cerebro, asistente y complementos. Solo escucha en loopback detrás del backend."
 requires-python = "==3.13.*"
 license = "MIT"
@@ -14,11 +14,12 @@ dependencies = [
     "mcp>=2.3,<3",
     "numpy>=2.1",
     "openpyxl>=3.1.5",
-    "pyobjc-framework-contacts>=11",
-    "pyobjc-framework-eventkit>=11",
+    "pyobjc-framework-contacts>=11; sys_platform == 'darwin'",
+    "pyobjc-framework-eventkit>=11; sys_platform == 'darwin'",
     "pypdf>=7.1.0",
     "python-docx>=1.2.0",
     "segno>=1.6.6",
+    "tzdata>=2025.2,<2027 ; sys_platform == 'win32'",
     "uvicorn>=0.30",
 ]
 

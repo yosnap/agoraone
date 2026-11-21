@@ -24,8 +24,11 @@ const FORWARDED_REQUEST: [&str; 3] = ["content-type", "accept", "last-event-id"]
 const FORWARDED_RESPONSE: [&str; 2] = ["content-type", "content-disposition"];
 // What the core may inherit: programs, locale, temp folder, what uv needs behind a proxy, and what the
 // local Claude Code needs to find the user's own session. Never keys, tokens or the server's settings.
-const INHERITED: [&str; 12] = [
+// AGORA_HERMES_HOME and HERMES_HOME only say where Hermes keeps its data, so the diagnosis finds it where the
+// server does.
+const INHERITED: [&str; 14] = [
     "PATH", "HOME", "LANG", "TMPDIR", "USER", "LOGNAME", "UV_CACHE_DIR", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE", "CLAUDE_CONFIG_DIR",
+    "AGORA_HERMES_HOME", "HERMES_HOME",
 ];
 // On Windows, Python finds the home folder by USERPROFILE (not HOME), the temporary folder by TEMP/TMP, and
 // native programs (ffmpeg, whisper.cpp) need SystemRoot to start; still no keys or tokens.
@@ -60,7 +63,7 @@ pub fn environment(secret: &str, server_pid: u32, data: &Path, from: impl Fn(&st
 }
 
 /// Starts the core; it watches this process and ends on its own if the server dies.
-pub fn start(launch: &CoreLaunch, link: &CoreLink, data: &Path) -> std::io::Result<Child> {
+pub fn start(launch: &CoreLaunch, link: &CoreLink, data: &Path) -> std::io::Result<(Child, crate::platform::ProcessGroup)> {
     let (program, args, folder): (PathBuf, Vec<&str>, &Path) = match launch {
         CoreLaunch::Uv { folder } => ("uv".into(), vec!["run", "--frozen", "--quiet", "python", "-m", "agora_core"], folder),
         CoreLaunch::Bundled { python, folder } => (python.clone(), vec!["-m", "agora_core"], folder),
@@ -73,8 +76,19 @@ pub fn start(launch: &CoreLaunch, link: &CoreLink, data: &Path) -> std::io::Resu
     }
     command
         .stdin(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
+        .kill_on_drop(true);
+    // Windows: no console window, and a Job Object it joins before running (closing it stops the core and what
+    // it starts). macOS and Linux keep the core in the server's process group.
+    #[cfg(windows)]
+    {
+        crate::platform::spawn_suspended_in_job(&mut command)
+    }
+    #[cfg(not(windows))]
+    {
+        let child = command.spawn()?;
+        let group = crate::platform::ProcessGroup::attach(&child);
+        Ok((child, group))
+    }
 }
 
 /// The server's own calls to the core (`/internal/index/*`), with the start secret: GET without a body,

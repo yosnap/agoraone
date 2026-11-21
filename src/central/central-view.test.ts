@@ -11,10 +11,10 @@ test('Central es la última entrada del menú', () => {
   assert.equal(new Set(menu.map(item => item.id)).size, menu.length, 'sin entradas repetidas');
 });
 
-test('pestañas de Central en orden y una vista de la API por pestaña', () => {
+test('pestañas de Central en orden, una vista de la API por pestaña y «Por crear» de AgoraOne al final', () => {
   assert.deepEqual(centralTabs.map(t => [t.id, t.label]),
     [['resumen', 'Resumen'], ['alertas', 'Alertas'], ['pendientes', 'Pendientes'], ['clientes', 'Clientes'], ['proyectos', 'Proyectos'],
-      ['webs', 'Webs'], ['servidores', 'Servidores'], ['agenda', 'Agenda de Central']]);
+      ['webs', 'Webs'], ['servidores', 'Servidores'], ['agenda', 'Agenda de Central'], ['por-crear', 'Por crear']]);
 });
 
 test('la clave de una vista no depende del orden de los parámetros y omite los vacíos', () => {

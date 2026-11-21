@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import central, client_cards, clients, crmdev_api, crmdev_sync, modules
+from . import central, client_cards, clients, crmdev_api, crmdev_pending, crmdev_sync, modules, project_links, tab_counts
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -48,6 +48,20 @@ class PairLinkIn(BaseModel):
     centralId: str = Field(min_length=1, max_length=100)
     crmdevId: str = Field(pattern=ID)
     state: str = Field(pattern=r"^(linked|distinct|undistinct)$")
+
+
+class ProjectLinkIn(BaseModel):
+    model_config = {"extra": "forbid"}
+    centralId: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    crmdevId: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    state: str = Field(pattern=r"^(linked|distinct|unlinked)$")
+
+
+class PendingDismissIn(BaseModel):
+    """«Descartar» a warning of «Pendiente en CRMDev» with the signature it was shown with, or «Volver a mostrar» (null)."""
+    model_config = {"extra": "forbid"}
+    key: str = Field(min_length=1, max_length=200)
+    signature: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 def clients_router(settings: Settings, secrets=None, crmdev_health: crmdev_sync.CrmdevHealth | None = None) -> APIRouter:
@@ -166,5 +180,37 @@ def clients_router(settings: Settings, secrets=None, crmdev_health: crmdev_sync.
     async def undistinct_client(client_id: int, body: LinkIn):
         """Undoes a «Son distintos» from the client's form: that pair may be linked or suggested again."""
         return await link(client_id, body, "undistinct")
+
+    @router.get("/project-links")
+    async def get_project_links():
+        """Central's and CRMDev's projects with their pair, the suggestions and the pairs said to be different."""
+        return await db(project_links.build)
+
+    @router.post("/project-links")
+    async def set_project_link(body: ProjectLinkIn):
+        """«Enlazar», «Son distintos» or undoing either between one of Central's projects and one of CRMDev's."""
+        try:
+            await db(lambda c: project_links.set_link(c, body.centralId, body.crmdevId, body.state))
+        except project_links.ProjectLinkError as error:
+            return refuse(str(error))
+        return {"done": True}
+
+    @router.get("/tab-counts")
+    async def get_tab_counts():
+        """How many there are in each tab, from what AgoraOne keeps (never asking Central nor CRMDev)."""
+        return await db(tab_counts.build)
+
+    @router.get("/crmdev-pending")
+    async def get_crmdev_pending(all: bool = False):
+        """What Central has and CRMDev lacks or has otherwise; only reads (never an address nor a phone)."""
+        return await db(lambda c: crmdev_pending.build(c, include_dismissed=all))
+
+    @router.post("/crmdev-pending/dismiss")
+    async def dismiss_crmdev_pending(body: PendingDismissIn):
+        try:
+            await db(lambda c: crmdev_pending.dismiss(c, body.key, body.signature))
+        except crmdev_pending.PendingError as error:
+            return refuse(str(error))
+        return {"done": True}
 
     return router

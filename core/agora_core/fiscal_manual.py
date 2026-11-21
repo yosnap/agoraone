@@ -94,7 +94,7 @@ def target(root: Path, relative: str) -> Path:
 def save(connection: sqlite3.Connection, folder_id: int, root: Path, path: Path, fields: dict) -> None:
     stat = path.stat()
     connection.execute("INSERT OR REPLACE INTO fiscal_manual (folder_id, path, size, mtime, fields, saved_at) VALUES (?, ?, ?, ?, ?, ?)",
-                       (folder_id, str(path.relative_to(root)), stat.st_size, stat.st_mtime, json.dumps(fields),
+                       (folder_id, path.relative_to(root).as_posix(), stat.st_size, stat.st_mtime, json.dumps(fields),
                         datetime.now(timezone.utc).isoformat(timespec="seconds")))
 
 

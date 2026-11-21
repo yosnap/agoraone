@@ -3,6 +3,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from agora_core import calendar_store
@@ -92,6 +93,8 @@ def test_agenda_crear_y_lo_que_ve_watson(tmp_path):
 
 def test_dias_con_cambio_de_hora(monkeypatch):
     import time
+    if not hasattr(time, "tzset"):
+        pytest.skip("Windows no permite cambiar la zona horaria del proceso (sin time.tzset)")
     monkeypatch.setenv("TZ", "Europe/Madrid")
     time.tzset()
     try:

@@ -10,6 +10,7 @@ value the list gives can be changed: a client's notes and a project's descriptio
 text longer than what AgoraOne shows is too. The tool sent is fixed by the kind of change (`KIND_TOOL`), never named
 by the screen. What CRMDev answers is data: it is shown, compared and never read as instructions."""
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -21,15 +22,16 @@ from .web_api import Connection, WebApiError
 
 TITLE, DESCRIPTION = 300, 4000
 KIND_TOOL = {"tarea-nueva": "create_task", "tarea": "update_task", "proyecto": "update_project", "cliente-nuevo": "create_client",
-             "cliente": "update_client", "ticket": "update_ticket", "cliente-desde-local": "create_client"}
+             "cliente": "update_client", "ticket": "update_ticket", "cliente-desde-local": "create_client", "respuesta-ticket": "reply_ticket"}
 KINDS = tuple(KIND_TOOL)
 # The readings a change makes old (names of projects and clients are also shown in tasks, tickets and hours).
 KIND_LISTS = {
     "tarea-nueva": frozenset({"list_tasks", "get_project_time_report"}), "tarea": frozenset({"list_tasks", "get_project_time_report"}),
     "proyecto": frozenset({"list_projects", "list_tasks", "list_tickets", "get_project_time_report"}),
     "cliente-nuevo": frozenset({"list_clients"}), "cliente": frozenset({"list_clients", "list_tickets"}), "ticket": frozenset({"list_tickets"}),
-    "cliente-desde-local": frozenset({"list_clients"}),
+    "cliente-desde-local": frozenset({"list_clients"}), "respuesta-ticket": frozenset({"list_tickets"}),
 }
+REPLY = 2000
 GONE = f"Ya no está entre los {crmdev_api.MAX_ROWS} más recientes de CRMDev: vuelve a leer, o cámbialo en CRMDev."
 
 
@@ -65,6 +67,7 @@ class Change:
     notes: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     local_id: int | None = None  # «Crear en CRMDev» of a client kept here: linked with it once created
+    org: str | None = None  # the organization of CRMDev it goes to (the first one when None)
 
     @property
     def tool(self) -> str:
@@ -160,6 +163,8 @@ def plan(target: Connection, given: dict) -> Change:
         return _new_task(target, given)
     if kind == "cliente-nuevo":
         return _new_client(target, given)
+    if kind == "respuesta-ticket":
+        return _reply(target, given)
     raise ChangeError("Ese cambio no existe.")  # «cliente-desde-local» needs the database: `from_local`
 
 
@@ -281,6 +286,37 @@ def from_local(connection, target: Connection, given: dict) -> Change:
     return change
 
 
+def _reply(target: Connection, given: dict) -> Change:
+    """A reply to a ticket of the list on screen: the exact text and whether only the team sees it (a note) or the
+    client too. The user says which every time: there is no default. CRMDev keeps it as a comment of the ticket."""
+    _check_keys(given, {"kind", "id", "list", "content", "internal"})
+    item = given.get("id")
+    if not isinstance(item, str) or not crmdev_api.ID.fullmatch(item):
+        raise ChangeError("El identificador no es válido.")
+    internal = given.get("internal")
+    if not isinstance(internal, bool):
+        raise ChangeError("Di si es una nota interna o una respuesta al cliente.")
+    content = text("Respuesta", REPLY, required=True, lines=True)(given.get("content"))
+    if not content:
+        raise ChangeError("Escribe la respuesta.")
+    spec = UPDATES["ticket"]
+    shown_list = given.get("list") or {}
+    if not isinstance(shown_list, dict) or any(name not in spec.filters for name in shown_list):
+        raise ChangeError("Esa lista de CRMDev no existe.")
+    scope = {spec.filters[name]: value for name, value in shown_list.items() if value not in (None, "")}
+    row = _find(target, spec, scope, item, anywhere=True)
+    if row is None:
+        raise WebApiError("not_found", f"El ticket no está entre los {crmdev_api.MAX_ROWS} más recientes de CRMDev: respóndelo en CRMDev.")
+    title = str(now_value(row, "title") or "—")[:200]
+    rows = [{"field": "isInternal", "label": "Quién la ve", "before": None, "after": "Solo el equipo (nota interna)" if internal else "El cliente",
+             "emptied": False},
+            {"field": "content", "label": "Respuesta", "before": None, "after": content, "emptied": False}]
+    warnings = [] if internal else ["El cliente verá esta respuesta en su portal de CRMDev."]
+    return Change("respuesta-ticket", {"ticketId": item, "content": content, "isInternal": internal}, f"Respuesta al ticket «{title}»", rows,
+                  f"respuesta-ticket:{item}:{hashlib.sha256(content.encode()).hexdigest()[:12]}", scope=scope, item=item,
+                  notes=["Se publica a nombre de quien creó la clave en CRMDev. Una respuesta no se puede borrar desde AgoraOne."], warnings=warnings)
+
+
 def check(target: Connection, change: Change) -> bool:
     """Just before sending: True when CRMDev already has the change (nothing to send), False to send it; StaleError
     when what was shown as «before» changed meanwhile, ExistsError when the new client appeared meanwhile."""
@@ -297,4 +333,6 @@ def check(target: Connection, change: Change) -> bool:
         raise StaleError([{"field": name, "label": spec.fields[name].label, "value": shown(spec.fields[name], now[name])} for name in change.seen])
     if change.kind in ("cliente-nuevo", "cliente-desde-local"):
         _existing(target, change.arguments["name"], change.arguments.get("email"))
+    if change.kind == "respuesta-ticket" and _find(target, UPDATES["ticket"], change.scope, change.item or "", anywhere=True) is None:
+        raise StaleError([], GONE)
     return False

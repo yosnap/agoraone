@@ -25,13 +25,19 @@ export const readAgain = () => crmdevStore.forget({ keep: true, fresh: true });
 export const useRereading = () => crmdevStore.useRereading();
 
 /** A fresh start each time the section opens (harmless if called twice: it only empties the store). */
-export const startCrmdev = () => crmdevStore.start();
+export const startCrmdev = (except: string[] = []) => crmdevStore.start(except);
 
-export type CrmdevTabName = 'proyectos' | 'tareas' | 'tickets' | 'clientes';
+export type CrmdevTabName = 'proyectos' | 'tareas' | 'tickets' | 'clientes' | 'central';
 /** The tabs of the section, in order; each one reads only its own list when opened. */
 export const crmdevTabs: { id: CrmdevTabName; label: string }[] = [
   { id: 'proyectos', label: 'Proyectos' }, { id: 'tareas', label: 'Tareas' }, { id: 'tickets', label: 'Tickets' }, { id: 'clientes', label: 'Clientes' },
+  { id: 'central', label: 'Desde Central' },
 ];
+
+// The tab another section asks the CRMDev section to open with (the Resumen's «Ver lo pendiente»), taken once.
+let requestedTab: CrmdevTabName | null = null;
+export const openCrmdevTab = (tab: CrmdevTabName) => { requestedTab = tab; };
+export const takeCrmdevTab = (): CrmdevTabName => { const tab = requestedTab ?? 'proyectos'; requestedTab = null; return tab; };
 
 /** What a full list holds, said truthfully: CRMDev has no pages, so only 100 rows come and the rest is only in CRMDev. */
 export function orderNote(page: Pick<CrmdevPage<unknown>, 'more' | 'order' | 'limit'>): string | null {

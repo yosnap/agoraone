@@ -4,6 +4,7 @@ import { getFolderRules, getIndexStatus, levelLabels, putFolderRules, type Folde
 import { ModernSelect } from '../ui/modern-select';
 import { Loading, LoadError } from '../ui/load-state';
 import { ActionButton } from '../ui/action-button';
+import { hereLabel } from '../ui/platform';
 
 /** What the brain holds and the folder rules that make notes «solo en este Mac» or private. */
 export function PrivacySettingsCard() {
@@ -29,11 +30,11 @@ export function PrivacySettingsCard() {
   const scopes = [{ value: '*', label: 'Todos los vaults' }, ...vaults.map(vault => ({ value: vault.id, label: vault.name }))];
   return <article className="card" aria-labelledby="settings-privacy">
     <h2 id="settings-privacy">Cerebro y confidencialidad</h2>
-    {status ? <p>{status.notes} notas en {status.chunks} fragmentos · {status.byConfidentiality.normal ?? 0} normales, {status.byConfidentiality.local_only ?? 0} solo en este Mac, {status.byConfidentiality.private ?? 0} privadas.
+    {status ? <p>{status.notes} notas en {status.chunks} fragmentos · {status.byConfidentiality.normal ?? 0} normales, {status.byConfidentiality.local_only ?? 0} solo en {hereLabel}, {status.byConfidentiality.private ?? 0} privadas.
       {' '}{status.semanticSearch ? (status.pendingEmbeddings ? `Calculando significado: faltan ${status.pendingEmbeddings} fragmentos.` : 'Búsqueda por significado activa.') : `Búsqueda por significado en pausa${status.semanticProblem ? `: ${status.semanticProblem}` : ''}.`}</p>
       : !error && <Loading label="Leyendo el índice" lines={2}/>}
-    {status?.entities && <p>Entidades: {Object.values(status.entities.entities).reduce((sum, n) => sum + (n ?? 0), 0)} encontradas · {status.entities.byModel} notas leídas por Claude Haiku, {status.entities.byRules} solo con reglas locales (privadas o solo de este Mac){status.entities.pending ? `, faltan ${status.entities.pending}` : ''}.{status.entities.problem ? ` En pausa: ${status.entities.problem}` : ''}</p>}
-    <p>Una nota también puede declararlo en sus propiedades con <code>confidencialidad: privado</code> o <code>solo-local</code>; vale siempre el nivel más estricto. Lo «solo en este Mac» nunca va a un modelo externo; lo privado tampoco sale por MCP ni se ve en modo discreto.</p>
+    {status?.entities && <p>Entidades: {Object.values(status.entities.entities).reduce((sum, n) => sum + (n ?? 0), 0)} encontradas · {status.entities.byModel} notas leídas por Claude Haiku, {status.entities.byRules} solo con reglas locales (privadas o solo de {hereLabel}){status.entities.pending ? `, faltan ${status.entities.pending}` : ''}.{status.entities.problem ? ` En pausa: ${status.entities.problem}` : ''}</p>}
+    <p>Una nota también puede declararlo en sus propiedades con <code>confidencialidad: privado</code> o <code>solo-local</code>; vale siempre el nivel más estricto. Lo «solo en {hereLabel}» nunca va a un modelo externo; lo privado tampoco sale por MCP ni se ve en modo discreto.</p>
     {rules && <>
       {rules.length ? <table className="data-table"><thead><tr><th>Carpeta</th><th>Vault</th><th>Nivel</th><th><span className="visually-hidden">Quitar</span></th></tr></thead>
         <tbody>{rules.map((rule, index) => <tr key={index}>

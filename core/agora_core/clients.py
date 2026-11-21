@@ -420,7 +420,7 @@ def _central(connection: sqlite3.Connection) -> list[dict]:
 def _crmdev(connection: sqlite3.Connection) -> list[dict]:
     from . import crmdev_sync
 
-    return [c for c in ((crmdev_sync.snapshot(connection) or {}).get("clients") or []) if isinstance(c, dict) and c.get("id") and c.get("name")]
+    return [c for c in crmdev_sync.rows(connection, "clients") if c.get("id") and c.get("name")]  # every organization, each with its `org`
 
 
 def _links(connection: sqlite3.Connection):
@@ -464,7 +464,8 @@ def _signature(connection: sqlite3.Connection) -> object:
 
     keys = (central.SNAPSHOT_SETTING, crmdev_sync.SETTING, modules.SETTING, crmdev_api.SETTING, central_api.SETTING, central.LEGACY_SETTING)
     settings = tuple(sorted((r["key"], hash(r["value"])) for r in connection.execute(
-        f"SELECT key, value FROM setting WHERE key IN ({', '.join('?' * len(keys))})", keys)))
+        f"SELECT key, value FROM setting WHERE key IN ({', '.join('?' * len(keys))}) OR key LIKE ? OR key = ?",
+        (*keys, f"{crmdev_sync.SETTING}:%", "crmdev.orgs"))))
     tables = tuple(connection.execute(
         "SELECT (SELECT count(*) || '|' || coalesce(max(updated_at), '') || '|' || coalesce(sum(id), 0) FROM client),"
         " (SELECT count(*) || '|' || coalesce(max(created_at), '') FROM client_link),"
@@ -517,7 +518,8 @@ def _build(connection: sqlite3.Connection) -> tuple[list[dict], list[dict]]:
     active = active_sources(connection)
     if any(active.values()):
         central_read = central.snapshot(connection) or {}
-        crmdev_read = crmdev_sync.snapshot(connection) or {}
+        read = list(crmdev_sync.snapshots(connection).values())  # every organization: the oldest reading decides
+        crmdev_read = {"truncated": any(r.get("truncated") for r in read), "fetchedAt": min((r.get("fetchedAt") or "" for r in read), default="")}
         central_ids, crmdev_ids = {c["id"] for c in central_rows if c["id"]}, {c["id"] for c in crmdev_rows}
         by_id = {o["localId"]: o for o in owns}
         for e in entries:

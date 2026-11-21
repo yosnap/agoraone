@@ -37,12 +37,20 @@ def shape_project(row: dict) -> dict:
             "deadline": _text(row.get("deadline"))}
 
 
+def project_id(row: dict) -> str | None:
+    """The CRMDev id of a task's or ticket's project (for «Lanzar en Orca» through the pair of projects)."""
+    found = row.get("projectId")
+    if found is None and isinstance(row.get("project"), dict):
+        found = row["project"].get("id")
+    return row_id(found)
+
+
 def shape_task(row: dict) -> dict:
     assignee = row.get("assignee") if isinstance(row.get("assignee"), dict) else {}
     return {"id": row_id(row.get("id")), "title": _text(row.get("title"), TITLE), "description": _text(row.get("description"), DESCRIPTION),
             "status": _text(row.get("status")), "priority": _text(row.get("priority")), "dueDate": _text(row.get("dueDate")),
             "assignee": {"id": row_id(assignee.get("id")), "name": _text(assignee.get("name"))} if assignee else None,
-            "project": _name_of(row.get("project"))}
+            "project": _name_of(row.get("project")), "projectId": project_id(row)}
 
 
 def shape_client(row: dict, contact: bool = False) -> dict:
@@ -55,6 +63,7 @@ def shape_ticket(row: dict) -> dict:
     return {"id": row_id(row.get("id")), "title": _text(row.get("title"), TITLE), "description": _text(row.get("description"), DESCRIPTION),
             "status": _text(row.get("status")), "priority": _text(row.get("priority")), "category": _text(row.get("category")),
             "requester": _text(row.get("guestName"), TITLE), "client": _name_of(row.get("client")), "project": _name_of(row.get("project")),
+            "projectId": project_id(row),
             "createdAt": _text(row.get("createdAt")), "updatedAt": _text(row.get("updatedAt"))}
 
 

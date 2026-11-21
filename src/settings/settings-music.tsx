@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { chooseLibraryFolder, getLibrary, putLibraryFolders } from '../api/core';
 import { LoadError } from '../ui/load-state';
 import { ActionButton } from '../ui/action-button';
+import { isWindows } from '../ui/platform';
 
 /** The folders of the user's own music (1.5): AgoraOne indexes them by artist, album and title and plays them in
  * its own player; it only reads them. On macOS they are picked with the system's chooser. */
@@ -30,7 +31,7 @@ export function MusicSettingsCard() {
     <div className="field-row">
       <ActionButton icon="plus" label="Añadir una carpeta…" onClick={() => void pick()}/>
       <form className="field-row" onSubmit={event => { event.preventDefault(); if (typed.trim()) void save([...(folders ?? []), typed.trim()]).then(() => setTyped('')); }}>
-        <input value={typed} onChange={event => setTyped(event.target.value)} placeholder="o escribe la ruta: /ruta/a/Música" aria-label="Ruta de una carpeta de música"/>
+        <input value={typed} onChange={event => setTyped(event.target.value)} placeholder={isWindows ? 'o escribe la ruta: C:\\…\\Música' : 'o escribe la ruta: /ruta/a/Música'} aria-label="Ruta de una carpeta de música"/>
         <ActionButton icon="plus" label="Añadir" type="submit"/>
       </form>
     </div>

@@ -4,6 +4,7 @@ import { tryVoice } from '../assistant/speech';
 import { lastProblem, refreshVoice } from '../assistant/voice-player';
 import { ModernSelect } from '../ui/modern-select';
 import { ActionButton } from '../ui/action-button';
+import { hereLabel, isMac, systemVoiceOf } from '../ui/platform';
 
 const SAMPLE = 'Hola, soy Watson. Hoy tienes una reunión a las once y tres correos esperando.';
 const spanishMacVoices = () => typeof speechSynthesis === 'undefined' ? [] : speechSynthesis.getVoices().filter(v => v.lang.startsWith('es'));
@@ -33,14 +34,14 @@ export function WatsonVoiceChoice() {
   const studioVoices = (voicestudio ?? []).map(v => ({ value: v.id, label: `${v.name}${v.language ? ` · ${v.language}` : ''}` }));
   return <div className="card-fields">
     <label className="field">Voz de Watson<ModernSelect value={settings.engine} onChange={value => void save({ engine: value as TtsSettings['engine'] })} options={[
-      { value: 'auto', label: 'Automática: «Watson (AgoraOne)» de VoiceStudio, o macOS' },
+      { value: 'auto', label: `Automática: «Watson (AgoraOne)» de VoiceStudio, o ${isMac ? 'macOS' : 'la voz del sistema'}` },
       { value: 'voicestudio', label: 'Una voz de VoiceStudio' },
-      { value: 'macos', label: 'Una voz de macOS' }]}/></label>
+      { value: 'macos', label: `Una voz ${systemVoiceOf}` }]}/></label>
     {settings.engine === 'voicestudio' && (voicestudio === null
       ? <small className="dictation-error">VoiceStudio no está abierto: ábrelo para elegir sus voces.</small>
       : <label className="field">Voz de VoiceStudio<ModernSelect value={settings.voice ?? ''} onChange={value => { if (value) void save({ voice: value }); }}
         options={[{ value: '', label: 'Elige una voz' }, ...studioVoices]}/></label>)}
-    {(settings.engine === 'macos' || now.engine === 'macos') && mac.length > 0 && <label className="field">{settings.engine === 'macos' ? 'Voz de macOS' : 'Voz de macOS (si VoiceStudio no responde)'}
+    {(settings.engine === 'macos' || now.engine === 'macos') && mac.length > 0 && <label className="field">{settings.engine === 'macos' ? `Voz ${systemVoiceOf}` : `Voz ${systemVoiceOf} (si VoiceStudio no responde)`}
       <ModernSelect value={settings.macVoice ?? ''} onChange={value => void save({ macVoice: value || null })}
         options={[{ value: '', label: 'La primera en español de España' }, ...mac.filter((v, i, all) => all.findIndex(o => o.name === v.name) === i).map(v => ({ value: v.name, label: `${v.name} · ${v.lang}` }))]}/></label>}
     <label className="field">Velocidad · {shownSpeed.toLocaleString('es-ES', { maximumFractionDigits: 2 })}×
@@ -53,7 +54,7 @@ export function WatsonVoiceChoice() {
     {settings.engine !== 'macos' && view.installed && <label className="check"><input type="checkbox" checked={settings.openAtStart}
       onChange={event => void save({ openAtStart: event.target.checked })}/> Abrir VoiceStudio en segundo plano al arrancar AgoraOne</label>}
     <div className="inbox-actions"><ActionButton icon="play" label="Probar" onClick={() => tryVoice(SAMPLE)}/></div>
-    <small className="muted" role="status">Ahora habla {now.engine === 'voicestudio' ? `VoiceStudio${voicestudio?.find(v => v.id === now.voice) ? ` con «${voicestudio.find(v => v.id === now.voice)!.name}»` : ''}, en este Mac` : 'macOS'}.
+    <small className="muted" role="status">Ahora habla {now.engine === 'voicestudio' ? `VoiceStudio${voicestudio?.find(v => v.id === now.voice) ? ` con «${voicestudio.find(v => v.id === now.voice)!.name}»` : ''}, en ${hereLabel}` : isMac ? 'macOS' : 'la voz del sistema'}.
       {now.engine === 'voicestudio' && ' La primera frase tarda uno o dos segundos en sonar; el resto se prepara mientras habla.'}</small>
     {(now.problem || lastProblem) && <small className="dictation-error" role="status">{now.problem || lastProblem}</small>}
     {error && <small className="dictation-error" role="alert">{error}</small>}

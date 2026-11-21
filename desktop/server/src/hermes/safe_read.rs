@@ -1,36 +1,20 @@
 //! Reading Hermes' files without following links out of its folder, without hard links and with a size cap;
 //! YAML metadata parsed from those reads; and the masking applied to user-authored text shown without asking.
 
-use std::fs::{self, OpenOptions};
 use std::io::{self, Read};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 use std::sync::LazyLock;
 
 use regex::Regex;
 use serde_json::{Map, Value};
 
 use crate::js::slice_utf16;
+pub use crate::platform::normalize;
+use crate::platform::{inspect_handle, is_same_real_path, open_nofollow_read};
 use crate::secret_lines::CONTROLS;
 
 fn unavailable() -> io::Error {
     io::Error::other("Unavailable")
-}
-
-/// `path.resolve`: absolute and without `.` or `..`, purely lexical.
-pub fn normalize(path: &Path) -> PathBuf {
-    let absolute = if path.is_absolute() { path.to_path_buf() } else { std::env::current_dir().unwrap_or_default().join(path) };
-    let mut out = PathBuf::from("/");
-    for part in absolute.components() {
-        match part {
-            Component::ParentDir => {
-                out.pop();
-            }
-            Component::Normal(name) => out.push(name),
-            _ => {}
-        }
-    }
-    out
 }
 
 pub fn within(root: &Path, file: &Path) -> bool {
@@ -45,12 +29,12 @@ pub fn read_hermes_file(root: &Path, file: &Path, limit: u64) -> io::Result<Vec<
         return Err(unavailable());
     }
     // Do not follow symlinks into a credential file or another collection.
-    if fs::canonicalize(&target)? != target {
+    if !is_same_real_path(&target)? {
         return Err(unavailable());
     }
-    let handle = OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK).open(&target)?;
-    let meta = handle.metadata()?;
-    if !meta.is_file() || meta.nlink() != 1 || meta.len() > limit {
+    let handle = open_nofollow_read(&target)?;
+    let meta = inspect_handle(&handle)?;
+    if !meta.is_file || meta.nlink != 1 || meta.len > limit {
         return Err(unavailable());
     }
     let mut data = Vec::new();

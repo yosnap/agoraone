@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { getSummarizers, levelLabels, type Level, type Summarizer } from '../api/core';
+import { hereLabel, meetingSourcesLabel, recordsSystemAudio } from '../ui/platform';
 import { MusicCard } from './music-card';
 import { moduleOn, useModules } from '../shell/modules';
 import { lastChoice, stopRecording, toggleQuickRecording, useMeetingRecorder } from '../meetings/meeting-recorder';
@@ -20,7 +21,7 @@ export function BrainDock() {
   return <div className="brain-dock">
     {meetings && !live && <section className="dock-card dock-record-idle" aria-label="Grabar una reunión">
       <div className="dock-head"><span className="command-dot" aria-hidden="true"/><strong>Grabar una reunión</strong></div>
-      <small>Tu micrófono y lo que suena en el Mac (Meet, Zoom, Teams), en este equipo. {levelLabels[choice.confidentiality]} · se resumirá con {who ? who[choice.confidentiality].label : '…'}.</small>
+      <small>{meetingSourcesLabel} {levelLabels[choice.confidentiality]} · se resumirá con {who ? who[choice.confidentiality].label : '…'}.</small>
       {recorder.error && <small className="dock-note" role="alert">{recorder.error}</small>}
       <div className="dock-foot"><small>Título y opciones en Reuniones</small>
         <button type="button" className="button primary dock-record-button" onClick={toggleQuickRecording} disabled={recorder.phase === 'starting'}>
@@ -37,7 +38,7 @@ export function BrainDock() {
         <span className="dock-meter" role="meter" aria-label="Volumen de tu micrófono" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(recorder.level * 100)}>
           <span style={{ width: `${Math.round(recorder.level * 100)}%` }}/></span>
         <span>Los demás</span>
-        <small>{recorder.note ? 'no se graba (mira el aviso)' : 'se graba en este Mac'}</small>
+        <small>{recorder.note ? 'no se graba (mira el aviso)' : recordsSystemAudio ? `se graba en ${hereLabel}` : 'no se graba en Windows'}</small>
       </div>
       {recorder.note && <small className="dock-note">{recorder.note}</small>}
       <div className="dock-foot">

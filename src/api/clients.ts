@@ -71,3 +71,66 @@ export const linkCrmdevClient = (id: number, remoteId: string, state: 'linked' |
 /** The same between one of Central's clients and one of CRMDev's, without a client kept here. */
 export const linkClientPair = (centralId: string, crmdevId: string, state: 'linked' | 'distinct' | 'undistinct') =>
   core<{ done: true }>('/clients/pairs', { centralId, crmdevId, state });
+
+/** Central's and CRMDev's projects, each with its pair: linked by the user (`user`) or by the same unique name (`name`). */
+export type LinkedCentralProject = { id: string; name: string; client: string | null; kind: string | null; status: string | null; repo: string | null;
+  crmdevId: string | null; how: 'user' | 'name' | null };
+export type LinkedCrmdevProject = { id: string; org?: string; name: string; status: string | null; type: string | null; clientId: string | null;
+  centralId: string | null; how: 'user' | 'name' | null };
+export type ProjectPairHint = { centralId: string; centralName: string | null; crmdevId: string; crmdevName: string | null };
+export type ProjectLinks = { central: LinkedCentralProject[]; crmdev: LinkedCrmdevProject[]; suggestions: ProjectPairHint[]; distinct: ProjectPairHint[] };
+export const getProjectLinks = () => core<ProjectLinks>('/project-links');
+/** «Enlazar», «Son distintos» or undoing either between one of Central's projects and one of CRMDev's. */
+export const setProjectLink = (centralId: string, crmdevId: string, state: 'linked' | 'distinct' | 'unlinked') =>
+  core<{ done: true }>('/project-links', { centralId, crmdevId, state });
+
+/** «Pendiente en CRMDev»: what Central has and CRMDev lacks or has otherwise. Only read; never an address nor a phone
+ * (a different address only says that it differs). A dismissed warning comes back when what it says changes. */
+export type PendingKind = 'client_missing' | 'contact_missing' | 'client_changed' | 'crmdev_only' | 'project_missing' | 'project_changed';
+export type PendingChange = { field: string; label: string; central?: string | null; crmdev?: string | null };
+export type PendingItem = {
+  key: string; kind: PendingKind; name: string; signature: string; dismissed: boolean;
+  centralId?: string; crmdevId?: string | null; localId?: number | null;
+  /** client_missing: its projects in Central; contact_missing: its people in CRMDev. */
+  projects?: number; contacts?: number;
+  /** crmdev_only: its commercial state in CRMDev. project_missing: its state in Central. */
+  status?: string | null; client?: string | null; projectKind?: string | null;
+  /** project_missing: a CRMDev project whose name looks alike (link it in the project's record). */
+  maybe?: string | null;
+  changes?: PendingChange[];
+  /** The organization of CRMDev it is about: by its link, chosen by the user or its client's; null: none yet. */
+  org?: string | null; orgFrom?: 'link' | 'chosen' | 'client' | null;
+};
+export type CrmdevPending = {
+  active: boolean; items: PendingItem[]; counts: Record<PendingKind, number>; dismissed: number; truncated: boolean;
+  orgs?: { id: string; name: string }[];
+};
+
+export const getCrmdevPending = (withDismissed = false) => core<CrmdevPending>(`/crmdev-pending${withDismissed ? '?all=true' : ''}`);
+/** «Descartar» with the signature it was shown with, or «Volver a mostrar» (null). */
+export const dismissPending = (key: string, signature: string | null) => core<{ done: true }>('/crmdev-pending/dismiss', { key, signature });
+
+/** «Enviar a CRMDev»: the exact operations for the ticked warnings (the core chooses each tool), and what cannot go. */
+export type BatchRow = { field: string; label: string; before: string | null; after: string | null };
+export type BatchOperation = { key: string; kind?: string; origin?: string; title: string; rows: BatchRow[]; notes?: string[] };
+export type BatchSkipped = { key: string; name: string; reason: string };
+export type BatchPreview = { token: string; operations: BatchOperation[]; skipped: BatchSkipped[]; warnings: string[]; org?: { id: string; name: string } | null };
+export type BatchOutcome = 'sent' | 'already' | 'conflict' | 'skipped' | 'unknown' | 'error' | 'waiting';
+export type BatchResult = { done: true; sent: number; results: { key: string; title: string; outcome: BatchOutcome; message?: string }[]; warning?: string };
+
+/** To one organization of CRMDev (`org`): what has none goes there and is remembered for it. */
+export const previewBatch = (keys: string[], anyway: string[] = [], org?: string) =>
+  core<BatchPreview>('/crmdev/batch/preview', { keys, anyway, ...(org ? { org } : {}) });
+/** Remembers the organization of clients and projects still missing in CRMDev (null forgets it); nothing goes to CRMDev. */
+export const assignCrmdevOrg = (keys: string[], org: string | null) => core<{ assigned: number }>('/crmdev/orgs/assign', { keys, org });
+export const confirmBatch = (token: string) => core<BatchResult>('/crmdev/batch/confirm', { token });
+
+/** Who writes or meets the user and is no client yet (only what is «normal»): never an address nor a number. */
+export type BirthOrigin = 'mail' | 'whatsapp' | 'meeting';
+export type ClientBirth = { key: string; origin: BirthOrigin; name: string; hint: string | null; count: number; last: string | null; dismissed: boolean };
+export const getClientBirths = (withDismissed = false) => core<{ items: ClientBirth[]; dismissed: number }>(`/client-births${withDismissed ? '?all=true' : ''}`);
+export const dismissBirth = (key: string, dismissed: boolean) => core<{ done: true }>('/client-births/dismiss', { key, dismissed });
+/** «Crear en Central» for several: `local:<id>`, `crmdev:<id>` or a proposal's key, with the name the user may have changed. */
+export const previewCentralBatch = (items: { key: string; name?: string }[], anyway: string[] = []) =>
+  core<BatchPreview>('/central/batch/preview', { items, anyway });
+export const confirmCentralBatch = (token: string) => core<BatchResult>('/central/batch/confirm', { token });

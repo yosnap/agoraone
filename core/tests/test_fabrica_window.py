@@ -159,6 +159,7 @@ def test_el_modulo_sigue_a_la_carpeta_mientras_no_se_fije(tmp_path, folder):
 def test_arrancar_pide_a_launchd_su_servicio_sin_pararlo(client, monkeypatch):
     calls: list[list[str]] = []
     monkeypatch.setattr(fabrica_service, "supported", lambda: True)
+    monkeypatch.setattr(fabrica_service.os, "getuid", lambda: 501, raising=False)  # no getuid on Windows
     monkeypatch.setattr(fabrica_service.subprocess, "run", lambda args, **kw: calls.append(args) or subprocess.CompletedProcess(args, 0))
     assert client.post("/fabrica/start", headers=HEADERS).json() == {"done": True, "running": False}
     assert len(calls) == 1 and calls[0][:2] == ["/bin/launchctl", "kickstart"] and "-k" not in calls[0]

@@ -43,6 +43,7 @@ from . import calendar_store, calls, tts
 from .routes_alerts import alerts_router
 from .routes_jobs import jobs_router
 from .routes_orca import orca_router
+from .routes_orca_bots import orca_bots_router
 from .routes_note_sources import note_sources_router
 from .routes_issues import issues_router
 from .routes_voice import voice_router
@@ -61,6 +62,9 @@ from .routes_central_write import central_write_router
 from .routes_central_window import central_window_router
 from .routes_crmdev import crmdev_router
 from .routes_crmdev_window import crmdev_window_router
+from .routes_central_batch import central_batch_router
+from .routes_crmdev_batch import crmdev_batch_router
+from .routes_crmdev_orgs import crmdev_orgs_router
 from .routes_crmdev_write import crmdev_write_router
 from .routes_fabrica_window import fabrica_window_router
 from .routes_quotes import quotes_router
@@ -239,6 +243,9 @@ def create_app(
     app.include_router(crmdev_router(settings, secrets, crmdev_health))
     app.include_router(crmdev_window_router(settings))
     app.include_router(crmdev_write_router(settings, secrets))
+    app.include_router(crmdev_batch_router(settings, secrets))
+    app.include_router(crmdev_orgs_router(settings, secrets))
+    app.include_router(central_batch_router(settings, secrets))
     app.include_router(fabrica_window_router(settings))
     app.include_router(quotes_router(settings, secrets))
     app.include_router(clients_router(settings, secrets, crmdev_health))
@@ -255,7 +262,8 @@ def create_app(
     app.include_router(apps_router(settings))
     app.include_router(doctor_router(settings, secrets))
     app.include_router(agents_router(settings))
-    app.include_router(orca_router(settings))
+    app.include_router(orca_router(settings, secrets))
+    app.include_router(orca_bots_router(settings, secrets))
     app.include_router(note_sources_router(settings, secrets))
     app.include_router(issues_router(settings))
     return app

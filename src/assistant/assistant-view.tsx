@@ -6,30 +6,34 @@ import { NoteProposals, useNoteProposals } from './note-proposals';
 import { EventProposals, useEventProposals } from './event-proposals';
 import { QuoteProposals, useQuoteProposals } from './quote-proposals';
 import { IssueProposals, useIssueProposals } from './issue-proposals';
+import { CrmdevProposals, useCrmdevProposals } from './crmdev-proposals';
 import { OrcaProposals, useOrcaProposals } from './orca-proposals';
+import { HermesProposals, useHermesProposals } from './hermes-proposals';
+import { takeWatsonAsk } from './pending-ask';
+import { ResearchProposals, useResearchProposals } from './research-proposals';
+import type { Delegated, ResearchProposal } from '../api/core';
 import { ChatReplyProposals, useChatReplyProposals } from './chat-reply-proposals';
-import { inboxStep } from './assistant-labels';
+import { answeringIn, startTurn, stopTurn, forgetTurn, useLiveTurns } from './live-turns';
 import { CleanupProposals, useCleanupProposals } from './cleanup-proposals';
 import { ReorgProposals, useReorgProposals } from './reorg-proposals';
-import { answerSoFar, beginAnswer, speak, stopSpeaking, useSpeaking, useVoiceNotice } from './speech';
+import { speak, stopSpeaking, useSpeaking, useVoiceNotice } from './speech';
 
 // The conversation last open (its number only, in this browser), opened again when coming back to the chat.
 const LAST = 'agora-watson-conversation';
 const readLast = () => { try { const n = Number(localStorage.getItem(LAST)); return Number.isInteger(n) && n > 0 ? n : null; } catch { return null; } };
 const writeLast = (id: number | null) => { try { if (id === null) localStorage.removeItem(LAST); else localStorage.setItem(LAST, String(id)); } catch { /* not remembered this time */ } };
 import {
-  askAssistant, createAssistantConversation, getAssistantConversation, getAssistantSettings, getEngines, getPersonas, listAssistantConversations,
+  createAssistantConversation, getAssistantConversation, getAssistantSettings, getEngines, getPersonas, listAssistantConversations,
   type AssistantMessage, type ConversationSummary, type Persona, type Source, type Stage,
 } from '../api/core';
 import { Markdown } from '../ui/markdown';
 import { Loading, LoadError } from '../ui/load-state';
 import type { NoteRef } from '../brain/note-reader';
-import { engineName, modelName, stageLabels } from './assistant-labels';
-import { play } from '../sound/sound';
+import { engineName, modelName, stageLabels, webLabel } from './assistant-labels';
 import { Announcements, useAnnouncements } from './assistant-announce';
 import './assistant.css';
+import { hereLabel } from '../ui/platform';
 
-type Live = { question: string; stage: Stage | null; sources: Source[]; text: string; engine?: string; model?: string; steps: string[] };
 /** What Watson is doing right now, for the graph beside it: real events only. */
 export type Thinking = { stage: Stage | 'busca' | 'lee' | null; label: string; reading: string[] } | null;
 const noLinks = () => null;
@@ -54,7 +58,6 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const [current, setCurrent] = useState<number | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [live, setLive] = useState<Live | null>(null);
   const [error, setError] = useState('');
   const [draft, setDraft] = useState('');
   const [persona, setPersona] = useState<Persona | null>(null);
@@ -66,27 +69,36 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const quotes = useQuoteProposals();
   const issues = useIssueProposals();
   const orcas = useOrcaProposals();
+  const crmdevs = useCrmdevProposals();
+  const hermes = useHermesProposals();
+  const researches = useResearchProposals();
   const chatReplies = useChatReplyProposals();
   const cleanups = useCleanupProposals();
   const reorgs = useReorgProposals();
-  const abort = useRef<AbortController | null>(null);
   const end = useRef<HTMLDivElement>(null);
-  // The conversation on screen, read by answers that finish after the user moved to another one.
-  const shownId = useRef<number | null>(null);
-  shownId.current = current;
+  // How many events of each conversation's answer this chat has taken (each chat counts for itself, so coming back
+  // or opening the conversation again shows the proposals' cards again), and when it took a finished answer.
+  const taken = useRef(new Map<number, number>());
+  const finishedAt = useRef(new Map<number, number>());
   const refreshList = useCallback(() => listAssistantConversations().then(data => { setConversations(data.conversations); setListError(''); })
     .catch(failure => setListError(failure instanceof Error ? failure.message : 'No se pudieron leer las conversaciones.')), []);
   useEffect(() => {
     void refreshList();
     Promise.all([getPersonas(), getAssistantSettings()]).then(([list, settings]) => setPersona(list.personas.find(item => item.id === settings.persona) ?? null)).catch(() => undefined);
     getEngines().then(setEngine).catch(() => setEngine({ active: null, model: '' }));
-    return () => abort.current?.abort();
   }, [refreshList]);
   const open = useCallback(async (id: number) => {
-    abort.current?.abort();
-    setCurrent(id); setLive(null); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); chatReplies.clear(); writeLast(id); shownId.current = id;
+    stopSpeaking();
+    setCurrent(id); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); crmdevs.clear(); hermes.clear(); researches.clear(); chatReplies.clear(); writeLast(id);
+    taken.current.delete(id);
     if (embedded) setListOpen(false);
-    try { const found = (await getAssistantConversation(id)).messages; setMessages(found); onSources?.(lastSources(found)); }
+    const asked = performance.now();
+    try {
+      const found = (await getAssistantConversation(id)).messages;
+      // An answer that finished while this was on its way already brought the newer messages.
+      if ((finishedAt.current.get(id) ?? 0) > asked) return;
+      setMessages(found); onSources?.(lastSources(found));
+    }
     catch (failure) { setMessages([]); setCurrent(null); writeLast(null); setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.'); }
     finally { setLoading(false); }
   }, []);
@@ -98,66 +110,70 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   }, [open]);
   const talking = useSpeaking();
   const voiceNote = useVoiceNotice();
-  const send = useCallback(async (text: string, into: number | null) => {
-    let id = into;
-    let spokeFinal = false;
-    setError('');
-    try {
-      if (id === null) { id = (await createAssistantConversation()).id; shownId.current = id; setCurrent(id); writeLast(id); setMessages([]); }
-      const controller = new AbortController();
-      abort.current = controller;
-      setLive({ question: text, stage: null, sources: [], text: '', steps: [] });
-      play('send');
-      // The voice gets ready now and starts with the first whole sentence while the rest is written.
-      beginAnswer(spokenTurn.current);
-      let soFar = '';
-      const reading: string[] = [];
-      await askAssistant(id, text, event => {
-        if (event.kind === 'delta') answerSoFar(soFar += event.text);
-        if (event.kind === 'done') play('receive');
-        if (event.kind === 'stage') onThinking?.({ stage: event.stage, label: stageLabels[event.stage], reading });
-        else if (event.kind === 'tool' && event.tool === 'search') onThinking?.({ stage: 'busca', label: `Buscando «${event.query}»`, reading });
-        else if (event.kind === 'tool' && event.tool === 'clients') onThinking?.({ stage: 'busca', label: 'Consultando los clientes', reading });
-        else if (event.kind === 'tool' && event.tool === 'inbox') onThinking?.({ stage: 'busca', label: 'Consultando la Bandeja', reading });
-        else if (event.kind === 'tool' && event.tool === 'meetings') onThinking?.({ stage: 'busca', label: 'Buscando en las reuniones', reading });
-        else if (event.kind === 'tool' && event.tool === 'meeting') onThinking?.({ stage: 'lee', label: `Leyendo la reunión «${event.title}»`, reading });
-        else if (event.kind === 'tool' && event.tool === 'rule_proposal') proposals.add(event.id, event.rule);
-        else if (event.kind === 'tool' && event.tool === 'note_proposal') notes.add(event.id, event.note);
-        else if (event.kind === 'tool' && event.tool === 'event_proposal') events.add(event.id, event.event);
-        else if (event.kind === 'tool' && event.tool === 'quote_proposal') quotes.add(event.id, event.quote);
-        else if (event.kind === 'tool' && event.tool === 'issue_proposal') issues.add(event.id, event.issue);
-        else if (event.kind === 'tool' && event.tool === 'orca_proposal') orcas.add(event.proposal);
-        else if (event.kind === 'tool' && event.tool === 'chat_reply_proposal') chatReplies.add(event.id, event.reply);
-        else if (event.kind === 'tool' && event.tool === 'cleanup_proposal') cleanups.add(event.id, event.action, event.messages);
-        else if (event.kind === 'tool' && event.tool === 'reorg_proposal') reorgs.add(event.id, event.summary, event.moves);
-        else if (event.kind === 'tool' && event.tool === 'vault_outline') onThinking?.({ stage: 'busca', label: 'Revisando el vault', reading });
-        else if (event.kind === 'tool' && event.tool === 'read') { reading.push(event.id); onThinking?.({ stage: 'lee', label: `Leyendo «${event.title}»`, reading: [...reading] }); }
-        setLive(previous => previous && (
-        event.kind === 'stage' ? { ...previous, stage: event.stage, engine: event.engine ?? previous.engine, model: event.model ?? previous.model }
-          : event.kind === 'sources' ? (onSources?.(event.sources.map(sourceId)), { ...previous, sources: event.sources })
-          : event.kind === 'delta' ? { ...previous, text: previous.text + event.text }
-          : event.kind === 'tool' ? { ...previous, steps: [...previous.steps, event.tool === 'search' ? `Buscó «${event.query}» · ${event.found.length} notas` : event.tool === 'inbox' ? inboxStep(event.count, event.chats) : event.tool === 'clients' ? `Consultó los clientes de Central · ${event.count}` : event.tool === 'meetings' ? `Buscó en las reuniones · ${event.count}` : event.tool === 'meeting' ? `Leyó la reunión «${event.title}»` : event.tool === 'rule_proposal' ? `Propuso la regla «${event.rule.name}»` : event.tool === 'note_proposal' ? `Propuso la nota «${event.note.title}»` : event.tool === 'event_proposal' ? `Propuso el evento «${event.event.title}»` : event.tool === 'quote_proposal' ? `Propuso el presupuesto «${event.quote.title}»` : event.tool === 'issue_proposal' ? `Propuso una issue en ${event.issue.repo}` : event.tool === 'orca_proposal' ? `Propuso llevar un encargo a Orca en ${event.proposal.repo}` : event.tool === 'chat_reply_proposal' ? 'Propuso una respuesta de WhatsApp' : event.tool === 'cleanup_proposal' ? `Preparó ${event.messages.length} correos para ${event.action === 'trash' ? 'la Papelera' : 'archivar'}` : event.tool === 'reorg_proposal' ? `Propuso ${event.moves.length} cambios para ordenar el vault` : event.tool === 'vault_outline' ? `Revisó el vault · ${event.notes} notas en ${event.folders} carpetas` : event.tool === 'read' ? `Leyó [${event.n}] ${event.title}` : 'Consultó tus datos'] }
-          : previous));
-      }, controller.signal);
-    } catch (failure) {
-      if (!(failure instanceof DOMException && failure.name === 'AbortError')) setError(failure instanceof Error ? failure.message : 'No se pudo responder.');
-    } finally {
-      abort.current = null;
+  // The answer on its way in the conversation on screen lives outside this view (live-turns): leaving the chat
+  // does not stop it. Its events are taken here once, to open the proposals' cards and light up the graph.
+  const turns = useLiveTurns();
+  const turn = current !== null ? turns.get(current) : undefined;
+  const live = turn && !turn.done ? turn.live : null;
+  // The graph beside the chat follows only the conversation on screen.
+  useEffect(() => { onThinking?.(null); }, [current]);  // only when the conversation changes
+  // An answer that finished out of sight renames and reorders its conversation in the list.
+  const finishedCount = [...turns.values()].filter(item => item.done).length;
+  useEffect(() => { if (finishedCount) void refreshList(); }, [finishedCount, refreshList]);
+  useEffect(() => {
+    if (!turn) return;
+    const from = taken.current.get(turn.conversation) ?? 0;
+    taken.current.set(turn.conversation, turn.events.length);
+    for (const event of turn.events.slice(from)) {
+      const reading = turn.reading;
+      if (event.kind === 'stage') onThinking?.({ stage: event.stage, label: stageLabels[event.stage], reading });
+      else if (event.kind === 'sources') onSources?.(event.sources.map(sourceId));
+      else if (event.kind !== 'tool') continue;
+      else if (event.tool === 'search') onThinking?.({ stage: 'busca', label: `Buscando «${event.query}»`, reading });
+      else if (event.tool === 'clients') onThinking?.({ stage: 'busca', label: 'Consultando los clientes', reading });
+      else if (event.tool === 'inbox') onThinking?.({ stage: 'busca', label: 'Consultando la Bandeja', reading });
+      else if (event.tool === 'meetings') onThinking?.({ stage: 'busca', label: 'Buscando en las reuniones', reading });
+      else if (event.tool === 'meeting') onThinking?.({ stage: 'lee', label: `Leyendo la reunión «${event.title}»`, reading });
+      else if (event.tool === 'web') onThinking?.({ stage: 'lee', label: webLabel(event.pages), reading });
+      else if (event.tool === 'rule_proposal') proposals.add(event.id, event.rule);
+      else if (event.tool === 'note_proposal') notes.add(event.id, event.note);
+      else if (event.tool === 'event_proposal') events.add(event.id, event.event);
+      else if (event.tool === 'quote_proposal') quotes.add(event.id, event.quote);
+      else if (event.tool === 'issue_proposal') issues.add(event.id, event.issue);
+      else if (event.tool === 'orca_proposal') orcas.add(event.proposal);
+      else if (event.tool === 'crmdev_proposal') crmdevs.add(event.proposal);
+      else if (event.tool === 'crmdev_read') onThinking?.({ stage: 'busca', label: `Consultando ${event.what} de CRMDev`, reading });
+      else if (event.tool === 'hermes_proposal') hermes.add(event.proposal);
+      else if (event.tool === 'research_proposal') researches.add(event.proposal);
+      else if (event.tool === 'chat_reply_proposal') chatReplies.add(event.id, event.reply);
+      else if (event.tool === 'cleanup_proposal') cleanups.add(event.id, event.action, event.messages);
+      else if (event.tool === 'reorg_proposal') reorgs.add(event.id, event.summary, event.moves);
+      else if (event.tool === 'vault_outline') onThinking?.({ stage: 'busca', label: 'Revisando el vault', reading });
+      else if (event.tool === 'read') onThinking?.({ stage: 'lee', label: `Leyendo «${event.title}»`, reading });
+    }
+    if (turn.done) {
       onThinking?.(null);
-      if (id !== null && shownId.current === id) {
-        try {
-          const found = (await getAssistantConversation(id)).messages;
-          setMessages(found);
-          const last = found.at(-1);
-          if (last?.role === 'assistant' && !last.failed) { speak(last.content, spokenTurn.current); spokeFinal = true; }
-        } catch { /* the error above is enough */ }
-      }
-      // No answer to finish (an error, another conversation on screen): the voice waiting for it lets go.
-      if (!spokeFinal) speak('', false);  // closes the answer begun (an error, another conversation): nothing more is said
-      if (id === null || shownId.current === id) setLive(null);
+      if (turn.messages) setMessages(turn.messages);
+      if (turn.error) setError(turn.error);
+      finishedAt.current.set(turn.conversation, performance.now());
+      taken.current.delete(turn.conversation);
+      forgetTurn(turn.conversation);
       void refreshList();
     }
-  }, [refreshList, onSources]);
+  }, [turn]);  // only when the turn changes: the callbacks are the view's own, stable enough for this
+  const send = useCallback(async (text: string, into: number | null, delegated?: Delegated, research?: ResearchProposal): Promise<boolean> => {
+    let id = into;
+    setError('');
+    // One answer at a time, so two voices never mix: Watson finishes the other conversation first.
+    if (answeringIn() !== null) { setError(`${persona?.name ?? 'Watson'} aún está respondiendo en otra conversación: espera a que termine o detenla allí.`); return false; }
+    try {
+      if (id === null) { id = (await createAssistantConversation()).id; setCurrent(id); writeLast(id); setMessages([]); }
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'No se pudo responder.');
+      return false;
+    }
+    return startTurn(id, text, delegated, spokenTurn.current, research);
+  }, [persona]);
   // A question asked from the brain's page starts a new conversation, once.
   useEffect(() => { if (question) { onQuestionTaken?.(); void send(question, null); } }, [question, onQuestionTaken, send]);
   // Only the message list scrolls (scrollIntoView would also move the page around it).
@@ -191,14 +207,20 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
-  const fresh = () => { abort.current?.abort(); stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setLive(null); setError(''); proposals.clear(); issues.clear(); orcas.clear(); chatReplies.clear(); onSources?.([]); if (embedded) setListOpen(false); };
+  const fresh = () => { stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setError(''); proposals.clear(); issues.clear(); orcas.clear(); crmdevs.clear(); hermes.clear(); researches.clear(); chatReplies.clear(); onSources?.([]); if (embedded) setListOpen(false); };
   const sourceList = (sources: Source[]) => sources.length > 0 && <div className="sources">
     <span className="muted">Fuentes</span>
     <ol>{sources.map(source => <li key={source.n} value={source.n}><button onClick={() => onRead({ vault: source.source, note: source.ref })}>{source.title}</button><small>{source.folder || 'Raíz'}</small></li>)}</ol>
     {onShowOnGraph && <button className="button" onClick={() => onShowOnGraph(sources.map(sourceId))}>Ver en el cerebro</button>}
   </div>;
   const name = persona?.name ?? 'Watson';
-  return <section className={`assistant${embedded ? ' embedded' : ''}`} aria-labelledby="assistant-title">
+  // Asked from another section (a bot's answer passed on): sent once the view is on screen (a ref, not an effect).
+  const startWith = (node: HTMLElement | null) => {
+    if (!node || embedded || answeringIn() !== null) return;  // busy elsewhere: kept until the next time it shows
+    const ask = takeWatsonAsk();
+    if (ask) void send(ask.text, null, ask.delegated);
+  };
+  return <section ref={startWith} className={`assistant${embedded ? ' embedded' : ''}`} aria-labelledby="assistant-title">
     {listOpen && <aside className="assistant-list" aria-label="Conversaciones">
       <button className="button primary" onClick={fresh}>Conversación nueva</button>
       {listError ? <LoadError message={listError} onRetry={refreshList}/> : !conversations ? <Loading label="Cargando conversaciones" lines={4}/>
@@ -211,7 +233,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
       <header className="assistant-head">
         {embedded && <div className={`watson-orb ${hearing === 'recording' ? 'hearing' : live ? 'busy' : ''}`} aria-hidden="true"><i/><i/><i/></div>}
         <div>{!embedded && <div className="eyebrow">ASISTENTE</div>}<h1 id="assistant-title">{name}</h1>
-          {embedded ? <p className="watson-state" role="status">{hearing === 'recording' ? 'Escuchando… (en este Mac)' : hearing === 'transcribing' ? 'Pasando tu voz a texto…'
+          {embedded ? <p className="watson-state" role="status">{hearing === 'recording' ? `Escuchando… (en ${hereLabel})` : hearing === 'transcribing' ? 'Pasando tu voz a texto…'
             : live ? (live.stage ? stageLabels[live.stage] : 'Enviando…') : 'Listo · escribe o pulsa el micrófono'}</p>
             : persona && <p className="muted">{persona.conveys}. Inspirado en {persona.origin}.</p>}
           {voiceNote && <p className="muted watson-voice-note" role="status">{voiceNote}</p>}</div>
@@ -245,13 +267,16 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
           </article>
         </>}
         {(hearing === 'recording' || hearing === 'transcribing') && <div className="watson-heard" aria-live="polite">
-          {hearing === 'recording' ? '«…»' : 'Transcribiendo…'}<small>{hearing === 'recording' ? 'oyendo · se transcribe en este Mac' : 'en este Mac, con whisper'}</small></div>}
+          {hearing === 'recording' ? '«…»' : 'Transcribiendo…'}<small>{hearing === 'recording' ? `oyendo · se transcribe en ${hereLabel}` : `en ${hereLabel}, con whisper`}</small></div>}
         <RuleProposals state={proposals} discreet={discreet}/>
         <NoteProposals state={notes}/>
         <EventProposals state={events}/>
         <QuoteProposals state={quotes}/>
         <IssueProposals state={issues}/>
         <OrcaProposals state={orcas}/>
+        <CrmdevProposals state={crmdevs}/>
+        <ResearchProposals state={researches} busy={answeringIn() !== null} onInvestigate={proposal => send(`Investiga: ${proposal.question}`, current, undefined, proposal)}/>
+        <HermesProposals state={hermes} name={name} busy={live !== null} onPassBack={(profile, label, reply) => send(`Esto ha respondido ${label} al encargo. Resúmemelo.`, current, { profile, reply })}/>
         <ChatReplyProposals state={chatReplies} discreet={discreet}/>
         <CleanupProposals state={cleanups} discreet={discreet}/>
         <ReorgProposals state={reorgs}/>
@@ -264,7 +289,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
           placeholder={embedded ? 'Escribe o habla…' : `Pregunta a ${name}…`} aria-keyshortcuts="Enter" rows={embedded ? 1 : undefined}/>
         <div className="actions">
           <DictationButton disabled={Boolean(live)} onText={spoken => submit(undefined, spoken)} onPhase={phase => { if (phase === 'starting') stopSpeaking(); setHearing(phase); }} big={embedded}/>
-          {live ? <button type="button" className="button" onClick={() => abort.current?.abort()}>Detener</button>
+          {live ? <button type="button" className="button" onClick={() => { if (current !== null) stopTurn(current); }}>Detener</button>
             : !embedded && <button className="button primary" disabled={!draft.trim()}>Enviar</button>}
           {!embedded && <small className="muted">Enter envía · Mayús + Enter, nueva línea</small>}
         </div>

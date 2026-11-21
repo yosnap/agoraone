@@ -3,6 +3,7 @@ import { openCodingInOrca, type CodingHost, type CodingSession } from '../api/co
 import { moduleOn, useModules } from '../shell/modules';
 import { ago } from './agent-lines';
 import { ActionButton } from '../ui/action-button';
+import { hereLabel } from '../ui/platform';
 
 const tools: Record<CodingSession['tool'], string> = { claude: 'Claude Code', codex: 'Codex' };
 /** Where each session runs, as its own record says (Orca, VS Code, the Codex or Claude app, a terminal). */
@@ -24,7 +25,7 @@ export function CodingSessions({ sessions, discreet, now, onCity, compact = fals
   if (sessions === null) return null;
   const working = sessions.filter(s => s.state === 'working').length;
   return <section className={`coding-sessions${compact ? ' compact' : ''}`} aria-labelledby="coding-title">
-    <div className="card-head"><h2 id="coding-title" className={compact ? 'visually-hidden' : undefined}>Agentes de código en este Mac</h2>
+    <div className="card-head"><h2 id="coding-title" className={compact ? 'visually-hidden' : undefined}>Agentes de código en {hereLabel}</h2>
       {onCity && <ActionButton icon="eye" label="Verlos en la ciudad" onClick={onCity}/>}</div>
     <p className="muted">{sessions.length === 0 ? 'Ninguna sesión de Claude Code ni de Codex en las últimas 24 horas.'
       : `${sessions.length} ${sessions.length === 1 ? 'sesión' : 'sesiones'} en 24 h${working ? `, ${working} trabajando ahora` : ''}. Solo se leen sus metadatos.`}</p>

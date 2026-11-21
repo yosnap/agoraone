@@ -112,8 +112,12 @@ export function createReadStore(fallbackMessage: string) {
 
   return {
     failureOf, ensure, watch, useRead, forget,
-    /** A new visit: whatever was read before is forgotten, without notifying (nothing is on screen yet). */
-    start: () => { entries.clear(); },
+    /** A new visit (or another organization): whatever was read before is forgotten, but `except`, without notifying
+     * (nothing is on screen yet); an answer still on its way for what was forgotten is ignored when it comes. */
+    start: (except: string[] = []) => {
+      for (const key of [...entries.keys()]) if (!except.includes(key)) entries.delete(key);
+      for (const [key, generation] of generations) if (!except.includes(key)) generations.set(key, generation + 1);
+    },
     /** How many times «Volver a leer» was pressed (what depends on earlier pages starts again with it). */
     useReadings: () => useSyncExternalStore(listen, () => readings, () => readings),
     /** Whether a «Volver a leer» is still waiting for its answers (its button stays disabled meanwhile). */

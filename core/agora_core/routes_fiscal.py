@@ -594,7 +594,7 @@ def fiscal_router(settings: Settings, secrets) -> APIRouter:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with open(target, "xb") as handle:
                     handle.write(data)
-                saved.append({"number": row["number"], "path": str(target.relative_to(root))})
+                saved.append({"number": row["number"], "path": target.relative_to(root).as_posix()})
             return {"saved": saved, "failed": failed}
         try:
             return await db(work)

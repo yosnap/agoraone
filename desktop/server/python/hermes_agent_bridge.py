@@ -74,11 +74,12 @@ def lasting(tool_name, args):
 HOME = os.path.realpath(os.path.expanduser("~"))
 AGORA = os.path.realpath(os.environ.get("AGORA_APP_DIR") or os.getcwd())
 # Places whose files are credentials of the user: reading them needs the user's «Permitir».
-SENSITIVE = [os.path.join(HOME, part) for part in (".ssh", ".aws", ".gnupg", ".config/gh", ".netrc", ".docker", ".kube", "Library/Keychains")]
+SENSITIVE = [os.path.join(HOME, part) for part in (".ssh", ".aws", ".gnupg", ".config/gh", ".azure", ".netrc", ".docker", ".kube", "Library/Keychains", "AppData/Roaming/gh")]
 
 
 def inside(path, folder):
-    return path == folder or path.startswith(folder.rstrip(os.sep) + os.sep)
+    p, f = os.path.normcase(path), os.path.normcase(folder.rstrip(os.sep))
+    return p == f or p.startswith(f + os.sep)
 
 
 def read_policy(args, root, home):
@@ -359,8 +360,16 @@ def isolate_environment():
 def main():
     emit({"type": "ready"})
     installation = Path(os.environ["AGORA_HERMES_PATH"]).resolve()
-    revision = subprocess.check_output(["/usr/bin/git", "-C", str(installation), "rev-parse", "HEAD"], text=True).strip()
-    if not (revision == EXPECTED_COMMIT and not subprocess.check_output(["/usr/bin/git", "-C", str(installation), "status", "--porcelain", "--untracked-files=no"], text=True).strip()):
+    # macOS and Linux keep the fixed system git, so a git earlier in PATH is never run; Windows has no fixed
+    # path for it, so only there it comes from PATH.
+    if sys.platform == "win32":
+        import shutil
+
+        git = shutil.which("git") or "git"
+    else:
+        git = "/usr/bin/git"
+    revision = subprocess.check_output([git, "-C", str(installation), "rev-parse", "HEAD"], text=True).strip()
+    if not (revision == EXPECTED_COMMIT and not subprocess.check_output([git, "-C", str(installation), "status", "--porcelain", "--untracked-files=no"], text=True).strip()):
         emit({"type": "done", "ok": False, "error": "unverified_hermes"})
         return
     sys.path.insert(0, str(installation))

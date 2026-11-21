@@ -6,6 +6,7 @@ import type { ChatSummary, InboxItem } from '../api/core';
 import { ChatCard } from './chat-card';
 import { arrange, attachmentName, attachmentsText, cardKey, chatOrigin, type Card, type View } from './inbox-cards';
 import { attachmentsSection, noteContent } from './project-note-text';
+import { onlyHereLabel } from '../ui/platform';
 
 const mail = (id: number, name: string, sentAt: string, summary = 'Pide la factura.'): Card => ({ source: 'mail', item: {
   id, kind: 'invoice', source: 'model', ruleId: null, ruleName: null, confidentiality: 'normal', summary, details: {}, state: 'pending', proposal: null,
@@ -71,7 +72,7 @@ test('la tarjeta lleva su distintivo y su nivel; el discreto oculta resumen y n�
   assert.doesNotMatch(hidden, /600 111 222|Quiere cambiar|Mover la cita|Cliente: Acme/);
   assert.match(hidden, /disabled="" title="Sal del modo discreto para responder">Responder…/, 'en discreto no se responde');
   const local = render(conversation(5, 'Ana', '2026-11-19T09:00:00Z', { confidentiality: 'local_only', summary: null }));
-  assert.match(local, /Solo en este Mac: sin resumen de modelo/);
+  assert.ok(local.includes(`${onlyHereLabel}: sin resumen de modelo`), 'el nivel dice dónde se queda: este Mac o este equipo');
   assert.doesNotMatch(local, /Crear issue|Llevar a Orca/, 'lo que no es normal no ofrece issue ni Orca');
   const secret = render(conversation(6, 'Ana', '2026-11-19T09:00:00Z', { confidentiality: 'private', participant: null, summary: null, client: null }));
   assert.match(secret, /Conversación privada/);

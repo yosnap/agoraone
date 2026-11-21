@@ -65,15 +65,26 @@ def test_solo_lo_que_falta_se_puede_buscar_en_youtube(mac, monkeypatch):
     with pytest.raises(music.MusicError) as missing:
         music.play("music", "jazz")
     assert missing.value.reason == "missing"
-    monkeypatch.setattr(music.time, "sleep", lambda seconds: None)
+    # In the catalogue: its album opens in Music, Music's own «Play» is pressed and it skips to the song.
     monkeypatch.setattr(music, "catalog_song", lambda query, **k: {"name": "So What", "artist": "Miles Davis", "url": "music://music.apple.com/es/album/1?i=2"})
-    with pytest.raises(music.MusicError) as unplayed:  # in the catalogue, but Music could not reach the song
+    asked = []
+    answers = {music.SEARCH_MUSIC: "none", music.OPEN_IN_MUSIC: "opened", music.MUSIC_VOLUME: "70", music.PLAY_PAGE: "ok"}
+    monkeypatch.setattr(music, "_osascript", lambda script, *a, **k: asked.append((script, a)) or answers[script])
+    assert "Pongo «So What» de Miles Davis" in music.play("music", "jazz")
+    assert (music.OPEN_IN_MUSIC, ("music://music.apple.com/es/album/1?i=2",)) in asked
+    assert asked[-1][0] == music.PLAY_PAGE and asked[-1][1][0] == "So What"
+    # Without «Accesibilidad» the page stays open in Music and the user is told how; YouTube does not take over.
+    def no_access(script, *a, **k):
+        if script == music.PLAY_PAGE:
+            raise music.MusicError("El reproductor no pudo hacerlo.")
+        return answers[script]
+    monkeypatch.setattr(music, "_osascript", no_access)
+    assert "Accesibilidad" in music.play("music", "jazz")
+    # The song is not in the album Music plays: said, and YouTube may play it.
+    monkeypatch.setattr(music, "_osascript", lambda script, *a, **k: "none" if script == music.PLAY_PAGE else answers[script])
+    with pytest.raises(music.MusicError) as unplayed:
         music.play("music", "jazz")
     assert unplayed.value.reason == "missing"
-    asked = []
-    monkeypatch.setattr(music, "_osascript", lambda script, *a, **k: asked.append(a) or ("none" if script == music.SEARCH_MUSIC else "ok"))
-    assert "So What" in music.play("music", "jazz")
-    assert ("music://music.apple.com/es/album/1?i=2",) in asked and any(a[:1] == ("So What",) for a in asked)
     def denied(script, *a, **k):
         raise music.MusicError("macOS no deja a AgoraOne controlar la música")
     monkeypatch.setattr(music, "_osascript", denied)
@@ -125,40 +136,6 @@ def _cuelga(script, args):
     raise subprocess.TimeoutExpired("osascript", 1)
 
 
-def test_el_album_restaura_el_volumen_si_falla_a_medias():
-    # Si Música falla en mitad del salto de pistas, AppleScript devuelve el volumen y pausa antes de relanzar el error.
-    script = music.PLAY_FROM_ALBUM
-    fallo = script[script.index("on error errMsg"):script.index("end try\n  end tell")]
-    assert "set sound volume to v" in fallo and "pause" in fallo and "error errMsg number errNum" in fallo
-    assert script.index("set v to sound volume") < script.index("try") < script.index("set sound volume to 0")
-    assert "ignoring case, diacriticals and punctuation" in script and "starts with wanted" in script
-
-
-def test_si_el_album_se_cuelga_python_pausa_y_devuelve_el_volumen(monkeypatch):
-    def answer(script, args):
-        if script == music.MUSIC_VOLUME:
-            return "65"
-        if script == music.PLAY_FROM_ALBUM:
-            return _cuelga(script, args)
-        return ""
-    calls = _osascript_falso(monkeypatch, answer)
-    with pytest.raises(music.MusicError) as cut:
-        music._play_from_album("So What", 6)
-    assert cut.value.reason == "silent"
-    scripts = [script for script, _, _ in calls]
-    assert scripts == [music.MUSIC_VOLUME, music.PLAY_FROM_ALBUM, 'tell application "Music" to pause',
-                       'tell application "Music" to set sound volume to 65'], "pausa primero, luego el volumen de antes"
-    album = calls[1]
-    assert album[1] == ("So What", "6") and album[2] == 8, "AppleScript para a tiempo y se corta 2 s después"
-
-
-def test_sin_volumen_legible_no_se_inventa_uno(monkeypatch):
-    calls = _osascript_falso(monkeypatch, lambda script, args: "raro" if script == music.MUSIC_VOLUME else _cuelga(script, args))
-    with pytest.raises(music.MusicError):
-        music._play_from_album("So What", 3)
-    assert not any(script.startswith('tell application "Music" to set sound volume') for script, _, _ in calls)
-
-
 def test_musica_que_no_responde_se_pausa_para_no_sonar_con_youtube(monkeypatch):
     monkeypatch.setattr(music.sys, "platform", "darwin")
     monkeypatch.setattr(music, "_installed", lambda player: True)
@@ -174,7 +151,7 @@ def test_el_catalogo_cabe_en_el_tiempo_de_watson(monkeypatch):
     # La biblioteca tarda casi todo lo que hay: no se abre el catálogo y se pasa a YouTube enseguida.
     monkeypatch.setattr(music.sys, "platform", "darwin")
     monkeypatch.setattr(music, "_installed", lambda player: True)
-    clock = iter([0.0, 10.0])
+    clock = iter([0.0, 16.0])
     monkeypatch.setattr(music.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(music, "catalog_song", lambda *a, **k: pytest.fail("no queda tiempo para el catálogo"))
     _osascript_falso(monkeypatch, lambda script, args: "none")
@@ -183,10 +160,9 @@ def test_el_catalogo_cabe_en_el_tiempo_de_watson(monkeypatch):
     assert slow.value.reason == "silent"
 
 
-def test_el_album_recibe_lo_que_queda_del_presupuesto(monkeypatch):
+def test_el_catalogo_y_la_reproduccion_caben_en_el_tiempo_de_watson(monkeypatch):
     monkeypatch.setattr(music.sys, "platform", "darwin")
     monkeypatch.setattr(music, "_installed", lambda player: True)
-    monkeypatch.setattr(music.time, "sleep", lambda seconds: None)
     now = [0.0]
     monkeypatch.setattr(music.time, "monotonic", lambda: now[0])
     asked = {}
@@ -195,9 +171,52 @@ def test_el_album_recibe_lo_que_queda_del_presupuesto(monkeypatch):
         now[0] = 3.0
         return {"name": "So What", "artist": "Miles Davis", "url": "music://music.apple.com/es/album/1?i=2"}
     monkeypatch.setattr(music, "catalog_song", song)
-    calls = _osascript_falso(monkeypatch, lambda script, args: {music.SEARCH_MUSIC: "none", music.MUSIC_VOLUME: "50"}.get(script, "ok"))
+    answers = {music.SEARCH_MUSIC: "none", music.OPEN_IN_MUSIC: "opened", music.MUSIC_VOLUME: "50", music.PLAY_PAGE: "ok"}
+    calls = _osascript_falso(monkeypatch, lambda script, args: answers[script])
     assert "So What" in music.play("music", "so what")
     assert asked["catalog"] <= 4
-    album = next(call for call in calls if call[0] == music.PLAY_FROM_ALBUM)
-    assert int(album[1][1]) + 3 <= music.BUDGET, "el salto de pistas acaba dentro del presupuesto"
-    assert sum(timeout for _, _, timeout in calls) <= music.BUDGET + 8
+    assert [script for script, _, _ in calls] == [music.SEARCH_MUSIC, music.OPEN_IN_MUSIC, music.MUSIC_VOLUME, music.PLAY_PAGE]
+    play = calls[-1]
+    assert int(play[1][1]) + 3 <= music.BUDGET - 3 + 3 and play[2] == int(play[1][1]) + 3, "AppleScript para a tiempo y se corta 3 s después"
+
+
+def test_si_la_reproduccion_se_cuelga_python_pausa_y_devuelve_el_volumen(monkeypatch):
+    monkeypatch.setattr(music.sys, "platform", "darwin")
+    monkeypatch.setattr(music, "_installed", lambda player: True)
+    monkeypatch.setattr(music, "catalog_song", lambda query, timeout: {"name": "So What", "artist": "", "url": "music://music.apple.com/es/album/1?i=2"})
+    answers = {music.SEARCH_MUSIC: "none", music.OPEN_IN_MUSIC: "opened", music.MUSIC_VOLUME: "65"}
+    calls = _osascript_falso(monkeypatch, lambda script, args: _cuelga(script, args) if script == music.PLAY_PAGE else answers.get(script, ""))
+    with pytest.raises(music.MusicError) as cut:
+        music.play("music", "so what")
+    assert cut.value.reason == "silent"
+    assert [script for script, _, _ in calls][-2:] == ['tell application "Music" to pause', 'tell application "Music" to set sound volume to 65']
+
+
+def test_el_album_se_pone_entero_y_sin_buscar_en_la_biblioteca(monkeypatch):
+    monkeypatch.setattr(music.sys, "platform", "darwin")
+    monkeypatch.setattr(music, "_installed", lambda player: True)
+    monkeypatch.setattr(music, "catalog_song", lambda *a, **k: pytest.fail("un álbum no se busca como canción"))
+    monkeypatch.setattr(music, "catalog_album", lambda query, timeout: {"name": "Sueños Líquidos", "artist": "Maná", "url": "music://music.apple.com/es/album/9"} if query == "Sueños líquidos" else None)
+    calls = _osascript_falso(monkeypatch, lambda script, args: {music.MUSIC_VOLUME: "50", music.PLAY_PAGE: "ok"}.get(script, "opened"))
+    assert music.play("music", "el álbum Sueños líquidos") == "Pongo el álbum «Sueños Líquidos» de Maná en Música, de Apple Music."
+    assert music.SEARCH_MUSIC not in [script for script, _, _ in calls]
+    assert calls[-1][0] == music.PLAY_PAGE and calls[-1][1][0] == "", "sin canción: desde la primera pista"
+
+
+def test_play_pulsa_el_menu_por_su_atajo_y_no_por_su_nombre():
+    script = music.PLAY_PAGE
+    assert '"AXMenuItemCmdChar" of i) is " "' in script and '"AXMenuItemCmdModifiers" of i) is 8' in script
+    assert "Reproducir" not in script and "Controles" not in script
+    assert script.index("to stop") < script.index("press_play()"), "detenido, «Reproducir» pone la página y no reanuda la cola"
+    assert "set sound volume to v" in script[script.index("on error errMsg"):]
+
+
+def test_el_catalogo_prefiere_al_artista_y_evita_versiones():
+    import httpx
+    results = [{"trackName": "En el Muelle de San Blás", "artistName": "Guitar Dreamers", "collectionName": "Guitar Dreamers Play Maná (Instrumental)", "collectionId": 1, "trackId": 2},
+               {"trackName": "En el Muelle de San Blás", "artistName": "Karaoke Hits", "collectionName": "Éxitos", "collectionId": 3, "trackId": 4},
+               {"trackName": "En el Muelle de San Blás", "artistName": "Maná", "collectionName": "Sueños Líquidos", "collectionId": 5, "trackId": 6}]
+    fetch = lambda url, **k: httpx.Response(200, json={"results": results})  # noqa: E731
+    assert music.catalog_song("En el muelle de San Blas Maná", fetch=fetch)["url"].endswith("/5?i=6")
+    assert music.catalog_song("En el muelle de San Blas", fetch=fetch)["artist"] == "Maná", "sin artista, tampoco una versión"
+    assert music.catalog_song("muelle de san blas karaoke", fetch=fetch)["artist"] == "Guitar Dreamers", "si se pide una versión, vale"

@@ -16,7 +16,6 @@ from agora_core.settings import load_settings
 from tests.test_fiscal_excel import MemorySecrets
 
 SECRET, OWNER, OTHER = "a" * 64, "b" * 64, "c" * 64
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="el auxiliar de prueba es un guion de shell")
 HELPER = """#!/bin/sh
 out="$1"
 trap 'printf "audio del sistema" > "$out"; exit 0' TERM
@@ -27,6 +26,8 @@ while :; do sleep 0.1; done
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    if sys.platform == "win32":
+        pytest.skip("el auxiliar de prueba es un guion de shell")
     helper = tmp_path / "agora-system-audio"
     helper.write_text(HELPER)
     helper.chmod(helper.stat().st_mode | stat.S_IEXEC)
@@ -97,3 +98,17 @@ def test_lo_que_dejo_grabando_un_nucleo_muerto_queda_interrumpido(tmp_path):
     recorder.recover(connection)
     assert recorder.list(connection, OWNER)[0]["status"] == "interrupted"
     connection.close()
+
+
+def test_en_windows_graba_microfono_y_avisa_sin_audio_de_sistema(tmp_path, monkeypatch):
+    monkeypatch.setattr(system_audio.sys, "platform", "win32")
+    settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
+    app = create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=MemorySecrets())
+    with TestClient(app, base_url=f"http://{settings.authority}") as test:
+        test.put("/meetings/settings", json={"auto": False}, headers=h())
+        started = test.post("/meetings", json={"title": "Reunión Windows", "mic_type": "audio/webm"}, headers=h()).json()
+        assert started["status"] == "recording" and started["system_source"] is None and "micrófono" in started["note"]
+        assert test.post(f"/meetings/{started['id']}/mic", content=b"trozo-mic", headers=h()).status_code == 200
+        done = test.post(f"/meetings/{started['id']}/stop", headers=h()).json()
+        assert done["status"] == "recorded" and done["mic_bytes"] == 9 and done["system_bytes"] == 0
+        assert test.delete(f"/meetings/{started['id']}", headers=h()).json() == {"deleted": True}
