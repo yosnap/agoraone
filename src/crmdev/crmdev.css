@@ -16,3 +16,6 @@
 .crmdev-edit-row > .field { flex:1 1 200px; min-width:0 }
 .crmdev-edit-row > .crmdev-edit-actions { margin-left:auto; margin-top:0 }
 .crmdev-new { display:flex; justify-content:flex-end; margin-bottom:10px }
+/* The organization of CRMDev the section shows, above the tabs (only with more than one). */
+.crmdev-org-picker { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin:0 0 12px }
+.crmdev-org-picker .field { min-width:240px; max-width:360px }

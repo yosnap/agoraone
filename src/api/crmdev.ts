@@ -4,11 +4,17 @@ import { request } from './client';
 // system's secret store) and each view maps to one tool of a closed list in the core, read-only. Everything here is
 // data from CRMDev: shown as text, never acted upon. Lists carry no assignee's or guest's address.
 const core = <T>(path: string) => request<T>(`/core${path}`);
+// The organization of CRMDev the section reads (chosen above its tabs; null: the first one). Kept outside React so every
+// read of the section asks the same organization; changing it empties what the section had read.
+let sectionOrg: string | null = null;
+/** The organization the «CRMDev» section shows now (null: the first one). */
+export const crmdevOrg = () => sectionOrg;
+export const setCrmdevOrg = (org: string | null) => { sectionOrg = org; };
 /** When CRMDev gave an answer (ISO, UTC): a cached one keeps its own time. */
 type ReadAt = { readAt: string | null };
 /** The query of a read: its filters and, for «Volver a leer», `fresco=1` (CRMDev is asked now, not the core's cache). */
 const query = (params: Record<string, string | undefined>, fresh: boolean) => {
-  const text = new URLSearchParams(Object.entries({ ...params, fresco: fresh ? '1' : undefined })
+  const text = new URLSearchParams(Object.entries({ ...params, org: sectionOrg ?? undefined, fresco: fresh ? '1' : undefined })
     .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1] !== '')).toString();
   return text ? `?${text}` : '';
 };
@@ -65,7 +71,8 @@ const send = <T>(path: string, body: unknown) => request<T>(`/core${path}`, body
 export type CrmdevTaskValues = { title: string; description?: string; projectId?: string; assigneeId?: string; status?: string; priority?: string;
   dueDate?: string };
 export type CrmdevClientValues = { name: string; email?: string; company?: string; phone?: string; status?: string };
-export type CrmdevChangeRequest =
+/** `org`: the organization of CRMDev it goes to (the first one when not said). */
+export type CrmdevChangeRequest = { org?: string } & (
   | { kind: 'tarea-nueva'; values: CrmdevTaskValues; anyway?: true }
   | { kind: 'tarea'; id: string; list?: { estado?: string; proyecto?: string };
     changes: { title?: string; description?: string | null; status?: string; priority?: string } }
@@ -74,7 +81,7 @@ export type CrmdevChangeRequest =
   /** «Crear en CRMDev» of a client kept only in AgoraOne: its own data as it is, and the state chosen. */
   | { kind: 'cliente-desde-local'; localId: number; status?: string; anyway?: true }
   | { kind: 'cliente'; id: string; list?: { estado?: string }; changes: { name?: string; email?: string; company?: string | null; status?: string } }
-  | { kind: 'ticket'; id: string; list?: { estado?: string; cliente?: string }; changes: { status?: string; priority?: string; category?: string } };
+  | { kind: 'ticket'; id: string; list?: { estado?: string; cliente?: string }; changes: { status?: string; priority?: string; category?: string } });
 export type CrmdevChangeRow = { field: string; label: string; before: string | null; after: string | null; emptied: boolean };
 export type CrmdevChangePreview = { token: string; kind: CrmdevChangeRequest['kind']; title: string; rows: CrmdevChangeRow[]; notes: string[]; warnings: string[] };
 export type CrmdevChangeDone = { done: true; kind: CrmdevChangeRequest['kind']; title: string; warning?: string; repeated?: boolean };

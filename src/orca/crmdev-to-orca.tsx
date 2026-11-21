@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { getProjectLinks, type ProjectLinks } from '../api/clients';
 import type { OrcaProject } from '../api/core';
+import { crmdevOrg } from '../api/crmdev';
 import { OrcaLaunch } from './orca-launch';
 import { useOrcaProjects } from './orca-projects';
 
@@ -13,7 +14,9 @@ export function useCrmdevOrca(): Map<string, OrcaProject> {
   if (!asked.current && orca.length) { asked.current = true; void getProjectLinks().then(setLinks).catch(() => undefined); }
   const found = new Map<string, OrcaProject>();
   if (!links) return found;
+  const org = crmdevOrg();
   for (const theirs of links.crmdev) {
+    if (org && theirs.org && theirs.org !== org) continue;  // only the projects of the organization on screen
     const mine = theirs.centralId ? links.central.find(p => p.id === theirs.centralId) : undefined;
     const choice = mine ? orca.find(o => o.project === mine.name && o.client === (mine.client ?? '')) : undefined;
     if (choice) found.set(theirs.id, choice);
@@ -29,7 +32,8 @@ export function CrmdevOrcaRow({ kind, id, title, choice, columns, onClose }: {
   const task = kind === 'crmdev_task'
     ? `Resuelve la tarea de CRMDev «${title ?? ''}». Antes de cambiar nada, explica tu plan.`
     : `Investiga y resuelve el ticket de CRMDev «${title ?? ''}». Antes de cambiar nada, explica tu plan.`;
+  const org = crmdevOrg();  // the organization on screen: the core reads the record from it
   return <tr className="crmdev-orca-row"><td colSpan={columns}>
-    <OrcaLaunch choices={[choice]} client={choice.client} project={choice.project} source={{ kind, remote: id }} task={task} onClose={onClose}/>
+    <OrcaLaunch choices={[choice]} client={choice.client} project={choice.project} source={{ kind, remote: id, ...(org ? { org } : {}) }} task={task} onClose={onClose}/>
   </td></tr>;
 }

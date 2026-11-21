@@ -31,7 +31,7 @@ export function proposedFields(request: CrmdevChangeRequest): [string, string][]
 
 function CrmdevProposalCard({ proposal, onClose }: { proposal: CrmdevProposal; onClose: () => void }) {
   const [said, setSaid] = useState('');
-  const change = useCrmdevChange(`watson:${proposal.kind}:${proposal.id ?? ''}:${JSON.stringify(proposal.request)}`, setSaid);
+  const change = useCrmdevChange(`watson:${proposal.kind}:${proposal.id ?? ''}:${JSON.stringify(proposal.request)}`, setSaid, null);
   if (said) return <><Said text={said}/><ActionButton icon="check" label="Cerrar" onClick={onClose}/></>;
   if (reviewing(change)) return <CrmdevReview change={change} onCancel={onClose} onReview={() => void change.ask(proposal.request)}/>;
   return <>

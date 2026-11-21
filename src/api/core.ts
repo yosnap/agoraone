@@ -631,7 +631,7 @@ export type ReorgMove = { n: number; source: string; ref: string; title: string;
 export type OrcaAgent = 'claude' | 'codex';
 export type OrcaProject = { client: string; project: string; repo: string };
 export type OrcaSource = { kind: 'mail'; id: number } | { kind: 'chat'; id: number } | { kind: 'issue'; url: string } | { kind: 'note'; source: string; ref: string; revision: string } | { kind: 'project' }
-  | { kind: 'crmdev_task' | 'crmdev_ticket'; remote: string };
+  | { kind: 'crmdev_task' | 'crmdev_ticket'; remote: string; org?: string };
 /** What Watson proposes to take to Orca: it only opens the card, which still needs the preview and «Lanzar en Orca». */
 export type OrcaProposal = OrcaProject & { task: string; agent: OrcaAgent; issue: string | null };
 export type OrcaPreview = { id: string; client: string; project: string; repo: string; orcaName: string; agent: OrcaAgent; agentName: string; name: string;

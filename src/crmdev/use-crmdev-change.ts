@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from 'react';
 import { ApiError } from '../api/client';
-import { confirmCrmdevChange, previewCrmdevChange, type CrmdevChangePreview, type CrmdevChangeRequest } from '../api/crmdev';
+import { confirmCrmdevChange, crmdevOrg, previewCrmdevChange, type CrmdevChangePreview, type CrmdevChangeRequest } from '../api/crmdev';
 import type { ReviewCurrent, ReviewState } from '../ui/change-review';
 import { crmdevStore } from './use-crmdev-view';
 
@@ -88,10 +88,11 @@ export async function sendChange(key: string, onDone: (said: string) => void, ap
   } finally { sending.delete(key); }
 }
 
-/** The state of the change of `key`, and its actions. */
-export function useCrmdevChange(key: string, onDone: (said: string) => void) {
+/** The state of the change of `key`, and its actions. `org`: the organization of CRMDev it goes to (by default the one
+ * the section shows; null, the first one). */
+export function useCrmdevChange(key: string, onDone: (said: string) => void, org: string | null = crmdevOrg()) {
   const state = useSyncExternalStore(listen, () => changeOf(key), () => changeOf(key));
-  return { ...state, ask: (request: CrmdevChangeRequest) => askChange(key, request), send: () => sendChange(key, onDone),
+  return { ...state, ask: (request: CrmdevChangeRequest) => askChange(key, org ? { ...request, org } : request), send: () => sendChange(key, onDone),
     reset: () => resetChange(key), anyway: () => askAnyway(key) };
 }
 

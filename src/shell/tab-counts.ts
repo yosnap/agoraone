@@ -2,11 +2,14 @@ import { useRef, useState } from 'react';
 import { request } from '../api/client';
 
 /** How many there are in each tab, from what AgoraOne keeps (the core never asks Central nor CRMDev for this). */
+export type CrmdevCounts = { clientes: number; clientesMore: boolean; proyectos: number; proyectosMore: boolean;
+  tareas: number | null; tareasMore: boolean; tickets: number | null; ticketsMore: boolean; central: number | null };
 export type TabCounts = {
   clientes: number;
   central: { clientes: number; proyectos: number; webs: number; servidores: number; 'por-crear': number } | null;
-  crmdev: { clientes: number; clientesMore: boolean; proyectos: number; proyectosMore: boolean;
-    tareas: number | null; tareasMore: boolean; tickets: number | null; ticketsMore: boolean; central: number | null } | null;
+  /** The first organization's; `crmdevOrgs`, each organization's (its «Desde Central» also counts what has none). */
+  crmdev: CrmdevCounts | null;
+  crmdevOrgs?: Record<string, CrmdevCounts>;
 };
 
 export const getTabCounts = () => request<TabCounts>('/core/tab-counts');

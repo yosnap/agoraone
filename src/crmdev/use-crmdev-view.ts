@@ -25,7 +25,7 @@ export const readAgain = () => crmdevStore.forget({ keep: true, fresh: true });
 export const useRereading = () => crmdevStore.useRereading();
 
 /** A fresh start each time the section opens (harmless if called twice: it only empties the store). */
-export const startCrmdev = () => crmdevStore.start();
+export const startCrmdev = (except: string[] = []) => crmdevStore.start(except);
 
 export type CrmdevTabName = 'proyectos' | 'tareas' | 'tickets' | 'clientes' | 'central';
 /** The tabs of the section, in order; each one reads only its own list when opened. */
