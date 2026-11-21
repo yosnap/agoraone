@@ -65,6 +65,7 @@ class Change:
     notes: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     local_id: int | None = None  # «Crear en CRMDev» of a client kept here: linked with it once created
+    org: str | None = None  # the organization of CRMDev it goes to (the first one when None)
 
     @property
     def tool(self) -> str:

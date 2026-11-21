@@ -28,6 +28,7 @@ class LaunchSource(BaseModel):
     ref: str | None = None
     revision: str | None = None
     remote: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$")  # a task's or ticket's id in CRMDev
+    org: str | None = Field(default=None, pattern=r"^o[1-9][0-9]{0,3}$")  # its organization of CRMDev (the first one if None)
 
 
 class LaunchRequest(BaseModel):

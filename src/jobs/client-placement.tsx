@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { linkClient, linkCrmdevClient, type DirectoryClient } from '../api/clients';
 import { refreshCentral } from '../api/core';
-import { refreshCrmdevClients } from '../api/crmdev';
+import { getCrmdevOrgs, refreshCrmdevClients, type CrmdevOrg } from '../api/crmdev';
 import { ChangeReview, useCentralChange } from '../central/central-change';
 import { CrmdevReview, reviewing } from '../crmdev/crmdev-common';
 import { clientStatusLabels } from '../crmdev/crmdev-labels';
@@ -43,7 +43,16 @@ export function ClientPlacement({ client, can, onDone }: {
     void refreshCentral().catch(() => undefined).finally(() => { setWhere(null); onDone(said); });
   });
   const crmdevKey = changeKey('cliente-desde-local', String(id));
-  const crmdev = useCrmdevChange(crmdevKey, said => { setWhere(null); onDone(said); });
+  // With several organizations of CRMDev the user says which one the client goes to (only those with a key).
+  const [orgs, setOrgs] = useState<CrmdevOrg[]>([]);
+  const [chosenOrg, setChosenOrg] = useState('');
+  const askedOrgs = useRef(false);
+  if (!askedOrgs.current && can.crmdev) {
+    askedOrgs.current = true;
+    void getCrmdevOrgs().then(found => setOrgs(found.orgs.filter(o => o.hasKey))).catch(() => undefined);
+  }
+  const org = orgs.find(o => o.id === chosenOrg) ?? orgs[0];
+  const crmdev = useCrmdevChange(crmdevKey, said => { setWhere(null); onDone(said); }, org?.id ?? null);
   const options = placements(client, can);
   const close = () => { central.reset(); resetChange(crmdevKey); setWhere(null); };
   const link = async (work: () => Promise<unknown>, said: string) => {
@@ -54,6 +63,8 @@ export function ClientPlacement({ client, can, onDone }: {
   return <div className="client-placement">
     {client.unplaced && <p className="notice">Sin ubicar: créalo en Central o en CRMDev{options.length ? '' : ' (conecta uno de los dos en Conectores)'}.</p>}
     {where === null && options.length > 0 && <div className="field-row">
+      {options.includes('crmdev') && orgs.length > 1 && <label className="field">Organización de CRMDev<ModernSelect value={org?.id ?? ''}
+        onChange={setChosenOrg} options={orgs.map(o => ({ value: o.id, label: o.name }))}/></label>}
       {options.includes('crmdev') && <label className="field">Estado en CRMDev<ModernSelect value={status} onChange={setStatus}
         options={optionsOf(clientStatusLabels, null)}/></label>}
       <span className="actions">

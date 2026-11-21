@@ -41,7 +41,8 @@ const rowOf = (item: PendingItem): SyncRow => ({
 
 /** «Desde Central» in the CRMDev section: what Central has and CRMDev lacks or has otherwise, by groups, to tick and
  * send with «Enviar a CRMDev» after seeing the exact review. Central is the source: nothing comes back from CRMDev. */
-export function CrmdevFromCentral({ discreet, onChanged }: { discreet: boolean; onChanged?: () => void }) {
+export function CrmdevFromCentral({ discreet, onChanged, org: shown }: { discreet: boolean; onChanged?: () => void;
+  /** The organization the CRMDev section shows: then it is not chosen here. */ org?: string }) {
   const [data, setData] = useState<CrmdevPending | null>(null);
   const [error, setError] = useState('');
   const [withDismissed, setWithDismissed] = useState(false);
@@ -66,7 +67,7 @@ export function CrmdevFromCentral({ discreet, onChanged }: { discreet: boolean; 
   };
   const orgs = data.orgs ?? [];
   const several = orgs.length > 1;
-  const org = orgs.find(o => o.id === chosenOrg) ?? orgs[0];
+  const org = orgs.find(o => o.id === (shown ?? chosenOrg)) ?? orgs[0];
   const { mine, unplaced } = byOrg(data.items, org?.id, several);
   const groups: SyncGroup[] = GROUPS.map(g => ({ id: g.kind, label: g.label, hint: g.hint, rows: mine.filter(i => i.kind === g.kind).map(rowOf) }));
   if (several) groups.push({ id: UNPLACED, label: 'Sin organización', rows: unplaced.map(rowOf),
@@ -96,8 +97,9 @@ export function CrmdevFromCentral({ discreet, onChanged }: { discreet: boolean; 
     <SyncTable key={org?.id ?? ''} groups={groups} discreet={discreet} busy={busy || reviewing !== null} reviewLabel="Revisar envío"
       onReview={items => setReviewing({ items, org: org?.id })} secondary={secondary}
       above={several && <div className="sync-org-picker">
-        <label className="field">Organización de CRMDev<ModernSelect value={org?.id ?? ''} onChange={setChosenOrg}
-          options={orgs.map(o => ({ value: o.id, label: `${o.name} · ${pendingCount(o.id)}` }))}/></label>
+        {shown ? <span className="muted">Comparando con «{org?.name ?? ''}»</span>
+          : <label className="field">Organización de CRMDev<ModernSelect value={org?.id ?? ''} onChange={setChosenOrg}
+            options={orgs.map(o => ({ value: o.id, label: `${o.name} · ${pendingCount(o.id)}` }))}/></label>}
         {unplaced.length > 0 && <small className="muted">{unplaced.length} sin organización</small>}
       </div>}
       onDismiss={row => void dismiss(row)} empty="Todo al día: CRMDev tiene lo mismo que Central."

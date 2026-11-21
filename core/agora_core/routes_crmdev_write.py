@@ -17,6 +17,9 @@ a record may be pressed again (it is read again first). After a change, the read
 «Crear en CRMDev» of a client kept only in AgoraOne (`cliente-desde-local`, from Trabajos › Clientes) is one more
 creation: once created, the client kept here is linked with the new one and CRMDev's clients are read again.
 
+A preview may say the organization of CRMDev (`org`, the first one when not said): the change is read, checked and sent
+with that organization's key, and an organization AgoraOne does not know is a 409 `no_org`.
+
 The «CRMDev» module off → 404, without a connection → 409. Watson has no tool that reaches these routes, and nothing
 from CRMDev, the mail or any text triggers them: only a form the user fills and confirms. Never the key, CRMDev's
 address nor the values changed in an answer of error or in the action log (only the names of the fields)."""
@@ -33,7 +36,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import clients, crmdev_api, crmdev_sync, crmdev_write, modules, web_api
+from . import clients, crmdev_api, crmdev_orgs, crmdev_sync, crmdev_write, modules, web_api
 from .confirmed_change import ChangeError, Pending, PendingChanges, Refused, Sentences
 from .db import DB_NAME, connect, now, transaction
 from .settings import Settings
@@ -50,6 +53,7 @@ DOUBTFUL = ("Un intento anterior de crear esto no recibió respuesta de CRMDev y
 ANYWAY = "Un intento anterior pudo crearlo ya: si sigues, puede quedar repetido en CRMDev."
 CREATIONS = frozenset({"tarea-nueva", "cliente-nuevo", "cliente-desde-local"})
 NOT_LINKED = "Creado en CRMDev, pero no se pudo enlazar con tu cliente: enlázalos con «Enlazar» tras actualizar los clientes de CRMDev."
+NO_ORG = "Esa organización de CRMDev ya no está: elige otra."
 REPEATED_LOCAL = "Ese cliente ya no está en AgoraOne o ya está enlazado con uno de CRMDev."
 DOUBT_SECONDS = 24 * 3600
 MAX_BODY = 64 * 1024
@@ -89,11 +93,15 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
         # Fixed sentences of web_api/crmdev_api (CRMDev's own reason has the key scrubbed): no URL nor key.
         return problem(STATUS_CODES.get(error.status, 502), str(error), error.status)
 
-    def prepare() -> tuple[bool, web_api.Connection | None]:
+    def prepare(org: str | None = None) -> tuple[bool, web_api.Connection | None]:
         with database() as connection:
             if not modules.state(connection)["crmdev"]:
                 return False, None
-            return True, crmdev_api.connection_of(connection, secrets)
+            return True, crmdev_orgs.connection_of(connection, secrets, org)
+
+    def known(org: str | None) -> bool:
+        with database() as connection:
+            return org is None or crmdev_orgs.known(connection, org)
 
     def doubtful_of(target_id: str) -> bool:
         cutoff = time.time() - DOUBT_SECONDS
@@ -120,9 +128,14 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
         creation = given["kind"] in CREATIONS
         # «Crear de todos modos», only for a creation whose earlier try may already be in CRMDev; anywhere else refused.
         anyway = given.pop("anyway", None) is True if creation else False
-        on, target = await run_in_threadpool(prepare)
+        org = given.pop("org", None)
+        if org is not None and (not isinstance(org, str) or not crmdev_orgs.ID.fullmatch(org)):
+            return problem(422, "Esa organización no es válida.", "invalid")
+        on, target = await run_in_threadpool(prepare, org)
         if not on:
             return problem(404, OFF, "off")
+        if not await run_in_threadpool(known, org):
+            return problem(409, NO_ORG, "no_org")
         if target is None:
             return problem(409, NOT_CONNECTED, "not_connected")
         def plan():
@@ -138,10 +151,11 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
             return problem(409, str(error), "exists", crmdevId=error.crmdev_id, crmdevName=error.name)
         except web_api.WebApiError as error:
             return failed(error)
-        if creation and doubtful_of(change.target):
+        if creation and doubtful_of(f"{org}|{change.target}"):
             if not anyway:
                 return problem(409, DOUBTFUL, "doubtful")
             change.warnings.append(ANYWAY)
+        change.org = org
         token = pending.preview(change, owner_of(target))
         return {"token": token, **change.public()}
 
@@ -155,7 +169,7 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
     async def send(token: str, entry: Pending[crmdev_write.Change]):
         change = entry.change
         creation = change.kind in CREATIONS
-        on, target = await run_in_threadpool(prepare)
+        on, target = await run_in_threadpool(prepare, change.org)
         if not on or target is None:
             pending.drop(token)
             return problem(404, OFF, "off") if not on else problem(409, NOT_CONNECTED, "not_connected")
@@ -192,7 +206,7 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
                     entry.state = "ready"  # nothing written, or a change that is read again before sending: may be pressed again
                 elif error.status in ("unreachable", "error"):
                     entry.state = "unknown"  # CRMDev may have created it: never twice, and said so from the first answer
-                    doubt(change.target)
+                    doubt(f"{change.org}|{change.target}")
                     return problem(502, UNKNOWN, "unknown")
                 else:
                     pending.drop(token)
@@ -200,16 +214,16 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
             except Exception:
                 if creation:  # an unexpected failure once it may have left: treated as «may have been created»
                     entry.state = "unknown"
-                    doubt(change.target)
+                    doubt(f"{change.org}|{change.target}")
                 raise
         # Done before anything else can fail, so an error afterwards never lets the same change be sent again.
         result = {"done": True, "kind": change.kind, "title": change.title}
         entry.state, entry.result = "done", result
-        doubtful.pop(change.target, None)
+        doubtful.pop(f"{change.org}|{change.target}", None)
         crmdev_api.forget_reads(crmdev_write.KIND_LISTS[change.kind])
         warning = await run_in_threadpool(record, change, already)
         if change.local_id is not None and not already:
-            warning = await run_in_threadpool(link_created, change.local_id, made, target) or warning
+            warning = await run_in_threadpool(link_created, change.local_id, made, target, change.org) or warning
         if warning:
             result["warning"] = warning
         return result
@@ -219,7 +233,7 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
             own = clients.get(connection, local_id)
         return own is not None and not any(link["connector"] == "crmdev" and link["state"] == "linked" for link in own["links"])
 
-    def link_created(local_id: int, made: object, target: web_api.Connection) -> str | None:
+    def link_created(local_id: int, made: object, target: web_api.Connection, org: str | None) -> str | None:
         """Links the client kept here with the one just created in CRMDev and reads CRMDev's clients again, so the
         directory shows it once now. If the link fails, the next reading joins them by name: never a duplicate."""
         made_id = made.get("id") if isinstance(made, dict) else None
@@ -230,7 +244,7 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
                 if not clients.link_remote(connection, local_id, "crmdev", made_id):
                     return NOT_LINKED
                 try:
-                    crmdev_sync.refresh(connection, target)
+                    crmdev_sync.refresh(connection, target, org)
                 except web_api.WebApiError:
                     pass  # read again on the next half hour or with «Actualizar»: the link is already kept
         except sqlite3.Error:

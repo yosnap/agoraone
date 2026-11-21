@@ -83,7 +83,7 @@ test('«Lanzar en Orca» en tareas y tickets solo con proyecto enlazado y nunca 
   }
   const row = readFileSync(new URL('../orca/crmdev-to-orca.tsx', import.meta.url), 'utf8');
   assert.match(row, /choices=\{\[choice\]\}/);  // only its linked project
-  assert.match(row, /source=\{\{ kind, remote: id \}\}/);  // the core reads the record, the screen never sends its text
+  assert.match(row, /source=\{\{ kind, remote: id, \.\.\.\(org \? \{ org \} : \{\}\) \}\}/);  // the core reads the record, the screen never sends its text
 });
 
 test('la propuesta de Watson para CRMDev enseña lo propuesto y solo guarda con la revisión de los formularios', () => {

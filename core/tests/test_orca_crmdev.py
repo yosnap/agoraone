@@ -4,7 +4,7 @@ who opened a ticket; a record that left CRMDev or a project unlinked meanwhile s
 
 import pytest
 
-from agora_core import central, crmdev_api, crmdev_sync, modules, orca_crmdev, orca_launch, project_links
+from agora_core import central, crmdev_api, crmdev_orgs, crmdev_sync, modules, orca_crmdev, orca_launch, project_links
 from test_orca_launch import CANARY, SNAPSHOT, FakeOrca, database, installed  # noqa: F401 - pytest fixtures
 
 TASK = {"id": "t1", "title": "Arreglar el menú", "description": f"No se ve en el móvil.\npassword: supersecreta123\n{CANARY}", "status": "TODO",
@@ -18,17 +18,29 @@ def crmdev(monkeypatch):
     state = {"links": {"x1": "p-web"}, "rows": {"list_tasks": [TASK], "list_tickets": [TICKET]}}
     monkeypatch.setattr(modules, "state", lambda _c: {"crmdev": True, "central": True, "orca": True})
     monkeypatch.setattr(crmdev_sync, "active", lambda _c: True)
-    monkeypatch.setattr(crmdev_api, "connection_of", lambda _c, _s: object())
+    monkeypatch.setattr(crmdev_orgs, "orgs", lambda _c: [{"id": "o1", "name": "Primera"}, {"id": "o2", "name": "Segunda"}])
+    monkeypatch.setattr(crmdev_orgs, "connection_of", lambda _c, _s, org=None: object())
     monkeypatch.setattr(crmdev_api, "call", lambda _t, tool, _a=None, fresh=False: state["rows"][tool])
-    monkeypatch.setattr(project_links, "build", lambda _c: {"crmdev": [{"id": k, "centralId": v} for k, v in state["links"].items()]})
+    monkeypatch.setattr(project_links, "build", lambda _c: {"crmdev": [{"id": k, "centralId": v, "org": "o1"} for k, v in state["links"].items()]})
     monkeypatch.setattr(central, "snapshot", lambda _c: {**SNAPSHOT, "projects": [{"id": "p-web", "name": "Web", "client": "Acme"},
                                                                       {"id": "p-shop", "name": "Tienda", "client": "Acme"}]})
     return state
 
 
-def plan(connection, kind="crmdev_task", remote="t1", project="Web"):
+def plan(connection, kind="crmdev_task", remote="t1", project="Web", org=None):
+    source = {"kind": kind, "remote": remote, **({"org": org} if org else {})}
     return orca_launch.preview(connection, {"client": "Acme", "project": project, "task": "Arréglalo", "agent": "claude",
-                                            "source": {"kind": kind, "remote": remote}}, runner=FakeOrca())
+                                            "source": source}, runner=FakeOrca())
+
+
+def test_the_record_is_read_from_its_organization_and_its_project_must_be_of_it(database, crmdev, monkeypatch):
+    asked = []
+    monkeypatch.setattr(crmdev_orgs, "connection_of", lambda _c, _s, org=None: asked.append(org) or object())
+    assert plan(database, org="o1")["source"]["org"] == "o1" and asked == ["o1"]
+    with pytest.raises(orca_launch.OrcaError, match="no está enlazado"):
+        plan(database, org="o2")  # the same id in the other organization: its project is not the linked one
+    with pytest.raises(orca_launch.OrcaError, match="ya no está"):
+        plan(database, org="o7")
 
 
 def test_a_task_of_a_linked_project_goes_as_fenced_data(database, crmdev):

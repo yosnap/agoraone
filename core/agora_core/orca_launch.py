@@ -206,11 +206,11 @@ def prompt(task: str, client: str, project: str, source: dict | None, nonce: str
     return "\n".join(lines)
 
 
-def _crmdev(connection: sqlite3.Connection, secrets_store, kind: str, item_id, client: str, project: str) -> dict:
+def _crmdev(connection: sqlite3.Connection, secrets_store, kind: str, item_id, client: str, project: str, org=None) -> dict:
     from . import orca_crmdev
 
     try:
-        found = orca_crmdev.load(connection, secrets_store, kind, item_id, client, project)
+        found = orca_crmdev.load(connection, secrets_store, kind, item_id, client, project, org)
     except orca_crmdev.SourceError as error:
         raise OrcaError(str(error)) from None
     return {**found, "text": _clean(_no_keys(found["text"]))[:SOURCE_CHARS]}
@@ -242,7 +242,7 @@ def preview(connection: sqlite3.Connection, args: dict, runner=subprocess.run, s
     elif kind.get("kind") == "issue":
         source = _issue(kind.get("url"), repo)
     elif kind.get("kind") in ("crmdev_task", "crmdev_ticket"):
-        source = _crmdev(connection, secrets_store, kind["kind"], kind.get("remote"), client, project)
+        source = _crmdev(connection, secrets_store, kind["kind"], kind.get("remote"), client, project, kind.get("org"))
     elif kind.get("kind") not in (None, "project"):
         raise OrcaError("Origen desconocido.")
     name = f"agora-{_slug(task)}"
@@ -262,7 +262,7 @@ def recheck(connection: sqlite3.Connection, plan: dict, secrets_store=None) -> N
     elif source.get("kind") == "note":
         _note(connection, source["source"], source["ref"], source["revision"])
     elif source.get("kind") in ("crmdev_task", "crmdev_ticket"):
-        _crmdev(connection, secrets_store, source["kind"], source["id"], plan["client"], plan["project"])
+        _crmdev(connection, secrets_store, source["kind"], source["id"], plan["client"], plan["project"], source.get("org"))
 
 
 SPEC = {

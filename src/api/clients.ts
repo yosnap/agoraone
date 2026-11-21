@@ -75,7 +75,7 @@ export const linkClientPair = (centralId: string, crmdevId: string, state: 'link
 /** Central's and CRMDev's projects, each with its pair: linked by the user (`user`) or by the same unique name (`name`). */
 export type LinkedCentralProject = { id: string; name: string; client: string | null; kind: string | null; status: string | null; repo: string | null;
   crmdevId: string | null; how: 'user' | 'name' | null };
-export type LinkedCrmdevProject = { id: string; name: string; status: string | null; type: string | null; clientId: string | null;
+export type LinkedCrmdevProject = { id: string; org?: string; name: string; status: string | null; type: string | null; clientId: string | null;
   centralId: string | null; how: 'user' | 'name' | null };
 export type ProjectPairHint = { centralId: string; centralName: string | null; crmdevId: string; crmdevName: string | null };
 export type ProjectLinks = { central: LinkedCentralProject[]; crmdev: LinkedCrmdevProject[]; suggestions: ProjectPairHint[]; distinct: ProjectPairHint[] };
