@@ -10,7 +10,7 @@ import stat
 import subprocess
 import unicodedata
 
-from . import orca_launch
+from . import orca_launch, system_words
 from .github_issues import project_repo
 
 SUGGESTED = "docs/notas"
@@ -41,7 +41,7 @@ def local_root(connection: sqlite3.Connection, client: str, project: str, runner
         path = paths.get(ident)
         if path and os.path.isdir(path) and os.path.exists(os.path.join(path, ".git")):
             return repo, os.path.realpath(path)
-    raise RepoNoteError(f"No encuentro en este Mac la copia local de {repo} que usa Orca.")
+    raise RepoNoteError(f"No encuentro en {system_words.HERE} la copia local de {repo} que usa Orca.")
 
 
 def folders(root: str) -> list[str]:
@@ -117,6 +117,8 @@ def _write(root: str, folder: str, name: str, data: bytes) -> str:
     Walks with directory descriptors that never follow a link, so nothing swapped in meanwhile leads outside; refuses a
     name that already exists, and leaves nothing behind (no empty file, no new empty folder) when it fails."""
     parts = [_part(p) for p in folder.replace("\\", "/").split("/") if p.strip()]
+    if os.name == "nt":
+        return _write_windows(root, parts, name, data)
     nofollow = getattr(os, "O_NOFOLLOW", 0)
     opened = [os.open(os.path.realpath(root), os.O_RDONLY | os.O_DIRECTORY)]
     made: list[tuple[int, str]] = []  # (descriptor of the parent, name) of each folder created here
@@ -163,6 +165,58 @@ def _write(root: str, folder: str, name: str, data: bytes) -> str:
     finally:
         for descriptor in opened:
             os.close(descriptor)
+
+
+def _write_windows(root: str, parts: list[str], name: str, data: bytes) -> str:
+    """`_write` on Windows, which has no directory descriptors: each folder is checked by path right after it is
+    reached (no symbolic link, no junction, and its real path is the expected one inside the real root), and the
+    folder is checked once more after the file is written, undoing everything if it was swapped for a link."""
+    from pathlib import Path
+
+    def leads_out(path: str) -> bool:
+        return Path(path).is_symlink() or Path(path).is_junction() or os.path.normcase(os.path.realpath(path)) != os.path.normcase(path)
+
+    current = os.path.realpath(root)
+    made: list[str] = []  # each folder created here, to take back on failure
+    try:
+        for part in parts:
+            current = os.path.join(current, part)
+            try:
+                os.mkdir(current)
+                made.append(current)
+            except FileExistsError:
+                pass
+            except OSError as error:
+                raise RepoNoteError(f"«{part}» es un enlace o no se puede abrir: la nota no sale de la carpeta del repositorio.") from error
+            if leads_out(current):
+                raise RepoNoteError(f"«{part}» es un enlace: la nota no sale de la carpeta del repositorio.")
+            if not os.path.isdir(current):
+                raise RepoNoteError(f"«{part}» es un archivo, no una carpeta.")
+        target = os.path.join(current, name)
+        try:
+            handle = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o644)
+        except FileExistsError as error:
+            raise RepoNoteError(f"Ya hay un archivo «{name}» en esa carpeta: cambia el título (no se sobrescribe nada).") from error
+        try:
+            view = memoryview(data)
+            while view:
+                view = view[os.write(handle, view):]
+            if parts and leads_out(current):
+                raise RepoNoteError("La carpeta se cambió por un enlace mientras se guardaba: no se guarda nada.")
+        except BaseException:
+            os.close(handle)
+            os.unlink(target)
+            raise
+        os.close(handle)
+        made.clear()
+        return "/".join([*parts, name])
+    except BaseException:
+        for path in reversed(made):
+            try:
+                os.rmdir(path)
+            except OSError:
+                pass
+        raise
 
 
 def _exists(part: str, parent: int) -> bool:

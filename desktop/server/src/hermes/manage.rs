@@ -17,7 +17,7 @@ async fn run(discovery: &HermesDiscovery, root: &std::path::Path, request: Value
         return Err(Failure::new(500, "No se encuentra la instalación de Hermes."));
     }
     let env = [
-        ("PATH", "/usr/bin:/bin".to_string()),
+        ("PATH", super::python::user_path()),
         ("HOME", home()),
         ("HERMES_HOME", root.display().to_string()),
         ("AGORA_HERMES_PATH", location.installation.display().to_string()),

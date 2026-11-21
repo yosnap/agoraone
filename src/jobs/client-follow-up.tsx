@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { createClient, distinctClient, linkClient, linkClientPair, linkCrmdevClient, type ClientsDirectory, type LinkSuggestion, type VaultCard } from '../api/clients';
 import { suggestionKey, suggestionText } from './clients-view';
 import { ActionButton } from '../ui/action-button';
+import { onlyHereLabel } from '../ui/platform';
 
 type Act = (work: () => Promise<unknown>, said: string) => void;
-const levelLabels: Record<VaultCard['level'], string> = { normal: 'Normal', local_only: 'Solo en este Mac', private: 'Privada' };
+const levelLabels: Record<VaultCard['level'], string> = { normal: 'Normal', local_only: onlyHereLabel, private: 'Privada' };
 
 /** «Son distintos» and «Enlazar» of a suggestion, whichever two sources it pairs. */
 function suggestionActions(suggestion: LinkSuggestion): { distinct: () => Promise<unknown>; link: () => Promise<unknown> } {

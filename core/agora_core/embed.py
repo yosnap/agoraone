@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 
 import numpy as np
 
+from . import system_words
+
 DEFAULT_MODEL = "qwen3-embedding:0.6b"
 DEFAULT_URL = "http://127.0.0.1:11434"
 BATCH = 32
@@ -46,7 +48,7 @@ class OllamaEmbedder:
     def __init__(self, url: str = DEFAULT_URL, model: str = DEFAULT_MODEL, timeout: float = 60):
         parsed = urlparse(url)
         if parsed.scheme != "http" or parsed.hostname not in ("127.0.0.1", "localhost", "::1"):
-            raise EmbedError("ollama debe estar en este Mac (127.0.0.1): las notas no salen del equipo para indexarse.")
+            raise EmbedError(f"ollama debe estar en {system_words.HERE} (127.0.0.1): las notas no salen del equipo para indexarse.")
         self.url, self.model, self.timeout = url.rstrip("/"), model, timeout
 
     def embed(self, texts: list[str]) -> list[list[float]]:

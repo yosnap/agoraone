@@ -164,7 +164,7 @@ impl HermesDiscovery {
     }
 
     fn root(&self) -> std::io::Result<PathBuf> {
-        fs::canonicalize(&self.location.root)
+        crate::platform::canonicalize(&self.location.root)
     }
 
     fn profile_home(&self, root: &Path, name: &str) -> anyhow::Result<PathBuf> {
@@ -172,7 +172,7 @@ impl HermesDiscovery {
             return Err(unknown("profile"));
         }
         let home = if name == "default" { root.to_path_buf() } else { root.join("profiles").join(name) };
-        if fs::canonicalize(&home)? != home || !fs::symlink_metadata(&home)?.is_dir() {
+        if !crate::platform::is_real_dir(&home) {
             return Err(unknown("profile"));
         }
         if name != "default" && root.join("profiles/.deleted").join(name).exists() {
@@ -194,7 +194,7 @@ impl HermesDiscovery {
                 let blank = HermesFile { name, state: "", bytes: None, revision: None, content: None, hidden: None, hidden_chars: None };
                 let read = read_hermes_file(root, &file, 65536).ok().and_then(decode_utf8);
                 let Some(content) = read else {
-                    return HermesFile { state: if file.exists() { "unavailable" } else { "missing" }, ..blank };
+                    return HermesFile { state: if file.exists() || fs::symlink_metadata(&file).is_ok() { "unavailable" } else { "missing" }, ..blank };
                 };
                 let base = HermesFile { state: "available", bytes: Some(content.len()), revision: Some(file_revision(&content)), ..blank };
                 if !with_content {
@@ -323,7 +323,7 @@ impl HermesDiscovery {
             result.warnings.push("No se encuentra el directorio de datos de Hermes. Configura AGORA_HERMES_HOME si está en otra ubicación.".into());
             return result;
         };
-        let version = fs::canonicalize(&self.location.installation).and_then(|installation| {
+        let version = crate::platform::canonicalize(&self.location.installation).and_then(|installation| {
             result.installation.detected = installation.join("run_agent.py").exists();
             read_hermes_file(&installation, &installation.join("pyproject.toml"), 131072)
         });

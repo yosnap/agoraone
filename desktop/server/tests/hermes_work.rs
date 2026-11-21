@@ -34,7 +34,7 @@ struct Fixture {
 
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = agora_server::platform::canonicalize(dir.path()).unwrap();
     let work = root.join("profiles/work");
     fs::create_dir_all(work.join("cron")).unwrap();
     let jobs = json!({ "jobs": [
@@ -191,7 +191,7 @@ fn never_returns_hermes_private_text() {
 #[test]
 fn missing_files_give_empty_answers() {
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = agora_server::platform::canonicalize(dir.path()).unwrap();
     let home = root.join("profiles/empty");
     fs::create_dir_all(&home).unwrap();
     let work = read_work(&root, &[target("empty", "empty", &home)], 0);
@@ -204,7 +204,7 @@ fn missing_files_give_empty_answers() {
 #[test]
 #[ignore]
 fn real_hermes_counts() {
-    let root = fs::canonicalize(std::env::var("HOME").unwrap() + "/.hermes").unwrap();
+    let root = agora_server::platform::canonicalize(&agora_server::platform::home_dir().unwrap().join(".hermes")).unwrap();
     let mut profiles = vec![target("default", "default", &root)];
     for entry in fs::read_dir(root.join("profiles")).unwrap().flatten() {
         let name = entry.file_name().to_string_lossy().to_string();

@@ -18,6 +18,8 @@ pnpm dev
 
 Necesitas Rust estable (`cargo`, para el servidor), Node.js 22.12 o superior (para la interfaz), [uv](https://docs.astral.sh/uv/) (para el núcleo) y una instalación de Hermes. Si no quieres usar la tuya, apunta `AGORA_HERMES_HOME` y `AGORA_HERMES_PATH` a una instalación de prueba.
 
+En Windows, sigue [docs/windows.md](docs/windows.md) y comprueba el equipo con `scripts\check-windows.ps1`.
+
 ## Normas del proyecto
 
 Estas normas no se negocian en una pull request:

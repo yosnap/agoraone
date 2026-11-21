@@ -12,6 +12,7 @@ import type { NoteRef } from '../brain/note-reader';
 import { Loading, LoadError } from '../ui/load-state';
 import { compact, connectedAgents, uptime, useSummary, type Summary } from './use-summary';
 import './summary.css';
+import { hereLabel } from '../ui/platform';
 
 type Row = { label: string; value: number; sub?: string };
 type Window = '24h' | '7d' | '30d';
@@ -79,7 +80,7 @@ export function SummaryView({ discreet, onRead, onOpen }: { discreet: boolean; o
   return <section className="page summary" aria-labelledby="summary-title">
     <div className="eyebrow">RESUMEN{discreet ? ' · MODO DISCRETO' : ''}</div>
     <h1 id="summary-title">Resumen</h1>
-    <p className="page-lead">Cómo está todo ahora mismo. Se actualiza cada minuto; leído en este Mac, sin llamadas a modelos.</p>
+    <p className="page-lead">Cómo está todo ahora mismo. Se actualiza cada minuto; leído en {hereLabel}, sin llamadas a modelos.</p>
     {summary.errors.length > 0 && <LoadError message={`No se pudo leer ${summary.errors.join(', ')}.`} onRetry={reload}/>}
     <div className="summary-grid">
       <Status summary={summary} now={now}/>
@@ -136,7 +137,7 @@ export function SummaryView({ discreet, onRead, onOpen }: { discreet: boolean; o
         {words === 'notes' ? <Words words={core?.noteWords ?? []} empty="Sin notas indexadas."/>
           : words === 'questions' ? <Words words={core?.watson.words ?? []} empty="Aún no hay preguntas."/>
           : <Words words={hermes?.words ?? []} empty="Sin mensajes tuyos en Hermes en 30 días."/>}
-        <small className="muted">{words === 'hermes' ? `Tus mensajes de los últimos ${hermes?.days ?? 30} días (${hermes?.messagesCounted ?? 0}), contados en este Mac; solo se guardan los recuentos.` : words === 'notes' && discreet ? 'Modo discreto: solo notas normales.' : 'Sin palabras vacías ni cadenas con pinta de clave.'}</small>
+        <small className="muted">{words === 'hermes' ? `Tus mensajes de los últimos ${hermes?.days ?? 30} días (${hermes?.messagesCounted ?? 0}), contados en ${hereLabel}; solo se guardan los recuentos.` : words === 'notes' && discreet ? 'Modo discreto: solo notas normales.' : 'Sin palabras vacías ni cadenas con pinta de clave.'}</small>
       </article>
       {centralOn && <CentralCard discreet={discreet}/>}
       {moduleOn(modules, 'trabajos') && <ClientsFollowCard discreet={discreet} onOpen={onOpen}/>}

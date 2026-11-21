@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, StrictInt
 
-from . import chat_inbox, github_issues, modules, orca_launch, repo_notes
+from . import chat_inbox, github_issues, modules, orca_launch, repo_notes, system_words
 from .db import DB_NAME, connect
 from .settings import Settings
 
@@ -68,9 +68,9 @@ def origin_problem(connection, body: RepoNote) -> str | None:
             level = chat_inbox.level_of(connection, ident)
         except chat_inbox.ChatGone as error:
             return str(error)
-        return None if level == "normal" else "Esa conversación es privada o «solo en este Mac»: su nota no va a un repositorio."
+        return None if level == "normal" else f"Esa conversación es privada o «solo en {system_words.HERE}»: su nota no va a un repositorio."
     if repo_notes.mail_level(connection, ident) != "normal":
-        return "Ese correo es privado o «solo en este Mac»: su nota no va a un repositorio."
+        return f"Ese correo es privado o «solo en {system_words.HERE}»: su nota no va a un repositorio."
     return None
 
 

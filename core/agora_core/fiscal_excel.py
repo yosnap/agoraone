@@ -193,4 +193,4 @@ def write(root: Path, folder_name: str, year: int, quarter: int, data: bytes) ->
             handle.write(data)
     except OSError as error:
         raise FiscalError("No se pudo escribir el Excel en la carpeta fiscal.") from error
-    return str(target.relative_to(root))
+    return target.relative_to(root).as_posix()

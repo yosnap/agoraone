@@ -5,11 +5,12 @@
 
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
+
+use crate::platform::{create_mode_file, set_mode};
 
 pub const ACCESS_COOKIE: &str = "agora_access";
 pub const USER_COOKIE: &str = "agora_user";
@@ -29,16 +30,16 @@ pub fn load_token(file: &Path) -> std::io::Result<String> {
     if let Ok(text) = fs::read_to_string(file) {
         let token = text.trim();
         if is_hex64(token) {
-            fs::set_permissions(file, fs::Permissions::from_mode(0o600))?;
+            set_mode(file, 0o600)?;
             return Ok(token.to_string());
         }
     }
     if let Some(folder) = file.parent() {
         fs::create_dir_all(folder)?;
-        fs::set_permissions(folder, fs::Permissions::from_mode(0o700))?;
+        set_mode(folder, 0o700)?;
     }
     let token = random_hex();
-    let mut out = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(file)?;
+    let mut out = create_mode_file(file, false, true, 0o600)?;
     writeln!(out, "{token}")?;
     Ok(token)
 }
@@ -80,11 +81,37 @@ mod tests {
         let file = dir.path().join("sub/access-token");
         let first = load_token(&file).unwrap();
         assert!(is_hex64(&first));
-        assert_eq!(fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
-        assert_eq!(fs::metadata(file.parent().unwrap()).unwrap().permissions().mode() & 0o777, 0o700);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+            assert_eq!(fs::metadata(file.parent().unwrap()).unwrap().permissions().mode() & 0o777, 0o700);
+        }
+        #[cfg(windows)]
+        {
+            use crate::platform::is_owner_only;
+            let folder = file.parent().unwrap();
+            assert!(is_owner_only(&file).unwrap(), "el token solo lo lee su usuario");
+            assert!(is_owner_only(folder).unwrap(), "la carpeta de datos solo la abre su usuario");
+            fs::write(folder.join("otro"), "x").unwrap();
+            assert!(is_owner_only(&folder.join("otro")).unwrap(), "lo que se crea dentro hereda la protección");
+            assert!(!is_owner_only(dir.path()).unwrap(), "la carpeta de fuera sigue como estaba");
+        }
         assert_eq!(load_token(&file).unwrap(), first);
         fs::write(&file, "no-es-un-token").unwrap();
         assert_ne!(load_token(&file).unwrap(), first, "un archivo dañado se sustituye");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn un_token_existente_con_permisos_abiertos_se_protege_al_leerlo() {
+        use crate::platform::is_owner_only;
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("access-token");
+        fs::write(&file, format!("{}\n", "b".repeat(64))).unwrap();
+        assert!(!is_owner_only(&file).unwrap(), "un archivo nuevo hereda los permisos de su carpeta");
+        assert_eq!(load_token(&file).unwrap(), "b".repeat(64));
+        assert!(is_owner_only(&file).unwrap());
     }
 
     #[test]

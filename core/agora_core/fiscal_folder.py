@@ -10,7 +10,15 @@ import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .fiscal import ISSUED, RECEIVED, FiscalError, _free, inside, move_exclusive
+from .fiscal import (
+    ISSUED,
+    RECEIVED,
+    FiscalError,
+    _free,
+    inside,
+    is_link,
+    move_exclusive,
+)
 
 MONTHS = {"enero": 1, "febrero": 2, "marzo": 3, "abril": 4, "mayo": 5, "junio": 6, "julio": 7, "agosto": 8,
           "septiembre": 9, "setiembre": 9, "octubre": 10, "noviembre": 11, "diciembre": 12}
@@ -61,15 +69,15 @@ def plan(root: Path) -> dict:
     moves, undecided = [], []
     for top in (RECEIVED, ISSUED):
         base = root / top
-        if not base.is_dir() or base.is_symlink() or root not in base.resolve().parents:
+        if not base.is_dir() or is_link(base) or root not in base.resolve().parents:
             continue
         for path in sorted(base.rglob("*")):
-            if path.is_symlink() or not path.is_file() or path.name in SKIP:
+            if is_link(path) or not path.is_file() or path.name in SKIP:
                 continue
             relative = path.relative_to(base)
             if any(part.startswith(".") for part in relative.parts[:-1]):
                 continue
-            source = f"{top}/{relative}"
+            source = f"{top}/{relative.as_posix()}"
             if path.name.startswith("."):
                 if path.name.endswith(".icloud"):  # still in iCloud, not downloaded to this Mac
                     undecided.append(source)
@@ -108,7 +116,7 @@ def apply(root: Path, backups: Path, chosen: list[dict], on_move=None) -> dict:
             target.parent.mkdir(parents=True, exist_ok=True)
             for _ in range(5):
                 final = _free(target)
-                inside(root, str(final.relative_to(root)))
+                inside(root, final.relative_to(root).as_posix())
                 try:
                     move_exclusive(source, final)
                     break
@@ -119,7 +127,7 @@ def apply(root: Path, backups: Path, chosen: list[dict], on_move=None) -> dict:
         except (OSError, FiscalError) as failure:
             error = f"Se detuvo en {move['from']}: {failure if isinstance(failure, FiscalError) else 'no se pudo mover'}."
             break
-        done.append({"from": move["from"], "to": str(final.relative_to(root))})
+        done.append({"from": move["from"], "to": final.relative_to(root).as_posix()})
         if on_move:
             on_move(move["from"], done[-1]["to"])
     return {"moved": done, "backup": copy_root.name, "error": error}

@@ -9,7 +9,6 @@ pub mod worker;
 
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
-use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -141,7 +140,7 @@ pub fn luma_adapter(location: HermesLocation, data: PathBuf) -> Adapter {
                 return Err("Sesión no válida.".into());
             }
             let home = data.join("hermes-conversations").join(&turn.session_id);
-            std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&home).map_err(|_| worker::FAILURE.to_string())?;
+            crate::platform::create_dir_mode(&home, true, 0o700).map_err(|_| worker::FAILURE.to_string())?;
             let env = luma_env(&location, &home);
             let mut payload = json!({ "sessionId": turn.session_id, "message": turn.message, "history": history(&turn), "action": "chat" });
             if let Some(document) = &turn.document {
@@ -157,8 +156,9 @@ pub fn luma_adapter(location: HermesLocation, data: PathBuf) -> Adapter {
 fn luma_env(location: &HermesLocation, home: &Path) -> Vec<(String, String)> {
     let path = home.display().to_string();
     let mut env = vec![
-        ("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into()),
+        ("PATH".into(), if cfg!(windows) { user_path() } else { "/usr/bin:/bin:/usr/sbin:/sbin".into() }),
         ("HOME".into(), path.clone()),
+        ("USERPROFILE".into(), path.clone()),
         ("HERMES_HOME".into(), path),
         ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
         ("PYTHONNOUSERSITE".into(), "1".into()),
@@ -175,7 +175,7 @@ fn luma_env(location: &HermesLocation, home: &Path) -> Vec<(String, String)> {
 /// Luma's bridge checks Hermes and the provider once (`agoraone comprobar-hermes`), from its own folder.
 pub async fn check_hermes(location: &HermesLocation, data: &Path) -> Result<Value, String> {
     let home = data.join("hermes");
-    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&home).map_err(|_| worker::FAILURE.to_string())?;
+    crate::platform::create_dir_mode(&home, true, 0o700).map_err(|_| worker::FAILURE.to_string())?;
     let spawn = Spawn { python: location.python.clone(), source: luma_source(), env: luma_env(location, &home), home };
     let result = worker::request("check", &spawn, &json!({ "action": "check" }), None, Duration::from_secs(120)).await;
     worker::stop("check");

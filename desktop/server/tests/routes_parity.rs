@@ -33,7 +33,7 @@ struct Fixture {
 /// `hermes` builds the fictitious Hermes data root.
 fn fixture(hermes: impl FnOnce(&std::path::Path), core: Option<CoreLink>) -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let base = fs::canonicalize(dir.path()).unwrap();
+    let base = agora_server::platform::canonicalize(dir.path()).unwrap();
     let root = base.join("hermes");
     fs::create_dir_all(&root).unwrap();
     hermes(&root);

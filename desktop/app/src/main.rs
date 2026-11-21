@@ -32,7 +32,7 @@ fn root() -> PathBuf {
     #[cfg(debug_assertions)]
     {
         let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        std::fs::canonicalize(&repository).unwrap_or(repository)
+        agora_server::platform::canonicalize(&repository).unwrap_or(repository)
     }
     #[cfg(not(debug_assertions))]
     {
@@ -43,19 +43,37 @@ fn root() -> PathBuf {
 /// A project folder the user named to bring their data from (`AGORA_MIGRAR_DESDE`): a real folder of this
 /// user, never a link, another user's folder or a fixed path baked into the app.
 fn migration_source() -> Option<PathBuf> {
-    use std::os::unix::fs::MetadataExt;
     let folder = PathBuf::from(std::env::var_os("AGORA_MIGRAR_DESDE")?);
-    let meta = std::fs::symlink_metadata(&folder).ok()?;
-    // SAFETY: getuid has no preconditions.
-    let mine = meta.uid() == unsafe { libc::getuid() };
-    (meta.is_dir() && mine).then_some(folder)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let meta = std::fs::symlink_metadata(&folder).ok()?;
+        // SAFETY: getuid has no preconditions.
+        let mine = meta.uid() == unsafe { libc::getuid() };
+        (meta.is_dir() && mine).then_some(folder)
+    }
+    // Windows has no owner id to compare: a real folder (no link or junction) inside this user's profile.
+    #[cfg(windows)]
+    {
+        if !agora_server::platform::is_real_dir(&folder) {
+            return None;
+        }
+        let home = agora_server::platform::canonicalize(&agora_server::platform::home_dir()?).ok()?;
+        let real = agora_server::platform::canonicalize(&folder).ok()?;
+        (real != home && real.starts_with(&home)).then_some(real)
+    }
 }
 
 /// The bundle's `Resources` when this runs as the packaged app (it carries the core inside).
 fn bundle_resources() -> Option<PathBuf> {
-    let executable = std::fs::canonicalize(std::env::current_exe().ok()?).ok()?;
-    let resources = executable.parent()?.parent()?.join("Resources");
-    resources.join("core/agora_core").is_dir().then_some(resources)
+    let executable = agora_server::platform::canonicalize(&std::env::current_exe().ok()?).ok()?;
+    let exe_dir = executable.parent()?;
+    let candidates = [
+        exe_dir.parent().map(|p| p.join("Resources")),
+        Some(exe_dir.join("resources")),
+        Some(exe_dir.to_path_buf()),
+    ];
+    candidates.into_iter().flatten().find(|r| r.join("core/agora_core").is_dir())
 }
 
 /// Where the app's pieces are: inside its bundle with the data in Application Support when packaged
@@ -73,10 +91,9 @@ fn layout() -> Paths {
                 alert(&format!("no se pudieron copiar tus datos de .agora ({error})"));
             }
             let source = project.join(".env");
-            let plain = std::fs::symlink_metadata(&source).is_ok_and(|m| m.is_file());
+            let plain = agora_server::platform::inspect_path_nofollow(&source).is_ok_and(|m| m.is_file && m.nlink == 1);
             if !settings.exists() && plain && std::fs::copy(&source, &settings).is_ok() {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = std::fs::set_permissions(&settings, std::fs::Permissions::from_mode(0o600));
+                let _ = agora_server::platform::set_mode(&settings, 0o600);
             }
         }
         load_dotenv(&settings);
@@ -90,11 +107,23 @@ fn layout() -> Paths {
 /// A start-up failure, shown as a native alert since the app has no terminal.
 fn alert(message: &str) -> ! {
     eprintln!("AgoraOne: {message}.");
-    let script = format!("display alert \"AgoraOne no ha podido arrancar\" message {}", serde_quote(message));
-    let _ = std::process::Command::new("/usr/bin/osascript").args(["-e", &script]).status();
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!("display alert \"AgoraOne no ha podido arrancar\" message {}", serde_quote(message));
+        let _ = std::process::Command::new("/usr/bin/osascript").args(["-e", &script]).status();
+    }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
+        let wide = |text: &str| text.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let title = wide("AgoraOne no ha podido arrancar");
+        let body = wide(message);
+        unsafe { MessageBoxW(std::ptr::null_mut(), body.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR) };
+    }
     std::process::exit(1);
 }
 
+#[cfg(target_os = "macos")]
 /// An AppleScript string literal.
 fn serde_quote(text: &str) -> String {
     format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
@@ -150,7 +179,8 @@ fn listen(app: &AppHandle) {
 /// started again (macOS would ask again and again) until the user turns it on again or presses «Reintentar»
 /// (the core's «attempt» grows). If the core cannot be read, nothing changes until the next look.
 fn wake_loop(app: AppHandle, link: agora_server::core::CoreLink) {
-    let helper = bundle_resources().map(|r| r.join("core/helpers/bin/agora-wake")).filter(|p| p.is_file());
+    let helper_name = if cfg!(windows) { "core/helpers/bin/agora-wake.exe" } else { "core/helpers/bin/agora-wake" };
+    let helper = bundle_resources().map(|r| r.join(helper_name)).filter(|p| p.is_file());
     tauri::async_runtime::spawn(async move {
         use tokio::io::AsyncBufReadExt;
         let http = reqwest::Client::new();
@@ -191,9 +221,14 @@ fn wake_loop(app: AppHandle, link: agora_server::core::CoreLink) {
                 failed = false;
             } else if child.is_none() && !failed {
                 said_off = false;
-                match helper.as_ref().map(|h| tokio::process::Command::new(h).stdin(std::process::Stdio::piped())
-                    .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).kill_on_drop(true).spawn())
-                {
+                match helper.as_ref().map(|h| {
+                    let mut command = tokio::process::Command::new(h);
+                    command.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).kill_on_drop(true);
+                    // Windows: no console window for the listener.
+                    #[cfg(windows)]
+                    agora_server::platform::configure_group(&mut command);
+                    command.spawn()
+                }) {
                     Some(Ok(mut started)) => {
                         wake_state(&http, &link, "starting").await;
                         alive = Arc::new(AtomicBool::new(true));
@@ -286,7 +321,7 @@ fn main() {
                         return true;
                     }
                     if matches!(url.scheme(), "http" | "https") {
-                        let _ = std::process::Command::new("/usr/bin/open").arg(url.as_str()).status();
+                        let _ = agora_server::platform::open_url(url.as_str());
                     }
                     false
                 })
@@ -294,12 +329,7 @@ fn main() {
             // A termination signal closes the app the normal way, so the core and the bridges stop with it.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                use tokio::signal::unix::{SignalKind, signal};
-                let (Ok(mut terminate), Ok(mut interrupt)) = (signal(SignalKind::terminate()), signal(SignalKind::interrupt())) else { return };
-                tokio::select! {
-                    _ = terminate.recv() => {}
-                    _ = interrupt.recv() => {}
-                }
+                agora_server::platform::shutdown_signal().await;
                 handle.exit(0);
             });
             Ok(())

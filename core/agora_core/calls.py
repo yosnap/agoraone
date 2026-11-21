@@ -5,6 +5,7 @@ and the copy is read, so macOS's own file is never locked or written."""
 import re
 import shutil
 import sqlite3
+import sys
 import tempfile
 import threading
 import time
@@ -42,6 +43,8 @@ def read_calls(days: int = 7, db: Path = DB) -> list[dict]:
     """The calls of the last `days`, newest first, from a copy of the database and its write-ahead log (the
     shared-memory file is left out: SQLite rebuilds it). A copy taken while macOS writes may come out
     inconsistent, so it is tried twice."""
+    if db == DB and sys.platform != "darwin":
+        raise CallsUnavailable("El historial de llamadas todavía no está disponible en este sistema.", "unavailable")
     try:
         stamp = tuple(Path(f"{db}{suffix}").stat().st_mtime_ns if Path(f"{db}{suffix}").exists() else 0 for suffix in ("", "-wal"))
     except PermissionError as error:

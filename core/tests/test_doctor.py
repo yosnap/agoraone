@@ -49,3 +49,28 @@ def test_instalar_solo_lo_de_la_lista(monkeypatch):
             break
         import time; time.sleep(0.02)
     assert ran == [["/opt/homebrew/bin/brew", "install", "ffmpeg"]] and jobs.state()["state"] == "done"
+
+
+def test_hermes_esta_donde_lo_busca_el_servidor(tmp_path, monkeypatch):
+    """AGORA_HERMES_HOME first, then HERMES_HOME (a profile is taken back to its root), then ~/.hermes."""
+    for name in ("AGORA_HERMES_HOME", "HERMES_HOME"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(doctor, "HOME", tmp_path)
+    assert doctor._hermes_root() == tmp_path / ".hermes"
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes" / "profiles" / "trabajo"))
+    assert doctor._hermes_root() == tmp_path / "hermes"
+    monkeypatch.setenv("AGORA_HERMES_HOME", str(tmp_path / "otro"))
+    assert doctor._hermes_root() == tmp_path / "otro"
+
+
+def test_el_registro_de_obsidian_en_cada_sistema(tmp_path, monkeypatch):
+    monkeypatch.setattr(doctor, "HOME", tmp_path)
+    monkeypatch.setattr(doctor, "MAC", True)
+    assert doctor._obsidian_registry() == tmp_path / "Library/Application Support/obsidian/obsidian.json"
+    monkeypatch.setattr(doctor, "MAC", False)
+    monkeypatch.setattr(doctor, "WINDOWS", True)
+    monkeypatch.setenv("APPDATA", str(tmp_path / "Roaming"))
+    assert doctor._obsidian_registry() == tmp_path / "Roaming" / "obsidian" / "obsidian.json"
+    monkeypatch.setattr(doctor, "WINDOWS", False)
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    assert doctor._obsidian_registry() == tmp_path / ".config" / "obsidian" / "obsidian.json"

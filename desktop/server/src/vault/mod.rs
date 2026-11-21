@@ -7,7 +7,6 @@ mod write;
 
 use std::collections::HashMap;
 use std::fs;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
@@ -143,7 +142,7 @@ impl VaultNotes {
     fn vaults(&self) -> Vec<Vault> {
         let Some(registry) = &self.registry else { return vec![] };
         let read = || -> anyhow::Result<Value> {
-            let root = fs::canonicalize(registry.parent().unwrap_or(Path::new("/")))?;
+            let root = crate::platform::canonicalize(registry.parent().unwrap_or(Path::new("/")))?;
             let name = registry.file_name().ok_or_else(|| anyhow::anyhow!("Invalid registry"))?;
             Ok(serde_json::from_slice(&read_hermes_file(&root, &root.join(name), 128 * 1024)?)?)
         };
@@ -158,8 +157,8 @@ impl VaultNotes {
                 if !Path::new(path).is_absolute() || !seen.insert(path.to_string()) {
                     return None;
                 }
-                let real = fs::canonicalize(path).ok()?;
-                if !fs::symlink_metadata(&real).ok()?.is_dir() {
+                let real = crate::platform::canonicalize(Path::new(path)).ok()?;
+                if !crate::platform::is_real_dir(&real) {
                     return None;
                 }
                 let base = Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -309,7 +308,7 @@ impl Walk<'_> {
                 return;
             }
             let Ok(kind) = entry.file_type() else { continue };
-            if name.starts_with('.') || kind.is_symlink() {
+            if name.starts_with('.') || crate::platform::dir_entry_is_link(&entry) {
                 continue;
             }
             let file = entry.path();
@@ -321,18 +320,19 @@ impl Walk<'_> {
                     return;
                 }
                 let Ok(meta) = fs::symlink_metadata(&file) else { continue };
-                let path = file.strip_prefix(&self.vault.root).unwrap_or(&file).to_string_lossy().into_owned();
+                let Ok(info) = crate::platform::inspect_path_nofollow(&file) else { continue };
+                let path = crate::platform::slash_path(file.strip_prefix(&self.vault.root).unwrap_or(&file));
                 let folder = path.rsplit_once('/').map(|(f, _)| f.to_string()).unwrap_or_default();
                 // Node rounds the milliseconds; the brain's index compares these dates, so they must match.
-                let modified = (meta.mtime() as f64 * 1000.0 + meta.mtime_nsec() as f64 / 1e6).round() as i64;
+                let modified = crate::platform::mtime_ms(&meta);
                 self.notes.push(Entry {
                     note: VaultNote {
                         id: format!("note-{}", digest(&format!("{}:{path}", self.vault.id))),
                         title: name[..name.len() - 3].to_string(),
                         folder,
-                        bytes: meta.len(),
+                        bytes: info.len,
                         modified_at: iso_ms(modified).unwrap_or_default(),
-                        readable: meta.len() <= MAX_NOTE_BYTES && meta.nlink() == 1,
+                        readable: info.is_file && info.len <= MAX_NOTE_BYTES && info.nlink == 1,
                     },
                     file,
                 });

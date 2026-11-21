@@ -18,7 +18,7 @@ const HOST: &str = "127.0.0.1:4317";
 
 fn state() -> (tempfile::TempDir, Arc<AppState>) {
     let dir = tempfile::tempdir().unwrap();
-    let root = fs::canonicalize(dir.path()).unwrap();
+    let root = agora_server::platform::canonicalize(dir.path()).unwrap();
     fs::create_dir_all(root.join("memories")).unwrap();
     fs::write(root.join("SOUL.md"), "# Hermes de prueba\napi_key: CANARY").unwrap();
     let vault = root.join("Notas");
