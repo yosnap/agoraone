@@ -7,6 +7,7 @@ import { ago, BLOCKED, describe, describeWatson, outcomeLabel, RUNNING, sourceLa
 import { refreshAgents, useAgentsFeed } from './agents-feed';
 import { requestOffice } from '../office/office-focus';
 import { CodingSessions } from './coding-sessions';
+import { OrcaBotsPanel } from '../orca/orca-bots';
 import './agents.css';
 import { ActionButton } from '../ui/action-button';
 
@@ -89,6 +90,7 @@ export function AgentsView({ discreet, onOpen }: { discreet: boolean; onOpen: (s
         </article>)}
       </div>
         <CodingSessions sessions={feed.coding} discreet={discreet} now={now} onCity={() => { requestOffice('code-workshop', 'select'); onOpen('office'); }}/>
+        <OrcaBotsPanel discreet={discreet}/>
       </div>
       <aside className="card agents-log" aria-label="Actividad de las últimas 24 horas">
         <strong>Actividad · últimas 24 h</strong>
