@@ -99,9 +99,12 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
                 return False, None
             return True, crmdev_orgs.connection_of(connection, secrets, org)
 
-    def known(org: str | None) -> bool:
+    def known(org: str | None) -> str | None | bool:
+        """The organization to use (the first one when none is said, so both spellings are the same one), or False."""
         with database() as connection:
-            return org is None or crmdev_orgs.known(connection, org)
+            if org is not None and not crmdev_orgs.known(connection, org):
+                return False
+            return org or crmdev_orgs.default(connection)
 
     def doubtful_of(target_id: str) -> bool:
         cutoff = time.time() - DOUBT_SECONDS
@@ -134,7 +137,8 @@ def crmdev_write_router(settings: Settings, secrets) -> APIRouter:
         on, target = await run_in_threadpool(prepare, org)
         if not on:
             return problem(404, OFF, "off")
-        if not await run_in_threadpool(known, org):
+        org = await run_in_threadpool(known, org)
+        if org is False:
             return problem(409, NO_ORG, "no_org")
         if target is None:
             return problem(409, NOT_CONNECTED, "not_connected")

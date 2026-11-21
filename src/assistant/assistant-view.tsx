@@ -215,7 +215,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const name = persona?.name ?? 'Watson';
   // Asked from another section (a bot's answer passed on): sent once the view is on screen (a ref, not an effect).
   const startWith = (node: HTMLElement | null) => {
-    if (!node || embedded) return;
+    if (!node || embedded || answeringIn() !== null) return;  // busy elsewhere: kept until the next time it shows
     const ask = takeWatsonAsk();
     if (ask) void send(ask.text, null, ask.delegated);
   };

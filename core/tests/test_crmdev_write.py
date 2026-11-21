@@ -406,6 +406,7 @@ def test_un_alta_sin_respuesta_no_se_repite_sin_crear_de_todos_modos(setup, fake
     again = preview(client, body)
     assert again.status_code == 409 and again.json()["status"] == "doubtful" and "CRMDev" in again.json()["error"]
     assert preview(client, {**body, "values": {"title": "  una "}}).json()["status"] == "doubtful", "mismo título"
+    assert preview(client, {**body, "org": "o1"}).json()["status"] == "doubtful", "sin organización es la primera: la misma"
     assert [b["tool"] for b in fake.writes()].count("create_task") == 1, "sin confirmarlo, no sale otra"
     anyway = preview(client, {**body, "anyway": True})
     assert anyway.status_code == 200 and any("repetido" in w for w in anyway.json()["warnings"])
