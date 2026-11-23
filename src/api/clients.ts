@@ -97,6 +97,8 @@ export type PendingItem = {
   status?: string | null; client?: string | null; projectKind?: string | null;
   /** project_missing: a CRMDev project whose name looks alike (link it in the project's record). */
   maybe?: string | null;
+  /** project_missing: whether its client is already in CRMDev (else send the clients first). */
+  clientInCrmdev?: boolean | null;
   changes?: PendingChange[];
   /** The organization of CRMDev it is about: by its link, chosen by the user or its client's; null: none yet. */
   org?: string | null; orgFrom?: 'link' | 'chosen' | 'client' | null;

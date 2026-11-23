@@ -8,7 +8,8 @@ cache): the tool is chosen here by the kind of warning, never by the screen. Wha
   person with the client's name as company;
 - a client with different data → `update_client` with Central's name, company or mail (only those that differ);
 - a project of Central missing → `create_project` with its name, the state that matches Central's, GITHUB when it
-  has a repository (else OTHER), its client in CRMDev when there is one (or the one created in the same batch) and a
+  has a repository (else OTHER), its client in CRMDev when there is one (linked, else the one with the same name read
+  now, or the one created in the same batch; without any, a warning says it goes without client) and a
   description with the repository and the client's websites, written only now (it is never changed afterwards);
 - a project with a different name or state → `update_project` (its client is changed in CRMDev only).
 The tax id and the postal address never go. A client of CRMDev that is not in Central is not sent anywhere from here.
@@ -221,6 +222,8 @@ def plan(connection, target: Connection, keys: list[str], doubtful: Callable[[st
                 client = project.get("client")
                 client_id = pairs.get(clients.same_name(client)) if client else None
                 client_id = client_id if client_id in r_client_by_id else None  # only a client of this same organization
+                if client and not client_id:  # not linked yet: the client of CRMDev with the same name, read now
+                    client_id = next((r["id"] for r in r_clients if clients.same_name(r.get("name")) == clients.same_name(client)), None)
                 websites = (by_name.get(clients.same_name(client)) or {}).get("websites") or [] if client else []
                 arguments = {k: v for k, v in {"name": project["name"], "description": _description(project, websites),
                                                "type": "GITHUB" if project.get("repo") else "OTHER",
@@ -249,6 +252,8 @@ def plan(connection, target: Connection, keys: list[str], doubtful: Callable[[st
             unplaced.add(key)
     for op in operations:  # a project whose client is not created in this batch goes without it
         if op.client_name and clients.same_name(op.client_name) not in creating:
+            warnings.append(f"«{op.arguments['name']}»: su cliente «{op.client_name}» no está en CRMDev y el proyecto quedará sin cliente. "
+                            "Envía antes los clientes.")
             op.client_name = None
             op.notes[-1] = "Su cliente no está en CRMDev ni en este envío: el proyecto queda sin cliente."
     operations.sort(key=lambda o: ORDER[o.kind])

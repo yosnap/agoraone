@@ -78,6 +78,21 @@ def test_the_whole_batch_goes_in_order_and_is_linked(setup, fake):  # noqa: F811
     assert again["repeated"] is True and len(fake.writes()) == 4  # a batch goes once
 
 
+def test_a_project_goes_with_its_crmdev_client_or_warns(setup, fake):  # noqa: F811
+    client, _ = setup
+    found = pending(client)
+    assert found["project_missing:q2"]["clientInCrmdev"] is False
+    alone = preview(client, ["project_missing:q2"]).json()
+    assert "clientId" not in [r["field"] for r in alone["operations"][0]["rows"]]
+    assert any("Bravo" in w and "sin cliente" in w for w in alone["warnings"])
+    # Its client appeared in CRMDev (not yet read here): the project is paired with it by name, without warning.
+    fake.rows["list_clients"].append({"id": "c7", "name": "Bravo", "email": None, "company": None, "status": "CUSTOMER"})
+    paired = preview(client, ["project_missing:q2"]).json()
+    assert {r["field"]: r["after"] for r in paired["operations"][0]["rows"]}["clientId"] == "Bravo" and not paired["warnings"]
+    sent = client.post("/crmdev/batch/confirm", headers=HEADERS, json={"token": paired["token"]}).json()
+    assert sent["sent"] == 1 and fake.writes()[0]["arguments"]["clientId"] == "c7"
+
+
 def test_a_change_that_moved_in_crmdev_is_not_sent(setup, fake):  # noqa: F811
     client, _ = setup
     body = preview(client, ["client_changed:k1:c1"]).json()
