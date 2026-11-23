@@ -208,10 +208,13 @@ y Watson.
 - **Enviar a CRMDev** (1.9): en esa lista se marcan los avisos que se quieren enviar. Desde la 1.10 cada grupo se
   envía por separado («Enviar clientes», «Enviar proyectos», «Revisar envío» en los demás; al cambiar de grupo se
   quitan las marcas): primero los clientes y luego los proyectos. La revisión enseña cada
-  operación con sus campos antes y después, leída de CRMDev en ese momento, y lo que no puede ir con su motivo. La
+  operación con sus campos antes y después, con Central y CRMDev leídos en ese momento (si Central no responde, no se
+  revisa nada: nunca se envía una copia vieja; «Comparar de nuevo» también los lee), y lo que no puede ir con su motivo. La
   herramienta la elige el núcleo (`crmdev_batch.py`): un cliente que falta va con `create_client` (nombre, correo,
   empresa y teléfono, como «Cliente»); un contacto, con `update_client` del cliente si no tiene correo o con
-  `create_client` de una persona de esa empresa; los datos distintos, con `update_client` o `update_project`; un
+  `create_client` de una persona de esa empresa; los datos distintos (también una empresa que CRMDev no tiene), con
+  `update_client` o `update_project`; el teléfono solo va al crear el cliente, porque `update_client` de CRMDev no lo
+  admite; un
   proyecto que falta, con `create_project`, con el estado equivalente al de Central, GITHUB si tiene repositorio,
   su cliente de CRMDev (el enlazado; si no, el de CRMDev con el mismo nombre leído en ese momento, o el creado en el
   mismo envío; sin ninguno, la lista y la revisión avisan y el proyecto queda sin cliente) y una descripción con el repositorio y las webs del

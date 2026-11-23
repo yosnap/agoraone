@@ -60,7 +60,7 @@ def _client_items(entries: list[dict]) -> list[dict]:
             items.append({"key": f"contact_missing:{central_id}", "kind": "contact_missing", "name": e["name"], "centralId": central_id,
                           "crmdevId": crmdev_id, "contacts": len(e["contacts"])})
         if central_id and crmdev_id and e["differences"]:
-            changes = [{"field": d["field"], "label": d["label"],
+            changes = [{"field": d["field"], "label": d["label"], **({"missing": True} if d.get("missing") else {}),
                         **({} if d["field"] in clients.PRIVATE_FIELDS else {"central": e.get(d["field"]), "crmdev": d.get("crmdev")})}
                        for d in e["differences"]]
             items.append({"key": f"client_changed:{central_id}:{crmdev_id}", "kind": "client_changed", "name": e["name"], "centralId": central_id,

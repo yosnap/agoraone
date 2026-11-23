@@ -24,6 +24,7 @@ test('cada aviso de «Pendiente en CRMDev» dice qué falta o qué difiere', () 
 
 test('un correo distinto solo dice que difiere; el resto enseña los dos valores', () => {
   assert.equal(pendingChangeText({ field: 'email', label: 'Correo' }), 'Correo: distinto en CRMDev');
+  assert.equal(pendingChangeText({ field: 'company', label: 'Empresa', central: 'Uno SL', crmdev: null, missing: true }), 'Empresa: Uno SL en Central, falta en CRMDev');
   assert.equal(pendingChangeText({ field: 'company', label: 'Empresa', central: 'Uno SL', crmdev: 'Uno Grupo' }), 'Empresa: Uno SL en Central, Uno Grupo en CRMDev');
   assert.equal(pendingTotal({ client_missing: 1, contact_missing: 0, client_changed: 2, crmdev_only: 0, project_missing: 3, project_changed: 0 }), 6);
 });

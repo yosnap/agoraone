@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { refreshCentral } from '../api/core';
+import { refreshCrmdevClients } from '../api/crmdev';
 import { assignCrmdevOrg, confirmBatch, dismissPending, getCrmdevPending, previewBatch, type CrmdevPending, type PendingItem, type PendingKind } from '../api/clients';
 import { pendingChangeText, pendingText } from '../jobs/clients-view';
 import { ActionButton } from '../ui/action-button';
@@ -84,6 +86,13 @@ export function CrmdevFromCentral({ discreet, onChanged, org: shown }: { discree
     getCrmdevPending(all).then(found => { setData(found); setError(''); })
       .catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo comparar con Central.'));
   };
+  /** «Comparar de nuevo» reads Central and CRMDev now: comparing older copies would hide what just changed. */
+  const compareAgain = async () => {
+    setBusy(true);
+    await Promise.allSettled([refreshCentral(), refreshCrmdevClients()]);
+    setBusy(false);
+    load();
+  };
   if (!asked.current) { asked.current = true; load(false); }
   if (!data) return error ? <LoadError message={error} onRetry={() => load()}/> : <Loading label="Comparando Central y CRMDev" lines={3}/>;
   if (!data.active) return <p className="muted">Para comparar, enciende y lee Central (Conectores) y vuelve a leer CRMDev.</p>;
@@ -136,7 +145,7 @@ export function CrmdevFromCentral({ discreet, onChanged, org: shown }: { discree
       tools={<>
         {data.dismissed > 0 && <button type="button" className="button" aria-pressed={withDismissed}
           onClick={() => { setWithDismissed(!withDismissed); load(!withDismissed); }}>{withDismissed ? 'Ocultar descartados' : `Ver descartados (${data.dismissed})`}</button>}
-        <ActionButton icon="refresh" label="Comparar de nuevo" disabled={busy} onClick={() => load()}/>
+        <ActionButton icon="refresh" label="Comparar de nuevo" disabled={busy} onClick={() => void compareAgain()}/>
       </>}/>
   </section>;
 }
