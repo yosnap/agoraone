@@ -462,10 +462,19 @@ class Toolbox:
         def check():
             with self.database() as connection:
                 return orca_launch.propose(connection, args)
+        crmdev = [(kind, args[key]) for key, kind in (("crmdev_tarea", "tareas"), ("crmdev_ticket", "tickets")) if args.get(key)]
+        if len(crmdev) > 1 or (crmdev and args.get("issue")):
+            return json.dumps({"error": "Un encargo lleva un solo origen: una issue, una tarea o un ticket."}, ensure_ascii=False)
         try:
             proposal = await run_in_threadpool(check)
         except orca_launch.OrcaError as error:
             return json.dumps({"error": str(error)}, ensure_ascii=False)
+        if crmdev:  # only what consultar_crmdev showed, with the organization where it was seen
+            kind, item = crmdev[0]
+            org = crmdev_tools._org_of(self.crmdev_seen, kind, str(item))
+            if org is None:
+                return json.dumps({"error": "Busca antes esa tarea o ese ticket con consultar_crmdev."}, ensure_ascii=False)
+            proposal["crmdev"] = {"kind": "crmdev_task" if kind == "tareas" else "crmdev_ticket", "remote": str(item), "org": org}
         self._record({"tool": "orca_proposal", "proposal": proposal})
         return json.dumps({"propuesta": {"repositorio": proposal["repo"], "agente": orca_launch.AGENTS[proposal["agent"]]},
                            "estado": "Tarjeta abierta en la pantalla del usuario: tiene que ver la vista previa y pulsar «Lanzar en Orca». No se ha lanzado nada."},

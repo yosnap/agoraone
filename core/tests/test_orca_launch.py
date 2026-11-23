@@ -326,6 +326,13 @@ def test_la_herramienta_de_watson_solo_abre_la_tarjeta(database, monkeypatch):
     box = Toolbox(same, None, None)
     answer = json.loads(asyncio.run(box.call("proponer_encargo_orca", {"proyecto": "Web", "encargo": "Arregla el menú"})))
     assert "No se ha lanzado nada" in answer["estado"] and box.events[-1]["proposal"]["repo"] == "Acme/Web"
+    # A task or ticket of CRMDev goes as the source only if consultar_crmdev showed it, with its organization.
+    ask = lambda extra: json.loads(asyncio.run(box.call("proponer_encargo_orca", {"proyecto": "Web", "encargo": "Arregla", **extra})))  # noqa: E731
+    assert "consultar_crmdev" in ask({"crmdev_ticket": "k1"})["error"]
+    assert "un solo origen" in ask({"crmdev_ticket": "k1", "issue": "https://github.com/acme/web/issues/3"})["error"]
+    box.crmdev_seen.add(("tickets", "k1", "o2"))
+    ask({"crmdev_ticket": "k1"})
+    assert box.events[-1]["proposal"]["crmdev"] == {"kind": "crmdev_ticket", "remote": "k1", "org": "o2"}
 
 
 def test_una_nota_con_el_indice_desfasado_no_se_lanza(database):
