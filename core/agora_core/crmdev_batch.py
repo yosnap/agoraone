@@ -6,8 +6,8 @@ cache): the tool is chosen here by the kind of warning, never by the screen. Wha
 - a client of Central missing in CRMDev → `create_client` with its name, mail, company and phone, as «Cliente»;
 - a contact address missing → `update_client` of its CRMDev record when that has no mail, else `create_client` of a
   person with the client's name as company;
-- a client with different data → `update_client` with Central's name, company or mail (only those that differ, also a
-  company CRMDev lacks; never the phone, which CRMDev only takes on creation);
+- a client with different data → `update_client` with Central's name, company, mail or phone (only those that
+  differ, also a company or phone CRMDev lacks; the phone only when CRMDev's reading gives it);
 - a project of Central missing → `create_project` with its name, the state that matches Central's, GITHUB when it
   has a repository (else OTHER), its client in CRMDev when there is one (linked, else the one with the same name read
   now, or the one created in the same batch; without any, a warning says it goes without client) and a
@@ -179,7 +179,7 @@ def plan(connection, target: Connection, keys: list[str], doubtful: Callable[[st
             if item["kind"] == "client_changed":
                 record = r_client_by_id.get(item["crmdevId"])
                 wanted = {c["field"]: (address if c["field"] == "email" else _text(mine.get(c["field"]))) for c in item["changes"]
-                          if c["field"] in ("name", "company", "email")}
+                          if c["field"] in ("name", "company", "email", "phone")}
                 made = "Ya no está entre los clientes que da CRMDev." if record is None else \
                     _update("cambiar-cliente", key, f"Cambiar «{name}» en CRMDev", item["crmdevId"], "clientId", record, wanted, item["centralId"])
             elif item["kind"] == "contact_missing" and item.get("crmdevId") and item["crmdevId"] in r_client_by_id:

@@ -19,13 +19,13 @@ CRMDev disagree on a field, the entry says so (`differences`) without changing e
 
 Everything is looked up in dictionaries built once per call, so joining stays linear in the number of clients."""
 
-from .clients import loose, same_name, tax_key
+from .clients import loose, phone_key, same_name, tax_key
 
 KINDS = ("central", "crmdev", "local")
-COMPARED = (("name", "Nombre"), ("company", "Empresa"), ("email", "Correo"))
-# A company Central has and CRMDev lacks counts as a difference too (Central leads); a missing mail is its own warning.
-# The phone is not compared: CRMDev's `update_client` cannot change it, it only goes when the client is created.
-FILLED = ("company",)
+COMPARED = (("name", "Nombre"), ("company", "Empresa"), ("email", "Correo"), ("phone", "Teléfono"))
+# A company or phone Central has and CRMDev lacks counts as a difference too (Central leads); a missing mail is its own
+# warning. The phone is compared only when CRMDev's reading gives it (its older versions neither give nor take it).
+FILLED = ("company", "phone")
 STOP = object()
 # CRMDev's commercial states, most advanced first: an entry with several CRMDev clients shows the most advanced one.
 STATUS_ORDER = ("CUSTOMER", "PROSPECT", "LEAD", "INACTIVE", "CHURNED")  # a signal found but not usable: weaker signals are not tried
@@ -268,8 +268,11 @@ def entry(group: Group) -> dict:
     differences = []
     if central and crmdev:
         for field, label in COMPARED:
+            if field == "phone" and "phone" not in crmdev:
+                continue
             mine, theirs = central.get(field), crmdev.get(field)
-            if mine and theirs and same_name(mine) != same_name(theirs):
+            key = phone_key if field == "phone" else same_name
+            if mine and theirs and key(mine) != key(theirs):
                 differences.append({"field": field, "label": label, "crmdev": theirs})
             elif mine and not theirs and field in FILLED:
                 differences.append({"field": field, "label": label, "crmdev": None, "missing": True})

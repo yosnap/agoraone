@@ -57,8 +57,10 @@ def shape(data: object) -> dict:
         email = (_text(row.get("email"), EMAIL) or "").lower() or None
         host = domain(email) if email and "@" in email else None
         status = row.get("status") if row.get("status") in STATUSES else None
+        # The phone only when CRMDev gives it (older versions do not): without it, it is not compared.
+        phone = {"phone": _text(row.get("phone"), 40)} if "phone" in row else {}
         found.append({"id": client_id, "name": name, "company": _text(row.get("company")), "email": email if host else None, "status": status,
-                      "domains": [host] if client_domain(host) else []})
+                      **phone, "domains": [host] if client_domain(host) else []})
     return {"clients": found, "fetchedAt": now(), "truncated": len(data) >= crmdev_api.SYNC_ROWS}
 
 
