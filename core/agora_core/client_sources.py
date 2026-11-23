@@ -23,6 +23,9 @@ from .clients import loose, same_name, tax_key
 
 KINDS = ("central", "crmdev", "local")
 COMPARED = (("name", "Nombre"), ("company", "Empresa"), ("email", "Correo"))
+# A company Central has and CRMDev lacks counts as a difference too (Central leads); a missing mail is its own warning.
+# The phone is not compared: CRMDev's `update_client` cannot change it, it only goes when the client is created.
+FILLED = ("company",)
 STOP = object()
 # CRMDev's commercial states, most advanced first: an entry with several CRMDev clients shows the most advanced one.
 STATUS_ORDER = ("CUSTOMER", "PROSPECT", "LEAD", "INACTIVE", "CHURNED")  # a signal found but not usable: weaker signals are not tried
@@ -268,6 +271,8 @@ def entry(group: Group) -> dict:
             mine, theirs = central.get(field), crmdev.get(field)
             if mine and theirs and same_name(mine) != same_name(theirs):
                 differences.append({"field": field, "label": label, "crmdev": theirs})
+            elif mine and not theirs and field in FILLED:
+                differences.append({"field": field, "label": label, "crmdev": None, "missing": True})
     domains = set()
     for row in (*rows, *group.contacts):
         domains.update(row.get("domains") or ())
