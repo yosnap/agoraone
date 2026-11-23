@@ -10,7 +10,7 @@ import { CrmdevProposals, proposedFields } from '../assistant/crmdev-proposals';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { withCount } from '../shell/tab-counts';
-import { byOrg, projectDetail, reviewLabelOf, unplacedGroups } from '../sync/crmdev-from-central';
+import { byOrg, defaultOrgName, projectDetail, reviewLabelOf, unplacedGroups } from '../sync/crmdev-from-central';
 
 const item = (fields: Partial<PendingItem>): PendingItem => ({ key: 'k', kind: 'client_missing', name: 'Uno', signature: 'a'.repeat(64), dismissed: false, ...fields });
 
@@ -146,4 +146,9 @@ test('«Sin organización» separa los clientes de los proyectos, cada uno con s
   assert.deepEqual(projects.items.map(i => i.key), ['p']);
   assert.equal(reviewLabelOf(clients.id), 'Enviar clientes');
   assert.equal(reviewLabelOf(projects.id), 'Enviar proyectos');
+});
+
+test('el nombre que AgoraOne pone de entrada a una organización se reconoce', () => {
+  assert.equal(defaultOrgName('Organización 1'), true);
+  assert.equal(defaultOrgName('Estudio'), false);
 });
