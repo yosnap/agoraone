@@ -164,7 +164,8 @@ CRMDev». **Nunca se borra nada.**
   llega, se trata como un alta dudosa («Crear de todos modos»).
 - Cada cambio queda en el registro de acciones, solo con los nombres de los campos.
 - Watson lee tareas y tickets y solo propone cambios, también una respuesta a un ticket (diciendo siempre si es
-  interna) (desde la 1.9; ver [watson-actua.md](watson-actua.md#watson-y-crmdev-19)).
+  interna) (desde la 1.9; ver [watson-actua.md](watson-actua.md#watson-y-crmdev-19)). Desde el 23/11/2026 también
+  lee las organizaciones y los clientes con todos sus datos, y propone clientes nuevos en la organización que se elija.
 
 La API de CRMDev está documentada en su propio repositorio (`docs/api/`).
 

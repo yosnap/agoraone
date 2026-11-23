@@ -401,7 +401,8 @@ def test_fichas_del_vault_sin_cliente(setup, fake):  # noqa: F811
             self.connection.close()
     answer = json.loads(asyncio.run(Toolbox(Database, None, VectorCache()).call("consultar_clientes", {"cliente": ""})))
     assert answer["fichas_sin_cliente"] == ["Carpeta Propia", "Sin Cliente"] and answer["fichas_sin_cliente_reservadas"] == 1
-    assert "Secreto" not in json.dumps(answer) and "info@cliente.example" not in json.dumps(answer)
+    # A reserved card's name never; a client's address yes (Watson knows all of its data, user's decision of 23/11/2026).
+    assert "Secreto" not in json.dumps(answer) and "info@cliente.example" in json.dumps(answer)
     assert next(c for c in answer["clientes"] if c["nombre"] == "Cliente Uno")["crmdev"] == "CUSTOMER"
     # «Crear cliente manual» with the card's name: the card stops showing and is never touched.
     made = client.post("/clients", json={"name": "Sin Cliente"}, headers=HEADERS)

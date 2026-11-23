@@ -190,6 +190,15 @@ Decisión del usuario del 20/11/2026. Solo con Claude y con el módulo CRMDev en
 - Cada propuesta va a la organización donde Watson vio el registro; una tarea nueva, a la de su proyecto. Si el mismo
   id aparece en dos organizaciones, la propuesta se rechaza en vez de adivinar. La tarjeta dice a qué organización va,
   y la revisión lo comprueba otra vez con la clave de esa organización.
+- Desde el 23/11/2026 (decisión del usuario: CRMDev será la fuente de clientes y Watson lo sabe todo),
+  `consultar_crmdev` también da las organizaciones conectadas (solo sus nombres), los clientes de cada una con todos
+  los datos sencillos que devuelve CRMDev (correo, teléfono, estado comercial…; nunca un campo con pinta de clave) y,
+  con `cliente`, los tickets o los clientes de ese cliente. `consultar_clientes` da también el correo, el teléfono, el
+  NIF y las notas de cada cliente, para un presupuesto o un cliente nuevo; las fichas reservadas del vault siguen fuera.
+- `proponer_cambio_crmdev` propone un cliente nuevo (`cliente_nuevo`: nombre, empresa, correo, teléfono, estado) en la
+  organización que diga el usuario. Con varias y ninguna dicha se rechaza para que Watson pregunte antes. La tarjeta
+  enseña un selector con todas las organizaciones, por si el usuario quiere otra, y se crea solo con «Guardar en
+  CRMDev» tras la revisión, que comprueba que no exista ya por nombre o correo.
 
 ## Rutas del núcleo
 
