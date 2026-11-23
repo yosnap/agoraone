@@ -281,13 +281,16 @@ SPEC = {
                     "no se lanza nada hasta que él vea la vista previa exacta y pulse «Lanzar en Orca». Úsala solo cuando él lo "
                     "pida. Escribe el encargo en pocas frases claras, sin contraseñas ni datos privados. En vez de un agente nuevo puede "
                     "ir a uno de los bots del usuario en Orca (uno por oficio: seguridad, desarrollo, revisión, soporte…): di su nombre "
-                    "en «bot» y si se lo encargas o le preguntas; tampoco se envía nada hasta que él pulse «Enviar a <bot>»."),
+                    "en «bot» y si se lo encargas o le preguntas; tampoco se envía nada hasta que él pulse «Enviar a <bot>». Puede llevar como "
+                    "origen una tarea o un ticket de CRMDev que hayas visto (su proyecto de CRMDev tiene que estar enlazado con el de Central)."),
     "schema": {"type": "object", "properties": {
         "proyecto": {"type": "string", "description": "Proyecto de Central."},
         "cliente": {"type": "string", "description": "Cliente del proyecto, si hay varios proyectos con ese nombre (opcional)."},
         "encargo": {"type": "string", "description": "Qué debe hacer el agente en el repositorio."},
         "agente": {"type": "string", "enum": list(AGENTS), "description": "claude (Claude Code, por defecto) o codex."},
         "issue": {"type": "string", "description": "URL de una issue de ese repositorio que deba resolver (opcional)."},
+        "crmdev_tarea": {"type": "string", "description": "Id de una tarea de CRMDev que hayas visto con consultar_crmdev, para llevarla como origen (opcional; no con «issue»)."},
+        "crmdev_ticket": {"type": "string", "description": "Id de un ticket de CRMDev que hayas visto con consultar_crmdev, para llevarlo como origen (opcional; no con «issue»)."},
         "bot": {"type": "string", "description": "Nombre de un bot de Orca al que enviarlo en vez de a un agente nuevo (opcional)."},
         "tipo": {"type": "string", "enum": ["encargar", "preguntar"], "description": "Con «bot»: encargar (se queda con el trabajo, por defecto) o preguntar."}},
         "required": ["proyecto", "encargo"]},

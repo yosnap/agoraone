@@ -57,6 +57,10 @@ Claude Code o Codex con un encargo. Plan: `plans/261117-0940-modulo-orca`.
 - **Watson:** la herramienta `proponer_encargo_orca` (solo con Claude, módulo Orca) comprueba que el proyecto está
   en Orca y abre la tarjeta rellenada en el chat; no lanza nada. El registro guarda repositorio y agente, nunca el
   encargo.
+  Desde el 23/11/2026 puede llevar como origen una tarea o un ticket de CRMDev que haya visto con
+  `consultar_crmdev` (`crmdev_tarea` o `crmdev_ticket`), con la organización donde lo vio; un solo origen por
+  encargo (no a la vez que una issue). La vista previa lo lee otra vez de CRMDev y exige que su proyecto esté
+  enlazado con el de Central, igual que desde la sección CRMDev.
 
 ## Issues de correos y notas, y envío a una sesión abierta (1.7.0-alpha.45)
 Decisión del usuario (17/11/2026), en AGENTS.md.

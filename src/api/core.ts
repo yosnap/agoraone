@@ -638,7 +638,8 @@ export type OrcaSource = { kind: 'mail'; id: number } | { kind: 'chat'; id: numb
   | { kind: 'crmdev_task' | 'crmdev_ticket'; remote: string; org?: string };
 /** What Watson proposes to take to Orca: it only opens the card, which still needs the preview and «Lanzar en Orca». */
 export type OrcaProposal = OrcaProject & { task: string; agent: OrcaAgent; issue: string | null;
-  /** To one of the user's bots instead of a new agent: still only after «Enviar a <bot>». */ bot?: string; botName?: string; kind?: 'handoff' | 'question' };
+  /** To one of the user's bots instead of a new agent: still only after «Enviar a <bot>». */ bot?: string; botName?: string; kind?: 'handoff' | 'question';
+  /** A task or ticket of CRMDev Watson saw, as the source (its project must be linked with the Central one). */ crmdev?: { kind: 'crmdev_task' | 'crmdev_ticket'; remote: string; org: string } };
 export type OrcaPreview = { id: string; client: string; project: string; repo: string; orcaName: string; agent: OrcaAgent; agentName: string; name: string;
   source: { kind: string; label: string; number?: number; url?: string } | null; sourceText: string | null; prompt: string };
 export const getOrcaProjects = () => core<{ projects: OrcaProject[]; problem: string | null }>('/orca/projects');
