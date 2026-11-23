@@ -207,3 +207,22 @@ def test_without_central_now_nothing_is_reviewed(setup, fake, monkeypatch):  # n
     monkeypatch.setattr(central_api, "read_all", down)
     answer = preview(client, ["client_changed:k1:c1"])
     assert answer.status_code == 502 and "datos viejos" in answer.json()["error"] and fake.writes() == []
+
+
+def test_a_phone_goes_only_when_crmdev_gives_phones(setup, fake, monkeypatch):  # noqa: F811
+    """CRMDev's older versions neither give nor take a phone: then it is not compared; once they do, it goes."""
+    client, _ = setup
+    later = json.loads(json.dumps(CENTRAL))
+    later["details"]["Cliente Uno"].update(company="Uno SL", phone="+34 611 222 333")
+    monkeypatch.setattr(central_api, "connection_of", lambda connection, secrets: object())
+    monkeypatch.setattr(central_api, "read_all", lambda origin: later)
+    assert client.post("/central/refresh", headers=HEADERS).status_code == 200
+    assert "client_changed:k1:c1" not in pending(client)
+    fake.rows["list_clients"][0]["phone"] = "611 000 000"
+    assert client.post("/crmdev/clients/refresh", headers=HEADERS).status_code == 200
+    changes = pending(client)["client_changed:k1:c1"]["changes"]
+    assert changes == [{"field": "phone", "label": "Teléfono"}]  # a phone is never shown in the list
+    shown = preview(client, ["client_changed:k1:c1"])
+    assert shown.status_code == 200, shown.text
+    client.post("/crmdev/batch/confirm", headers=HEADERS, json={"token": shown.json()["token"]})
+    assert [w["arguments"] for w in fake.writes()] == [{"clientId": "c1", "phone": "+34 611 222 333"}]

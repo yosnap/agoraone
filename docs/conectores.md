@@ -213,8 +213,8 @@ y Watson.
   herramienta la elige el núcleo (`crmdev_batch.py`): un cliente que falta va con `create_client` (nombre, correo,
   empresa y teléfono, como «Cliente»); un contacto, con `update_client` del cliente si no tiene correo o con
   `create_client` de una persona de esa empresa; los datos distintos (también una empresa que CRMDev no tiene), con
-  `update_client` o `update_project`; el teléfono solo va al crear el cliente, porque `update_client` de CRMDev no lo
-  admite; un
+  `update_client` o `update_project`; el teléfono se compara y se envía solo cuando CRMDev lo devuelve en
+  `list_clients` (sus versiones anteriores ni lo dan ni lo aceptan en `update_client`); un
   proyecto que falta, con `create_project`, con el estado equivalente al de Central, GITHUB si tiene repositorio,
   su cliente de CRMDev (el enlazado; si no, el de CRMDev con el mismo nombre leído en ese momento, o el creado en el
   mismo envío; sin ninguno, la lista y la revisión avisan y el proyecto queda sin cliente) y una descripción con el repositorio y las webs del
