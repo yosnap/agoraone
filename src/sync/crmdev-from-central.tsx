@@ -11,15 +11,28 @@ export const KIND_LABELS: Record<string, string> = { CLIENT: 'De cliente', OWN: 
 export const CENTRAL_STATUS: Record<string, string> = { ACTIVE: 'Activo', MAINTENANCE: 'Mantenimiento', DORMANT: 'En pausa', ARCHIVED: 'Archivado' };
 const SENDABLE = new Set<PendingKind>(['client_missing', 'contact_missing', 'client_changed', 'project_missing', 'project_changed']);
 const GROUPS: { kind: PendingKind; label: string; hint: string }[] = [
-  { kind: 'client_missing', label: 'Clientes que faltan', hint: 'Clientes de Central que no están en CRMDev: se crean con su nombre, correo, empresa y teléfono (nunca el NIF ni la dirección).' },
-  { kind: 'project_missing', label: 'Proyectos que faltan', hint: 'Proyectos de Central que no están en CRMDev. Si marcas también su cliente, va primero y el proyecto queda con él.' },
+  { kind: 'client_missing', label: 'Clientes que faltan', hint: 'Clientes de Central que no están en CRMDev: se crean con su nombre, correo, empresa y teléfono (nunca el NIF ni la dirección). Envíalos antes que sus proyectos.' },
+  { kind: 'project_missing', label: 'Proyectos que faltan', hint: 'Proyectos de Central que no están en CRMDev. Cada uno se enlaza solo con su cliente de CRMDev; si su cliente aún no está, se avisa y queda sin cliente: envía antes los clientes.' },
   { kind: 'contact_missing', label: 'Contactos que faltan', hint: 'El correo de contacto de Central no está en CRMDev: se añade al cliente o se crea una persona de esa empresa.' },
   { kind: 'client_changed', label: 'Clientes distintos', hint: 'Clientes con nombre, empresa o correo distintos: CRMDev se pone como Central.' },
   { kind: 'project_changed', label: 'Proyectos distintos', hint: 'Proyectos con nombre o estado distintos: CRMDev se pone como Central (el cliente se cambia en CRMDev).' },
   { kind: 'crmdev_only', label: 'Solo en CRMDev', hint: 'Clientes de CRMDev que no están en Central: se crean en Central, en Central › Por crear.' },
 ];
 
-export const UNPLACED = 'unplaced';
+export const UNPLACED_CLIENTS = 'unplaced_clients';
+export const UNPLACED_PROJECTS = 'unplaced_projects';
+const isProject = (item: PendingItem) => item.kind === 'project_missing' || item.kind === 'project_changed';
+
+/** «Sin organización» split in two, clients apart from projects, so that each goes on its own (clients first). */
+export function unplacedGroups(unplaced: PendingItem[], orgName: string): { id: string; label: string; hint: string; items: PendingItem[] }[] {
+  const tail = `Lo que envíes desde aquí va a «${orgName}» y queda como suyo; también puedes asignarlo sin enviar.`;
+  return [
+    { id: UNPLACED_CLIENTS, label: 'Clientes sin organización', items: unplaced.filter(i => !isProject(i)),
+      hint: `Clientes de Central que aún no tienen organización de CRMDev. Envíalos antes que sus proyectos. ${tail}` },
+    { id: UNPLACED_PROJECTS, label: 'Proyectos sin organización', items: unplaced.filter(isProject),
+      hint: `Proyectos de Central que aún no tienen organización de CRMDev. Cada uno se enlaza solo con su cliente de CRMDev; si su cliente aún no está, se avisa y queda sin cliente. ${tail}` },
+  ];
+}
 const ASSIGNABLE = new Set<PendingKind>(['client_missing', 'project_missing']);
 
 /** With several organizations: what is about the chosen one, and what is about none yet («Sin organización»). With
@@ -29,12 +42,26 @@ export function byOrg(items: PendingItem[], org: string | undefined, several: bo
   return { mine: items.filter(i => i.org === org), unplaced: items.filter(i => !i.org) };
 }
 
+/** A missing project: whether its client is not in CRMDev yet (it would go without one) and a look-alike to link. */
+export function projectDetail(item: PendingItem): string | null {
+  const parts = [
+    item.client && item.clientInCrmdev === false ? `Su cliente aún no está en CRMDev: envía antes los clientes o quedará sin cliente.` : '',
+    item.maybe ? `Quizá es «${item.maybe}» de CRMDev: enlázalo en su ficha.` : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' ') : null;
+}
+
+/** The review button of each group: clients and projects go apart, clients first. */
+export const reviewLabelOf = (groupId: string) =>
+  groupId === 'client_missing' || groupId === UNPLACED_CLIENTS ? 'Enviar clientes'
+    : groupId === 'project_missing' || groupId === UNPLACED_PROJECTS ? 'Enviar proyectos' : 'Revisar envío';
+
 const rowOf = (item: PendingItem): SyncRow => ({
   key: item.key, name: item.name, selectable: SENDABLE.has(item.kind), dismissed: item.dismissed, dismissable: true,
   client: item.kind === 'project_missing' ? item.client ?? null : undefined,
   kind: item.kind === 'project_missing' ? (item.projectKind ? KIND_LABELS[item.projectKind] ?? item.projectKind : null) : undefined,
   status: item.kind === 'project_missing' && item.status ? CENTRAL_STATUS[item.status] ?? item.status : undefined,
-  detail: item.kind === 'project_missing' ? (item.maybe ? `Quizá es «${item.maybe}» de CRMDev: enlázalo en su ficha.` : null)
+  detail: item.kind === 'project_missing' ? projectDetail(item)
     : item.kind === 'client_changed' || item.kind === 'project_changed' ? null : pendingText(item),
   changes: item.changes?.map(pendingChangeText),
 });
@@ -70,8 +97,7 @@ export function CrmdevFromCentral({ discreet, onChanged, org: shown }: { discree
   const org = orgs.find(o => o.id === (shown ?? chosenOrg)) ?? orgs[0];
   const { mine, unplaced } = byOrg(data.items, org?.id, several);
   const groups: SyncGroup[] = GROUPS.map(g => ({ id: g.kind, label: g.label, hint: g.hint, rows: mine.filter(i => i.kind === g.kind).map(rowOf) }));
-  if (several) groups.push({ id: UNPLACED, label: 'Sin organización', rows: unplaced.map(rowOf),
-    hint: `Clientes y proyectos de Central que aún no tienen organización de CRMDev. Lo que envíes desde aquí va a «${org?.name ?? ''}» y queda como suyo; también puedes asignarlo sin enviar.` });
+  if (several) groups.push(...unplacedGroups(unplaced, org?.name ?? '').map(g => ({ id: g.id, label: g.label, hint: g.hint, rows: g.items.map(rowOf) })));
   const pendingCount = (id: string) => data.items.filter(i => i.org === id && !i.dismissed).length;
   const assign = async (items: SyncItem[], to: string | null) => {
     const keys = items.map(i => i.key).filter(key => {
@@ -85,16 +111,16 @@ export function CrmdevFromCentral({ discreet, onChanged, org: shown }: { discree
     finally { setBusy(false); }
   };
   const secondary = (groupId: string): SyncSecondary | null => !several || !org ? null
-    : groupId === UNPLACED ? { label: `Asignar a «${org.name}»`, onRun: items => void assign(items, org.id) }
+    : groupId === UNPLACED_CLIENTS || groupId === UNPLACED_PROJECTS ? { label: `Asignar a «${org.name}»`, onRun: items => void assign(items, org.id) }
       : ASSIGNABLE.has(groupId as PendingKind) ? { label: 'Dejar sin organización', onRun: items => void assign(items, null) } : null;
   return <section className="sync-section" aria-label="Desde Central">
-    <p className="muted">Central manda: aquí está lo que tiene Central y falta o es distinto en CRMDev. Marca lo que quieras, pulsa «Revisar envío» para ver
-      exactamente qué irá y envíalo.{several ? ' Cada cliente y proyecto va a una sola organización de CRMDev: elige arriba con cuál comparar.' : ` Va a la organización «${org?.name ?? 'de la clave guardada'}».`}{data.truncated ? ' De CRMDev se leen los 1000 más recientes: puede faltar algo que sí está.' : ''}</p>
+    <p className="muted">Central manda: aquí está lo que tiene Central y falta o es distinto en CRMDev. Cada grupo se envía por separado: primero los clientes y
+      luego los proyectos, que se enlazan solos con su cliente de CRMDev. Marca lo que quieras, revisa exactamente qué irá y envíalo.{several ? ' Cada cliente y proyecto va a una sola organización de CRMDev: elige arriba con cuál comparar.' : ` Va a la organización «${org?.name ?? 'de la clave guardada'}».`}{data.truncated ? ' De CRMDev se leen los 1000 más recientes: puede faltar algo que sí está.' : ''}</p>
     {error && <LoadError message={error}/>}
     {reviewing && <BatchReview key={`${reviewing.org}|${reviewing.items.map(i => i.key).join('|')}`} onClose={() => setReviewing(null)}
       onDone={() => { load(); onChanged?.(); }}
       dest={{ name: 'CRMDev', action: 'Enviar a CRMDev', preview: anyway => previewBatch(reviewing.items.map(i => i.key), anyway, reviewing.org), confirm: confirmBatch }}/>}
-    <SyncTable key={org?.id ?? ''} groups={groups} discreet={discreet} busy={busy || reviewing !== null} reviewLabel="Revisar envío"
+    <SyncTable key={org?.id ?? ''} groups={groups} discreet={discreet} busy={busy || reviewing !== null} reviewLabel={reviewLabelOf} byGroup
       onReview={items => setReviewing({ items, org: org?.id })} secondary={secondary}
       above={several && <div className="sync-org-picker">
         {shown ? <span className="muted">Comparando con «{org?.name ?? ''}»</span>

@@ -22,8 +22,10 @@ const optionsOf = (rows: SyncRow[], field: 'kind' | 'status', all: string) =>
  * search, filters by kind and state when the group has them, a box per row and one for everything shown, and a bar
  * with how many are ticked and the button that opens the exact review. Nothing is sent from here. In discreet mode
  * it is only seen: no boxes, no buttons. */
-export function SyncTable({ groups, discreet, busy, reviewLabel, onReview, onDismiss, tools, empty, secondary, above }: {
-  groups: SyncGroup[]; discreet: boolean; busy: boolean; reviewLabel: string; onReview: (items: SyncItem[]) => void;
+export function SyncTable({ groups, discreet, busy, reviewLabel, onReview, onDismiss, tools, empty, secondary, above, byGroup = false }: {
+  groups: SyncGroup[]; discreet: boolean; busy: boolean; reviewLabel: string | ((groupId: string) => string); onReview: (items: SyncItem[]) => void;
+  /** Each group is reviewed and sent apart: only what is ticked in the group shown, and changing group clears the ticks. */
+  byGroup?: boolean;
   onDismiss?: (row: SyncRow) => void; tools?: ReactNode; empty: string;
   secondary?: (groupId: string) => SyncSecondary | null; above?: ReactNode;
 }) {
@@ -38,7 +40,7 @@ export function SyncTable({ groups, discreet, busy, reviewLabel, onReview, onDis
   const words = query.trim().toLocaleLowerCase('es');
   const rows = (group?.rows ?? []).filter(r => (!words || `${r.name} ${r.client ?? ''}`.toLocaleLowerCase('es').includes(words))
     && (!kind || r.kind === kind) && (!status || r.status === status));
-  const every = groups.flatMap(g => g.rows);
+  const every = byGroup ? group?.rows ?? [] : groups.flatMap(g => g.rows);
   const chosen = every.filter(r => ticked.has(r.key) && r.selectable && !r.dismissed);
   const can = !discreet;
   const selectable = rows.filter(r => r.selectable && !r.dismissed);
@@ -56,7 +58,8 @@ export function SyncTable({ groups, discreet, busy, reviewLabel, onReview, onDis
     const name = names[r.key]?.trim();
     return r.editableName && name && name !== r.name ? { key: r.key, name } : { key: r.key };
   }));
-  const pick = (id: string) => { setGroupId(id); setKind(ALL); setStatus(ALL); };
+  const pick = (id: string) => { setGroupId(id); setKind(ALL); setStatus(ALL); if (byGroup) setTicked(new Set()); };
+  const label = typeof reviewLabel === 'function' ? reviewLabel(group?.id ?? '') : reviewLabel;
   const other = group ? secondary?.(group.id) ?? null : null;
   const inGroup = chosen.filter(r => group?.rows.some(g => g.key === r.key));
 
@@ -79,7 +82,7 @@ export function SyncTable({ groups, discreet, busy, reviewLabel, onReview, onDis
         {chosen.length > 0 && <button type="button" className="button" onClick={() => setTicked(new Set())}>Quitar marcas</button>}
         {other && <button type="button" className="button" disabled={busy || !inGroup.length}
           onClick={() => { other.onRun(inGroup.map(r => ({ key: r.key }))); setTicked(new Set()); }}>{other.label}{inGroup.length ? ` (${inGroup.length})` : ''}</button>}
-        <ActionButton icon="send" label={`${reviewLabel} (${chosen.length})`} tone="primary" disabled={busy || !chosen.length} onClick={review}/>
+        <ActionButton icon="send" label={`${label} (${chosen.length})`} tone="primary" disabled={busy || !chosen.length} onClick={review}/>
       </div>}
       {rows.length === 0 ? <p className="muted">Nada con esos filtros.</p>
         : <div className="sync-scroll"><table className="data-table sync-table">
