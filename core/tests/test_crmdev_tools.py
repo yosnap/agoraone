@@ -17,7 +17,10 @@ from agora_core.routes_assistant import _logged
 TASKS = [{"id": "t1", "title": "Maquetar", "description": "Portada\npassword: supersecreta123", "status": "TODO", "priority": "MEDIUM",
           "assignee": {"id": "u1", "name": "Ana Pérez", "email": "ana@example.com"}, "project": {"id": "p1", "name": "Web Uno"}, "projectId": "p1"}]
 TICKETS = [{"id": "k1", "title": "No carga", "description": "Ayuda", "status": "OPEN", "priority": "LOW", "category": "BUG",
-            "guestName": "Luis Gómez", "guestEmail": "luis@example.com", "client": {"name": "Cliente Uno"}, "project": {"id": "p1", "name": "Web Uno"}}]
+            "guestName": "Luis Gómez", "guestEmail": "luis@example.com", "client": {"name": "Cliente Uno"}, "project": {"id": "p1", "name": "Web Uno"}},
+           {"id": "k2", "title": "Otro", "status": "OPEN", "client": {"name": "Cliente Dos"}}]
+CLIENTS = [{"id": "c1", "name": "Cliente Uno", "company": "Uno SL", "email": "hola@uno.example", "phone": "600 111 222", "status": "CUSTOMER",
+            "apiToken": "no-debe-salir", "tags": ["x"]}]
 
 
 @pytest.fixture
@@ -40,11 +43,11 @@ def box(tmp_path, monkeypatch):
     orgs = [{"id": "o1", "name": "Primera"}]
     monkeypatch.setattr(crmdev_orgs, "orgs", lambda _c: orgs)
     monkeypatch.setattr(crmdev_orgs, "connection_of", lambda _c, _s, org=None: org)  # the «connection» says its organization
-    rows = {"o1": {"list_tasks": TASKS, "list_tickets": TICKETS}, "o2": {"list_tasks": [{**TASKS[0], "title": "De la segunda"}], "list_tickets": []}}
+    rows = {"o1": {"list_tasks": TASKS, "list_tickets": TICKETS, "list_clients": CLIENTS}, "o2": {"list_tasks": [{**TASKS[0], "title": "De la segunda"}], "list_tickets": []}}
 
     def call(target, tool, args=None, fresh=False):
         sent.append(tool)
-        if tool not in ("list_tasks", "list_tickets"):
+        if tool not in ("list_tasks", "list_tickets", "list_clients"):
             raise AssertionError("Watson nunca escribe en CRMDev")
         return rows[target][tool]
     monkeypatch.setattr(crmdev_api, "call", call)
@@ -140,3 +143,30 @@ def test_a_reply_to_a_ticket_seen_says_who_reads_it(box):
     request = box.drain()[0]["proposal"]["request"]
     assert request == {"kind": "respuesta-ticket", "id": "k1", "list": {}, "content": "Ya está arreglado.", "internal": False, "org": "o1"}
     assert box.sent == ["list_tickets"]  # nothing written
+
+
+def test_organizations_clients_and_tickets_of_a_client(box):
+    box.orgs.append({"id": "o2", "name": "Segunda"})
+    assert run(box, "consultar_crmdev", {"que": "organizaciones"}) == {"organizaciones": ["Primera", "Segunda"], "total": 2}
+    # A client with all of its data (user's decision, 23/11/2026), never a field that looks like a key.
+    client = run(box, "consultar_crmdev", {"que": "clientes", "organizacion": "Primera", "cliente": "uno"})["clientes"][0]
+    assert client == {"id": "c1", "name": "Cliente Uno", "company": "Uno SL", "email": "hola@uno.example", "phone": "600 111 222", "status": "CUSTOMER"}
+    tickets = run(box, "consultar_crmdev", {"que": "tickets", "organizacion": "Primera", "cliente": "dos"})["tickets"]
+    assert [t["id"] for t in tickets] == ["k2"]
+
+
+def test_a_new_client_goes_to_the_organization_the_user_says(box):
+    box.orgs.append({"id": "o2", "name": "Segunda"})
+    # With several organizations and none said, Watson must ask first.
+    assert "pregunta" in run(box, "proponer_cambio_crmdev", {"tipo": "cliente_nuevo", "nombre": "Nuevo"})["error"]
+    assert "error" in run(box, "proponer_cambio_crmdev", {"tipo": "cliente_nuevo", "nombre": "Nuevo", "organizacion": "Tercera"})
+    assert "error" in run(box, "proponer_cambio_crmdev", {"tipo": "cliente_nuevo", "nombre": "Nuevo", "correo": "no-es-correo", "organizacion": "Segunda"})
+    assert "error" in run(box, "proponer_cambio_crmdev", {"tipo": "cliente_nuevo", "organizacion": "Segunda"})
+    answer = run(box, "proponer_cambio_crmdev", {"tipo": "cliente_nuevo", "nombre": "Nuevo", "empresa": "Nuevo SL", "correo": "a@nuevo.example",
+                                                 "telefono": "600 000 000", "organizacion": "segunda"})
+    assert "pulse «Guardar en CRMDev»" in answer["aviso"]
+    proposal = box.drain()[-1]["proposal"]
+    assert proposal["request"] == {"kind": "cliente-nuevo", "org": "o2",
+                                   "values": {"name": "Nuevo", "company": "Nuevo SL", "email": "a@nuevo.example", "phone": "600 000 000"}}
+    assert proposal["orgName"] == "Segunda" and proposal["orgs"] == [{"id": "o1", "name": "Primera"}, {"id": "o2", "name": "Segunda"}]
+    assert "create_client" not in box.sent  # nothing is written: only the card

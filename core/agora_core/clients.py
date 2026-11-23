@@ -50,7 +50,7 @@ PUBLIC_SUFFIXES = {"github.io", "gitlab.io", "vercel.app", "netlify.app", "pages
                    "wordpress.com", "wixsite.com", "squarespace.com", "myshopify.com", "onrender.com", "fly.dev", "surge.sh",
                    "now.sh", "glitch.me", "replit.app", "framer.website", "webflow.io", "carrd.co", "notion.site", "substack.com",
                    "medium.com", "tumblr.com", "weebly.com", "jimdosite.com", "godaddysites.com", "hostingersite.com"}
-PRIVATE_FIELDS = ("email", "phone", "taxId", "notes", "contactEmails")  # never to the screen's lists nor to a model
+PRIVATE_FIELDS = ("email", "phone", "taxId", "notes", "contactEmails")  # never to the screen's lists (Watson: `for_model`)
 LIMITS = {"name": 200, "company": 200, "email": 320, "phone": 40, "taxId": 30, "notes": 4000}
 MAX_DOMAINS = 20
 LOCAL_PHONE_DIGITS = 9  # a number kept without its country prefix (a Spanish one) is matched by its last digits
@@ -561,9 +561,11 @@ MODEL_NOTICE = ("Clientes de Central y de CRMDev (otras aplicaciones del usuario
 
 
 def for_model(entry: dict) -> dict:
-    """What Watson sees of a client: its name, company, domains, websites, active projects, CRMDev's commercial state
-    and whether it is «sin ubicar». Never its address, phone, tax id nor notes."""
-    return {"nombre": entry["name"], "empresa": entry.get("company"), "origen": entry["source"], "dominios": entry["domains"],
+    """What Watson sees of a client: its name, company, contact address, phone, tax id and notes (the user's decision of
+    23/11/2026: Watson knows all its data, for a quote or a new client), domains, websites, active projects, CRMDev's
+    commercial state and whether it is «sin ubicar»."""
+    contact = {k: entry[f] for k, f in (("correo", "email"), ("telefono", "phone"), ("nif", "taxId"), ("notas", "notes")) if entry.get(f)}
+    return {"nombre": entry["name"], "empresa": entry.get("company"), **contact, "origen": entry["source"], "dominios": entry["domains"],
             "webs": [w["url"] for w in entry["websites"]],
             "proyectos_activos": [p["name"] for p in entry["projects"] if p.get("status") in ("ACTIVE", "MAINTENANCE")],
             **({"crmdev": entry.get("crmdevStatus") or "sin estado"} if entry.get("crmdevId") else {}),

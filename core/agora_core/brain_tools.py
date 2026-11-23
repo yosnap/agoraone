@@ -101,7 +101,7 @@ SPECS.append({
 })
 SPECS.append({
     "name": "consultar_clientes",
-    "description": ("Lista los clientes del usuario (los de Central y los que guarda en AgoraOne) con sus proyectos activos y webs, y los servidores con su "
+    "description": ("Lista los clientes del usuario (los de Central, CRMDev y los que guarda en AgoraOne) con sus datos (empresa, correo, teléfono, NIF, notas), proyectos activos y webs, y los servidores con su "
                     "estado (green, amber, red o grey). Úsala cuando pregunte por sus clientes, proyectos o servidores. Solo lectura."),
     "schema": {"type": "object", "properties": {"cliente": {"type": "string", "description": "Nombre o parte del nombre (opcional)."}}},
 })
@@ -633,7 +633,7 @@ class Toolbox:
         clients = [c for c in directory if not query or query in c["name"].casefold() or query in (c.get("company") or "").casefold()]
         self._record({"tool": "clients", "filter": query, "count": len(clients)})
         return json.dumps({
-            # Never a client's address, phone, tax id nor notes: name, company, domains, webs and projects only.
+            # All of a client's data (user's decision, 23/11/2026), with its webs and projects.
             "clientes": [clients_module.for_model(c) for c in clients[:30]],
             **({"fichas_sin_cliente": [card["name"] for card in cards["cards"][:30]]} if cards["cards"] else {}),
             **({"fichas_sin_cliente_reservadas": cards["hidden"]} if cards["hidden"] else {}),
