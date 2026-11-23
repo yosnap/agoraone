@@ -9,7 +9,8 @@ hidden until its signature changes (something changed on either side). Kinds:
   contact address is in none of them. The address is never in the warning: it only says it is missing.
 - `client_changed`: a client in both with different name, company or address (an address only says that it differs).
 - `crmdev_only`: a client of CRMDev that is not in Central (made by hand there): to be created in Central.
-- `project_missing`: a project of Central (not archived) paired with none of CRMDev's.
+- `project_missing`: a project of Central (not archived) paired with none of CRMDev's; `clientInCrmdev` says whether
+  its client is already in CRMDev (else it is sent without client unless the client goes first).
 - `project_changed`: a pair of projects with a different name, a state that does not match or another client.
 Each warning says the organization of CRMDev it is about (`org`, and `orgFrom`: `link`, `chosen` or `client`, see
 `crmdev_orgs_assign`); a client or project still missing with none chosen has `org` None («Sin organización»).
@@ -44,7 +45,7 @@ def active(connection: sqlite3.Connection) -> bool:
 
 
 def _signature(item: dict) -> str:
-    shown = {k: v for k, v in item.items() if k not in ("key", "signature", "dismissed", "org", "orgFrom")}
+    shown = {k: v for k, v in item.items() if k not in ("key", "signature", "dismissed", "org", "orgFrom", "clientInCrmdev")}
     return hashlib.sha256(json.dumps(shown, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -81,7 +82,8 @@ def _project_items(pairs: dict, crmdev_client_of: dict[str, str]) -> list[dict]:
             continue
         if not p.get("crmdevId"):
             items.append({"key": f"project_missing:{p['id']}", "kind": "project_missing", "name": p["name"], "centralId": p["id"],
-                          "client": p.get("client"), "status": p.get("status"), "projectKind": p.get("kind"), "maybe": hinted.get(p["id"])})
+                          "client": p.get("client"), "status": p.get("status"), "projectKind": p.get("kind"), "maybe": hinted.get(p["id"]),
+                          "clientInCrmdev": bool(crmdev_client_of.get(clients.same_name(p["client"]))) if p.get("client") else None})
             continue
         other = theirs.get(p["crmdevId"]) or {}
         changes = []

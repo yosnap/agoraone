@@ -10,7 +10,7 @@ import { CrmdevProposals, proposedFields } from '../assistant/crmdev-proposals';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { withCount } from '../shell/tab-counts';
-import { byOrg } from '../sync/crmdev-from-central';
+import { byOrg, projectDetail, reviewLabelOf, unplacedGroups } from '../sync/crmdev-from-central';
 
 const item = (fields: Partial<PendingItem>): PendingItem => ({ key: 'k', kind: 'client_missing', name: 'Uno', signature: 'a'.repeat(64), dismissed: false, ...fields });
 
@@ -129,4 +129,21 @@ test('responder un ticket obliga a decir quién la ve y Watson lo enseña igual'
   const form = readFileSync(new URL('../crmdev/crmdev-reply-ticket.tsx', import.meta.url), 'utf8');
   assert.match(form, /useState<boolean \| null>\(null\)/);  // no default: a note or an answer to the client, picked each time
   assert.match(form, /disabled=\{!content\.trim\(\) \|\| internal === null\}/);
+});
+
+test('un proyecto cuyo cliente aún no está en CRMDev avisa de enviar antes los clientes', () => {
+  const base = { key: 'project_missing:q1', kind: 'project_missing', name: 'Web', signature: 'x', dismissed: false, client: 'Uno' } as PendingItem;
+  assert.match(projectDetail({ ...base, clientInCrmdev: false }) ?? '', /envía antes los clientes/);
+  assert.equal(projectDetail({ ...base, clientInCrmdev: true }), null);
+  assert.equal(reviewLabelOf('client_missing'), 'Enviar clientes');
+  assert.equal(reviewLabelOf('project_missing'), 'Enviar proyectos');
+});
+
+test('«Sin organización» separa los clientes de los proyectos, cada uno con su envío', () => {
+  const item = (key: string, kind: PendingItem['kind']) => ({ key, kind, name: key, signature: 'x', dismissed: false, org: null }) as PendingItem;
+  const [clients, projects] = unplacedGroups([item('c', 'client_missing'), item('p', 'project_missing'), item('k', 'contact_missing')], 'Uno');
+  assert.deepEqual(clients.items.map(i => i.key), ['c', 'k']);
+  assert.deepEqual(projects.items.map(i => i.key), ['p']);
+  assert.equal(reviewLabelOf(clients.id), 'Enviar clientes');
+  assert.equal(reviewLabelOf(projects.id), 'Enviar proyectos');
 });

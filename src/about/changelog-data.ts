@@ -8,6 +8,7 @@ export const releases: Release[] = [
     {"kind": "feature", "title": "Novedades", "detail": "Ajustes › Novedades reúne todas las versiones publicadas, cada una con sus cambios por tipo."},
     {"kind": "feature", "title": "Registro de la app", "detail": "Ajustes › Registro enseña el arranque y los avisos y errores del núcleo y de la interfaz, con filtros. Archivo local rotativo de 5 MB como mucho, sin claves ni textos de correos o mensajes."},
     {"kind": "feature", "title": "Hoja de ruta", "detail": "Ajustes › Hoja de ruta enseña lo que viene: en curso, planificado y pensado."},
+    {"kind": "improvement", "title": "Clientes y proyectos se envían a CRMDev por separado", "detail": "En CRMDev › Desde Central cada grupo tiene su propio envío: primero los clientes y luego los proyectos. Cada proyecto se enlaza solo con su cliente de CRMDev, también si aún no estaba enlazado pero tiene el mismo nombre. Si su cliente no está en CRMDev, se avisa en la lista y en la revisión, y el proyecto queda sin cliente. Con varias organizaciones, «Sin organización» también se divide en clientes y proyectos."},
   ] },
   {"version": "1.9.0", "date": "2026-11-21", "title": "Watson en la web, Central y CRMDev, bots de Orca y Windows", "summary": "", "changes": [
     {"kind": "feature", "title": "Watson lee las direcciones web que pegues en tu mensaje", "detail": "Las descarga el núcleo, nunca el modelo, y solo abre direcciones públicas: nunca este equipo ni tu red local.", "area": "Watson lee la web, investiga y hace encargos a Hermes"},

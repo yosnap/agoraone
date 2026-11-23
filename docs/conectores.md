@@ -93,7 +93,8 @@ cuál es, así que el usuario pone el nombre a cada una en el bloque «Organizac
 - La caché de 60 s y la espera tras un 429 van por clave, y AgoraOne lee todas las organizaciones cada media hora.
 - Cada cliente y cada proyecto de Central pertenece a una sola organización, y AgoraOne la recuerda. Se decide así:
   la del registro enlazado gana; si no hay enlace, la que eligió el usuario; un proyecto sin ninguna de las dos va
-  con la de su cliente. Lo que no tiene organización sale en «Sin organización», dentro de «Desde Central».
+  con la de su cliente. Lo que no tiene organización sale en «Clientes sin organización» y «Proyectos sin
+  organización», dentro de «Desde Central», cada grupo con su propio envío.
 - Con más de una organización con clave, la sección CRMDev tiene un selector encima de las pestañas. Las lecturas,
   los cambios, «Lanzar en Orca» y los contadores son los de la organización elegida, con su clave. El navegador
   recuerda la elección.
@@ -204,13 +205,16 @@ y Watson.
   contado, en una tarjeta del Resumen. «Descartar» guarda solo la clave del aviso y una huella de lo que decía, y el
   aviso vuelve cuando algo cambia. Las dos listas (esta y «Por crear») usan la misma tabla (`src/sync/`): grupos con
   contador, búsqueda, filtros por tipo y estado, una casilla por fila y una barra con lo marcado y «Revisar».
-- **Enviar a CRMDev** (1.9): en esa lista se marcan los avisos que se quieren enviar y «Revisar envío» enseña cada
+- **Enviar a CRMDev** (1.9): en esa lista se marcan los avisos que se quieren enviar. Desde la 1.10 cada grupo se
+  envía por separado («Enviar clientes», «Enviar proyectos», «Revisar envío» en los demás; al cambiar de grupo se
+  quitan las marcas): primero los clientes y luego los proyectos. La revisión enseña cada
   operación con sus campos antes y después, leída de CRMDev en ese momento, y lo que no puede ir con su motivo. La
   herramienta la elige el núcleo (`crmdev_batch.py`): un cliente que falta va con `create_client` (nombre, correo,
   empresa y teléfono, como «Cliente»); un contacto, con `update_client` del cliente si no tiene correo o con
   `create_client` de una persona de esa empresa; los datos distintos, con `update_client` o `update_project`; un
   proyecto que falta, con `create_project`, con el estado equivalente al de Central, GITHUB si tiene repositorio,
-  su cliente de CRMDev (también el creado en el mismo envío) y una descripción con el repositorio y las webs del
+  su cliente de CRMDev (el enlazado; si no, el de CRMDev con el mismo nombre leído en ese momento, o el creado en el
+  mismo envío; sin ninguno, la lista y la revisión avisan y el proyecto queda sin cliente) y una descripción con el repositorio y las webs del
   cliente, que se escribe solo al crearlo. El NIF y la dirección no van nunca. Un cliente de CRMDev sin Central no se
   envía. Una sola pulsación de «Enviar a CRMDev» manda todo: la revisión sirve una vez y caduca a los 15 minutos.
   Antes de enviar se vuelve a leer CRMDev: lo que cambió no se envía y lo que ya apareció no se crea otra vez. Los
