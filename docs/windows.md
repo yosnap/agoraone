@@ -111,7 +111,7 @@ pnpm dev
 
 **Antivirus Avast o AVG.** Estos antivirus interceptan las conexiones seguras de todo el sistema (definen la variable `SSLKEYLOGFILE`), y el script de comprobación avisa de ello.
 - AgoraOne arranca su núcleo sin esa variable, así que la app no se ve afectada. Las pruebas del núcleo también se protegen solas.
-- Si `uv` falla al descargar con el error `UnknownIssuer`, usa los certificados de Windows: `uv sync --frozen --system-certs`.
+- Ante un antivirus o proxy que inspecciona HTTPS, el núcleo usa los certificados de Windows. Si las herramientas de desarrollo dan `UnknownIssuer`, usa `uv sync --frozen --system-certs` al instalar las dependencias.
 - Si el escudo de archivos bloquea o ralentiza mucho la compilación, añade como excepciones la carpeta del proyecto y `%USERPROFILE%\.cargo`, en lugar de desactivar el antivirus.
 
 **`cargo test` falla con «Acceso denegado» sobre `agoraone.exe`.** `pnpm dev` tiene el programa abierto. Páralo antes de pasar las pruebas del servidor.
