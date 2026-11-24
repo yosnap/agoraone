@@ -73,10 +73,10 @@ pub fn home() -> String {
 pub async fn run_python(python: &Path, source: &str, env: &[(&str, String)], request: &Value, limit: Duration, group: bool) -> Result<Value, RunError> {
     let mut command = Command::new(python);
     command.args(["-X", "utf8", "-I", "-c", source]).env_clear().stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
-    crate::platform::apply_minimal_os_env(&mut command);
     for (key, value) in env {
         command.env(key, value);
     }
+    crate::platform::apply_minimal_os_env(&mut command);
     let (mut child, proc_group) = if group {
         let (child, proc_group) = crate::platform::spawn_in_group(&mut command).map_err(|_| RunError::Spawn)?;
         (child, Some(proc_group))
