@@ -82,7 +82,7 @@ def _run(args: list[str], runner, timeout: float) -> dict:
     if not orca:
         raise OrcaError("Orca no está instalado en este equipo.")
     try:
-        done = runner([orca, *args, "--json"], text=True, capture_output=True, timeout=timeout, env=_env(), stdin=subprocess.DEVNULL,
+        done = runner([orca, *args, "--json"], encoding="utf-8", capture_output=True, timeout=timeout, env=_env(), stdin=subprocess.DEVNULL,
                       cwd=os.path.expanduser("~"))
     except subprocess.TimeoutExpired as error:
         raise OrcaError("Orca tardó demasiado: mira en Orca si se creó el espacio de trabajo antes de repetirlo.") from error

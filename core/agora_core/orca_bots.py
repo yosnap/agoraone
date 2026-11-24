@@ -41,7 +41,7 @@ def version(runner=subprocess.run) -> tuple[int, int, int] | None:
     if not orca:
         return None
     try:
-        done = runner([orca, "--version"], text=True, capture_output=True, timeout=15, env=orca_launch._env(), stdin=subprocess.DEVNULL)
+        done = runner([orca, "--version"], encoding="utf-8", capture_output=True, timeout=15, env=orca_launch._env(), stdin=subprocess.DEVNULL)
     except (OSError, ValueError, subprocess.SubprocessError):
         return None
     found = VERSION.search(done.stdout or "")

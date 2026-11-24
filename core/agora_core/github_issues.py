@@ -90,7 +90,7 @@ def visibility(repo: str, runner=subprocess.run) -> str | None:
         return None
     try:
         done = runner([gh, "repo", "view", repo, "--json", "visibility", "--jq", ".visibility"],
-                      text=True, capture_output=True, timeout=20, env=_env())
+                      encoding="utf-8", capture_output=True, timeout=20, env=_env())
     except (OSError, subprocess.SubprocessError):
         return None
     value = (done.stdout or "").strip().lower()
@@ -106,7 +106,7 @@ def create(issue: dict, runner=subprocess.run) -> str:
         raise IssueError("Para crear issues hace falta GitHub CLI (gh) con tu cuenta: instálalo y ejecuta «gh auth login».")
     try:
         done = runner([gh, "issue", "create", f"--repo={issue['repo']}", f"--title={issue['title']}", "--body-file", "-"],
-                      input=issue["body"], text=True, capture_output=True, timeout=60, env=_env())
+                      input=issue["body"], encoding="utf-8", capture_output=True, timeout=60, env=_env())
     except subprocess.TimeoutExpired as error:
         raise IssueError(f"GitHub tardó demasiado: puede que se haya creado; mira las issues de {issue['repo']} antes de repetirla.") from error
     except (OSError, subprocess.SubprocessError) as error:
