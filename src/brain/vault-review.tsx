@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { getVaultReview, type ReviewNote, type VaultReview } from '../api/core';
 import { LoadError, Loading } from '../ui/load-state';
 import { keystoreName } from '../ui/platform';
@@ -24,24 +24,28 @@ export function VaultReviewPanel({ discreet, onRead, onClose, onAsk }: { discree
   const [found, setFound] = useState<VaultReview | null>(null);
   const [error, setError] = useState('');
   const asked = useRef(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => { dialog.current?.showModal(); }, []);
+  const close = () => dialog.current?.close();
+  const read = (key: string) => { close(); onRead(key); };
   if (!asked.current) { asked.current = true; void getVaultReview(discreet).then(setFound).catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo revisar.')); }
-  return <div className="first-run" role="dialog" aria-modal="true" aria-labelledby="review-title">
+  return <dialog ref={dialog} className="vault-review" role="dialog" aria-modal="true" aria-labelledby="review-title" onClose={onClose}>
     <div className="first-run-panel review-panel">
-      <div className="first-run-head"><span className="eyebrow">CEREBRO · REVISIÓN</span><button type="button" className="button" onClick={onClose}>Cerrar</button></div>
+      <div className="first-run-head"><span className="eyebrow">CEREBRO · REVISIÓN</span><button type="button" className="button" onClick={close}>Cerrar</button></div>
       <h1 id="review-title">Revisar el vault</h1>
       <p className="muted">Lo que hace difícil encontrar las cosas, sacado del índice del cerebro. No cambia nada: Watson puede proponer cómo reordenarlo y tú apruebas cada cambio.</p>
-      {onAsk && <div className="inbox-actions"><button type="button" className="button primary" onClick={() => onAsk(ASK)}>Pedir a Watson que lo ordene</button></div>}
+      {onAsk && <div className="inbox-actions"><button type="button" className="button primary" onClick={() => { close(); onAsk(ASK); }}>Pedir a Watson que lo ordene</button></div>}
       {error && <LoadError message={error}/>}
       {!found && !error ? <Loading label="Revisando el vault" lines={4}/> : found && <div className="review-grid">
         <p className="review-total">{found.notes} notas en {found.folders} carpetas.</p>
         <Section title="Notas con contraseñas o claves" count={found.secretCount} why={`Solo el título: lo que parece una clave ya está oculto y nunca va a un modelo. Esas cosas estarían mejor en el ${keystoreName} o en un gestor de contraseñas.`}>
-          <Notes notes={found.secrets} onRead={onRead}/></Section>
+          <Notes notes={found.secrets} onRead={read}/></Section>
         <Section title="Títulos repetidos" count={found.duplicateCount} why="Varias notas con el mismo título: difíciles de distinguir y de enlazar.">
           <ul className="review-notes">{found.duplicates.map(group => <li key={group.title}><strong>{group.title}</strong> <small>· {group.notes.map(n => n.folder || '(raíz)').join(' · ')}</small></li>)}</ul></Section>
         <Section title="Notas huérfanas" count={found.orphanCount} why="Ninguna otra nota las enlaza y ellas no enlazan a ninguna: quedan aisladas.">
-          <Notes notes={found.orphans} onRead={onRead}/></Section>
-        <Section title="Notas sueltas en la raíz" count={found.rootCount} why="Fuera de cualquier carpeta."><Notes notes={found.root} onRead={onRead}/></Section>
-        <Section title="Notas casi vacías" count={found.tinyCount} why="Menos de una línea de texto."><Notes notes={found.tiny} onRead={onRead}/></Section>
+          <Notes notes={found.orphans} onRead={read}/></Section>
+        <Section title="Notas sueltas en la raíz" count={found.rootCount} why="Fuera de cualquier carpeta."><Notes notes={found.root} onRead={read}/></Section>
+        <Section title="Notas casi vacías" count={found.tinyCount} why="Menos de una línea de texto."><Notes notes={found.tiny} onRead={read}/></Section>
         <Section title="Carpetas con una sola nota" count={found.lonelyCount} why="Quizá podrían unirse a su carpeta madre o a otra parecida.">
           <ul className="review-notes">{found.lonelyFolders.map(folder => <li key={folder}><small>{folder}</small></li>)}</ul></Section>
         <Section title="Carpetas demasiado llenas" count={found.crowdedFolders.length} why="Más de 150 notas en el mismo nivel: conviene dividirlas.">
@@ -50,5 +54,5 @@ export function VaultReviewPanel({ discreet, onRead, onClose, onAsk }: { discree
           <ul className="review-notes">{found.deepFolders.map(folder => <li key={folder}><small>{folder}</small></li>)}</ul></Section>
       </div>}
     </div>
-  </div>;
+  </dialog>;
 }
