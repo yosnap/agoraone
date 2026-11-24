@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from . import zernio
+from . import tls, zernio
 from .db import DB_NAME, connect, now, transaction
 
 BUDGET = 40.0  # seconds of one reading: «Leer ahora» answers within the backend's time limit
@@ -249,7 +249,7 @@ def sync(connection: sqlite3.Connection, key: str | None, client: httpx.Client |
     if not _LOCK.acquire(blocking=False):
         return {"status": "busy", "added": 0, "read": 0, "pending": 0, "skipped": 0, "accounts": 0, "error": None}
     own = client is None
-    client = client or httpx.Client()
+    client = client or httpx.Client(verify=tls.client_context())
     try:
         result = _sync(connection, key, client, seconds)
         _remember(connection, result)

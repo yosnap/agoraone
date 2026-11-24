@@ -10,6 +10,8 @@ from datetime import date, timedelta
 
 import httpx
 
+from . import tls
+
 API = "https://thirdparty.qonto.com/v2"
 LOGIN_SETTING = "qonto.login"
 SECRET_ACCOUNT = "qonto-secret-key"
@@ -45,7 +47,8 @@ def save_login(connection: sqlite3.Connection, value: str | None) -> None:
 
 
 def _get(path: str, auth: str, params: dict | None = None, http=None) -> dict:
-    get = http or (lambda url, headers, params: httpx.get(url, headers=headers, params=params, timeout=TIMEOUT, trust_env=False))
+    get = http or (lambda url, headers, params: httpx.get(url, headers=headers, params=params, timeout=TIMEOUT,
+                                                         trust_env=False, verify=tls.client_context()))
     try:
         response = get(f"{API}{path}", {"Authorization": auth, "Accept": "application/json"}, params or {})
     except httpx.HTTPError as error:
@@ -179,7 +182,7 @@ MAX_PDF = 15 * 1024 * 1024
 
 def _fetch(url: str) -> bytes:
     """The file, read in pieces and cut off past MAX_PDF; at most three redirects, and only to https."""
-    with httpx.Client(timeout=TIMEOUT, follow_redirects=False, trust_env=False) as client:
+    with httpx.Client(verify=tls.client_context(), timeout=TIMEOUT, follow_redirects=False, trust_env=False) as client:
         for _ in range(4):
             with client.stream("GET", url) as response:
                 if response.is_redirect:

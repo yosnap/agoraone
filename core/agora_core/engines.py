@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from . import system_words
+from . import system_words, tls
 
 MODELS = {"sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5", "fable": "claude-fable-5-2", "haiku": "claude-haiku-5-5"}
 DEFAULT_MODEL = "sonnet"
@@ -150,6 +150,13 @@ class ClaudeCodeEngine:
             raise EngineError(f"Claude Code no está disponible ({type(error).__name__}).") from error
 
 
+def _anthropic_client(key: str | None):
+    import anthropic
+
+    http_client = anthropic.DefaultAsyncHttpxClient(verify=tls.client_context())
+    return anthropic.AsyncAnthropic(api_key=key, max_retries=1, http_client=http_client)
+
+
 class AnthropicApiEngine:
     name = "anthropic-api"
 
@@ -172,7 +179,7 @@ class AnthropicApiEngine:
         messages = list(turn.messages)
         container = None
         try:
-            async with anthropic.AsyncAnthropic(api_key=key, max_retries=1) as client:
+            async with _anthropic_client(key) as client:
                 for _ in range((toolbox.max_calls + 1 + turn.searches) if toolbox else 1):
                     async with client.messages.stream(
                         model=MODELS.get(turn.model, MODELS[DEFAULT_MODEL]), max_tokens=8192 if turn.searches else 4096,
@@ -238,7 +245,9 @@ class CompatibleEngine:
                  for s in _specs(mail=False, names=turn.tools)] if toolbox else []
         messages = [{"role": "system", "content": turn.system}, *turn.messages]
         try:
-            async with httpx.AsyncClient(timeout=120, follow_redirects=False, trust_env=False) as client:
+            async with httpx.AsyncClient(
+                verify=tls.client_context(), timeout=120, follow_redirects=False, trust_env=False,
+            ) as client:
                 for _ in range((toolbox.max_calls + 1) if toolbox else 1):
                     body = {"model": self.model, "stream": True, "messages": messages, **({"tools": tools} if tools else {})}
                     calls: dict[int, dict] = {}
@@ -371,10 +380,8 @@ async def ask_with_image(engine, system: str, text: str, jpeg: bytes, model: str
     data = base64.b64encode(jpeg).decode()
     content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}}, {"type": "text", "text": text}]
     if engine.name == "anthropic-api":
-        import anthropic
-
         key = engine.secrets.get(SECRET_ACCOUNTS["anthropic"])
-        async with anthropic.AsyncAnthropic(api_key=key, max_retries=1) as client:
+        async with _anthropic_client(key) as client:
             answer = await client.messages.create(model=MODELS[model], max_tokens=1500, system=system, messages=[{"role": "user", "content": content}])
         return "".join(getattr(block, "text", "") for block in answer.content)
     from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock, query

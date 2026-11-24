@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from . import tls
 from .db import transaction
 
 API = "https://api.resend.com"
@@ -119,7 +120,7 @@ def sync(connection: sqlite3.Connection, account: sqlite3.Row, key: str, store, 
     returns how many. Raises InboundError with the reason. An email whose original cannot be downloaded now is
     not kept (no empty entry): it is tried again next time."""
     own = client is None
-    client = client or httpx.Client()
+    client = client or httpx.Client(verify=tls.client_context())
     began = time.monotonic()
     try:
         added = 0
@@ -150,7 +151,7 @@ def fetch_raw(connection: sqlite3.Connection, account_id: int, uid: int, key: st
     if row is None:
         raise InboundError("error", "Ese correo ya no está en Resend.")
     own = client is None
-    client = client or httpx.Client()
+    client = client or httpx.Client(verify=tls.client_context())
     try:
         got = _download(client, _get(client, f"/emails/receiving/{row['resend_id']}", key), limit)
     finally:

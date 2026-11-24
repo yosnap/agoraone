@@ -10,6 +10,8 @@ from decimal import ROUND_HALF_UP, Decimal
 
 import httpx
 
+from . import tls
+
 API = "https://api.frankfurter.dev/v1"
 TIMEOUT = 4  # per request: with BUDGET, one load waits at most about BUDGET + TIMEOUT seconds
 BUDGET = 5.0  # seconds of network per load: the rest wait for the next one
@@ -48,7 +50,8 @@ def eur_rate(connection: sqlite3.Connection, day: str, currency: str, http=None)
 
 
 def _ask(http, day: str, currency: str) -> tuple[float, dict]:
-    get = http or (lambda url, params: httpx.get(url, params=params, timeout=TIMEOUT, trust_env=False))
+    get = http or (lambda url, params: httpx.get(url, params=params, timeout=TIMEOUT, trust_env=False,
+                                                verify=tls.client_context()))
     try:
         response = get(f"{API}/{day}", {"from": currency, "to": "EUR"})
         data = response.json() if response.status_code == 200 else {}

@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from . import tls
 from .db import transaction
 
 TIMEOUT = httpx.Timeout(15, connect=5)  # per operation (connect, each read)
@@ -199,7 +200,8 @@ def said(answer_text: str, key: str) -> str:
 @contextmanager
 def session(spec: WebApiSpec, seconds: float):
     """One connection for several requests, with a deadline for all of them."""
-    with httpx.Client(transport=spec.transport(), timeout=TIMEOUT, follow_redirects=False) as client:
+    with httpx.Client(verify=tls.client_context(), transport=spec.transport(), timeout=TIMEOUT,
+                      follow_redirects=False) as client:
         yield client, time.monotonic() + seconds
 
 

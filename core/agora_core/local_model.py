@@ -8,9 +8,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from . import tls
+
 MAX_REPLY = 2 * 1024 * 1024
 KNOWN = [{"name": "LM Studio", "url": "http://127.0.0.1:1234/v1"}, {"name": "Ollama", "url": "http://127.0.0.1:11434/v1"}]
-_DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+_DIRECT = urllib.request.build_opener(
+    urllib.request.ProxyHandler({}), urllib.request.HTTPSHandler(context=tls.client_context()),
+)
 
 
 class LocalModelError(RuntimeError):

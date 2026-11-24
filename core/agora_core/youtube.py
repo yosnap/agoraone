@@ -7,6 +7,8 @@ import re
 
 import httpx
 
+from . import tls
+
 SEARCH = "https://www.youtube.com/results"
 AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
 VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
@@ -127,6 +129,7 @@ def _page(query: str) -> str:
     try:
         # No redirects: only youtube.com's own results page is read (a consent page elsewhere is not followed).
         answer = httpx.get(SEARCH, params={"search_query": query}, timeout=15, follow_redirects=False,
+                           verify=tls.client_context(),
                            headers={"User-Agent": AGENT, "Accept-Language": "es-ES,es;q=0.9"})
     except httpx.HTTPError as error:
         raise YouTubeError("YouTube no responde. ¿Hay conexión a internet?") from error

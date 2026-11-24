@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import music_cover
 from . import system_words
+from . import tls
 
 PLAYERS = {"music": {"name": "Apple Music", "process": "Music", "app": "Music", "bundle": "com.apple.Music"},
            "spotify": {"name": "Spotify", "process": "Spotify", "app": "Spotify", "bundle": "com.spotify.client"}}
@@ -238,8 +239,9 @@ def catalog_song(query: str, fetch=None, timeout: float = 5) -> dict | None:
     place in its album and the album address that opens it in Music. None when there is nothing or no answer."""
     import httpx
 
+    get = fetch or (lambda url, **kwargs: httpx.get(url, verify=tls.client_context(), **kwargs))
     try:
-        answer = (fetch or httpx.get)(CATALOG, params={"term": query, "entity": "song", "country": "es", "limit": 15}, timeout=timeout)
+        answer = get(CATALOG, params={"term": query, "entity": "song", "country": "es", "limit": 15}, timeout=timeout)
         results = answer.json().get("results", []) if answer.status_code == 200 else []
     except Exception:  # noqa: BLE001 - an outside service: no answer is «not found»
         return None
@@ -254,8 +256,9 @@ def catalog_album(query: str, fetch=None, timeout: float = 5) -> dict | None:
     """The first album of the public Apple Music catalogue for these words: its name, artist and address in Music."""
     import httpx
 
+    get = fetch or (lambda url, **kwargs: httpx.get(url, verify=tls.client_context(), **kwargs))
     try:
-        answer = (fetch or httpx.get)(CATALOG, params={"term": query, "entity": "album", "country": "es", "limit": 15}, timeout=timeout)
+        answer = get(CATALOG, params={"term": query, "entity": "album", "country": "es", "limit": 15}, timeout=timeout)
         results = answer.json().get("results", []) if answer.status_code == 200 else []
     except Exception:  # noqa: BLE001 - an outside service: no answer is «not found»
         return None
@@ -413,7 +416,7 @@ def cover(player: str, key: str) -> tuple[bytes, str] | None:
         url = _osascript(ARTWORK_SPOTIFY)
         if url.startswith("https://i.scdn.co/image/"):
             try:
-                answer = httpx.get(url, timeout=8, follow_redirects=False)
+                answer = httpx.get(url, timeout=8, follow_redirects=False, verify=tls.client_context())
             except httpx.HTTPError:
                 return None  # a passing failure: not remembered, the next look tries again
             if answer.status_code == 200:

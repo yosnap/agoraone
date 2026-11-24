@@ -17,7 +17,7 @@ from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
 
-from . import system_words
+from . import system_words, tls
 from .mail_parse import html_to_text, tidy
 
 MAX_URLS = 3
@@ -211,7 +211,8 @@ async def _download(url: str, client: httpx.AsyncClient) -> Page:
 
 
 def _client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=False, trust_env=False, headers=_HEADERS)
+    return httpx.AsyncClient(verify=tls.client_context(), timeout=TIMEOUT, follow_redirects=False,
+                             trust_env=False, headers=_HEADERS)
 
 
 async def fetch(url: str, client: httpx.AsyncClient | None = None) -> Page:
