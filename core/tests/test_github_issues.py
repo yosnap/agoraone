@@ -122,3 +122,15 @@ def test_se_crea_con_gh_y_argumentos(monkeypatch):
     monkeypatch.setattr(github_issues, "_gh", lambda: None)
     with pytest.raises(github_issues.IssueError, match="gh auth login"):
         github_issues.create(issue, runner)
+
+
+def test_el_cuerpo_de_la_issue_viaja_en_utf8_aunque_el_sistema_use_cp1252(monkeypatch):
+    monkeypatch.setattr(github_issues, "_gh", lambda: "/bin/gh")
+    issue = {"repo": "acme/web", "title": "Revisión", "body": "Revisión del menú ✓"}
+
+    def runner(command, **options):
+        stdin = options["input"].encode(options.get("encoding", "cp1252"))
+        assert stdin == issue["body"].encode("utf-8")
+        return subprocess.CompletedProcess(command, 0, "https://github.com/acme/web/issues/7\n", "")
+
+    assert github_issues.create(issue, runner) == "https://github.com/acme/web/issues/7"
