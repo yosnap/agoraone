@@ -1,10 +1,15 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+from threading import Event
 
 import pytest
+from fastapi.concurrency import run_in_threadpool
 from fastapi.testclient import TestClient
 
-from agora_core import assistant
+from agora_core import assistant, routes_assistant
 from agora_core.app import SECRET_HEADER, create_app
+from agora_core.db import DB_NAME, connect
 from agora_core.engines import CompatibleEngine, EngineError, Turn, choose
 from agora_core.keystore import MemoryStore
 from agora_core.settings import load_settings
@@ -97,6 +102,94 @@ def test_conversaciones_aisladas_por_propietario(setup):
     assert client.get(f"/assistant/conversations/{conversation['id']}", headers=other).status_code == 404
     assert client.post(f"/assistant/conversations/{conversation['id']}/messages", json={"message": "hola"}, headers=other).status_code == 404
     assert client.get("/assistant/conversations", headers=other).json() == {"conversations": []}
+
+
+def ruta_y_revision(client, headers):
+    created = client.post("/assistant/conversations", headers=headers).json()
+    path = f"/assistant/conversations/{created['id']}"
+    revision = client.get(path, headers=headers).json()["created_at"]
+    return path, {"confirm": True, "created_at": revision}
+
+
+def test_eliminar_una_conversacion_borra_sus_mensajes_y_conserva_las_fuentes(setup, tmp_path):
+    client, headers, engine, _ = setup
+    path, confirmation = ruta_y_revision(client, headers)
+    other, _ = ruta_y_revision(client, headers)
+    assert client.post(f"{path}/messages", json={"message": "Ponencia sobre agentes"}, headers=headers).status_code == 200
+    engine.fail = True
+    assert client.post(f"{path}/messages", json={"message": "Otra pregunta"}, headers=headers).status_code == 200
+    conversation_id, other_id = int(path.rsplit("/", 1)[1]), int(other.rsplit("/", 1)[1])
+    with closing(connect(tmp_path / "data" / DB_NAME)) as db:
+        assert db.execute("SELECT count(*) FROM message WHERE conversation_id = ?", (conversation_id,)).fetchone()[0] == 3
+        notes = db.execute("SELECT id, title FROM item WHERE class = 'note' ORDER BY id").fetchall()
+        db.execute("INSERT INTO action_log (occurred_at, actor, action, outcome) VALUES (?, 'watson', 'buscar', 'done')",
+                   (confirmation["created_at"],))
+        logged = db.execute("SELECT count(*) FROM action_log").fetchone()[0]
+        response = client.request("DELETE", path, json=confirmation, headers=headers)
+        assert response.status_code == 200 and response.json() == {"deleted": True}
+        assert not db.execute("SELECT 1 FROM message WHERE conversation_id = ?", (conversation_id,)).fetchall()
+        assert db.execute("SELECT id, title FROM item WHERE class = 'note' ORDER BY id").fetchall() == notes
+        assert db.execute("SELECT count(*) FROM action_log").fetchone()[0] == logged
+    assert client.get(path, headers=headers).status_code == 404
+    assert [row["id"] for row in client.get("/assistant/conversations", headers=headers).json()["conversations"]] == [other_id]
+    assert client.request("DELETE", path, json=confirmation, headers=headers).status_code == 404
+
+
+def test_eliminar_exige_confirmacion_y_solo_admite_conversaciones_del_propietario(setup, tmp_path):
+    client, headers, _, _ = setup
+    path, confirmation = ruta_y_revision(client, headers)
+    other = {**headers, "x-agora-owner": OTHER}
+    assert client.request("DELETE", path, json=confirmation, headers=other).status_code == 404
+    assert client.request("DELETE", path, json=confirmation, headers={"x-agora-owner": OWNER}).status_code == 401
+    assert client.request("DELETE", path, json=confirmation, headers={SECRET_HEADER: SECRET}).status_code == 404
+    for body in (None, {}, {**confirmation, "confirm": False}, {**confirmation, "confirm": "true"}):
+        assert client.request("DELETE", path, json=body, headers=headers).status_code == 422
+    assert client.request("DELETE", "/assistant/conversations/9223372036854775808", json=confirmation, headers=headers).status_code == 422
+    with closing(connect(tmp_path / "data" / DB_NAME)) as db:
+        note_id = db.execute("SELECT max(id) FROM item WHERE class = 'note'").fetchone()[0]
+        assert client.request("DELETE", f"/assistant/conversations/{note_id}", json=confirmation, headers=headers).status_code == 404
+        assert db.execute("SELECT 1 FROM item WHERE id = ?", (note_id,)).fetchone()
+    assert client.get(path, headers=headers).status_code == 200
+
+
+def test_un_menu_antiguo_no_borra_una_conversacion_creada_despues_con_el_mismo_id(setup, monkeypatch):
+    client, headers, _, _ = setup
+    monkeypatch.setattr(routes_assistant, "now", lambda: "2026-11-25T09:00:00Z")
+    preserved, _ = ruta_y_revision(client, headers)
+    old, confirmation = ruta_y_revision(client, headers)
+    listed = client.get("/assistant/conversations", headers=headers).json()["conversations"]
+    assert {row["created_at"] for row in listed} == {confirmation["created_at"]}
+    assert client.request("DELETE", old, json=confirmation, headers=headers).status_code == 200
+    monkeypatch.setattr(routes_assistant, "now", lambda: "2026-11-25T09:00:01Z")
+    replacement, new_confirmation = ruta_y_revision(client, headers)
+    assert replacement == old and new_confirmation != confirmation
+    assert client.request("DELETE", old, json=confirmation, headers=headers).status_code == 409
+    assert client.get(replacement, headers=headers).status_code == 200
+    assert client.get(preserved, headers=headers).status_code == 200
+
+
+def test_no_se_borra_una_conversacion_mientras_watson_responde(setup, monkeypatch):
+    client, headers, engine, _ = setup
+    started, resume = Event(), Event()
+
+    async def stream(_turn):
+        started.set()
+        assert await run_in_threadpool(resume.wait, 10)
+        yield "Respuesta de prueba."
+
+    monkeypatch.setattr(engine, "stream", stream)
+    path, confirmation = ruta_y_revision(client, headers)
+    other, other_confirmation = ruta_y_revision(client, headers)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        answer = pool.submit(client.post, f"{path}/messages", json={"message": "Pregunta"}, headers=headers)
+        try:
+            assert started.wait(10)
+            assert client.request("DELETE", path, json=confirmation, headers=headers).status_code == 409
+            assert client.request("DELETE", other, json=other_confirmation, headers=headers).status_code == 200
+        finally:
+            resume.set()
+        assert events(answer.result(timeout=10).text)[-1][0] == "done"
+    assert client.request("DELETE", path, json=confirmation, headers=headers).status_code == 200
 
 
 def test_fallo_del_motor_guarda_la_pregunta_sin_respuesta(setup):
@@ -216,6 +309,26 @@ class ProposingEngine(FakeEngine):
         yield None
         for part in self.reply:
             yield part
+
+
+def test_eliminar_invalida_solo_las_propuestas_pendientes_de_esa_conversacion(setup, monkeypatch):
+    client, headers, engine, _ = setup
+    proposal_engine = ProposingEngine({"nombre": "Facturas", "accion": "factura", "remitente": "facturas@proveedor.com"})
+    monkeypatch.setattr(engine, "stream", proposal_engine.stream)
+    path, confirmation = ruta_y_revision(client, headers)
+    other, _ = ruta_y_revision(client, headers)
+
+    def propose(at):
+        result = client.post(f"{at}/messages", json={"message": "Propón una regla"}, headers=headers)
+        return next(data["id"] for kind, data in events(result.text) if kind == "tool" and data["tool"] == "rule_proposal")
+
+    accepted, doomed, preserved = propose(path), propose(path), propose(other)
+    made = client.post(f"/assistant/proposals/{accepted}/accept", headers=headers)
+    assert made.status_code == 201
+    assert client.request("DELETE", path, json=confirmation, headers=headers).status_code == 200
+    assert client.post(f"/assistant/proposals/{doomed}/accept", headers=headers).status_code == 404
+    assert [rule["id"] for rule in client.get("/mail/rules", headers=headers).json()["rules"]] == [made.json()["id"]]
+    assert client.post(f"/assistant/proposals/{preserved}/accept", headers=headers).status_code == 201
 
 
 def test_watson_propone_una_regla_y_solo_se_crea_al_aceptarla(tmp_path):
