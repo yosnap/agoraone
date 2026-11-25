@@ -414,10 +414,13 @@ def assistant_router(
         def create_one(connection):
             persona = assistant.load_settings(connection)["persona"]
             stamp = now()
-            row = connection.execute(
-                "INSERT INTO conversation (owner, persona, created_at, updated_at) VALUES (?, ?, ?, ?) RETURNING id",
-                (owner, persona, stamp, stamp),
-            ).fetchone()
+            with transaction(connection):  # never the number of a deleted conversation: an old menu cannot reach it
+                row = connection.execute(
+                    "INSERT INTO conversation (id, owner, persona, created_at, updated_at) VALUES ("
+                    "max(coalesce((SELECT max(id) FROM conversation), 0),"
+                    " coalesce((SELECT max(conversation_id) FROM conversation_backup), 0)) + 1, ?, ?, ?, ?) RETURNING id",
+                    (owner, persona, stamp, stamp),
+                ).fetchone()
             return {"id": row["id"], "persona": persona}
         return await db(create_one)
 
@@ -450,13 +453,20 @@ def assistant_router(
 
         def remove(connection):
             with transaction(connection):
-                deleted = connection.execute(
-                    "DELETE FROM conversation WHERE id = ? AND owner = ? AND created_at = ?",
+                found = connection.execute(
+                    "SELECT * FROM conversation WHERE id = ? AND owner = ? AND created_at = ?",
                     (conversation_id, owner, body.created_at),
-                ).rowcount
-                if deleted:
-                    return 200
-                return 409 if owned(connection, conversation_id, owner) else 404
+                ).fetchone()
+                if found is None:
+                    return 409 if owned(connection, conversation_id, owner) else 404
+                messages = [dict(row) for row in connection.execute(
+                    "SELECT * FROM message WHERE conversation_id = ? ORDER BY id", (conversation_id,))]
+                connection.execute(  # the copy first, in the same transaction as the delete
+                    "INSERT INTO conversation_backup (conversation_id, owner, data, created_at) VALUES (?, ?, ?, ?)",
+                    (conversation_id, owner, json.dumps({"conversation": dict(found), "messages": messages}, ensure_ascii=False), now()),
+                )
+                connection.execute("DELETE FROM conversation WHERE id = ?", (conversation_id,))
+                return 200
 
         deleting.add(key)
         try:

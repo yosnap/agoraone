@@ -27,7 +27,7 @@ En la lista de conversaciones del Asistente, o en «Conversaciones» junto al gr
 
 Si Watson está respondiendo o investigando en esa conversación, espera a que termine o usa «Detener» antes de borrarla. Si está abierta, al eliminarla verás el Asistente listo para empezar otra conversación.
 
-Se eliminan del historial local los mensajes y las referencias de la conversación. El Asistente retira sus tarjetas e invalida las confirmaciones pendientes que gestiona el núcleo para ese chat. Las notas del vault, los eventos, los correos, los encargos ya enviados, los datos de Hermes y las credenciales se conservan. Las copias cifradas generales mantienen su retención habitual y el registro de acciones se conserva.
+Se eliminan del historial local los mensajes y las referencias de la conversación. El Asistente retira sus tarjetas e invalida las confirmaciones pendientes que gestiona el núcleo para ese chat. Las notas del vault, los eventos, los correos, los encargos ya enviados, los datos de Hermes y las credenciales se conservan. Antes de borrar, el núcleo guarda una copia de la conversación y sus mensajes en los datos de AgoraOne, en la misma operación que el borrado: si la copia no se puede hacer, no se borra nada. El número de una conversación borrada no se da a otra, así que un menú antiguo nunca borra una conversación nueva. Las copias cifradas generales mantienen su retención habitual y el registro de acciones se conserva.
 
 ## Presupuestos
 

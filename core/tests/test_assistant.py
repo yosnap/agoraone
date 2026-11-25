@@ -152,6 +152,21 @@ def test_eliminar_exige_confirmacion_y_solo_admite_conversaciones_del_propietari
     assert client.get(path, headers=headers).status_code == 200
 
 
+def test_eliminar_guarda_antes_una_copia_de_la_conversacion_y_sus_mensajes(setup, tmp_path):
+    client, headers, _, _ = setup
+    path, confirmation = ruta_y_revision(client, headers)
+    assert client.post(f"{path}/messages", json={"message": "Ponencia sobre agentes"}, headers=headers).status_code == 200
+    conversation_id = int(path.rsplit("/", 1)[1])
+    with closing(connect(tmp_path / "data" / DB_NAME)) as db:
+        before = [dict(row) for row in db.execute("SELECT * FROM message WHERE conversation_id = ? ORDER BY id", (conversation_id,))]
+        assert client.request("DELETE", path, json=confirmation, headers=headers).status_code == 200
+        rows = db.execute("SELECT conversation_id, owner, data FROM conversation_backup").fetchall()
+    assert [(row["conversation_id"], row["owner"]) for row in rows] == [(conversation_id, OWNER)]
+    saved = json.loads(rows[0]["data"])
+    assert saved["conversation"]["id"] == conversation_id and saved["conversation"]["created_at"] == confirmation["created_at"]
+    assert saved["messages"] == before and [m["role"] for m in before] == ["user", "assistant"]
+
+
 def test_un_menu_antiguo_no_borra_una_conversacion_creada_despues_con_el_mismo_id(setup, monkeypatch):
     client, headers, _, _ = setup
     monkeypatch.setattr(routes_assistant, "now", lambda: "2026-11-25T09:00:00Z")
@@ -162,8 +177,9 @@ def test_un_menu_antiguo_no_borra_una_conversacion_creada_despues_con_el_mismo_i
     assert client.request("DELETE", old, json=confirmation, headers=headers).status_code == 200
     monkeypatch.setattr(routes_assistant, "now", lambda: "2026-11-25T09:00:01Z")
     replacement, new_confirmation = ruta_y_revision(client, headers)
-    assert replacement == old and new_confirmation != confirmation
-    assert client.request("DELETE", old, json=confirmation, headers=headers).status_code == 409
+    assert replacement != old, "el número de una conversación borrada no se da a otra"
+    assert client.request("DELETE", old, json=confirmation, headers=headers).status_code == 404
+    assert client.request("DELETE", replacement, json=confirmation, headers=headers).status_code == 409
     assert client.get(replacement, headers=headers).status_code == 200
     assert client.get(preserved, headers=headers).status_code == 200
 
