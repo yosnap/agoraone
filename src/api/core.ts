@@ -83,11 +83,13 @@ export const putKey = (kind: 'anthropic' | 'compatible', key: string | null) => 
 
 export type Source = { n: number; title: string; folder: string; source: string; ref: string };
 export type AssistantMessage = { role: 'user' | 'assistant'; content: string; sources: Source[]; engine: string | null; model: string | null; failed: boolean; created_at: string };
-export type ConversationSummary = { id: number; title: string; persona: string; updated_at: string };
+export type ConversationSummary = { id: number; title: string; persona: string; created_at: string; updated_at: string };
 export const listAssistantConversations = () => core<{ conversations: ConversationSummary[] }>('/assistant/conversations');
 export const createAssistantConversation = () => core<{ id: number; persona: string }>('/assistant/conversations', {});
 export const getAssistantConversation = (id: number) =>
   core<ConversationSummary & { messages: AssistantMessage[] }>(`/assistant/conversations/${id}`);
+export const deleteAssistantConversation = (id: number, createdAt: string) =>
+  core<{ deleted: true }>(`/assistant/conversations/${id}`, { confirm: true, created_at: createdAt }, 'DELETE');
 
 export type Stage = 'recuerda' | 'web' | 'piensa' | 'responde';
 /** A mail rule Watson proposed: created only with the user's «Crear regla» (or a plain «sí»), exactly as shown. */
