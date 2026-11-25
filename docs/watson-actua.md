@@ -21,6 +21,14 @@ Además, si se le pide una **ficha de cliente**, Watson reúne lo que sabe por C
 la propone como nota en «Clientes/<Nombre>». La ficha tiene siempre las mismas secciones: resumen, contacto,
 proyectos, correos, reuniones, tareas y próximos pasos.
 
+## Eliminar una conversación del Asistente
+
+En la lista de conversaciones del Asistente, o en «Conversaciones» junto al grafo del Cerebro, haz clic derecho en una fila o pulsa «⋯» y elige «Eliminar conversación». El botón aparece al pasar el ratón o al enfocar la fila y permanece visible en pantallas táctiles. Revisa el título de la conversación, o su fecha en modo discreto, y pulsa «Eliminar de verdad» o «Cancelar».
+
+Si Watson está respondiendo o investigando en esa conversación, espera a que termine o usa «Detener» antes de borrarla. Si está abierta, al eliminarla verás el Asistente listo para empezar otra conversación.
+
+Se eliminan del historial local los mensajes y las referencias de la conversación. El Asistente retira sus tarjetas e invalida las confirmaciones pendientes que gestiona el núcleo para ese chat. Las notas del vault, los eventos, los correos, los encargos ya enviados, los datos de Hermes y las credenciales se conservan. Las copias cifradas generales mantienen su retención habitual y el registro de acciones se conserva.
+
 ## Presupuestos
 
 El módulo Presupuestos (entrada «Presupuestos», justo antes de «Central») lee los presupuestos de Central por su
