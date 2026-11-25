@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { sendMeetingPiece, startMeeting, stopMeeting, type Level, type MeetingClass } from '../api/core';
+import { withRetries } from './piece-retry';
 
 /** The meeting being recorded, kept outside any view so it goes on while the user moves between sections;
  * the left rail shows it all the time. Your microphone is recorded here and sent to the core every few
@@ -74,8 +75,9 @@ export async function startRecording(title: string, confidentiality: Level, syst
   recorder.ondataavailable = event => {
     if (!event.data.size || failed) return;
     const piece = event.data;
-    queue = queue.then(() => sendMeetingPiece(id, piece)).catch(failure => {
-      // The core stopped it (left alone too long, too long overall) or cannot keep it: stop here too.
+    // A lost connection is tried again; only when the core says it stopped the meeting (left alone too long,
+    // too long overall), cannot keep it, or never answers after the retries does it stop here too.
+    queue = queue.then(() => withRetries(() => sendMeetingPiece(id, piece))).catch(failure => {
       failed = true;
       set({ error: message(failure, 'No se pudo guardar el audio.') });
       if (media?.state === 'recording') media.stop();
