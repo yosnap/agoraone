@@ -17,13 +17,15 @@ import { answeringIn, startTurn, stopTurn, forgetTurn, useLiveTurns } from './li
 import { CleanupProposals, useCleanupProposals } from './cleanup-proposals';
 import { ReorgProposals, useReorgProposals } from './reorg-proposals';
 import { speak, stopSpeaking, useSpeaking, useVoiceNotice } from './speech';
+import { ConversationList } from './conversation-list';
+import { ApiError } from '../api/client';
 
 // The conversation last open (its number only, in this browser), opened again when coming back to the chat.
 const LAST = 'agora-watson-conversation';
 const readLast = () => { try { const n = Number(localStorage.getItem(LAST)); return Number.isInteger(n) && n > 0 ? n : null; } catch { return null; } };
 const writeLast = (id: number | null) => { try { if (id === null) localStorage.removeItem(LAST); else localStorage.setItem(LAST, String(id)); } catch { /* not remembered this time */ } };
 import {
-  createAssistantConversation, getAssistantConversation, getAssistantSettings, getEngines, getPersonas, listAssistantConversations,
+  createAssistantConversation, deleteAssistantConversation, getAssistantConversation, getAssistantSettings, getEngines, getPersonas, listAssistantConversations,
   type AssistantMessage, type ConversationSummary, type Persona, type Source, type Stage,
 } from '../api/core';
 import { Markdown } from '../ui/markdown';
@@ -56,6 +58,10 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
   const [listError, setListError] = useState('');
   const [current, setCurrent] = useState<number | null>(null);
+  const selected = useRef<number | null>(null);
+  const openRequest = useRef(0);
+  const listRequest = useRef(0);
+  const newConversation = useRef<HTMLButtonElement>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -80,27 +86,50 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   // or opening the conversation again shows the proposals' cards again), and when it took a finished answer.
   const taken = useRef(new Map<number, number>());
   const finishedAt = useRef(new Map<number, number>());
-  const refreshList = useCallback(() => listAssistantConversations().then(data => { setConversations(data.conversations); setListError(''); })
-    .catch(failure => setListError(failure instanceof Error ? failure.message : 'No se pudieron leer las conversaciones.')), []);
+  const refreshList = useCallback(async () => {
+    const request = ++listRequest.current;
+    try {
+      const data = await listAssistantConversations();
+      if (request === listRequest.current) { setConversations(data.conversations); setListError(''); }
+    } catch (failure) {
+      if (request === listRequest.current) setListError(failure instanceof Error ? failure.message : 'No se pudieron leer las conversaciones.');
+    }
+  }, []);
   useEffect(() => {
     void refreshList();
     Promise.all([getPersonas(), getAssistantSettings()]).then(([list, settings]) => setPersona(list.personas.find(item => item.id === settings.persona) ?? null)).catch(() => undefined);
     getEngines().then(setEngine).catch(() => setEngine({ active: null, model: '' }));
   }, [refreshList]);
+  const select = (id: number | null) => {
+    selected.current = id;
+    setCurrent(id);
+    writeLast(id);
+    return ++openRequest.current;
+  };
+  const clearProposals = () => {
+    proposals.clear(); notes.clear(); events.clear(); quotes.clear(); issues.clear(); orcas.clear(); crmdevs.clear();
+    hermes.clear(); researches.clear(); chatReplies.clear(); cleanups.clear(); reorgs.clear();
+  };
   const open = useCallback(async (id: number) => {
     stopSpeaking();
-    setCurrent(id); setError(''); setLoading(true); proposals.clear(); issues.clear(); orcas.clear(); crmdevs.clear(); hermes.clear(); researches.clear(); chatReplies.clear(); writeLast(id);
+    const request = select(id);
+    setError(''); setLoading(true); clearProposals();
     taken.current.delete(id);
     if (embedded) setListOpen(false);
     const asked = performance.now();
     try {
       const found = (await getAssistantConversation(id)).messages;
       // An answer that finished while this was on its way already brought the newer messages.
-      if ((finishedAt.current.get(id) ?? 0) > asked) return;
+      if (request !== openRequest.current || (finishedAt.current.get(id) ?? 0) > asked) return;
       setMessages(found); onSources?.(lastSources(found));
     }
-    catch (failure) { setMessages([]); setCurrent(null); writeLast(null); setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.'); }
-    finally { setLoading(false); }
+    catch (failure) {
+      if (request === openRequest.current) {
+        select(null); setMessages([]); setLoading(false);
+        setError(failure instanceof Error ? failure.message : 'No se pudo abrir la conversación.');
+      }
+    }
+    finally { if (request === openRequest.current) setLoading(false); }
   }, []);
   // Coming back to the chat opens the last conversation; only «Nueva» starts another. Leaving stops Watson's voice.
   useEffect(() => {
@@ -167,7 +196,7 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
     // One answer at a time, so two voices never mix: Watson finishes the other conversation first.
     if (answeringIn() !== null) { setError(`${persona?.name ?? 'Watson'} aún está respondiendo en otra conversación: espera a que termine o detenla allí.`); return false; }
     try {
-      if (id === null) { id = (await createAssistantConversation()).id; setCurrent(id); writeLast(id); setMessages([]); }
+      if (id === null) { id = (await createAssistantConversation()).id; select(id); setLoading(false); setMessages([]); }
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'No se pudo responder.');
       return false;
@@ -195,8 +224,10 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
     const quick = waiting && isYes(text) ? waiting : quickCommand(text);
     if (quick) {
       const at = new Date().toISOString();
+      const request = openRequest.current;
       setMessages(current => [...current, { role: 'user', content: text, sources: [], engine: null, model: null, failed: false, created_at: at }]);
       void quick().then(result => {
+        if (request !== openRequest.current) return;
         pendingQuick.current = result.confirm ?? null;
         speak(result.reply, spokenTurn.current);
         setMessages(current => [...current, { role: 'assistant', content: result.reply, sources: [], engine: 'quick', model: null, failed: result.failed, created_at: new Date().toISOString() }]);
@@ -207,7 +238,28 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   };
   // Enter sends; Shift+Enter is a new line (and Enter while composing an accent or IME text does nothing).
   const keys = (event: KeyboardEvent<HTMLTextAreaElement>) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); submit(); } };
-  const fresh = () => { stopSpeaking(); writeLast(null); setCurrent(null); setMessages([]); setError(''); proposals.clear(); issues.clear(); orcas.clear(); crmdevs.clear(); hermes.clear(); researches.clear(); chatReplies.clear(); onSources?.([]); if (embedded) setListOpen(false); };
+  const clearConversation = () => {
+    stopSpeaking(); select(null); setMessages([]); setLoading(false); setError(''); clearProposals(); onSources?.([]);
+  };
+  const fresh = () => { clearConversation(); if (embedded) setListOpen(false); };
+  const removeConversation = async (item: ConversationSummary) => {
+    try {
+      await deleteAssistantConversation(item.id, item.created_at);
+    } catch (failure) {
+      if (failure instanceof ApiError && (failure.status === 404 || failure.data?.code === 'stale_conversation')) void refreshList();
+      throw failure;
+    }
+    forgetTurn(item.id);
+    taken.current.delete(item.id);
+    finishedAt.current.delete(item.id);
+    if (selected.current === item.id) {
+      clearConversation();
+      setDraft('');
+      pendingQuick.current = null;
+    } else if (readLast() === item.id) writeLast(null);
+    setConversations(items => items?.filter(row => row.id !== item.id || row.created_at !== item.created_at) ?? null);
+    void refreshList();
+  };
   const sourceList = (sources: Source[]) => sources.length > 0 && <div className="sources">
     <span className="muted">Fuentes</span>
     <ol>{sources.map(source => <li key={source.n} value={source.n}><button onClick={() => onRead({ vault: source.source, note: source.ref })}>{source.title}</button><small>{source.folder || 'Raíz'}</small></li>)}</ol>
@@ -222,12 +274,11 @@ export function AssistantView({ question = null, onQuestionTaken, onRead, onShow
   };
   return <section ref={startWith} className={`assistant${embedded ? ' embedded' : ''}`} aria-labelledby="assistant-title">
     {listOpen && <aside className="assistant-list" aria-label="Conversaciones">
-      <button className="button primary" onClick={fresh}>Conversación nueva</button>
-      {listError ? <LoadError message={listError} onRetry={refreshList}/> : !conversations ? <Loading label="Cargando conversaciones" lines={4}/>
-        : !conversations.length ? <p className="muted">Aún no hay conversaciones.</p>
-        : <ul>{conversations.map(item => <li key={item.id}><button aria-current={item.id === current ? 'true' : undefined} onClick={() => void open(item.id)}>
-          <strong>{item.title}</strong><small>{new Date(item.updated_at).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' })}</small>
-        </button></li>)}</ul>}
+      <button ref={newConversation} className="button primary" onClick={fresh}>Conversación nueva</button>
+      {listError && <LoadError message={listError} onRetry={refreshList}/>}
+      {conversations ? <ConversationList items={conversations} current={current} discreet={discreet} answering={answeringIn()}
+        onOpen={id => void open(id)} onDelete={removeConversation} onDeletedFocus={() => newConversation.current?.focus()}/>
+        : !listError && <Loading label="Cargando conversaciones" lines={4}/>}
     </aside>}
     <div className="assistant-main">
       <header className="assistant-head">

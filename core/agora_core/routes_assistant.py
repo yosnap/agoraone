@@ -6,14 +6,15 @@ import re
 import sqlite3
 import sys
 import time
+from collections import Counter
 from collections.abc import Callable
 from contextlib import aclosing, contextmanager
 from typing import Literal
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Path, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from . import assistant, hermes_tasks, research, web_page
 from .brain_tools import Toolbox
@@ -68,6 +69,12 @@ class MessageIn(BaseModel):
     delegated: DelegatedIn | None = None  # a Hermes profile's answer the user passes on: data, never instructions
     research: ResearchIn | None = None  # the user pressed «Investigar»: a web research turn, apart from this conversation
     botReply: str | None = Field(default=None, pattern=r"^msg_[A-Za-z0-9_-]{4,72}$")  # a bot's answer the user passes on, read from AgoraOne
+
+
+class ConversationDeletion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm: StrictBool
+    created_at: str = Field(min_length=1, max_length=40)
 
 
 class KeyIn(BaseModel):
@@ -143,6 +150,23 @@ def _logged(event: dict) -> tuple[str, str]:
 ANSWERING: dict = {"now": 0, "since": None}
 
 
+class AssistantStream(StreamingResponse):
+    """Release the turn even if the request ends before the first streamed event."""
+
+    def __init__(self, events, release: Callable[[], None]):
+        super().__init__(events, media_type="text/event-stream")
+        self.release = release
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            try:
+                await self.body_iterator.aclose()
+            finally:
+                self.release()
+
+
 async def _until(stream, deadline: float | None):
     """The engine's stream, with a time limit on each wait for it (not on what the caller does in between)."""
     while True:
@@ -167,8 +191,10 @@ def assistant_router(
     engines: Callable[[dict, object], list[Engine]] = default_engines,
 ) -> APIRouter:
     router = APIRouter(prefix="/assistant")
-    # Rules Watson proposed, waiting for the user's «Crear regla»: one-time ids, for one hour, for their owner.
+    # Proposals awaiting confirmation: one-time ids, for one hour, for their owner and conversation.
     proposals: dict[str, dict] = {}
+    active_turns: Counter[tuple[str, int]] = Counter()
+    deleting: set[tuple[str, int]] = set()
 
     @contextmanager
     def database():
@@ -206,6 +232,13 @@ def assistant_router(
         return connection.execute(
             "SELECT * FROM conversation WHERE id = ? AND owner = ?", (conversation_id, owner)
         ).fetchone()
+
+    def pending_proposal(proposal_id: str, owner: str | None):
+        found = proposals.get(proposal_id)
+        if (found is None or found["owner"] != owner or found["expires"] < time.time()
+                or (owner, found["conversation_id"]) in deleting):
+            return None
+        return found
 
     @router.get("/personas")
     async def list_personas():
@@ -246,7 +279,7 @@ def assistant_router(
         if not owner:
             return JSONResponse({"error": "Falta el propietario."}, status_code=400)
         rows = await db(lambda c: c.execute(
-            "SELECT id, title, persona, updated_at FROM conversation WHERE owner = ? ORDER BY updated_at DESC LIMIT 100", (owner,)
+            "SELECT id, title, persona, created_at, updated_at FROM conversation WHERE owner = ? ORDER BY updated_at DESC LIMIT 100", (owner,)
         ).fetchall())
         return {"conversations": [dict(row) for row in rows]}
 
@@ -255,8 +288,8 @@ def assistant_router(
         """Creates the very rule Watson proposed, once, for the owner it was proposed to."""
         from . import mail_rules
         owner = owner_of(request)
-        found = proposals.get(proposal_id)
-        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time():
+        found = pending_proposal(proposal_id, owner)
+        if found is None:
             return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
         if "rule" not in found:  # a note is created by the vault's own route, never here
             return JSONResponse({"error": "Esa propuesta no es una regla."}, status_code=409)
@@ -281,23 +314,23 @@ def assistant_router(
         permission; the «Central» module may be off."""
         from . import central, modules
         owner = owner_of(request)
-        found = proposals.get(proposal_id)
-        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "quote" not in found:
+        found = pending_proposal(proposal_id, owner)
+        if found is None or "quote" not in found:
             return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
-        proposals.pop(proposal_id, None)  # taken before any wait: two confirmations at once create one quote
         def quotes_on():
             with database() as connection:
                 return modules.state(connection)["presupuestos"]
         if not await run_in_threadpool(quotes_on):
-            proposals.setdefault(proposal_id, found)  # not spent: it may be created once the module is on again
             return JSONResponse({"error": "El módulo Presupuestos está apagado."}, status_code=404)
         def connected():
             with database() as connection:
                 return central.source(connection, secrets)
         origin = await run_in_threadpool(connected)
         if origin is None:
-            proposals.setdefault(proposal_id, found)  # not spent: it may be created once Central is connected
             return JSONResponse({"error": "Central no está conectado: conéctalo con su dirección y su clave."}, status_code=422)
+        if pending_proposal(proposal_id, owner) is not found:
+            return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
+        proposals.pop(proposal_id)  # once, after the checks and before the external write
         def work():
             return central.create_quote(origin, found["quote"])
         try:
@@ -312,8 +345,8 @@ def assistant_router(
         Sends nothing: a WhatsApp only leaves from `/chat/send`, with the seal of the preview the user saw."""
         from . import brain_chat, chat_inbox
         owner = owner_of(request)
-        found = proposals.get(proposal_id)
-        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "chatReply" not in found:
+        found = pending_proposal(proposal_id, owner)
+        if found is None or "chatReply" not in found:
             return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
         proposals.pop(proposal_id, None)  # taken before any wait: a double click opens it once
         reply = found["chatReply"]
@@ -334,8 +367,8 @@ def assistant_router(
         """Creates on GitHub, with the user's own `gh`, the very issue Watson proposed, once, for its owner."""
         from . import github_issues
         owner = owner_of(request)
-        found = proposals.get(proposal_id)
-        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "issue" not in found:
+        found = pending_proposal(proposal_id, owner)
+        if found is None or "issue" not in found:
             return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
         proposals.pop(proposal_id, None)  # taken before any wait: a double click creates one issue
         try:
@@ -350,8 +383,8 @@ def assistant_router(
         from . import mail, mail_cleanup
         from .routes_mail import microsoft_login
         owner = owner_of(request)
-        found = proposals.get(proposal_id)
-        if not owner or found is None or found["owner"] != owner or found["expires"] < time.time() or "cleanup" not in found:
+        found = pending_proposal(proposal_id, owner)
+        if found is None or "cleanup" not in found:
             return JSONResponse({"error": "Esa propuesta ya no está disponible: pídesela otra vez a Watson."}, status_code=404)
         chosen = [i for i in body.ids if i in set(found["cleanup"]["ids"])]
         if not chosen:
@@ -381,10 +414,13 @@ def assistant_router(
         def create_one(connection):
             persona = assistant.load_settings(connection)["persona"]
             stamp = now()
-            row = connection.execute(
-                "INSERT INTO conversation (owner, persona, created_at, updated_at) VALUES (?, ?, ?, ?) RETURNING id",
-                (owner, persona, stamp, stamp),
-            ).fetchone()
+            with transaction(connection):  # never the number of a deleted conversation: an old menu cannot reach it
+                row = connection.execute(
+                    "INSERT INTO conversation (id, owner, persona, created_at, updated_at) VALUES ("
+                    "max(coalesce((SELECT max(id) FROM conversation), 0),"
+                    " coalesce((SELECT max(conversation_id) FROM conversation_backup), 0)) + 1, ?, ?, ?, ?) RETURNING id",
+                    (owner, persona, stamp, stamp),
+                ).fetchone()
             return {"id": row["id"], "persona": persona}
         return await db(create_one)
 
@@ -404,14 +440,61 @@ def assistant_router(
         found = await db(load)
         return found or JSONResponse({"error": "Conversación no encontrada."}, status_code=404)
 
+    @router.delete("/conversations/{conversation_id}")
+    async def delete_conversation(body: ConversationDeletion, request: Request, conversation_id: int = Path(gt=0, le=2**63 - 1)):
+        owner = owner_of(request)
+        if owner is None:
+            return JSONResponse({"error": "Conversación no encontrada."}, status_code=404)
+        if not body.confirm:
+            return JSONResponse({"error": "Confirma que quieres eliminar la conversación."}, status_code=422)
+        key = (owner, conversation_id)
+        if key in active_turns or key in deleting:
+            return JSONResponse({"error": "La conversación está ocupada. Espera a que termine y vuelve a intentarlo."}, status_code=409)
+
+        def remove(connection):
+            with transaction(connection):
+                found = connection.execute(
+                    "SELECT * FROM conversation WHERE id = ? AND owner = ? AND created_at = ?",
+                    (conversation_id, owner, body.created_at),
+                ).fetchone()
+                if found is None:
+                    return 409 if owned(connection, conversation_id, owner) else 404
+                messages = [dict(row) for row in connection.execute(
+                    "SELECT * FROM message WHERE conversation_id = ? ORDER BY id", (conversation_id,))]
+                connection.execute(  # the copy first, in the same transaction as the delete
+                    "INSERT INTO conversation_backup (conversation_id, owner, data, created_at) VALUES (?, ?, ?, ?)",
+                    (conversation_id, owner, json.dumps({"conversation": dict(found), "messages": messages}, ensure_ascii=False), now()),
+                )
+                connection.execute("DELETE FROM conversation WHERE id = ?", (conversation_id,))
+                return 200
+
+        deleting.add(key)
+        try:
+            status = await db(remove)
+            if status == 404:
+                return JSONResponse({"error": "Conversación no encontrada."}, status_code=404)
+            if status == 409:
+                return JSONResponse({"error": "La conversación cambió: vuelve a abrir la lista.", "code": "stale_conversation"}, status_code=409)
+            for proposal_id, proposal in list(proposals.items()):
+                if (proposal["owner"], proposal["conversation_id"]) == key:
+                    proposals.pop(proposal_id)
+            return {"deleted": True}
+        finally:
+            deleting.remove(key)
+
     @router.post("/conversations/{conversation_id}/messages")
     async def send(conversation_id: int, body: MessageIn, request: Request):
         owner = owner_of(request)
+        if owner is None:
+            return JSONResponse({"error": "Conversación no encontrada."}, status_code=404)
+        key = (owner, conversation_id)
+        if key in deleting:
+            return JSONResponse({"error": "Se está eliminando la conversación."}, status_code=409)
         if body.research:  # what is kept and searched is the question itself, whatever the screen sent
             body.message, body.delegated = f"{research.ASKED}{body.research.question}", None
 
         def prepare(connection):
-            conversation = owned(connection, conversation_id, owner or "")
+            conversation = owned(connection, conversation_id, owner)
             if not conversation:
                 return None
             history = [dict(row) for row in connection.execute(
@@ -420,8 +503,19 @@ def assistant_router(
                 (conversation_id, HISTORY),
             )]
             return dict(conversation), assistant.load_settings(connection), research.as_data(history)
-        prepared = await db(prepare)
+        def release():
+            active_turns[key] -= 1
+            if not active_turns[key]:
+                del active_turns[key]
+
+        active_turns[key] += 1
+        try:
+            prepared = await db(prepare)
+        except BaseException:
+            release()
+            raise
         if prepared is None:
+            release()
             return JSONResponse({"error": "Conversación no encontrada."}, status_code=404)
         conversation, current, history = prepared
 
@@ -461,6 +555,7 @@ def assistant_router(
                 # The first notes come with the question; the tools number the next ones after them.
                 toolbox = Toolbox(database, embedder, cache)
                 toolbox.proposals, toolbox.owner, toolbox.secrets = proposals, owner, secrets
+                toolbox.conversation_id = conversation_id
                 caps = research.limits(current) if body.research else None
                 if caps:  # only the web, normal notes and proponer_nota: never mail, chats, clients or the history
                     toolbox.only, toolbox.pages_left, toolbox.max_calls = research.TOOLS, caps["pages"], caps["pages"] + 6
@@ -567,6 +662,6 @@ def assistant_router(
                     except Exception as error:  # noqa: BLE001
                         print(f"AgoraOne núcleo: no se pudo guardar la pregunta ({error}).", file=sys.stderr)
 
-        return StreamingResponse(answer(), media_type="text/event-stream")
+        return AssistantStream(answer(), release)
 
     return router

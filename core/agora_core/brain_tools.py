@@ -259,9 +259,10 @@ class Toolbox:
         self.listed: list[dict] = []
         self.events: list[dict] = []
         self.history: list[dict] = []  # every event of this answer, for the action log
-        # Rules proposed to the user, waiting for their confirmation: shared by the router, keyed by a one-time id.
+        # Proposals awaiting confirmation, shared by the router and keyed by a one-time id.
         self.proposals: dict[str, dict] = {}
         self.owner: str | None = None
+        self.conversation_id: int | None = None
         self.meetings_seen: set[int] = set()  # a meeting can only be read once it was found
         self.chats_seen: set[int] = set()  # a reply is only proposed to a conversation consultar_bandeja showed
         self.crmdev_seen: set[tuple[str, str, str]] = set()  # (kind, id, organization) consultar_crmdev showed: only those get proposals
@@ -452,7 +453,7 @@ class Toolbox:
         for key in [k for k, v in self.proposals.items() if v["expires"] < now]:
             del self.proposals[key]
         proposal_id = random.token_urlsafe(12)
-        self.proposals[proposal_id] = {"owner": owner, "issue": issue, "expires": now + PROPOSAL_SECONDS}
+        self.proposals[proposal_id] = {"owner": owner, "conversation_id": self.conversation_id, "issue": issue, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "issue_proposal", "id": proposal_id, "issue": issue})
         return json.dumps({"propuesta": {"repositorio": issue["repo"], "titulo": issue["title"]},
                            "estado": "En la pantalla del usuario, esperando «Crear la issue». No está creada."}, ensure_ascii=False)
@@ -501,7 +502,7 @@ class Toolbox:
         for key in [k for k, v in self.proposals.items() if v["expires"] < now]:
             del self.proposals[key]
         proposal_id = random.token_urlsafe(12)
-        self.proposals[proposal_id] = {"owner": self.owner, "chatReply": reply, "expires": now + PROPOSAL_SECONDS}
+        self.proposals[proposal_id] = {"owner": self.owner, "conversation_id": self.conversation_id, "chatReply": reply, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "chat_reply_proposal", "id": proposal_id, "reply": reply})
         return json.dumps({"propuesta": {"contacto": reply["contact"], "caracteres": len(reply["text"])},
                            "estado": "En la pantalla del usuario, esperando que la revise. No se ha enviado nada."}, ensure_ascii=False)
@@ -692,7 +693,7 @@ class Toolbox:
         for key in [k for k, v in self.proposals.items() if v["expires"] < now]:
             del self.proposals[key]
         proposal_id = random.token_urlsafe(12)
-        self.proposals[proposal_id] = {"owner": self.owner, "rule": clean, "expires": now + PROPOSAL_SECONDS}
+        self.proposals[proposal_id] = {"owner": self.owner, "conversation_id": self.conversation_id, "rule": clean, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "rule_proposal", "id": proposal_id, "rule": clean})
         return json.dumps({"propuesta": clean, "estado": "En la pantalla del usuario, esperando su confirmación. No está creada."}, ensure_ascii=False)
 
@@ -718,7 +719,7 @@ class Toolbox:
             del self.proposals[key]
         proposal_id = random.token_urlsafe(12)
         note = {"title": title, "folder": folder, "content": text}
-        self.proposals[proposal_id] = {"owner": self.owner, "note": note, "expires": now + PROPOSAL_SECONDS}
+        self.proposals[proposal_id] = {"owner": self.owner, "conversation_id": self.conversation_id, "note": note, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "note_proposal", "id": proposal_id, "note": note})
         return json.dumps({"propuesta": {"titulo": title, "carpeta": folder or "(raíz)"}, "estado": "En la pantalla del usuario, esperando que pulse «Crear la nota». No está creada."}, ensure_ascii=False)
 
@@ -771,7 +772,7 @@ class Toolbox:
         for key in [k for k, v in self.proposals.items() if v["expires"] < now]:
             del self.proposals[key]
         proposal_id = random.token_urlsafe(12)
-        self.proposals[proposal_id] = {"owner": self.owner, "reorg": moves, "expires": now + PROPOSAL_SECONDS}
+        self.proposals[proposal_id] = {"owner": self.owner, "conversation_id": self.conversation_id, "reorg": moves, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "reorg_proposal", "id": proposal_id, "summary": summary, "moves": moves})
         return json.dumps({"propuesta": {"cambios": len(moves), "renombrados": sum(1 for m in moves if m["toTitle"])},
                            "rechazados": rejected,
@@ -800,7 +801,7 @@ class Toolbox:
                  "calendar": str(args.get("calendario") or "")[:100] or None}
         now = time.time()
         proposal_id = random.token_urlsafe(12)
-        self.proposals[proposal_id] = {"owner": self.owner, "event": event, "expires": now + PROPOSAL_SECONDS}
+        self.proposals[proposal_id] = {"owner": self.owner, "conversation_id": self.conversation_id, "event": event, "expires": now + PROPOSAL_SECONDS}
         self._record({"tool": "event_proposal", "id": proposal_id, "event": event})
         return json.dumps({"propuesta": {"titulo": title, "inicio": event["start"]}, "estado": "En la pantalla del usuario, esperando «Crear el evento». No está creado."}, ensure_ascii=False)
 
@@ -858,7 +859,7 @@ class Toolbox:
         if args.get("validez_dias"):
             quote["validDays"] = max(1, min(365, int(args["validez_dias"])))
         proposal_id = random.token_urlsafe(12)
-        self.proposals[proposal_id] = {"owner": self.owner, "quote": quote, "expires": time.time() + PROPOSAL_SECONDS}
+        self.proposals[proposal_id] = {"owner": self.owner, "conversation_id": self.conversation_id, "quote": quote, "expires": time.time() + PROPOSAL_SECONDS}
         self._record({"tool": "quote_proposal", "id": proposal_id, "quote": quote})
         return json.dumps({"propuesta": {"cliente": quote["client"], "titulo": title, "partidas": len(items)}, "estado": "En la pantalla del usuario, esperando «Crear en Central». No está creado."}, ensure_ascii=False)
 
@@ -885,7 +886,8 @@ class Toolbox:
             return json.dumps({"error": "Ningún correo de la bandeja de entrada encaja con eso."}, ensure_ascii=False)
         shown = [m for m in found if m["level"] == "normal"]  # what may reach the model: only normal mail
         proposal_id = random.token_urlsafe(12)
-        self.proposals[proposal_id] = {"owner": self.owner, "cleanup": {"action": action, "ids": [m["id"] for m in found]}, "expires": time.time() + PROPOSAL_SECONDS}
+        self.proposals[proposal_id] = {"owner": self.owner, "conversation_id": self.conversation_id,
+                                       "cleanup": {"action": action, "ids": [m["id"] for m in found]}, "expires": time.time() + PROPOSAL_SECONDS}
         self._record({"tool": "cleanup_proposal", "id": proposal_id, "action": action, "messages": found})
         return json.dumps({"propuesta": {"accion": args.get("accion"), "correos": len(found), "ejemplos": [{"de": m["from"], "asunto": m["subject"]} for m in shown[:5]]},
                            "estado": "En la pantalla del usuario, esperando que apruebe la lista. No se ha movido nada."}, ensure_ascii=False)
