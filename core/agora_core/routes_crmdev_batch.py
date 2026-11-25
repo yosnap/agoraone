@@ -24,7 +24,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from . import clients, crmdev_api, crmdev_batch, crmdev_orgs, crmdev_sync, modules, project_links, web_api
+from . import central, central_api, clients, crmdev_api, crmdev_batch, crmdev_orgs, crmdev_sync, modules, project_links, web_api
 from .confirmed_change import Pending, PendingChanges, Refused, Sentences
 from .db import DB_NAME, connect, now, transaction
 from .routes_crmdev_write import DOUBT_SECONDS, NOT_CONNECTED, OFF, STATUS_CODES, owner_of
@@ -38,6 +38,7 @@ BUSY = "Hay otro envío a CRMDev en marcha: espera a que termine."
 MOVED = "La conexión con CRMDev ha cambiado desde la revisión: vuelve a revisar el envío."
 NOTHING = "Nada de lo marcado puede enviarse ahora."
 NO_ORG = "Esa organización ya no está: elige otra."
+NO_CENTRAL = "No se pudo leer Central ahora y no se envía con datos viejos:"
 ORG = r"^o[1-9][0-9]{0,3}$"
 TOKEN_SECONDS = 900
 LOG = logging.getLogger(__name__)
@@ -95,6 +96,14 @@ def crmdev_batch_router(settings: Settings, secrets) -> APIRouter:
         while len(doubtful) > 500:
             doubtful.pop(next(iter(doubtful)))
 
+    def fresh(connection: sqlite3.Connection) -> None:
+        """Reads Central now: what goes to CRMDev is what Central has at this moment, never an older copy."""
+        if not modules.state(connection)["central"]:
+            return
+        origin = central_api.connection_of(connection, secrets)
+        if origin is not None:
+            central.refresh(connection, origin)
+
     @router.post("/crmdev/batch/preview")
     async def preview(body: BatchIn):
         if any(not re.fullmatch(KEY, key) for key in [*body.keys, *body.anyway]):
@@ -109,11 +118,14 @@ def crmdev_batch_router(settings: Settings, secrets) -> APIRouter:
 
         def plan():
             with database() as connection:
+                fresh(connection)
                 return crmdev_batch.plan(connection, target, body.keys, is_doubtful, set(body.anyway), body.org)
         try:
             batch = await run_in_threadpool(plan)
         except web_api.WebApiError as error:
             return failed(error)
+        except central.CentralError as error:
+            return problem(502, f"{NO_CENTRAL} {error}", "central")
         if not batch.operations:
             return problem(422, NOTHING, "nothing", skipped=batch.skipped)
         return {"token": pending.preview(batch, owner_of(target)), **batch.public()}

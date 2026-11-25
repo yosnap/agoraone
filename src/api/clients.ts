@@ -14,7 +14,7 @@ export type DirectoryClient = {
   source: ClientSource; localId: number | null; centralId: string | null; aliases: string[];
   sources: ClientOrigin[]; crmdevId: string | null; crmdevStatus: string | null;
   /** Fields CRMDev has otherwise than Central (an address only says that it differs: its value is not in the list). */
-  differences: { field: string; label: string; crmdev?: string }[];
+  differences: { field: string; label: string; crmdev?: string | null; missing?: boolean }[];
   /** Kept only in AgoraOne while a CRM is connected, and linked to none: to be created or linked in one. */
   unplaced: boolean;
   /** Linked with a client that CRM no longer returns: «sin ubicar» again. */
@@ -87,7 +87,7 @@ export const setProjectLink = (centralId: string, crmdevId: string, state: 'link
 /** «Pendiente en CRMDev»: what Central has and CRMDev lacks or has otherwise. Only read; never an address nor a phone
  * (a different address only says that it differs). A dismissed warning comes back when what it says changes. */
 export type PendingKind = 'client_missing' | 'contact_missing' | 'client_changed' | 'crmdev_only' | 'project_missing' | 'project_changed';
-export type PendingChange = { field: string; label: string; central?: string | null; crmdev?: string | null };
+export type PendingChange = { field: string; label: string; central?: string | null; crmdev?: string | null; missing?: boolean };
 export type PendingItem = {
   key: string; kind: PendingKind; name: string; signature: string; dismissed: boolean;
   centralId?: string; crmdevId?: string | null; localId?: number | null;

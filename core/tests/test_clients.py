@@ -83,8 +83,9 @@ def test_sin_central_un_cliente_propio_casa_por_correo_dominio_telefono_y_nif(db
     with pytest.raises(meetings.MeetingError, match="no está entre tus clientes"):
         meetings.central_client(db, "Desconocido")
     answer = watson(tmp_path, "café")
-    assert answer["clientes"] == [{"nombre": "Café Web", "empresa": None, "origen": "local", "dominios": ["cafeweb.com", "cafeweb.es"], "webs": [],
-                                   "proyectos_activos": []}]
+    # Watson knows all of its data (user's decision, 23/11/2026), for a quote or a new client.
+    assert answer["clientes"] == [{"nombre": "Café Web", "empresa": None, "correo": "hola@cafeweb.es", "telefono": "600 111 222", "nif": "B12345678",
+                                   "origen": "local", "dominios": ["cafeweb.com", "cafeweb.es"], "webs": [], "proyectos_activos": []}]
     # A private mail is matched to no client.
     db.execute("UPDATE mail_summary SET confidentiality = 'private'")
     assert mail_inbox.inbox(db)[0]["client"] is None

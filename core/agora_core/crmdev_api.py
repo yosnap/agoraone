@@ -150,7 +150,7 @@ ARGUMENTS: dict[str, dict[str, Callable[[object], object]]] = {
                       "status": _one_of(STATUSES["list_clients"])},
     # Never `notes`: the list does not give them and CRMDev would overwrite them whole.
     "update_client": {"clientId": _id, "name": _words(300), "email": _words(200), "company": _words(300, empty=True),
-                      "status": _one_of(STATUSES["list_clients"])},
+                      "phone": _words(40), "status": _one_of(STATUSES["list_clients"])},
     "update_ticket": {"ticketId": _id, "status": _one_of(STATUSES["list_tickets"]), "priority": _one_of(PRIORITIES),
                       "category": _one_of(CATEGORIES)},
     # A reply to a ticket (a comment): a note only the team sees (`isInternal`) or an answer the client reads.

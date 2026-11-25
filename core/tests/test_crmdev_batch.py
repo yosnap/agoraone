@@ -8,7 +8,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from agora_core import central, crmdev_batch, modules
+from agora_core import central, central_api, crmdev_batch, modules
 from agora_core.db import DB_NAME, connect
 from test_assistant import MemorySecrets
 from test_central_api import HEADERS, app_with
@@ -171,3 +171,58 @@ def test_when_crmdev_asks_to_wait_the_batch_waits_and_goes_on(setup, fake, monke
     sent = client.post("/crmdev/batch/confirm", headers=HEADERS, json={"token": body["token"]}).json()
     assert [r["outcome"] for r in sent["results"]] == ["sent", "sent", "sent"], sent
     assert len(fake.writes()) == 3 and clock["now"] >= 1007  # it waited what CRMDev said
+
+
+def test_what_central_has_and_crmdev_lacks_is_pending_and_goes(setup, fake):  # noqa: F811
+    """A company Central has and CRMDev lacks is a change to send (Central leads), not «the same»."""
+    client, _ = setup
+    fake.rows["list_clients"][0]["company"] = None
+    assert client.post("/crmdev/clients/refresh", headers=HEADERS).status_code == 200
+    changes = {c["field"]: c for c in pending(client)["client_changed:k1:c1"]["changes"]}
+    assert changes["company"] == {"field": "company", "label": "Empresa", "missing": True, "central": "Uno Holding", "crmdev": None}
+    body = preview(client, ["client_changed:k1:c1"]).json()
+    client.post("/crmdev/batch/confirm", headers=HEADERS, json={"token": body["token"]})
+    assert [w["arguments"] for w in fake.writes()] == [{"clientId": "c1", "company": "Uno Holding"}]
+
+
+def test_the_review_reads_central_now(setup, fake, monkeypatch):  # noqa: F811
+    """Data filled in Central after the last reading goes: the review never uses an older copy."""
+    client, _ = setup
+    later = json.loads(json.dumps(CENTRAL))
+    later["details"]["Cliente Uno"]["company"] = "Uno Grupo"
+    monkeypatch.setattr(central_api, "connection_of", lambda connection, secrets: object())
+    monkeypatch.setattr(central_api, "read_all", lambda origin: later)
+    shown = preview(client, ["client_changed:k1:c1"])
+    assert shown.status_code == 200, shown.text
+    client.post("/crmdev/batch/confirm", headers=HEADERS, json={"token": shown.json()["token"]})
+    assert [w["arguments"] for w in fake.writes()] == [{"clientId": "c1", "company": "Uno Grupo"}]
+
+
+def test_without_central_now_nothing_is_reviewed(setup, fake, monkeypatch):  # noqa: F811
+    client, _ = setup
+    monkeypatch.setattr(central_api, "connection_of", lambda connection, secrets: object())
+
+    def down(origin):
+        raise central_api.CentralApiError("error", "Central no responde.")
+    monkeypatch.setattr(central_api, "read_all", down)
+    answer = preview(client, ["client_changed:k1:c1"])
+    assert answer.status_code == 502 and "datos viejos" in answer.json()["error"] and fake.writes() == []
+
+
+def test_a_phone_goes_only_when_crmdev_gives_phones(setup, fake, monkeypatch):  # noqa: F811
+    """CRMDev's older versions neither give nor take a phone: then it is not compared; once they do, it goes."""
+    client, _ = setup
+    later = json.loads(json.dumps(CENTRAL))
+    later["details"]["Cliente Uno"].update(company="Uno SL", phone="+34 611 222 333")
+    monkeypatch.setattr(central_api, "connection_of", lambda connection, secrets: object())
+    monkeypatch.setattr(central_api, "read_all", lambda origin: later)
+    assert client.post("/central/refresh", headers=HEADERS).status_code == 200
+    assert "client_changed:k1:c1" not in pending(client)
+    fake.rows["list_clients"][0]["phone"] = "611 000 000"
+    assert client.post("/crmdev/clients/refresh", headers=HEADERS).status_code == 200
+    changes = pending(client)["client_changed:k1:c1"]["changes"]
+    assert changes == [{"field": "phone", "label": "Teléfono"}]  # a phone is never shown in the list
+    shown = preview(client, ["client_changed:k1:c1"])
+    assert shown.status_code == 200, shown.text
+    client.post("/crmdev/batch/confirm", headers=HEADERS, json={"token": shown.json()["token"]})
+    assert [w["arguments"] for w in fake.writes()] == [{"clientId": "c1", "phone": "+34 611 222 333"}]

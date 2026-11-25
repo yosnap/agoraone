@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { refreshCentral } from '../api/core';
+import { refreshCrmdevClients } from '../api/crmdev';
 import { assignCrmdevOrg, confirmBatch, dismissPending, getCrmdevPending, previewBatch, type CrmdevPending, type PendingItem, type PendingKind } from '../api/clients';
 import { pendingChangeText, pendingText } from '../jobs/clients-view';
 import { ActionButton } from '../ui/action-button';
@@ -51,6 +53,9 @@ export function projectDetail(item: PendingItem): string | null {
   return parts.length ? parts.join(' ') : null;
 }
 
+/** The name AgoraOne gives an organization until the user names it («Organización 1»). */
+export const defaultOrgName = (name: string) => /^Organización \d+$/.test(name);
+
 /** The review button of each group: clients and projects go apart, clients first. */
 export const reviewLabelOf = (groupId: string) =>
   groupId === 'client_missing' || groupId === UNPLACED_CLIENTS ? 'Enviar clientes'
@@ -80,6 +85,13 @@ export function CrmdevFromCentral({ discreet, onChanged, org: shown }: { discree
   const load = (all = withDismissed) => {
     getCrmdevPending(all).then(found => { setData(found); setError(''); })
       .catch(failure => setError(failure instanceof Error ? failure.message : 'No se pudo comparar con Central.'));
+  };
+  /** «Comparar de nuevo» reads Central and CRMDev now: comparing older copies would hide what just changed. */
+  const compareAgain = async () => {
+    setBusy(true);
+    await Promise.allSettled([refreshCentral(), refreshCrmdevClients()]);
+    setBusy(false);
+    load();
   };
   if (!asked.current) { asked.current = true; load(false); }
   if (!data) return error ? <LoadError message={error} onRetry={() => load()}/> : <Loading label="Comparando Central y CRMDev" lines={3}/>;
@@ -115,24 +127,25 @@ export function CrmdevFromCentral({ discreet, onChanged, org: shown }: { discree
       : ASSIGNABLE.has(groupId as PendingKind) ? { label: 'Dejar sin organización', onRun: items => void assign(items, null) } : null;
   return <section className="sync-section" aria-label="Desde Central">
     <p className="muted">Central manda: aquí está lo que tiene Central y falta o es distinto en CRMDev. Cada grupo se envía por separado: primero los clientes y
-      luego los proyectos, que se enlazan solos con su cliente de CRMDev. Marca lo que quieras, revisa exactamente qué irá y envíalo.{several ? ' Cada cliente y proyecto va a una sola organización de CRMDev: elige arriba con cuál comparar.' : ` Va a la organización «${org?.name ?? 'de la clave guardada'}».`}{data.truncated ? ' De CRMDev se leen los 1000 más recientes: puede faltar algo que sí está.' : ''}</p>
+      luego los proyectos, que se enlazan solos con su cliente de CRMDev. Marca lo que quieras, revisa exactamente qué irá y envíalo.{several ? ' Cada cliente y proyecto va a una sola organización de CRMDev: elige abajo con cuál comparar.' : ''}{data.truncated ? ' De CRMDev se leen los 1000 más recientes: puede faltar algo que sí está.' : ''}</p>
     {error && <LoadError message={error}/>}
     {reviewing && <BatchReview key={`${reviewing.org}|${reviewing.items.map(i => i.key).join('|')}`} onClose={() => setReviewing(null)}
       onDone={() => { load(); onChanged?.(); }}
       dest={{ name: 'CRMDev', action: 'Enviar a CRMDev', preview: anyway => previewBatch(reviewing.items.map(i => i.key), anyway, reviewing.org), confirm: confirmBatch }}/>}
-    <SyncTable key={org?.id ?? ''} groups={groups} discreet={discreet} busy={busy || reviewing !== null} reviewLabel={reviewLabelOf} byGroup
+    <SyncTable key={org?.id ?? ''} groups={groups} discreet={discreet} busy={busy || reviewing !== null} reviewLabel={groupId => org ? `${reviewLabelOf(groupId)} a «${org.name}»` : reviewLabelOf(groupId)} byGroup
       onReview={items => setReviewing({ items, org: org?.id })} secondary={secondary}
-      above={several && <div className="sync-org-picker">
-        {shown ? <span className="muted">Comparando con «{org?.name ?? ''}»</span>
-          : <label className="field">Organización de CRMDev<ModernSelect value={org?.id ?? ''} onChange={setChosenOrg}
+      above={<div className="sync-org-picker">
+        {org && <p className="sync-org" role="note">Se envía a la organización de CRMDev <strong>«{org.name}»</strong>.
+          {defaultOrgName(org.name) && <> Es el nombre que AgoraOne le pone de entrada: cámbialo en Conectores › CRMDev para reconocerla.</>}</p>}
+        {several && !shown && <label className="field">Organización de CRMDev<ModernSelect value={org?.id ?? ''} onChange={setChosenOrg}
             options={orgs.map(o => ({ value: o.id, label: `${o.name} · ${pendingCount(o.id)}` }))}/></label>}
-        {unplaced.length > 0 && <small className="muted">{unplaced.length} sin organización</small>}
+        {several && unplaced.length > 0 && <small className="muted">{unplaced.length} sin organización</small>}
       </div>}
       onDismiss={row => void dismiss(row)} empty="Todo al día: CRMDev tiene lo mismo que Central."
       tools={<>
         {data.dismissed > 0 && <button type="button" className="button" aria-pressed={withDismissed}
           onClick={() => { setWithDismissed(!withDismissed); load(!withDismissed); }}>{withDismissed ? 'Ocultar descartados' : `Ver descartados (${data.dismissed})`}</button>}
-        <ActionButton icon="refresh" label="Comparar de nuevo" disabled={busy} onClick={() => load()}/>
+        <ActionButton icon="refresh" label="Comparar de nuevo" disabled={busy} onClick={() => void compareAgain()}/>
       </>}/>
   </section>;
 }

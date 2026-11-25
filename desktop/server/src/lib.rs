@@ -84,7 +84,10 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(config: Config, token: &str, core: Option<CoreLink>) -> Arc<Self> {
-        let http = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none()).build().expect("cliente HTTP");
+        // Idle connections expire before the core closes them (uvicorn keeps them 5 s by default, 30 s with ours):
+        // reusing one the core is closing fails the request, and a lost microphone piece stops a meeting.
+        let http = reqwest::Client::builder().no_proxy().redirect(reqwest::redirect::Policy::none())
+            .pool_idle_timeout(std::time::Duration::from_secs(2)).build().expect("cliente HTTP");
         let hermes = HermesDiscovery::new(config.hermes.clone());
         let vault = Arc::new(vault::VaultNotes::new(config.obsidian_registry.clone()));
         let library = library::PrivateLibrary::new(config.data.join("library"));

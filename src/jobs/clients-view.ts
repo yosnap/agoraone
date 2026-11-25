@@ -29,6 +29,7 @@ export const suggestionKey = (suggestion: LinkSuggestion) =>
 
 /** «En CRMDev: …» for each field CRMDev has otherwise than Central; an address only says that it differs. */
 export function differenceText(difference: DirectoryClient['differences'][number]): string {
+  if (difference.missing) return `${difference.label}: falta en CRMDev`;
   return difference.crmdev ? `${difference.label} en CRMDev: ${difference.crmdev}` : `${difference.label}: distinto en CRMDev (míralo allí)`;
 }
 
@@ -66,6 +67,7 @@ export function pendingText(item: PendingItem): string {
 
 /** «Empresa: Uno SL en Central, Uno Grupo en CRMDev»; an address only says that it differs. */
 export function pendingChangeText(change: PendingChange): string {
+  if (change.missing) return change.central ? `${change.label}: ${change.central} en Central, falta en CRMDev` : `${change.label}: falta en CRMDev`;
   if (change.central === undefined && change.crmdev === undefined) return `${change.label}: distinto en CRMDev`;
   return `${change.label}: ${change.central ?? '—'} en Central, ${change.crmdev ?? 'otro'} en CRMDev`;
 }

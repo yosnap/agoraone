@@ -164,7 +164,8 @@ CRMDev». **Nunca se borra nada.**
   llega, se trata como un alta dudosa («Crear de todos modos»).
 - Cada cambio queda en el registro de acciones, solo con los nombres de los campos.
 - Watson lee tareas y tickets y solo propone cambios, también una respuesta a un ticket (diciendo siempre si es
-  interna) (desde la 1.9; ver [watson-actua.md](watson-actua.md#watson-y-crmdev-19)).
+  interna) (desde la 1.9; ver [watson-actua.md](watson-actua.md#watson-y-crmdev-19)). Desde el 23/11/2026 también
+  lee las organizaciones y los clientes con todos sus datos, y propone clientes nuevos en la organización que se elija.
 
 La API de CRMDev está documentada en su propio repositorio (`docs/api/`).
 
@@ -208,10 +209,13 @@ y Watson.
 - **Enviar a CRMDev** (1.9): en esa lista se marcan los avisos que se quieren enviar. Desde la 1.10 cada grupo se
   envía por separado («Enviar clientes», «Enviar proyectos», «Revisar envío» en los demás; al cambiar de grupo se
   quitan las marcas): primero los clientes y luego los proyectos. La revisión enseña cada
-  operación con sus campos antes y después, leída de CRMDev en ese momento, y lo que no puede ir con su motivo. La
+  operación con sus campos antes y después, con Central y CRMDev leídos en ese momento (si Central no responde, no se
+  revisa nada: nunca se envía una copia vieja; «Comparar de nuevo» también los lee), y lo que no puede ir con su motivo. La
   herramienta la elige el núcleo (`crmdev_batch.py`): un cliente que falta va con `create_client` (nombre, correo,
   empresa y teléfono, como «Cliente»); un contacto, con `update_client` del cliente si no tiene correo o con
-  `create_client` de una persona de esa empresa; los datos distintos, con `update_client` o `update_project`; un
+  `create_client` de una persona de esa empresa; los datos distintos (también una empresa que CRMDev no tiene), con
+  `update_client` o `update_project`; el teléfono se compara y se envía solo cuando CRMDev lo devuelve en
+  `list_clients` (sus versiones anteriores ni lo dan ni lo aceptan en `update_client`); un
   proyecto que falta, con `create_project`, con el estado equivalente al de Central, GITHUB si tiene repositorio,
   su cliente de CRMDev (el enlazado; si no, el de CRMDev con el mismo nombre leído en ese momento, o el creado en el
   mismo envío; sin ninguno, la lista y la revisión avisan y el proyecto queda sin cliente) y una descripción con el repositorio y las webs del

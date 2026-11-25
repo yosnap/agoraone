@@ -82,6 +82,7 @@ def main() -> int:
     uvicorn.run(
         create_app(settings), host=settings.host, port=settings.port,
         log_level="warning", server_header=False, date_header=False,
+        timeout_keep_alive=30,  # longer than the desktop server keeps an idle connection, so it never reuses a closing one
     )
     return 0
 

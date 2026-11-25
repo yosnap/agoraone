@@ -10,7 +10,7 @@ import { CrmdevProposals, proposedFields } from '../assistant/crmdev-proposals';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { withCount } from '../shell/tab-counts';
-import { byOrg, projectDetail, reviewLabelOf, unplacedGroups } from '../sync/crmdev-from-central';
+import { byOrg, defaultOrgName, projectDetail, reviewLabelOf, unplacedGroups } from '../sync/crmdev-from-central';
 
 const item = (fields: Partial<PendingItem>): PendingItem => ({ key: 'k', kind: 'client_missing', name: 'Uno', signature: 'a'.repeat(64), dismissed: false, ...fields });
 
@@ -24,6 +24,7 @@ test('cada aviso de «Pendiente en CRMDev» dice qué falta o qué difiere', () 
 
 test('un correo distinto solo dice que difiere; el resto enseña los dos valores', () => {
   assert.equal(pendingChangeText({ field: 'email', label: 'Correo' }), 'Correo: distinto en CRMDev');
+  assert.equal(pendingChangeText({ field: 'company', label: 'Empresa', central: 'Uno SL', crmdev: null, missing: true }), 'Empresa: Uno SL en Central, falta en CRMDev');
   assert.equal(pendingChangeText({ field: 'company', label: 'Empresa', central: 'Uno SL', crmdev: 'Uno Grupo' }), 'Empresa: Uno SL en Central, Uno Grupo en CRMDev');
   assert.equal(pendingTotal({ client_missing: 1, contact_missing: 0, client_changed: 2, crmdev_only: 0, project_missing: 3, project_changed: 0 }), 6);
 });
@@ -146,4 +147,9 @@ test('«Sin organización» separa los clientes de los proyectos, cada uno con s
   assert.deepEqual(projects.items.map(i => i.key), ['p']);
   assert.equal(reviewLabelOf(clients.id), 'Enviar clientes');
   assert.equal(reviewLabelOf(projects.id), 'Enviar proyectos');
+});
+
+test('el nombre que AgoraOne pone de entrada a una organización se reconoce', () => {
+  assert.equal(defaultOrgName('Organización 1'), true);
+  assert.equal(defaultOrgName('Estudio'), false);
 });
