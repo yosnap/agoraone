@@ -32,7 +32,13 @@ export function BrainSide({ discreet, colors, picked, onPick, onRead, onAsk }: {
     </li>)}</ul>
   </>;
   return <div className="brain-side">
-    <div className="side-head"><h2>Áreas</h2><button type="button" className="button side-action" onClick={() => setReviewing(true)}>Revisar el vault</button></div>
+    <div className="side-head"><h2>Áreas</h2>
+      <button type="button" className="button side-action" onClick={event => {
+        // WebKit on macOS does not focus clicked buttons. Focus this one so the dialog restores focus to it.
+        event.currentTarget.focus();
+        setReviewing(true);
+      }}>Revisar el vault</button>
+    </div>
     {reviewing && <VaultReviewPanel discreet={discreet} onRead={key => { setReviewing(false); onRead(key); }} onClose={() => setReviewing(false)}
       onAsk={onAsk && (question => { setReviewing(false); onAsk(question); })}/>}
     <ul className="areas">{home.areas.map(area => <li key={area.name}>

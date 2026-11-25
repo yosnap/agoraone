@@ -8,7 +8,7 @@
 .brain-panel.folded > :not(.brain-fold) { display:none }
 .brain-panel.folded { width:auto; padding:8px }
 .brain-fold { align-self:flex-end; padding:5px 10px; font-size:11px }
-.brain-panel h1 { font:500 26px/1.1 Manrope,sans-serif; letter-spacing:-1px; margin:4px 0 0 }
+.brain-panel > h1 { font:500 26px/1.1 Manrope,sans-serif; letter-spacing:-1px; margin:4px 0 0 }
 .brain-stats { font-size:11px; color:var(--c-5f7a71); margin:0 }
 .brain-search { font-size:11px; color:var(--c-355a50); margin-top:6px }
 #brain-find { border:1px solid var(--c-cbd6c9); border-radius:9px; padding:10px 12px; background:var(--c-fffffa); color:var(--c-173d3c); font:inherit; font-size:13px }
@@ -98,7 +98,7 @@
 .brain .strip-tail { margin-left:auto }
 .brain .brain-panel { position:static; grid-column:1; grid-row:2; width:auto; max-height:none; border:0; border-right:1px solid var(--c-dfe3d6); border-radius:0; box-shadow:none; overflow-y:auto; background:var(--c-fbfaf3) }
 .brain .brain-fold, .brain .brain-panel > .eyebrow { display:none }
-.brain .brain-panel h1 { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0) }
+.brain .brain-panel > h1 { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0) }
 .brain .brain-stage { grid-column:2; grid-row:2 }
 .brain > .assistant.embedded { grid-column:3; grid-row:2 }
 .brain .brain-dock { left:calc(var(--side) + 16px); right:calc(var(--watson) + 16px) }
@@ -143,6 +143,9 @@
 .music-ask input { flex:1; min-width:0; border:1px solid var(--c-cbd6c9); border-radius:9px; padding:7px 10px; font:inherit; font-size:12px; background:var(--c-fffffa); color:var(--c-173d3c) }
 .side-head { display:flex; justify-content:space-between; align-items:center; gap:8px }
 .side-action { padding:4px 10px; font-size:11px }
+.vault-review { position:fixed; inset:0; width:100%; height:100%; max-width:none; max-height:none; margin:0; border:0; padding:24px; background:transparent }
+.vault-review[open] { display:grid; place-items:center }
+.vault-review::backdrop { background:rgba(13,22,38,.45) }
 .review-panel { width:min(1100px,100%) }
 .review-grid { display:flex; flex-direction:column; gap:8px }
 .review-total { font-size:15px; margin:0 }
