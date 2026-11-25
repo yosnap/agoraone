@@ -32,6 +32,21 @@ fn status<T: std::fmt::Debug>(result: Result<T, Failure>) -> u16 {
     result.unwrap_err().status.as_u16()
 }
 
+#[cfg(windows)]
+#[tokio::test]
+async fn el_puente_python_recibe_el_home_como_userprofile_en_windows() {
+    use std::time::Duration;
+
+    use agora_server::hermes::python::{run_python, system_python};
+
+    let python = system_python().expect("python3");
+    let dir = tempfile::tempdir().unwrap();
+    let home = dir.path().display().to_string();
+    let source = "import json, os; print(json.dumps(os.environ.get('USERPROFILE')))";
+    let result = run_python(&python, source, &[("HOME", home.clone())], &Value::Null, Duration::from_secs(10), false).await.unwrap();
+    assert_eq!(result, json!(home));
+}
+
 #[tokio::test]
 async fn tasks_and_kanban_through_hermes_only_for_their_profile_keeping_hidden_lines() {
     let Some(installation) = installation() else { return eprintln!("Hermes no instalado") };
