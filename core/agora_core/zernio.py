@@ -10,6 +10,8 @@ from urllib.parse import quote
 
 import httpx
 
+from . import tls
+
 API = "https://zernio.com/api/v1"
 SECRET = "zernio-api-key"  # Keychain account of the key
 PAGE = 100
@@ -72,7 +74,7 @@ def _get(path: str, key: str, params: dict | None = None, client: httpx.Client |
     if not key:
         raise ZernioError("auth", "Falta la clave de API de Zernio.")
     own = client is None
-    client = client or httpx.Client()
+    client = client or httpx.Client(verify=tls.client_context())
     _wait_turn()
     try:
         answer = client.get(f"{API}{path}", params=params, headers=_headers(key), timeout=TIMEOUT, follow_redirects=False)
@@ -172,7 +174,7 @@ def send_message(key: str, account_remote_id: str, conversation_id: str, text: s
     if not key:
         raise ZernioSendError("auth", "Falta la clave de API de Zernio: no se ha enviado.", sent=False)
     own = client is None
-    client = client or httpx.Client()
+    client = client or httpx.Client(verify=tls.client_context())
     _wait_turn()
     try:
         answer = client.post(f"{API}/inbox/conversations/{quote(conversation_id, safe='')}/messages",

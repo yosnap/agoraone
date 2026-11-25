@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 
 import httpx
 
+from . import tls
+
 AUTHORITY = "https://login.microsoftonline.com/common/oauth2/v2.0"
 SCOPES = "https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access"
 CLIENT_SETTING = "mail.microsoftClientId"
@@ -60,7 +62,7 @@ def _post(http, path: str, data: dict) -> dict:
 
 
 def default_http(url: str, data: dict):
-    return httpx.post(url, data=data, timeout=TIMEOUT)
+    return httpx.post(url, data=data, timeout=TIMEOUT, verify=tls.client_context())
 
 
 @dataclass

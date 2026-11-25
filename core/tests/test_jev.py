@@ -283,7 +283,7 @@ def test_rutas_nunca_devuelven_la_clave(tmp_path, monkeypatch):
     settings = load_settings({"AGORA_CORE_SECRET": SECRET, "AGORA_CORE_DATA": str(tmp_path / "data")})
     fake = FakeTypeSafe()
     real_client = httpx.Client
-    monkeypatch.setattr(jev.httpx, "Client", lambda: real_client(transport=httpx.MockTransport(fake)))
+    monkeypatch.setattr(jev.httpx, "Client", lambda **kwargs: real_client(transport=httpx.MockTransport(fake), **kwargs))
     with TestClient(create_app(settings, MemoryStore(), scheduler=False, embedder=None, secrets=secrets), base_url=f"http://{settings.authority}") as client:
         headers = {SECRET_HEADER: SECRET, "x-agora-owner": OWNER}
         first = client.get("/jev/settings", headers=headers).json()

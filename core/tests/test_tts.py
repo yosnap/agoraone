@@ -38,7 +38,7 @@ def test_ajustes_validados(tmp_path):
 def test_solo_habla_con_voicestudio_en_este_mac(monkeypatch):
     asked = []
 
-    def post(url, json, timeout):
+    def post(url, json, timeout, **kwargs):
         asked.append((url, json))
         return httpx.Response(200, headers={"content-type": "audio/wav"}, content=b"RIFF")
     monkeypatch.setattr(tts.httpx, "post", post)
@@ -82,7 +82,7 @@ def test_rutas_de_la_voz(tmp_path, monkeypatch):
 
 def test_pide_los_pasos_de_la_calidad_y_no_otros(monkeypatch):
     asked = []
-    monkeypatch.setattr(tts.httpx, "post", lambda url, json, timeout: asked.append(json) or httpx.Response(200, headers={"content-type": "audio/wav"}, content=b"RIFF"))
+    monkeypatch.setattr(tts.httpx, "post", lambda url, json, timeout, **k: asked.append(json) or httpx.Response(200, headers={"content-type": "audio/wav"}, content=b"RIFF"))
     tts.synthesize("c63", "Hola")
     tts.synthesize("c63", "Hola", steps=8)
     tts.synthesize("c63", "Hola", steps=64)
@@ -133,7 +133,7 @@ def test_si_no_esta_instalado_o_no_arranca_se_dice(tmp_path, monkeypatch):
 def test_no_se_queda_abriendo_si_el_puerto_contesta_otra_cosa(tmp_path, monkeypatch):
     monkeypatch.setattr(tts, "installed_app", lambda: tts.APPS[0])
     monkeypatch.setattr(tts.time, "sleep", lambda s: None)
-    monkeypatch.setattr(tts.httpx, "get", lambda url, timeout: httpx.Response(200, json=None, request=httpx.Request("GET", url)))
+    monkeypatch.setattr(tts.httpx, "get", lambda url, timeout, **k: httpx.Response(200, json=None, request=httpx.Request("GET", url)))
     assert tts.open_at_start(_db(tmp_path), wait=0, opener=lambda *a, **k: None) == "failed"
     assert tts._launch["state"] == "failed"
     tts._launch["state"] = None
@@ -143,7 +143,7 @@ def test_calentar_solo_si_hace_rato_que_no_habla(monkeypatch):
     said = []
     monkeypatch.setattr(tts, "voicestudio_voices", lambda fresh=False: VOICES)
     monkeypatch.setattr(tts, "_spoke", {"at": -1e9, "failed": -1e9})
-    monkeypatch.setattr(tts.httpx, "post", lambda url, json, timeout: said.append((json["input"], json["num_step"])) or httpx.Response(200, headers={"content-type": "audio/wav"}, content=b"RIFF"))
+    monkeypatch.setattr(tts.httpx, "post", lambda url, json, timeout, **k: said.append((json["input"], json["num_step"])) or httpx.Response(200, headers={"content-type": "audio/wav"}, content=b"RIFF"))
     assert tts.warm(dict(tts.DEFAULTS)) is True and said == [("Hola.", 8)]
     assert tts.warm(dict(tts.DEFAULTS)) is False and len(said) == 1, "acaba de hablar: ya está cargada"
     tts._spoke["at"] -= tts.WARM_FOR + 1

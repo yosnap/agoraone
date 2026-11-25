@@ -10,6 +10,8 @@ import time
 import urllib.request
 from pathlib import Path
 
+from . import tls
+
 WHISPER_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{model}.bin"
 MAX_LINES = 30
 
@@ -83,7 +85,7 @@ class Installer:
             self._say(f"Ya está en {target}.")
             return
         self._say(f"Descargando {model} de Hugging Face a {folder}…")
-        with urllib.request.urlopen(WHISPER_URL.format(model=model), timeout=60) as response:
+        with urllib.request.urlopen(WHISPER_URL.format(model=model), timeout=60, context=tls.client_context()) as response:
             total = int(response.headers.get("Content-Length") or 0)
             with self.lock:
                 self.job["total"] = total or self.job["total"]

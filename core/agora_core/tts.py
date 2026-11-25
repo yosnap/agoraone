@@ -18,7 +18,7 @@ from pathlib import Path
 
 import httpx
 
-from . import system_words
+from . import system_words, tls
 from .db import transaction
 
 VOICESTUDIO = "http://127.0.0.1:3900"
@@ -74,7 +74,7 @@ def voicestudio_voices(fresh: bool = False) -> list[dict] | None:
 
 def _read_voices() -> list[dict] | None:
     try:
-        answer = httpx.get(f"{VOICESTUDIO}/profiles", timeout=2.5)
+        answer = httpx.get(f"{VOICESTUDIO}/profiles", timeout=2.5, verify=tls.client_context())
         answer.raise_for_status()
         profiles = answer.json()
     except (httpx.HTTPError, ValueError):
@@ -190,7 +190,7 @@ def synthesize(voice: str, text: str, steps: int = QUALITY["balanced"]) -> bytes
             # The profile's reference is already clean: preparing it again each time only adds seconds.
             "denoise": False, "preprocess_prompt": False, "num_step": steps if steps in QUALITY.values() else QUALITY["balanced"]}
     try:
-        answer = httpx.post(f"{VOICESTUDIO}/v1/audio/speech", json=body, timeout=60)
+        answer = httpx.post(f"{VOICESTUDIO}/v1/audio/speech", json=body, timeout=60, verify=tls.client_context())
     except httpx.HTTPError as error:
         raise TtsError("VoiceStudio no responde.") from error
     if answer.status_code != 200 or not answer.headers.get("content-type", "").startswith("audio/"):

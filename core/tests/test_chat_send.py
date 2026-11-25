@@ -409,7 +409,7 @@ def app(tmp_path, monkeypatch):
     secrets.put(zernio.SECRET, KEY)
     fake = FakeZernio()
     real = httpx.Client
-    monkeypatch.setattr(zernio.httpx, "Client", lambda: real(transport=httpx.MockTransport(fake)))
+    monkeypatch.setattr(zernio.httpx, "Client", lambda **kwargs: real(transport=httpx.MockTransport(fake), **kwargs))
     drafted = []
 
     def drafter(system, text):

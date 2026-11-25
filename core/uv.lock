@@ -21,6 +21,7 @@ dependencies = [
     { name = "pypdf" },
     { name = "python-docx" },
     { name = "segno" },
+    { name = "truststore" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
     { name = "uvicorn" },
 ]
@@ -47,6 +48,7 @@ requires-dist = [
     { name = "pypdf", specifier = ">=7.1.0" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "segno", specifier = ">=1.6.6" },
+    { name = "truststore", specifier = ">=0.10.5" },
     { name = "tzdata", marker = "sys_platform == 'win32'", specifier = ">=2025.2,<2027" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]

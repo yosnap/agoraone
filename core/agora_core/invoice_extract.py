@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from . import tls
 from .fiscal import MAX_FILE, amount
 
 _URL = re.compile(r"https://[^\s<>\"')\]]{4,500}", re.I)
@@ -92,7 +93,8 @@ def download(url: str, http=None, deadline: float = 30) -> bytes:
     else:
         started, chunks, size = time.monotonic(), [], 0
         try:
-            with httpx.stream("GET", url, timeout=20, follow_redirects=False, trust_env=False) as response:
+            with httpx.stream("GET", url, timeout=20, follow_redirects=False, trust_env=False,
+                              verify=tls.client_context()) as response:
                 status = response.status_code
                 if status == 200:
                     if int(response.headers.get("content-length") or 0) > MAX_FILE:

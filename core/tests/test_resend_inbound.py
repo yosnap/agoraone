@@ -57,7 +57,7 @@ def test_una_clave_de_solo_envio_se_explica(db, monkeypatch):
         resend_inbound.sync(db, account, "re_send", mail._store, mail.MAX_MESSAGE, 50, client=resend(["e1"], status=401))
     assert caught.value.status == "auth"
     refusing = resend(["e1"], status=403)
-    monkeypatch.setattr(resend_inbound.httpx, "Client", lambda: refusing)
+    monkeypatch.setattr(resend_inbound.httpx, "Client", lambda **kwargs: refusing)
     assert mail.sync_account(db, account_id, "re_send") == {"status": "auth", "added": 0}
     row = db.execute("SELECT inbound, status, last_error FROM mail_account WHERE id = ?", (account_id,)).fetchone()
     assert row["inbound"] == 0 and row["status"] == "pending" and "desmarcado" in row["last_error"], "una clave de envío no pone la cuenta en rojo"

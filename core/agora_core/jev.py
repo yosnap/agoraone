@@ -20,7 +20,7 @@ from pathlib import Path
 
 import httpx
 
-from . import __version__, modules
+from . import __version__, modules, tls
 from .db import now, transaction
 
 API = "https://api.typesafe.ai/v1"
@@ -340,7 +340,7 @@ def _request(method: str, path: str, key: str, body: dict | None, client: httpx.
     late = "Jev no respondió a tiempo: sigue la lógica de siempre."
     deadline = time.monotonic() + TOTAL
     own = client is None
-    client = client or httpx.Client()
+    client = client or httpx.Client(verify=tls.client_context())
     headers = {"Authorization": f"Bearer {key}", "Accept": "application/json", "User-Agent": USER_AGENT}
     try:
         for attempt in (1, 2):

@@ -11,6 +11,8 @@ from urllib.parse import parse_qsl, unquote, urlencode, urlparse, urlunparse
 
 import httpx
 
+from . import tls
+
 MAX_FILE = 25 * 1024 * 1024
 DEADLINE = 75  # seconds for a whole download, well under the proxy's 120 s
 # What a mail's file may be next to a note, in the vault or a repository: documents, images, audio and video, never a
@@ -131,7 +133,8 @@ def download(url: str, client: httpx.Client | None = None, deadline: float = DEA
     target = direct(url)
     if target is None:
         raise SourceError("Ese enlace no se puede descargar sin entrar en su web: ábrelo en el navegador.")
-    started, http = time.monotonic(), client or httpx.Client(timeout=15, follow_redirects=False, trust_env=False)
+    started = time.monotonic()
+    http = client or httpx.Client(verify=tls.client_context(), timeout=15, follow_redirects=False, trust_env=False)
     try:
         for _ in range(REDIRECTS + 1):
             if time.monotonic() - started > deadline:

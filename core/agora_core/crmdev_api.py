@@ -18,7 +18,7 @@ from collections.abc import Callable
 
 import httpx
 
-from . import web_api
+from . import tls, web_api
 from .web_api import Connection, WebApiError
 
 SECRET = "crmdev-api-key"  # account of the key in the secret store
@@ -215,7 +215,7 @@ class _Guard(httpx.BaseTransport):
 
 
 def _guarded() -> httpx.BaseTransport:
-    return _Guard(TRANSPORT if TRANSPORT is not None else httpx.HTTPTransport())
+    return _Guard(TRANSPORT if TRANSPORT is not None else httpx.HTTPTransport(verify=tls.client_context()))
 
 
 SPEC = web_api.WebApiSpec(
