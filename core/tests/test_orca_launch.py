@@ -62,6 +62,17 @@ def add_mail(connection, level="normal", body="Hola, el menú no se ve en el mó
     return message
 
 
+def test_la_lista_de_terminales_se_lee_en_utf8_aunque_el_sistema_use_cp1252():
+    expected = {"terminals": [{"title": "Árbol de navegación"}]}
+    output = json.dumps({"ok": True, "result": expected}, ensure_ascii=False).encode("utf-8")
+
+    def runner(command, **options):
+        stdout = output.decode(options.get("encoding", "cp1252"))
+        return subprocess.CompletedProcess(command, 0, stdout, "")
+
+    assert orca_launch._run(["terminal", "list"], runner, 10) == expected
+
+
 def test_la_vista_previa_dice_exactamente_que_se_lanzara(database):
     orca = FakeOrca()
     plan = orca_launch.preview(database, {"client": "Acme", "project": "Web", "task": "Arregla el menú", "agent": "codex"}, runner=orca)
